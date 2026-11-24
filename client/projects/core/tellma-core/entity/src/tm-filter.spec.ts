@@ -236,6 +236,13 @@ describe('tmFilterLeaf', () => {
       expect(leaf(CustomerType, 'in:Retail,wholesale-trade,Retail')).toBe("CustomerType in ('Retail', 'wholesale-trade')");
     });
 
+    it('refuses a value the enum does not hold', async () => {
+      await tmEntityRig(SYSTEM);
+      const { CustomerType } = columns('CustomerType');
+      expect(leaf(CustomerType, 'in:Retail,Retired')).toBeNull();
+      expect(leaf(CustomerType, 'in:retail')).toBeNull();
+    });
+
     it('reads true and false and nothing else', async () => {
       await tmEntityRig(SYSTEM);
       const { IsActive } = columns('IsActive');
@@ -282,15 +289,64 @@ describe('tmDescribeFilter', () => {
     expect(describe_(DueDate, 'before:2026-03-01').text).toBe('Due date is before Mar 1, 2026');
     expect(describe_(IsActive, 'is:false').text).toBe('Active: No');
     expect(describe_(CustomerType, 'in:Retail,wholesale-trade')).toEqual({
-      text: 'Type: Retail, Wholesale',
+      text: 'Type: Retail or Wholesale',
       parts: [
         { text: 'Type', argument: true },
         { text: ': ', argument: false },
         { text: 'Retail', argument: true },
-        { text: ', ', argument: false },
+        { text: ' or ', argument: false },
         { text: 'Wholesale', argument: true },
       ],
     });
+  });
+
+  it.each([
+    ['contains:jed', 'Code contains jed'],
+    ['starts-with:jed', 'Code starts with jed'],
+    ['ends-with:jed', 'Code ends with jed'],
+    ['eq:jed', 'Code is jed'],
+    ['ne:jed', 'Code is not jed'],
+  ])('describes the text operator of %s in English', async (value, text) => {
+    await tmEntityRig(SYSTEM);
+    const { Code } = columns('Code');
+    expect(describe_(Code, value).text).toBe(text);
+  });
+
+  it.each([
+    ['lt:5', 'Credit limit is less than 5.0000'],
+    ['le:5', 'Credit limit is at most 5.0000'],
+    ['eq:5', 'Credit limit is 5.0000'],
+    ['ge:5', 'Credit limit is at least 5.0000'],
+    ['gt:5', 'Credit limit is greater than 5.0000'],
+    ['between:1,2', 'Credit limit is between 1.0000 and 2.0000'],
+  ])('describes the number operator of %s in English', async (value, text) => {
+    await tmEntityRig(SYSTEM);
+    const { CreditLimit } = columns('CreditLimit');
+    expect(describe_(CreditLimit, value).text).toBe(text);
+  });
+
+  it.each([
+    ['before:2026-03-01', 'Due date is before Mar 1, 2026'],
+    ['after:2026-03-01', 'Due date is after Mar 1, 2026'],
+    ['between:2026-03-01,2026-03-31', 'Due date is between Mar 1, 2026 and Mar 31, 2026'],
+  ])('describes the day operator of %s in English', async (value, text) => {
+    await tmEntityRig(SYSTEM);
+    const { DueDate } = columns('DueDate');
+    expect(describe_(DueDate, value).text).toBe(text);
+  });
+
+  it('describes an instant filter by its whole days', async () => {
+    await tmEntityRig(SYSTEM);
+    const { CreatedAt } = columns('CreatedAt');
+    expect(describe_(CreatedAt, 'after:2026-03-01').text).toBe('Created is after Mar 1, 2026');
+    expect(describe_(CreatedAt, 'between:2026-01-01,2026-01-31').text).toBe('Created is between Jan 1, 2026 and Jan 31, 2026');
+  });
+
+  it('describes true and false', async () => {
+    await tmEntityRig(SYSTEM);
+    const { IsActive } = columns('IsActive');
+    expect(describe_(IsActive, 'is:true').text).toBe('Active: Yes');
+    expect(describe_(IsActive, 'is:false').text).toBe('Active: No');
   });
 
   it('describes a related row by its id until it is named', async () => {
@@ -313,6 +369,31 @@ describe('tmDescribeFilter', () => {
     const range = describe_(CreditLimit, 'between:1,2');
     expect(range.parts.map((part) => part.argument)).toEqual([true, false, true, false, true]);
     expect(range.parts[2]!.text).not.toMatch(/[0-9]/);
+  });
+
+  it('joins an Arabic list as alternatives, and words true in Arabic', async () => {
+    const ar = { Acme_Customer_CustomerType: 'النوع', Gl_CustomerType_Retail: 'تجزئة', Acme_CustomerType_Wholesale: 'جملة', IsActive: 'نشط' };
+    await tmEntityRig({ ...SYSTEM, language: 'ar', tmStrings: { ar: TM_STRINGS_AR }, labels: { en: LABELS, ar } });
+    const { CustomerType, IsActive } = columns('CustomerType', 'IsActive');
+    expect(describe_(CustomerType, 'in:Retail,wholesale-trade')).toEqual({
+      text: 'النوع: تجزئة أو جملة',
+      parts: [
+        { text: 'النوع', argument: true },
+        { text: ': ', argument: false },
+        { text: 'تجزئة', argument: true },
+        { text: ' أو ', argument: false },
+        { text: 'جملة', argument: true },
+      ],
+    });
+    expect(describe_(IsActive, 'is:true').text).toBe('نشط: نعم');
+  });
+
+  it('joins an Amharic list as alternatives', async () => {
+    await tmEntityRig({ ...SYSTEM, language: 'am' });
+    const { CustomerType } = columns('CustomerType');
+    const parts = describe_(CustomerType, 'in:Retail,wholesale-trade').parts;
+    expect(parts.map((part) => part.argument)).toEqual([true, false, true, false, true]);
+    expect(parts[3]).toEqual({ text: ' ወይም ', argument: false });
   });
 
   it('puts the words where the language’s message puts them', async () => {

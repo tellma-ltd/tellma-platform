@@ -19,7 +19,7 @@ import {
 
 import { TmEntityMultiFieldHarness } from './tm-entity-field-harness';
 
-// Harnesses for @tellma/core/entity's column filters. The control draws
+// Harnesses for @tellma/core/column-filter's control. The control draws
 // the component library's own controls, one set per column kind, so the
 // harness hands each out, and drives the operator, Apply, Clear and Enter.
 

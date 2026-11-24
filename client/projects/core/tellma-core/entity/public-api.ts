@@ -7,7 +7,8 @@
  * of a plan, the client check of a blob kind's policy, the entity picker
  * binding with the entity fields built on it, the client Queryex (a lexer,
  * and a builder and printer for the Queryex the client writes), and the
- * column filters with their descriptions and control.
+ * column filters with their descriptions. The control that edits a column
+ * filter is `@tellma/core/column-filter`'s.
  *
  * @packageDocumentation
  */
@@ -58,7 +59,8 @@ export {
 } from './src/tm-qx-lex';
 export { tmQx, tmQxInsert, tmQxPrint, type TmQx, type TmQxBinaryOp } from './src/tm-qx';
 
-// Column filters: the URL value, its Queryex leaf, its description and its control.
+// Column filters: the URL value, its Queryex leaf and its description; the
+// operators and strings the column filter entry point's control offers.
 export {
   TM_ENUM_PICKER_THRESHOLD,
   tmDescribeFilter,
@@ -70,5 +72,7 @@ export {
   type TmFilterDescription,
   type TmFilterOp,
   type TmFilterSpec,
+  ɵTM_FILTER_OPS,
 } from './src/tm-filter';
-export { TmColumnFilter } from './src/tm-column-filter';
+export { ɵTM_FILTER_STRINGS_EN } from './src/tm-entity-strings';
+export { ɵtmParseExact, type ɵTmExactParse } from './src/tm-exact-number';

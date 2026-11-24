@@ -52,12 +52,16 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },
   './entity': { load: 'lazy', imports: [] },
+  // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
+  // /entity; a column header's popover opens it, so the search page loads
+  // it then, and /entity's own measure never carries it.
+  './column-filter': { load: 'lazy', imports: ['./entity'] },
   './sharing': { load: 'lazy', imports: [] },
   // The page hosts load the tab's memory with them: the search page's state
   // and tree expansion, the details page's drafts and state, the stock
   // pages' and the report studio's drafts, a report's state. The home page,
   // in `/dashboards`, lists the recent pages.
-  './search': { load: 'lazy', imports: ['./entity', './memory'] },
+  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter'] },
   './details': { load: 'lazy', imports: ['./entity', './memory'] },
   './admin': { load: 'lazy', imports: ['./memory'] },
   './attention-pages': { load: 'lazy', imports: [] },

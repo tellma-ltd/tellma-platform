@@ -7,6 +7,9 @@ import { TmDecimals, type TmDataType } from '@tellma/core';
 
 import { tmQxLex, ɵtmQxIsBareName } from './tm-qx-lex';
 
+/** Angular's development-mode flag: a production build folds it to false, and the messages it guards drop out. */
+declare const ngDevMode: unknown;
+
 // The client's Queryex builder and printer (spec 0029 §8.2): the filters and
 // order terms the client writes are trees, printed exactly as the engine's
 // canonical printer prints them (spec 0008 §5.2), so no client code
@@ -99,7 +102,8 @@ export type TmQx =
       readonly text: string;
     };
 
-/** How tightly an operator binds, as spec 0008 §5.2 ranks them. */
+/** How tightly an operator binds, as the engine ranks them. */
+// The ranks are spec 0008 §5.2's.
 const POWER = {
   or: 20,
   and: 30,
@@ -183,10 +187,10 @@ function isTime(hours: string, minutes: string, seconds: string | undefined): bo
  */
 function checkName(name: string, what: string): string {
   if (typeof name !== 'string' || name === '') {
-    throw new TypeError(`A Queryex ${what} needs a name.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `A Queryex ${what} needs a name.` : '');
   }
   if (name.includes(']')) {
-    throw new TypeError(`The Queryex ${what} "${name}" contains "]", which no name can be written with.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `The Queryex ${what} "${name}" contains "]", which no name can be written with.` : '');
   }
   return name;
 }
@@ -200,7 +204,7 @@ function checkName(name: string, what: string): string {
  */
 function checkRaw(text: string): string {
   if (typeof text !== 'string') {
-    throw new TypeError('Raw Queryex must be text.');
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? 'Raw Queryex must be text.' : '');
   }
   const { tokens, diagnostics } = tmQxLex(text);
   let depth = 0;
@@ -213,7 +217,7 @@ function checkRaw(text: string): string {
     }
   }
   if (tokens.length === 0 || diagnostics.length > 0 || depth !== 0) {
-    throw new TypeError(`"${text}" is not Queryex that can be grouped in parentheses.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${text}" is not Queryex that can be grouped in parentheses.` : '');
   }
   return text;
 }
@@ -226,12 +230,14 @@ function checkRaw(text: string): string {
  * @returns The node.
  */
 function decimal(text: string): TmQx {
-  if (text.startsWith('-')) {
-    const magnitude = text.slice(1);
-    // Negative zero is zero.
-    return /^0+(?:\.0+)?$/.test(magnitude) ? { kind: 'number', value: magnitude } : { kind: 'negate', operand: { kind: 'number', value: magnitude } };
+  const negative = text.startsWith('-');
+  const magnitude = negative ? text.slice(1) : text;
+  // The engine reads at most 38 significant digits, leading zeros aside (QX1004).
+  if (tmQxLex(magnitude).diagnostics.length > 0) {
+    throw new RangeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${text} has more digits than a Queryex number can hold.` : '');
   }
-  return { kind: 'number', value: text };
+  // Negative zero is zero.
+  return negative && !/^0+(?:\.0+)?$/.test(magnitude) ? { kind: 'negate', operand: { kind: 'number', value: magnitude } } : { kind: 'number', value: magnitude };
 }
 
 /**
@@ -255,17 +261,17 @@ function significantDigits(text: string): number {
 function num(value: number | string): TmQx {
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) {
-      throw new RangeError(`${String(value)} is not a number Queryex can write.`);
+      throw new RangeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} is not a number Queryex can write.` : '');
     }
     // The shortest text that reads back as the double, its exponent expanded.
     const text = TmDecimals.parse(String(value));
     if (text === null || significantDigits(text) > NUMBER_DIGITS) {
-      throw new RangeError(`${String(value)} has more significant digits than a number holds exactly; pass its decimal text instead.`);
+      throw new RangeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} has more significant digits than a number holds exactly; pass its decimal text instead.` : '');
     }
     return decimal(text);
   }
   if (typeof value !== 'string' || !DECIMAL.test(value)) {
-    throw new TypeError(`"${String(value)}" is not decimal text.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${String(value)}" is not decimal text.` : '');
   }
   return decimal(value);
 }
@@ -280,7 +286,7 @@ function num(value: number | string): TmQx {
 function dateTimeText(value: unknown): string {
   const match = typeof value === 'string' ? ISO_DATETIME.exec(value) : null;
   if (match === null || !ɵtmQxIsDate(match[1]!) || (match[2] !== undefined && !isTime(match[2], match[3]!, match[4]))) {
-    throw new TypeError(`"${String(value)}" is not a date-time, yyyy-MM-ddTHH:mm:ss.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${String(value)}" is not a date-time, yyyy-MM-ddTHH:mm:ss.` : '');
   }
   const [, date, hours = '00', minutes = '00', seconds = '00', fraction = ''] = match;
   return `${date}T${hours}:${minutes}:${seconds}${fraction}`;
@@ -297,14 +303,14 @@ function instantText(value: unknown): string {
   if (typeof value === 'string') {
     const match = ISO_INSTANT.exec(value);
     if (match === null || !ɵtmQxIsDate(match[1]!) || !isTime(match[2]!, match[3]!, match[4]) || Number(match[6] ?? 0) > 23 || Number(match[7] ?? 0) > 59) {
-      throw new TypeError(`"${value}" is not an instant with its offset, such as 2026-01-31T21:00:00+00:00.`);
+      throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${value}" is not an instant with its offset, such as 2026-01-31T21:00:00+00:00.` : '');
     }
     return value;
   }
   const at = value instanceof Date ? value.getTime() : typeof value === 'number' ? value : Number.NaN;
   const iso = Number.isFinite(at) ? new Date(at).toISOString() : '';
   if (!/^\d{4}-/.test(iso)) {
-    throw new TypeError(`${String(value)} is not an instant Queryex can write.`);
+    throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} is not an instant Queryex can write.` : '');
   }
   // `2026-01-31T21:00:00.000Z` → `2026-01-31T21:00:00+00:00`, a fraction kept only when it has one.
   return `${iso.slice(0, 19)}${iso.slice(19, 23) === '.000' ? '' : iso.slice(19, 23)}+00:00`;
@@ -334,7 +340,7 @@ export const tmQx = /* @__PURE__ */ Object.freeze({
   /** A string literal. */
   str(value: string): TmQx {
     if (typeof value !== 'string') {
-      throw new TypeError(`${String(value)} is not text.`);
+      throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} is not text.` : '');
     }
     return { kind: 'string', value };
   },
@@ -399,7 +405,7 @@ export const tmQx = /* @__PURE__ */ Object.freeze({
         return tmQx.str(value as string);
       case 'integer':
         if (typeof value === 'number' ? !Number.isInteger(value) : typeof value !== 'string' || !/^-?\d+$/.test(value)) {
-          throw new TypeError(`${String(value)} is not a whole number.`);
+          throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} is not a whole number.` : '');
         }
         return num(value as number | string);
       case 'decimal':
@@ -407,12 +413,12 @@ export const tmQx = /* @__PURE__ */ Object.freeze({
         return num(value as number | string);
       case 'bool':
         if (typeof value !== 'boolean') {
-          throw new TypeError(`${String(value)} is not true or false.`);
+          throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `${String(value)} is not true or false.` : '');
         }
         return { kind: 'bool', value };
       case 'date':
         if (typeof value !== 'string' || !ɵtmQxIsDate(value)) {
-          throw new TypeError(`"${String(value)}" is not a date, yyyy-MM-dd.`);
+          throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${String(value)}" is not a date, yyyy-MM-dd.` : '');
         }
         return { kind: 'string', value };
       case 'datetime':
@@ -420,7 +426,7 @@ export const tmQx = /* @__PURE__ */ Object.freeze({
       case 'instant':
         return { kind: 'string', value: instantText(value) };
       default:
-        throw new TypeError(`A ${type} value has no Queryex literal.`);
+        throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `A ${type} value has no Queryex literal.` : '');
     }
   },
 
@@ -566,14 +572,14 @@ function print(node: TmQx): string {
   switch (node.kind) {
     case 'path':
       if (node.segments.length === 0) {
-        throw new TypeError('A Queryex path needs at least one segment.');
+        throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? 'A Queryex path needs at least one segment.' : '');
       }
       return node.segments.map((segment) => nameText(segment, 'path segment')).join('.');
     case 'string':
       return `'${node.value.replaceAll("'", "''")}'`;
     case 'number':
       if (!DECIMAL.test(node.value)) {
-        throw new TypeError(`"${node.value}" is not decimal text.`);
+        throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? `"${node.value}" is not decimal text.` : '');
       }
       return node.value;
     case 'bool':
@@ -598,7 +604,7 @@ function print(node: TmQx): string {
     }
     case 'in':
       if (node.items.length === 0) {
-        throw new TypeError('A Queryex membership test needs at least one item.');
+        throw new TypeError(typeof ngDevMode !== 'undefined' && ngDevMode ? 'A Queryex membership test needs at least one item.' : '');
       }
       return `${operand(node.value, POWER.comparison + 1)} in (${node.items.map((item) => operand(item, POWER.additive)).join(', ')})`;
     case 'is-null':
@@ -652,9 +658,23 @@ function startsWord(char: string | undefined): boolean {
 }
 
 /**
+ * Whether two characters read as fewer tokens together than apart: two
+ * quotes that make one string, `<` and `=` that make `<=`, a point and a
+ * digit that make a malformed number.
+ *
+ * @param left - The character before the boundary, or `undefined` at the start.
+ * @param right - The character after it, or `undefined` at the end.
+ * @returns Whether a space must keep them apart.
+ */
+function fuses(left: string | undefined, right: string | undefined): boolean {
+  return left !== undefined && right !== undefined && tmQxLex(left + right).tokens.length < tmQxLex(left).tokens.length + tmQxLex(right).tokens.length;
+}
+
+/**
  * Inserts text at a caret without splitting a token: an insertion inside a
  * token moves to the token's end, and a space is added where the insertion
- * would touch a name, a digit or `)` beside it.
+ * would touch a name, a digit or `)` beside it, or would run into the
+ * token beside it.
  *
  * @param text - The text.
  * @param caret - The caret, in UTF-16 code units; clamped to the text.
@@ -683,8 +703,13 @@ export function tmQxInsert(text: string, caret: number, insertion: string): { re
   // --- A space on each side where a word would otherwise run into its neighbour ---
   const before = text.slice(0, at);
   const after = text.slice(at);
-  const lead = endsWord(before.at(-1)) && startsWord(insertion[0]) ? ' ' : '';
-  const trail = endsWord(insertion.at(-1)) && startsWord(after[0]) ? ' ' : '';
+  // The characters either side of each boundary, whole code points.
+  const last = (part: string): string | undefined => Array.from(part.slice(-2)).at(-1);
+  const first = (part: string): string | undefined => Array.from(part.slice(0, 2))[0];
+  const apart = (left: string, right: string): boolean =>
+    (endsWord(last(left)) && startsWord(first(right))) || fuses(last(left), first(right));
+  const lead = apart(before, insertion) ? ' ' : '';
+  const trail = apart(insertion, after) ? ' ' : '';
   const start = at + lead.length;
   return { text: `${before}${lead}${insertion}${trail}${after}`, start, end: start + insertion.length };
 }

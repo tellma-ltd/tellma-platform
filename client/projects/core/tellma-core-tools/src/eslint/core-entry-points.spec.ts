@@ -36,6 +36,7 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search')].sort()).toEqual([
       '.',
       './attention',
+      './column-filter',
       './entity',
       './memory',
       './private',
@@ -61,6 +62,15 @@ describe('the @tellma/core entry-point table', () => {
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './support').has('./page-snapshot')).toBe(true);
     for (const eager of ['.', './attention', './shell']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./page-snapshot')).toBe(false);
+    }
+  });
+
+  it('keeps the column filter control out of the entity entry point, for the search page to load', () => {
+    expect(TM_CORE_ENTRY_POINTS['./column-filter']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './search').has('./column-filter')).toBe(true);
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './entity').has('./column-filter')).toBe(false);
+    for (const eager of ['.', './attention', './shell']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./column-filter')).toBe(false);
     }
   });
 

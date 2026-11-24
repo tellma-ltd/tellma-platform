@@ -64,6 +64,15 @@ describe('tmQx', () => {
       expect(tmQxPrint(tmQx.num('9007199254740993'))).toBe('9007199254740993');
     });
 
+    it('refuses digits past the engine’s 38, leading zeros aside', () => {
+      expect(() => tmQx.num(1e-40)).toThrow(RangeError);
+      expect(() => tmQx.num('1'.repeat(39))).toThrow(RangeError);
+      expect(() => tmQx.num(`-0.${'0'.repeat(38)}1`)).toThrow(RangeError);
+      expect(tmQxPrint(tmQx.num('1'.repeat(38)))).toBe('1'.repeat(38));
+      expect(tmQxPrint(tmQx.num(`000${'1'.repeat(38)}`))).toBe(`000${'1'.repeat(38)}`);
+      expect(tmQxPrint(tmQx.num(`0.${'1'.repeat(38)}`))).toBe(`0.${'1'.repeat(38)}`);
+    });
+
     it('refuses a number that is not finite and text that is not decimal', () => {
       expect(() => tmQx.num(Number.NaN)).toThrow(RangeError);
       expect(() => tmQx.num(Number.POSITIVE_INFINITY)).toThrow(RangeError);
@@ -171,6 +180,13 @@ describe('tmQxInsert', () => {
     expect(tmQxInsert('a', 1, '+')).toEqual({ text: 'a+', start: 1, end: 2 });
     expect(tmQxInsert('f(a,)', 4, 'b')).toEqual({ text: 'f(a,b)', start: 4, end: 5 });
     expect(tmQxInsert('a ', 2, 'b')).toEqual({ text: 'a b', start: 2, end: 3 });
+  });
+
+  it('never lets the insertion run into the token beside it', () => {
+    expect(tmQxInsert("'a'", 3, "'b'")).toEqual({ text: "'a' 'b'", start: 4, end: 7 });
+    expect(tmQxInsert('a <', 3, '= 1')).toEqual({ text: 'a < = 1', start: 4, end: 7 });
+    expect(tmQxInsert('a.', 2, '5')).toEqual({ text: 'a. 5', start: 3, end: 4 });
+    expect(tmQxInsert('x', 0, "'b'")).toEqual({ text: "'b' x", start: 0, end: 3 });
   });
 
   it('clamps the caret to the text', () => {

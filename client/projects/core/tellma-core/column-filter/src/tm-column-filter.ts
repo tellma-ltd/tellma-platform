@@ -16,6 +16,20 @@ import {
   type Signal,
 } from '@angular/core';
 import { TmDecimals, TmEntities, TmLocalization, type TmDecimal, type TmId } from '@tellma/core';
+import {
+  tmFilterLeaf,
+  tmFormatFilter,
+  tmParseFilter,
+  TM_ENUM_PICKER_THRESHOLD,
+  TmEntityMultiField,
+  ɵTM_FILTER_OPS,
+  ɵTM_FILTER_STRINGS_EN,
+  ɵtmParseExact,
+  type TmColumnPlan,
+  type TmFilterOp,
+  type TmFilterSpec,
+} from '@tellma/core/entity';
+import { TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmDatePicker } from '@tellma/core-ui/date-picker';
@@ -26,17 +40,14 @@ import { TmNumber } from '@tellma/core-ui/number';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
 import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
 
-import { TmEntityMultiField } from './tm-entity-multi-field';
-import { ɵTM_FILTER_STRINGS_EN } from './tm-entity-strings';
-import { tmFilterLeaf, tmFormatFilter, tmParseFilter, TM_ENUM_PICKER_THRESHOLD, ɵTM_FILTER_OPS, type TmFilterOp, type TmFilterSpec } from './tm-filter';
-import type { TmColumnPlan } from './tm-select-plan';
 
 // The column filter control (spec 0029 §13.3): the content of a column
 // header's popover. It edits one column's `f.` value as an operator and
 // the values that operator takes, and emits the value on Apply (null on
 // Clear). Apply is enabled only while the value makes a leaf, so the host
 // never receives a value it would drop. Numbers are typed in any digits the
-// locale reads and written in Latin digits.
+// locale reads and written in Latin digits, and held as decimal text, so a
+// decimal or a long read back from the URL applies exactly as it came.
 
 /** The most enum values that show as a list of checkboxes. */
 const CHECKBOX_LIMIT = 8;
@@ -146,15 +157,37 @@ interface TmEnumChoice {
             <div class="tm-column-filter__pair" role="group" [attr.aria-label]="label">
               <label class="tm-column-filter__end">
                 {{ text.from() }}
-                <input tmNumber [(value)]="numberFrom" [maxDecimals]="decimals()" />
+                <input
+                  #from
+                  tmNumber
+                  [value]="startNumber(true, 0)"
+                  (input)="numberFrom.set(typed(from.value))"
+                  [invalid]="numberFrom() === undefined"
+                  [maxDecimals]="decimals()"
+                />
               </label>
               <label class="tm-column-filter__end">
                 {{ text.to() }}
-                <input tmNumber [(value)]="numberTo" [maxDecimals]="decimals()" />
+                <input
+                  #to
+                  tmNumber
+                  [value]="startNumber(true, 1)"
+                  (input)="numberTo.set(typed(to.value))"
+                  [invalid]="numberTo() === undefined"
+                  [maxDecimals]="decimals()"
+                />
               </label>
             </div>
           } @else {
-            <input tmNumber [(value)]="numberValue" [maxDecimals]="decimals()" [attr.aria-label]="label" />
+            <input
+              #single
+              tmNumber
+              [value]="startNumber(false, 0)"
+              (input)="numberValue.set(typed(single.value))"
+              [invalid]="numberValue() === undefined"
+              [maxDecimals]="decimals()"
+              [attr.aria-label]="label"
+            />
           }
         }
         @case ('date') {
@@ -212,6 +245,7 @@ interface TmEnumChoice {
 export class TmColumnFilter {
   readonly #localization = inject(TmLocalization);
   readonly #entities = inject(TmEntities);
+  readonly #l10n = inject(TmL10n);
 
   /** The column filtered. */
   readonly column: InputSignal<TmColumnPlan> = input.required<TmColumnPlan>();
@@ -276,14 +310,14 @@ export class TmColumnFilter {
   /** A text filter's value. */
   protected readonly textValue = linkedSignal(() => (this.column().filter === 'text' ? (this.#current()?.values[0] ?? '') : ''));
 
-  /** A number filter's single value. */
-  protected readonly numberValue = linkedSignal(() => this.#number(this.#current()?.op === 'between' ? undefined : this.#current()?.values[0]));
+  /** A number filter's single value: decimal text, null for none, `undefined` for text that reads as no number the column takes. */
+  protected readonly numberValue = linkedSignal<TmDecimal | null | undefined>(() => this.#start(false, 0));
 
-  /** A number range's lower end. */
-  protected readonly numberFrom = linkedSignal(() => this.#number(this.#current()?.op === 'between' ? this.#current()?.values[0] : undefined));
+  /** A number range's lower end, as `numberValue` holds it. */
+  protected readonly numberFrom = linkedSignal<TmDecimal | null | undefined>(() => this.#start(true, 0));
 
-  /** A number range's upper end. */
-  protected readonly numberTo = linkedSignal(() => this.#number(this.#current()?.op === 'between' ? this.#current()?.values[1] : undefined));
+  /** A number range's upper end, as `numberValue` holds it. */
+  protected readonly numberTo = linkedSignal<TmDecimal | null | undefined>(() => this.#start(true, 1));
 
   /** A day filter's single day. */
   protected readonly day = linkedSignal<string | null>(() => (this.#current()?.op === 'between' ? null : (this.#current()?.values[0] ?? null)));
@@ -294,8 +328,14 @@ export class TmColumnFilter {
     return current?.op === 'between' ? { from: current.values[0] ?? null, to: current.values[1] ?? null } : { from: null, to: null };
   });
 
-  /** The chosen enum values. */
-  protected readonly chosen = linkedSignal<readonly string[]>(() => (this.column().filter === 'enum' ? (this.#current()?.values ?? []) : []));
+  /** The chosen enum values: the current value's, less any the enum no longer holds. */
+  protected readonly chosen = linkedSignal<readonly string[]>(() => {
+    if (this.column().filter !== 'enum') {
+      return [];
+    }
+    const known = new Set(this.enumChoices().map((choice) => choice.value));
+    return (this.#current()?.values ?? []).filter((value) => known.has(value));
+  });
 
   /** A boolean filter's choice. */
   protected readonly flag = linkedSignal<string | null>(() => (this.column().filter === 'bool' ? (this.#current()?.values[0] ?? null) : null));
@@ -310,9 +350,9 @@ export class TmColumnFilter {
   protected readonly target: Signal<string> = computed(() => this.column().descriptor?.target ?? '');
 
   /** The fraction digits a number takes: none for an integer, the scale for a decimal. */
-  protected readonly decimals: Signal<number | undefined> = computed(() => {
+  protected readonly decimals: Signal<number> = computed(() => {
     const of = this.column().descriptor;
-    return of?.type === 'integer' ? 0 : of?.scale;
+    return of?.type === 'integer' ? 0 : (of?.scale ?? 0);
   });
 
   /** An enum's values with their labels, in the enum's order. */
@@ -359,7 +399,7 @@ export class TmColumnFilter {
         case 'text':
           return [this.textValue()];
         case 'number':
-          return op === 'between' ? [this.#decimal(this.numberFrom()), this.#decimal(this.numberTo())] : [this.#decimal(this.numberValue())];
+          return op === 'between' ? [this.numberFrom(), this.numberTo()] : [this.numberValue()];
         case 'date':
         case 'instant':
           return op === 'between' ? [this.range().from, this.range().to] : [this.day()];
@@ -406,7 +446,10 @@ export class TmColumnFilter {
    */
   protected enter(event: Event): void {
     const target = event.target;
+    // The Enter that ends an input method's composition is the composition's.
+    const composing = event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229);
     if (
+      composing ||
       event.defaultPrevented ||
       !(target instanceof HTMLInputElement) ||
       target.closest('tm-select, tm-multi-select, tm-entity-multi-picker, tm-entity-multi-field') !== null
@@ -434,22 +477,43 @@ export class TmColumnFilter {
   }
 
   /**
-   * A number control's value from decimal text.
+   * The number a number input starts from: the current value's, as the
+   * control shows it. Typing never changes it, so the text a user types
+   * stands while it reads as no number.
    *
-   * @param value - The text, when there is one.
+   * @param range - Whether the input is one of a range's ends.
+   * @param index - The value's position: 0, or 1 for a range's upper end.
    * @returns The number, or null.
    */
-  #number(value: string | undefined): number | null {
-    return value !== undefined && TmDecimals.isDecimal(value) ? TmDecimals.toNumber(value) : null;
+  protected startNumber(range: boolean, index: number): number | null {
+    const value = this.#start(range, index);
+    return value === null ? null : TmDecimals.toNumber(value);
   }
 
   /**
-   * Decimal text, in Latin digits, from a number control's value.
+   * Reads a number input's text exactly, in the locale's digits, at the
+   * column's scale.
    *
-   * @param value - The number, or null.
-   * @returns The text, or null.
+   * @param text - The input's text.
+   * @returns The decimal text, null for empty text, or `undefined` for text that reads as no number the column takes.
    */
-  #decimal(value: number | null): string | null {
-    return value === null || !Number.isFinite(value) ? null : TmDecimals.fromNumber(value);
+  protected typed(text: string): TmDecimal | null | undefined {
+    const parsed = ɵtmParseExact(text, this.#l10n.locale(), this.decimals());
+    return 'error' in parsed ? undefined : parsed.value;
+  }
+
+  /**
+   * A number draft's start: the current value at a position, exactly as
+   * the URL wrote it, when the current operator takes a range exactly when
+   * the draft is one of a range's ends.
+   *
+   * @param range - Whether the draft is one of a range's ends.
+   * @param index - The position.
+   * @returns The decimal text, or null.
+   */
+  #start(range: boolean, index: number): TmDecimal | null {
+    const current = this.#current();
+    const value = this.column().filter === 'number' && (current?.op === 'between') === range ? current?.values[index] : undefined;
+    return value !== undefined && TmDecimals.isDecimal(value) ? value : null;
   }
 }

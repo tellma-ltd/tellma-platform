@@ -136,6 +136,9 @@ const NAMES = new WeakMap<TmColumnPlan, ɵTmPlanNames>();
 /** A blob column's navigation path, such as `Image`, by column. */
 const BLOB_PATHS = new WeakMap<TmColumnPlan, string>();
 
+/** An enum column's values, by column. */
+const ENUM_VALUES = new WeakMap<TmColumnPlan, ReadonlySet<string>>();
+
 /**
  * How a navigation column's display name reads its related row. Internal.
  *
@@ -154,6 +157,17 @@ export function ɵtmPlanNames(column: TmColumnPlan): ɵTmPlanNames | undefined {
  */
 export function ɵtmPlanBlobPath(column: TmColumnPlan): string | undefined {
   return BLOB_PATHS.get(column);
+}
+
+/**
+ * The values an enum column's enum holds. Internal: its filter refuses any
+ * other.
+ *
+ * @param column - The column.
+ * @returns The values, or `undefined` for a column that is not an enum's.
+ */
+export function ɵtmPlanEnumValues(column: TmColumnPlan): ReadonlySet<string> | undefined {
+  return ENUM_VALUES.get(column);
 }
 
 /** The value type an expression's row set column carries, by its Queryex type. */
@@ -439,6 +453,10 @@ export function tmSelectPlan(
     }
     if (spec.blobPath !== undefined) {
       BLOB_PATHS.set(column, spec.blobPath);
+    }
+    const values = column.descriptor?.enum === undefined ? undefined : entities.enum(column.descriptor.enum)?.values;
+    if (values !== undefined) {
+      ENUM_VALUES.set(column, new Set(values.map((entry) => entry.value)));
     }
     columns.push(column);
 

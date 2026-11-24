@@ -31,51 +31,6 @@ export type TmBlobFileCheck = 'ok' | 'size' | 'type';
 export function tmCheckBlobFile(policy: TmBlobKindPolicy, file: File): TmBlobFileCheck;
 
 // @public
-export class TmColumnFilter {
-    readonly applied: OutputEmitterRef<string | null>;
-    protected readonly checkboxLimit = 8;
-    protected readonly choiceLabel: (choice: TmEnumChoice) => string;
-    protected readonly choiceValue: (choice: TmEnumChoice) => string;
-    protected readonly chosen: _angular_core.WritableSignal<readonly string[]>;
-    readonly column: InputSignal<TmColumnPlan>;
-    protected readonly control: Signal<string | null>;
-    protected readonly day: _angular_core.WritableSignal<string | null>;
-    protected readonly decimals: Signal<number | undefined>;
-    protected enter(event: Event): void;
-    protected readonly enumChoices: Signal<readonly TmEnumChoice[]>;
-    protected readonly enumLabel: Signal<(value: string) => string | null>;
-    protected readonly enumSearch: Signal<TmEntitySearchFn<TmEnumChoice>>;
-    protected readonly filterValue: Signal<string | null>;
-    protected readonly flag: _angular_core.WritableSignal<string | null>;
-    protected readonly ids: _angular_core.WritableSignal<readonly TmId[]>;
-    protected readonly maxItems = 50;
-    protected readonly numberFrom: _angular_core.WritableSignal<number | null>;
-    protected readonly numberTo: _angular_core.WritableSignal<number | null>;
-    protected readonly numberValue: _angular_core.WritableSignal<number | null>;
-    protected readonly op: _angular_core.WritableSignal<TmFilterOp | undefined>;
-    protected readonly opLabels: Readonly<Record<TmFilterOp, Signal<string>>>;
-    protected readonly ops: Signal<readonly TmFilterOp[]>;
-    protected readonly pickerThreshold = 50;
-    protected readonly range: _angular_core.WritableSignal<TmDateRangeValue>;
-    protected submit(event: Event): void;
-    protected readonly target: Signal<string>;
-    protected readonly text: {
-        operator: Signal<string>;
-        apply: Signal<string>;
-        clear: Signal<string>;
-        from: Signal<string>;
-        to: Signal<string>;
-        true: Signal<string>;
-        false: Signal<string>;
-    };
-    protected readonly textValue: _angular_core.WritableSignal<string>;
-    protected toggle(value: string, checked: boolean): void;
-    readonly value: InputSignal<string | null>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmColumnFilter, "tm-column-filter", never, { "column": { "alias": "column"; "required": true; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; }, { "applied": "applied"; }, never, never, true, never>;
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmColumnFilter, never>;
-}
-
-// @public
 export type TmColumnKind = 'expression' | 'file' | 'image' | 'navigation' | 'text' | 'value';
 
 // @public

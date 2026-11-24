@@ -7,18 +7,20 @@ import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TmEntities, type TmColumnInput, type TmEntitiesChunk } from '@tellma/core';
+import { TM_ENUM_PICKER_THRESHOLD, tmSelectPlan, type TmColumnPlan } from '@tellma/core/entity';
 import { TmColumnFilterHarness, tmTestEntities } from '@tellma/core-testing';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/strings';
 
-import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
+import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
+import { tmSettle } from '../../src/routes/tm-app.testing.util';
 import { TmColumnFilter } from './tm-column-filter';
-import { TM_ENUM_PICKER_THRESHOLD } from './tm-filter';
-import { tmSelectPlan, type TmColumnPlan } from './tm-select-plan';
 
 // The column filter control over the recorded entity model, patched with a
-// date column and two enums either side of the picker threshold: each kind's
-// controls, the operator, Apply enabled only for a valid value, Enter, Clear,
-// the large enum's search in Arabic, and digits of another script.
+// date column, a long integer and two enums either side of the picker
+// threshold: each kind's controls, the operator, Apply enabled only for a
+// valid value, Enter (and when it is not the control's), Clear, numbers
+// held exactly, the large enum's search in Arabic, and digits of another
+// script.
 
 /** The value of the patched enums' entry `index`. */
 const VALUE = (index: number): string => `v${index}`;
@@ -54,6 +56,7 @@ function chunk(): TmEntitiesChunk {
   const customer = patched.entities.find((entity) => entity.name === 'acme.Customer')!;
   (customer.properties as unknown as unknown[]).push(
     property('DueDate', 'date'),
+    property('Serial', 'integer', { long: true }),
     property('Mid', 'enum', { enum: 'acme.Mid' }),
     property('Large', 'enum', { enum: 'acme.Large' }),
   );
@@ -153,6 +156,35 @@ describe('TmColumnFilter', () => {
       expect(fixture.componentInstance.applied).toEqual(['between:500,1500.25']);
     });
 
+    it('applies a long read back from its value exactly, past the digits a number holds', async () => {
+      await tmEntityRig(SYSTEM);
+      const { fixture, harness } = await filter('Serial', 'eq:1234567890123456');
+      expect(await harness.getOperatorText()).toBe('Equals');
+      expect(await harness.isApplyEnabled()).toBe(true);
+      await harness.apply();
+      expect(fixture.componentInstance.applied).toEqual(['eq:1234567890123456']);
+    });
+
+    it('applies a decimal read back from its value exactly', async () => {
+      await tmEntityRig(SYSTEM);
+      const { fixture, harness } = await filter('CreditLimit', 'ge:12345678901234567890.5');
+      await harness.apply();
+      expect(fixture.componentInstance.applied).toEqual(['ge:12345678901234567890.5']);
+    });
+
+    it('refuses typed digits it cannot hold exactly, rather than rounding them', async () => {
+      await tmEntityRig(SYSTEM);
+      const { harness } = await filter('Serial');
+      await harness.selectOperator('Equals');
+      const [input] = await harness.getNumberInputs();
+      await input!.setText('12345678901234567');
+      await input!.blur();
+      expect(await harness.isApplyEnabled()).toBe(false);
+      expect(await input!.isInvalid()).toBe(true);
+      await input!.setText('123456789012345');
+      expect(await harness.isApplyEnabled()).toBe(true);
+    });
+
     it('reads the locale’s own digits and writes Latin ones', async () => {
       await tmEntityRig({ ...SYSTEM, language: 'ar', tmStrings: { ar: TM_STRINGS_AR } });
       const { fixture, harness } = await filter('CreditLimit');
@@ -238,6 +270,27 @@ describe('TmColumnFilter', () => {
       await picker.open();
       expect((await picker.getOptionLabels()).slice(0, 20)).toEqual(Array.from({ length: 20 }, (_, index) => `Value ${index}`));
     });
+
+    it('leaves Enter in the picker to the picker', async () => {
+      await tmEntityRig(SYSTEM);
+      const { fixture, harness } = await filter('Large', 'in:v1');
+      expect(await harness.isApplyEnabled()).toBe(true);
+      const picker = await (await harness.getEnumPicker())!.getPicker();
+      await picker.typeQuery('Value 2');
+      const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('tm-entity-multi-picker input')!;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+      await fixture.whenStable();
+      expect(fixture.componentInstance.applied).toEqual([]);
+    });
+
+    it('drops a value the enum no longer holds', async () => {
+      await tmEntityRig(SYSTEM);
+      const { fixture, harness } = await filter('CustomerType', 'in:Retail,Retired');
+      const boxes = await harness.getCheckboxes();
+      expect(await Promise.all(boxes.map((box) => box.isChecked()))).toEqual([true, false]);
+      await harness.apply();
+      expect(fixture.componentInstance.applied).toEqual(['in:Retail']);
+    });
   });
 
   describe('booleans and navigations', () => {
@@ -253,12 +306,39 @@ describe('TmColumnFilter', () => {
       expect(fixture.componentInstance.applied).toEqual(['is:false']);
     });
 
-    it('picks related rows in an entity field', async () => {
-      await tmEntityRig(SYSTEM);
-      const { harness } = await filter('Currency');
+    it('picks related rows in an entity field, and applies their ids', async () => {
+      const rig: TmEntityRig = await tmEntityRig(SYSTEM);
+      rig.api.respond('currencies/query', {
+        rows: {
+          columns: ['Id', 'Code'].map((name) => ({ name, type: name === 'Id' ? 'Numeric' : 'String', nullable: false, path: [name], groupingKey: false })),
+          rows: [[1, 'USD'], [2, 'SAR']],
+        },
+      });
+      const { fixture, harness } = await filter('Currency');
       expect(await harness.getOperator()).toBeNull();
-      expect(await harness.getEntityField()).not.toBeNull();
       expect(await harness.isApplyEnabled()).toBe(false);
+      const field = (await harness.getEntityField())!;
+      await field.pick('SAR');
+      await tmSettle();
+      expect(await field.getChipLabels()).toEqual(['SAR']);
+      await harness.apply();
+      expect(fixture.componentInstance.applied).toEqual(['in:2']);
+    });
+  });
+
+  describe('input methods', () => {
+    it('leaves the Enter that ends a composition to the input method', async () => {
+      await tmEntityRig(SYSTEM);
+      const { fixture, harness } = await filter('Code', 'contains:jed');
+      const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input.tm-column-filter__text')!;
+      const composing = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true });
+      input.dispatchEvent(composing);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true }));
+      await fixture.whenStable();
+      expect(composing.defaultPrevented).toBe(false);
+      expect(fixture.componentInstance.applied).toEqual([]);
+      await harness.pressEnter();
+      expect(fixture.componentInstance.applied).toEqual(['contains:jed']);
     });
   });
 

@@ -21,7 +21,7 @@ import { tmStripBidiControls, ɵtmInstantOfWallTime } from '@tellma/core-ui/l10n
 import { ɵTM_FILTER_STRINGS_EN } from './tm-entity-strings';
 import { ɵtmFormatExact, TmFormats } from './tm-formats';
 import { tmQx, tmQxPrint, ɵtmQxIsDate, type TmQx } from './tm-qx';
-import { ɵtmGroupSlots, type TmColumnPlan, type TmFilterKind } from './tm-select-plan';
+import { ɵtmGroupSlots, ɵtmPlanEnumValues, type TmColumnPlan, type TmFilterKind } from './tm-select-plan';
 
 // Column filters (spec 0029 §13): the culture-free `f.{key}` value of the
 // search URL (spec 0024 §9.5), the Queryex leaf it becomes, and the
@@ -269,9 +269,14 @@ function leafOf(column: TmColumnPlan, kind: TmFilterKind, spec: TmFilterSpec, ti
       return days === 'date' ? tmQx.gt(path, dayStart(days, single, timeZone)) : tmQx.ge(path, dayStart(days, nextDay(single), timeZone));
     }
 
-    // --- Enum values, each once ---
-    case 'enum':
-      return values.length === 0 ? null : tmQx.in(tmQx.path(column.key), [...new Set(values)].map((item) => tmQx.str(item)));
+    // --- Enum values the enum holds, each once ---
+    case 'enum': {
+      const known = ɵtmPlanEnumValues(column);
+      if (values.length === 0 || (known !== undefined && !values.every((item) => known.has(item)))) {
+        return null;
+      }
+      return tmQx.in(tmQx.path(column.key), [...new Set(values)].map((item) => tmQx.str(item)));
+    }
 
     // --- True or false ---
     case 'bool':
@@ -332,8 +337,8 @@ const LISTS = new Map<string, Intl.ListFormat>();
  * whole-sentence message per operator, `tm.filter.describe.<op>`, with the
  * column's label and the values formatted as the column shows them
  * (numbers in the locale's digits, days in the active calendar, enum
- * values and related rows by their labels), an `in` list joined in the
- * locale with each value its own part.
+ * values and related rows by their labels), an `in` list joined as
+ * alternatives in the locale with each value its own part.
  *
  * @param column - The column.
  * @param spec - The filter.
@@ -342,7 +347,7 @@ const LISTS = new Map<string, Intl.ListFormat>();
  *
  * @example
  * ```ts
- * tmDescribeFilter(type, { op: 'in', values: ['Service', 'Sale'] })().text; // 'Type: Service, Sale'
+ * tmDescribeFilter(type, { op: 'in', values: ['Service', 'Sale'] })().text; // 'Type: Service or Sale'
  * ```
  */
 export function tmDescribeFilter(column: TmColumnPlan, spec: TmFilterSpec, options: TmDescribeFilterOptions = {}): Signal<TmFilterDescription> {
@@ -405,8 +410,9 @@ export function tmDescribeFilter(column: TmColumnPlan, spec: TmFilterSpec, optio
         const locale = l10n.locale();
         let list = LISTS.get(locale);
         if (list === undefined) {
-          // `short`, not spec 0029 §13.2's `narrow`: English's narrow unit list drops the commas ("Service Sale").
-          LISTS.set(locale, (list = new Intl.ListFormat(locale, { type: 'unit', style: 'short' })));
+          // A disjunction, not spec 0029 §13.2's `unit` list: the filter is any-of,
+          // and a unit list joins with "and" in Arabic and Amharic ("Service or Sale").
+          LISTS.set(locale, (list = new Intl.ListFormat(locale, { type: 'disjunction', style: 'short' })));
         }
         return list
           .formatToParts(values.map(shown))
