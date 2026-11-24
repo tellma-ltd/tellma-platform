@@ -22,10 +22,58 @@ import { Type } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
+export const TM_ENUM_PICKER_THRESHOLD = 50;
+
+// @public
 export type TmBlobFileCheck = 'ok' | 'size' | 'type';
 
 // @public
 export function tmCheckBlobFile(policy: TmBlobKindPolicy, file: File): TmBlobFileCheck;
+
+// @public
+export class TmColumnFilter {
+    readonly applied: OutputEmitterRef<string | null>;
+    protected readonly checkboxLimit = 8;
+    protected readonly choiceLabel: (choice: TmEnumChoice) => string;
+    protected readonly choiceValue: (choice: TmEnumChoice) => string;
+    protected readonly chosen: _angular_core.WritableSignal<readonly string[]>;
+    readonly column: InputSignal<TmColumnPlan>;
+    protected readonly control: Signal<string | null>;
+    protected readonly day: _angular_core.WritableSignal<string | null>;
+    protected readonly decimals: Signal<number | undefined>;
+    protected enter(event: Event): void;
+    protected readonly enumChoices: Signal<readonly TmEnumChoice[]>;
+    protected readonly enumLabel: Signal<(value: string) => string | null>;
+    protected readonly enumSearch: Signal<TmEntitySearchFn<TmEnumChoice>>;
+    protected readonly filterValue: Signal<string | null>;
+    protected readonly flag: _angular_core.WritableSignal<string | null>;
+    protected readonly ids: _angular_core.WritableSignal<readonly TmId[]>;
+    protected readonly maxItems = 50;
+    protected readonly numberFrom: _angular_core.WritableSignal<number | null>;
+    protected readonly numberTo: _angular_core.WritableSignal<number | null>;
+    protected readonly numberValue: _angular_core.WritableSignal<number | null>;
+    protected readonly op: _angular_core.WritableSignal<TmFilterOp | undefined>;
+    protected readonly opLabels: Readonly<Record<TmFilterOp, Signal<string>>>;
+    protected readonly ops: Signal<readonly TmFilterOp[]>;
+    protected readonly pickerThreshold = 50;
+    protected readonly range: _angular_core.WritableSignal<TmDateRangeValue>;
+    protected submit(event: Event): void;
+    protected readonly target: Signal<string>;
+    protected readonly text: {
+        operator: Signal<string>;
+        apply: Signal<string>;
+        clear: Signal<string>;
+        from: Signal<string>;
+        to: Signal<string>;
+        true: Signal<string>;
+        false: Signal<string>;
+    };
+    protected readonly textValue: _angular_core.WritableSignal<string>;
+    protected toggle(value: string, checked: boolean): void;
+    readonly value: InputSignal<string | null>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmColumnFilter, "tm-column-filter", never, { "column": { "alias": "column"; "required": true; "isSignal": true; }; "value": { "alias": "value"; "required": false; "isSignal": true; }; }, { "applied": "applied"; }, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmColumnFilter, never>;
+}
 
 // @public
 export type TmColumnKind = 'expression' | 'file' | 'image' | 'navigation' | 'text' | 'value';
@@ -46,6 +94,14 @@ export interface TmColumnPlan {
 
 // @public
 export type TmColumnSource = 'declaration' | 'preference' | 'url';
+
+// @public
+export function tmDescribeFilter(column: TmColumnPlan, spec: TmFilterSpec, options?: TmDescribeFilterOptions): Signal<TmFilterDescription>;
+
+// @public
+export interface TmDescribeFilterOptions {
+    readonly injector?: Injector;
+}
 
 // @public
 export interface TmDroppedKey {
@@ -151,7 +207,40 @@ export class TmEntityPickers {
 }
 
 // @public
+export interface TmFilterDescription {
+    readonly parts: readonly {
+        readonly text: string;
+        readonly argument: boolean;
+    }[];
+    readonly text: string;
+}
+
+// @public
+export class TmFilterDescriptionText {
+    readonly description: InputSignal<TmFilterDescription>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFilterDescriptionText, "tm-filter-description", never, { "description": { "alias": "description"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFilterDescriptionText, never>;
+}
+
+// @public
 export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' | 'number' | 'text';
+
+// @public
+export function tmFilterLeaf(column: TmColumnPlan, spec: TmFilterSpec, context: {
+    readonly timeZone: string;
+}): string | null;
+
+// @public
+export type TmFilterOp = 'after' | 'before' | 'between' | 'contains' | 'ends-with' | 'eq' | 'ge' | 'gt' | 'in' | 'is' | 'le' | 'lt' | 'ne' | 'starts-with';
+
+// @public
+export interface TmFilterSpec {
+    readonly op: TmFilterOp;
+    readonly values: readonly string[];
+}
+
+// @public
+export function tmFormatFilter(spec: TmFilterSpec): string;
 
 // @public
 export class TmFormats {
@@ -192,6 +281,129 @@ export class TmLazyPickerPage {
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmLazyPickerPage, "tm-lazy-picker-page", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmLazyPickerPage, never>;
 }
+
+// @public
+export function tmParseFilter(value: string): TmFilterSpec | null;
+
+// @public
+export type TmQx = {
+    readonly kind: 'binary';
+    readonly op: TmQxBinaryOp;
+    readonly left: TmQx;
+    readonly right: TmQx;
+} | {
+    readonly kind: 'bool';
+    readonly value: boolean;
+} | {
+    readonly kind: 'call';
+    readonly name: string;
+    readonly args: readonly TmQx[];
+} | {
+    readonly kind: 'in';
+    readonly value: TmQx;
+    readonly items: readonly TmQx[];
+} | {
+    readonly kind: 'is-null';
+    readonly value: TmQx;
+    readonly negated: boolean;
+} | {
+    readonly kind: 'negate' | 'not';
+    readonly operand: TmQx;
+} | {
+    readonly kind: 'null';
+} | {
+    readonly kind: 'number';
+    readonly value: string;
+} | {
+    readonly kind: 'param';
+    readonly name: string;
+} | {
+    readonly kind: 'path';
+    readonly segments: readonly string[];
+} | {
+    readonly kind: 'raw';
+    readonly text: string;
+} | {
+    readonly kind: 'string';
+    readonly value: string;
+};
+
+// @public
+export const tmQx: Readonly<{
+    path(path: string): TmQx;
+    str(value: string): TmQx;
+    num(value: number | string): TmQx;
+    bool(value: boolean): TmQx;
+    null(): TmQx;
+    param(name: string): TmQx;
+    call(name: string, ...args: TmQx[]): TmQx;
+    literal(type: TmDataType, value: unknown): TmQx;
+    raw(text: string): TmQx;
+    not(x: TmQx): TmQx;
+    and(...xs: (TmQx | null)[]): TmQx;
+    or(...xs: (TmQx | null)[]): TmQx;
+    eq(a: TmQx, b: TmQx): TmQx;
+    ne(a: TmQx, b: TmQx): TmQx;
+    lt(a: TmQx, b: TmQx): TmQx;
+    le(a: TmQx, b: TmQx): TmQx;
+    gt(a: TmQx, b: TmQx): TmQx;
+    ge(a: TmQx, b: TmQx): TmQx;
+    in(value: TmQx, items: readonly TmQx[]): TmQx;
+    isNull(value: TmQx, negated?: boolean): TmQx;
+}>;
+
+// @public
+export type TmQxBinaryOp = '!=' | '%' | '*' | '+' | '-' | '/' | '<' | '<=' | '=' | '>' | '>=' | 'and' | 'or' | '||';
+
+// @public
+export function tmQxInsert(text: string, caret: number, insertion: string): {
+    readonly text: string;
+    readonly start: number;
+    readonly end: number;
+};
+
+// @public
+export function tmQxLex(text: string): TmQxLexResult;
+
+// @public
+export interface TmQxLexDiagnostic {
+    readonly code: 'QX1001' | 'QX1002' | 'QX1003' | 'QX1004' | 'QX1005';
+    readonly length: number;
+    readonly start: number;
+}
+
+// @public
+export interface TmQxLexResult {
+    readonly diagnostics: readonly TmQxLexDiagnostic[];
+    readonly tokens: readonly TmQxToken[];
+}
+
+// @public
+export interface TmQxParameter {
+    readonly name: string;
+    readonly sites: readonly {
+        readonly start: number;
+        readonly length: number;
+    }[];
+}
+
+// @public
+export function tmQxParameters(text: string): readonly TmQxParameter[];
+
+// @public
+export function tmQxPrint(expression: TmQx): string;
+
+// @public
+export interface TmQxToken {
+    readonly call?: true;
+    readonly kind: TmQxTokenKind;
+    readonly length: number;
+    readonly start: number;
+    readonly text: string;
+}
+
+// @public
+export type TmQxTokenKind = 'error' | 'identifier' | 'keyword' | 'number' | 'parameter' | 'punctuator' | 'string';
 
 // @public
 export interface TmSelectPlan {

@@ -23,6 +23,8 @@ import {
   type TmValueDescriptor,
 } from '@tellma/core';
 
+import { ɵtmQxPaths } from './tm-qx-lex';
+
 // Select plans (spec 0029 §6): column keys expanded into the terms a query
 // sends and read back from the row set it returns. Navigations and groups
 // select every admitted slot, so a language switch re-renders the held rows
@@ -407,10 +409,17 @@ export function tmSelectPlan(
   const columns: TmPlanColumn[] = [];
   const keysSeen = new Set<string>();
   for (const input of keys) {
-    // An expression is the server's to check: it selects as written.
+    // An expression is the server's to check: it selects as written, once
+    // each path it reads that the client knows is one the user may reach,
+    // so a stale preference never fails the whole query.
     if (typeof input === 'object' && 'expression' in input) {
       if (!keysSeen.has(input.expression)) {
         keysSeen.add(input.expression);
+        const paths = ɵtmQxPaths(input.expression).filter((path) => entities.resolve(root.name, path) !== null);
+        if (!paths.every((path) => permissions.reachable(root.name, path)())) {
+          dropped.push({ key: input.expression, reason: 'unreachable' });
+          continue;
+        }
         const spec = expressionSpec(input.expression, input.labelKey, input.type, l10n);
         spec.terms.forEach(add);
         columns.push(new TmPlanColumn(spec, input));
@@ -573,7 +582,7 @@ function columnSpec(
 
     // --- A group: every admitted slot; the active one shown and ordered ---
     case 'text': {
-      const slots = [...end.slots].sort((a, b) => (a.multilingual?.slot ?? 1) - (b.multilingual?.slot ?? 1)).map((slot) => under(slot.name));
+      const slots = ɵtmGroupSlots(resolution);
       const shown = (): string | undefined => slots[l10n.contentSlot() - 1];
       return {
         ...base,
@@ -635,6 +644,24 @@ function columnSpec(
       };
     }
   }
+}
+
+/**
+ * A group's admitted slots, as paths in slot order, such as `Name`,
+ * `Name2` under the group's navigations. Internal: a group column selects
+ * them, and its filter reads every one.
+ *
+ * @param resolution - The group's resolution.
+ * @returns The paths; empty when the resolution is not a group.
+ */
+export function ɵtmGroupSlots(resolution: TmPathResolution): readonly string[] {
+  const { end, steps } = resolution;
+  if (end.kind !== 'text') {
+    return [];
+  }
+  return [...end.slots]
+    .sort((a, b) => (a.multilingual?.slot ?? 1) - (b.multilingual?.slot ?? 1))
+    .map((slot) => [...steps.map((step) => step.name), slot.name].join('.'));
 }
 
 /**

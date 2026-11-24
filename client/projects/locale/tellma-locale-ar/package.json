@@ -25,11 +25,11 @@
   "tellma": {
     "budgetsInKb": {
       ".": 0.5,
-      "./strings": 7
+      "./strings": 7.5
     },
     "budgetNotes": {
       ".": "Born at 0.41 KB measured: provideTellmaLocaleAr and tmArabic, which loads the strings entry point with import().",
-      "./strings": "Born at 6.39 KB measured: the component library's Arabic and the platform's Arabic table. An app loads it on the first switch to Arabic, never in its initial bundle. Raised from 6.5 to 7 for the typed values' Arabic strings: measured 6.47 before and 6.59 after (+0.12 KB), the ceiling being that measurement rounded up to the next 0.5 KB. The weight is the tm.value block (Yes and No, the file label, the file picker's label with its gendered imperative, and the too-large, wrong-type and upload-failed errors). The platform's Arabic offline banner string (spec 0028) adds 0.05 KB on merging: measured 6.59 before and 6.64 after, within the same ceiling. Kept at 7 for the launcher's core sections and My settings entries with their search synonyms: measured 6.64 before and 6.83 after, within the ceiling. The weight is the Arabic of the Analysis and Administration sections and of the four My settings sections, and the launcher's Arabic synonyms of three of them.",
+      "./strings": "Born at 6.39 KB measured: the component library's Arabic and the platform's Arabic table. An app loads it on the first switch to Arabic, never in its initial bundle. Raised from 6.5 to 7 for the typed values' Arabic strings: measured 6.47 before and 6.59 after (+0.12 KB), the ceiling being that measurement rounded up to the next 0.5 KB. The weight is the tm.value block (Yes and No, the file label, the file picker's label with its gendered imperative, and the too-large, wrong-type and upload-failed errors). The platform's Arabic offline banner string (spec 0028) adds 0.05 KB on merging: measured 6.59 before and 6.64 after, within the same ceiling. Kept at 7 for the launcher's core sections and My settings entries with their search synonyms: measured 6.64 before and 6.83 after, within the ceiling. The weight is the Arabic of the Analysis and Administration sections and of the four My settings sections, and the launcher's Arabic synonyms of three of them. Raised from 7 to 7.5 for the column filters' Arabic strings: measured 6.83 before and 7.20 after (+0.37 KB, rounded up to 0.5). The weight is the tm.filter block: the control's labels, the fourteen operators' names and one whole-sentence description per operator.",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
     }
   }

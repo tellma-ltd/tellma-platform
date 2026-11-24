@@ -19,7 +19,7 @@ import {
 import type { TmSecurableMetadata } from '../admin/tm-admin-metadata';
 import { TM_API_UPDATES } from '../api/tm-api-seams';
 import { provideTellma } from '../app/provide-tellma';
-import type { TmLanguageDefinition } from '../app/tm-app-config';
+import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import { tmFeature } from '../declarations/tm-feature';
 import { tmEnglish } from '../l10n/tm-english';
@@ -107,15 +107,29 @@ const ARABIC_STRINGS: Readonly<Record<string, string>> = {
   Entity_DisplayNameFallback: '#{id}',
 };
 
-/** Arabic, with none of the platform's own strings: English answers for them. */
-const ARABIC: TmLanguageDefinition = { code: 'ar', dir: 'rtl', strings: () => Promise.resolve({ tm: {}, tmUi: {} }) };
+/**
+ * A language of the app, with the platform's own strings a test gives it:
+ * English answers for every other.
+ *
+ * @param code - The language.
+ * @param dir - Its direction.
+ * @param tm - Its platform strings; none when omitted.
+ * @returns The language's definition.
+ */
+function language(code: string, dir: 'ltr' | 'rtl', tm: TmStringTree = {}): TmLanguageDefinition {
+  return { code, dir, strings: () => Promise.resolve({ tm, tmUi: {} }) };
+}
 
 /** How a test sets the entity registry's app up. */
 export interface TmEntityRigOptions {
   /** The tenant's number of content languages; one when omitted. */
   readonly languages?: 1 | 2 | 3;
   /** The user's language; English when omitted. */
-  readonly language?: 'en' | 'ar';
+  readonly language?: 'en' | 'ar' | 'am';
+  /** The server's labels beside the ones under test, by language, such as a patched chunk's enum labels; none when omitted. */
+  readonly labels?: Partial<Readonly<Record<'en' | 'ar' | 'am', Readonly<Record<string, string>>>>>;
+  /** The platform's own strings in Arabic and Amharic, by language; none when omitted, so English answers. */
+  readonly tmStrings?: Partial<Readonly<Record<'ar' | 'am', TmStringTree>>>;
   /** The user's access summary, beside a non-system user with no grants. */
   readonly access?: Partial<TmAccessSummary>;
   /** The tenant's state; `Active` when omitted. */
@@ -171,7 +185,7 @@ export function tmEntityDocs(options: TmEntityRigOptions = {}): TmLaunchDocs {
       state: 'Joined',
       name: 'Farah',
       modifiedAt: '2026-11-01T00:00:00.0000000+00:00',
-      ...(options.language === 'ar' && { preferredLanguage: 'ar' }),
+      ...(options.language !== undefined && options.language !== 'en' && { preferredLanguage: options.language }),
     },
     preferencesTag: 'P1',
     preferences: {},
@@ -207,9 +221,13 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
           ...base.metadata,
           core: () => Promise.resolve(tmTestMetadata({ entities: summaries, securables: SECURABLES })),
           entities: () => Promise.resolve(options.chunk ?? chunk),
-          strings: { en: () => Promise.resolve(ENGLISH), ar: () => Promise.resolve(ARABIC_STRINGS) },
+          strings: {
+            en: () => Promise.resolve({ ...ENGLISH, ...options.labels?.en }),
+            ar: () => Promise.resolve({ ...ARABIC_STRINGS, ...options.labels?.ar }),
+            am: () => Promise.resolve({ ...options.labels?.am }),
+          },
         },
-        languages: [tmEnglish(), ARABIC],
+        languages: [tmEnglish(), language('ar', 'rtl', options.tmStrings?.ar), language('am', 'ltr', options.tmStrings?.am)],
         features: [
           tmFeature({
             key: 'acme',

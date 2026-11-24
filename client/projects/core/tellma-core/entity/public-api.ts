@@ -4,8 +4,10 @@
  * app never loads at start: select plans that expand column keys into query
  * terms and read their rows back, the typed-value formats, the view and edit
  * components a value descriptor chooses, a form's uploads, the grid columns
- * of a plan, the client check of a blob kind's policy, and the entity picker
- * binding with the entity fields built on it.
+ * of a plan, the client check of a blob kind's policy, the entity picker
+ * binding with the entity fields built on it, the client Queryex (a lexer,
+ * and a builder and printer for the Queryex the client writes), and the
+ * column filters with their descriptions and control.
  *
  * @packageDocumentation
  */
@@ -43,3 +45,30 @@ export { TmLazyPickerPage, type TmEntityPickerContext, ÉµTM_PICKER_PAGES, type É
 
 // Blob-kind policies.
 export { tmCheckBlobFile, type TmBlobFileCheck } from './src/tm-blob-check';
+
+// Queryex: the lexer, and the builder and printer of the Queryex the client writes.
+export {
+  tmQxLex,
+  tmQxParameters,
+  type TmQxLexDiagnostic,
+  type TmQxLexResult,
+  type TmQxParameter,
+  type TmQxToken,
+  type TmQxTokenKind,
+} from './src/tm-qx-lex';
+export { tmQx, tmQxInsert, tmQxPrint, type TmQx, type TmQxBinaryOp } from './src/tm-qx';
+
+// Column filters: the URL value, its Queryex leaf, its description and its control.
+export {
+  TM_ENUM_PICKER_THRESHOLD,
+  tmDescribeFilter,
+  tmFilterLeaf,
+  TmFilterDescriptionText,
+  tmFormatFilter,
+  tmParseFilter,
+  type TmDescribeFilterOptions,
+  type TmFilterDescription,
+  type TmFilterOp,
+  type TmFilterSpec,
+} from './src/tm-filter';
+export { TmColumnFilter } from './src/tm-column-filter';
