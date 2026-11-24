@@ -17,7 +17,7 @@ test.describe('updates and network', () => {
     await warmUp(page, '/tenants');
     await warmUp(page, '/1');
     await page.goto('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
     const hold = await holdNetwork(page);
 
     // Every server request from here on hangs; the warm app still moves between pages.
@@ -26,7 +26,7 @@ test.describe('updates and network', () => {
     await expect(page).toHaveURL('/1');
     await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
     await hold.release();
   });
 

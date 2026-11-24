@@ -31,7 +31,7 @@ test.describe('bidi-free', () => {
   }) => {
     await page.goto('/signed-out');
 
-    const main = page.locator('main.tm-signed-out-page');
+    const main = page.locator('main:has(.tm-signed-out-page)');
     await expect(main).toBeVisible();
     expect(await main.innerText()).not.toMatch(BIDI_CONTROLS);
     expect(await page.title()).not.toMatch(BIDI_CONTROLS);

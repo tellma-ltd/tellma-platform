@@ -41,7 +41,7 @@ async function atThePicker(page: Page, cast: AcmeCast, text: AcmeText): Promise<
   await signInAs(page, cast.user);
   await warmUp(page, '/tenants');
   await page.goto('/tenants');
-  await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
   return holdNetwork(page);
 }
 

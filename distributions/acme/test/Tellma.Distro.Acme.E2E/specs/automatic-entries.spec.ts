@@ -114,7 +114,7 @@ test.describe('automatic entries', () => {
     await page.goto('/99');
 
     await expect(page).toHaveURL('/tenants?notice=tenant-not-found&from=99');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
   });
 
   // The picker renders the not-found notice from its address with the tenant shell (spec 0027).

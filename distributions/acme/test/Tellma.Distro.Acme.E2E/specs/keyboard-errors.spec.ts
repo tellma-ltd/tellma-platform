@@ -71,7 +71,7 @@ test.describe('keyboard and errors', () => {
   }) => {
     await signInAs(page, cast.user);
     await page.goto('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
 
     await page.getByRole('link', { name: 'Acme', exact: true }).focus();
     await page.keyboard.press('Enter');

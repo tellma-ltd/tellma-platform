@@ -69,7 +69,7 @@ test.describe('launch', () => {
     await page.goto('/');
 
     await expect(page).toHaveURL('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseCompany })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acme', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
     // The picker revalidates the memberships after its first render, so a request can still be

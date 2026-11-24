@@ -28,7 +28,7 @@ const FAMILIES = [
   { family: 'the tenant home', path: '/1', heading: 'home' },
   { family: 'a search page', path: '/1/customers', heading: 'customers' },
   { family: 'a drill-through list', path: '/1/list/customers', heading: 'customers' },
-  { family: 'the tenant picker', path: '/tenants', heading: 'chooseCompany' },
+  { family: 'the tenant picker', path: '/tenants', heading: 'chooseTenant' },
 ] as const satisfies readonly { family: string; path: string; heading: keyof AcmeText }[];
 
 /** The chrome's budget on a warm launch, on a quiet machine. */

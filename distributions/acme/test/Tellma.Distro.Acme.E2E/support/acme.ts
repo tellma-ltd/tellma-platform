@@ -81,7 +81,7 @@ export interface AcmeText {
   /** The customers pages' heading. */
   readonly customers: string | RegExp;
   /** The tenant picker's heading. */
-  readonly chooseCompany: string | RegExp;
+  readonly chooseTenant: string | RegExp;
   /** The session-ended dialog's title. */
   readonly sessionEnded: string | RegExp;
   /** The session-ended dialog's message. */
@@ -97,16 +97,16 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
   en: {
     home: 'Home',
     customers: 'Customers',
-    chooseCompany: 'Choose a company',
+    chooseTenant: 'Choose a tenant',
     sessionEnded: 'Your session ended',
     sessionEndedMessage: 'Sign in to continue. Your work is kept.',
     signIn: 'Sign in',
-    signedOut: "You're signed out",
+    signedOut: 'You signed out',
   },
   ar: {
     home: 'الرئيسية',
     customers: 'العملاء',
-    chooseCompany: /^(?:اختر|اختاري) شركة$/,
+    chooseTenant: /^(?:اختر|اختاري) شركة$/,
     sessionEnded: 'انتهت جلستك',
     sessionEndedMessage: /(?:سجّل|سجّلي) الدخول للمتابعة\. عملك محفوظ\./,
     signIn: 'تسجيل الدخول',
