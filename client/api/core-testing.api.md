@@ -120,11 +120,11 @@ export class TmFakeTelemetry extends TmTelemetry {
     clear(): void;
     error(error: unknown, context?: Readonly<Record<string, string>>): void;
     readonly errors: Signal<readonly unknown[]>;
-    event(name: string, props?: TmTelemetryProps): void;
+    event(name: string, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     flush(): void;
     readonly flushes: Signal<number>;
     readonly recent: Signal<readonly TmTelemetryItem[]>;
-    timing(name: string, ms: number, props?: TmTelemetryProps): void;
+    timing(name: string, ms: number, props?: TmTelemetryProps, options?: TmTelemetryOptions): void;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }

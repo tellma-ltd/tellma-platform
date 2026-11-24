@@ -347,7 +347,7 @@ export class TmLaunchCache {
   /** Reports a failure the HTTP layer and the store have not; the next read tries again. */
   #failed(error: unknown): void {
     if (!(error instanceof TmApiError) && !(error instanceof TmStoreRefusedError)) {
-      this.#telemetry.error(error, { source: 'tm-launch-cache' });
+      this.#telemetry.error(error, { where: 'tm-launch-cache' });
     }
   }
 }

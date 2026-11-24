@@ -22,6 +22,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
 | `tm/literal-declaration-keys` | A declaration key that is not a string literal |
 | `tm/no-decimal-operators` | `+`, `+=`, `<`, `<=`, `>` and `>=` on a `TmDecimal` (type-aware) |
+| `tm/telemetry-names` | A literal name passed to `TmTelemetry`'s `event` or `timing` that is not `<scope>.<area>.<event>` in at most 64 characters, or a `tm.` name outside the platform's areas; a literal page action id (in an object literal with `id`, `labelKey` and `invoke`, or passed to `TmPageActions.invoke`) that is not two to five lowercase parts. With type information the receivers are known by type, else by name |
 
 The preset also enables typescript-eslint's `restrict-plus-operands` at its strictest, so a decimal's
 text is never added to a number, and takes the distribution's slug as the component and directive

@@ -24,7 +24,7 @@ import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { TmLocalization } from '../l10n/tm-localization';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
-import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmTelemetry, TmTelemetryFront } from '../observe/tm-telemetry';
 import { TmPageFocus } from '../routes/tm-page-focus';
 import { TmLaunchTimer } from '../routes/tm-route-host';
 import { TmSession } from '../session/tm-session';
@@ -46,7 +46,7 @@ import type { TmAppConfig } from './tm-app-config';
 // navigation and the launch's timing; the session's cross-tab paths; after
 // first render, the entry points of the recent pages, the leader election
 // and the worker's updates; and at idle the Contracts chunk, so the first
-// API call does not wait for it.
+// API call does not wait for it, and the telemetry pipeline (spec 0026 §3).
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -150,7 +150,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmLaunchTimer).ɵstart();
       // After first render: the recent pages' visit count, the leader
       // election and the worker's updates; at idle, the Contracts chunk,
-      // which the HTTP layer keeps.
+      // which the HTTP layer keeps, and the telemetry pipeline.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
@@ -172,7 +172,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
                   injector.get(type(loaded));
                 }
               })
-              .catch((error: unknown) => telemetry.error(error, { source }));
+              .catch((error: unknown) => telemetry.error(error, { where: source }));
           };
           start(loadRecents, (recents) => recents.TmRecents, 'tm-recents');
           start(loadLeader, (leader) => leader.ɵTmLeaderElection, 'tm-leader');
@@ -181,6 +181,10 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
             const api = alive ? injector.get(TmApi) : null;
             if (api instanceof TmHttpApi) {
               api.ɵprefetchContracts();
+            }
+            // The telemetry pipeline, which sends what the launch recorded.
+            if (alive && telemetry instanceof TmTelemetryFront) {
+              telemetry.start(injector);
             }
           };
           if (window?.requestIdleCallback) {

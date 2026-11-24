@@ -34,6 +34,16 @@ describe('provideTellmaTesting', () => {
     expect(fake.errors()).toEqual([failure]);
   });
 
+  it('keeps the trace id the options name', () => {
+    const telemetry = TestBed.inject(TmTelemetry);
+    const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+    telemetry.event('acme.report.run', {}, { traceId });
+    telemetry.timing('acme.report.render', 5, {}, { traceId, sampled: true });
+    telemetry.event('acme.report.closed');
+
+    expect(TestBed.inject(TmFakeTelemetry).recent().map((item) => item.traceId)).toEqual([traceId, traceId, undefined]);
+  });
+
   it('counts flushes and forgets everything on clear', () => {
     const fake = TestBed.inject(TmFakeTelemetry);
     fake.event('acme.report.run');
