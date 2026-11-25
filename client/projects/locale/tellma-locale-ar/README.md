@@ -28,8 +28,9 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   merged into Transloco's `ar` resources under the shared `tmUi` namespace,
   and the platform's own (`platform-strings/strings-tm-ar.ts`, under `tm`, the
   `@tellma/locale-ar/platform-strings` entry point, with the shell's part, the
-  shell frame's, the tenantless shell's, the tenant picker's and the
-  signed-out page's strings, in `shell-strings/strings-shell-ar.ts`, the
+  shell frame's, the tenantless shell's, the tenant picker's, the
+  signed-out page's, the tenant app bar's, the session menu's, the markers'
+  and the About and Shortcuts dialogs' strings, in `shell-strings/strings-shell-ar.ts`, the
   `@tellma/locale-ar/shell-strings` entry point, and the Queryex tools' part,
   the expression editor's and the path picker's strings, in
   `queryex-strings/strings-queryex-ar.ts`, the
@@ -69,8 +70,9 @@ Copy this package's structure:
    Latin-script locales.
 3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
    `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
-   the `shell` and `tenantless` scopes the shell frame and the tenantless pages
-   register in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
+   the `shell`, `tenantless`, `tenantShell`, `shellOverlays`, `aboutDialog` and
+   `shortcutsDialog` scopes the shell frame, the tenantless pages and the tenant
+   shell register in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
    and `pathPicker` scopes the expression editor and the path picker register in
    English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the

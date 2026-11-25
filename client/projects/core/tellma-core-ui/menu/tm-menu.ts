@@ -123,6 +123,7 @@ const openMenuStack: TmMenu[] = [];
     >
       <div
         class="tm-menu__panel"
+        [class]="panelClass()"
         (keydown)="onPanelKeydown($event)"
         (contextmenu)="onPanelContextMenu($event)"
       >
@@ -172,6 +173,12 @@ export class TmMenu {
   readonly items = input.required<readonly TmMenuEntry[]>();
   /** Accessible name of the menu (falls back to the invoker's context). */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
+  /**
+   * Extra CSS class on the panel: the hatch for a menu whose surface sets
+   * its own width. The panel lives in the overlay container, so the class
+   * must be reachable from an unencapsulated stylesheet.
+   */
+  readonly panelClass = input<string | undefined>(undefined);
 
   /** Emits when the menu opens. */
   readonly opened = output<void>();
