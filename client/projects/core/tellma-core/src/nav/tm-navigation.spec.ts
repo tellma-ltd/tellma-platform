@@ -100,7 +100,7 @@ const STRINGS = {
     acme_Customer_Plural: 'Customers',
     acme_Currency_Plural: 'Currencies',
     acme_SalesInvoiceLine_Plural: 'Invoice lines',
-    core_Report_Plural: 'Reports',
+    Core_Report_Plural: 'Reports',
     Acme_CreditReview: 'Credit review',
     Acme_Approvals: 'Approvals',
     Acme_Report_CreditExposure: 'Credit exposure',

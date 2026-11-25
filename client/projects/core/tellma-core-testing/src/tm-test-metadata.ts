@@ -136,7 +136,11 @@ function summary(name: string, segment: string): TmEntitySummary {
   };
 }
 
-/** The test distribution's own entities, ordered by name; the platform's join them from the recording. */
+/**
+ * The test distribution's own entities, ordered by name; the platform's join them from the recording.
+ * `gl.Center` follows the server's test model, whose center has a `Manager`, and not the real
+ * general ledger module's center, which has none.
+ */
 const ENTITIES: readonly TestEntity[] = [
   {
     summary: summary('acme.Customer', 'customers'),

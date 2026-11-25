@@ -815,7 +815,7 @@ app gets a descriptor of the summary alone.
 ```ts
 await entities.load();
 const name2 = entities.get('acme.Customer').property('Name2'); // label "Name (ع)", contentDir "rtl"
-const manager = entities.resolve('gl.Center', 'Parent.Manager'); // a navigation end, fkPath "Parent.ManagerId"
+const editor = entities.resolve('core.RoleMembership', 'Role.ModifiedBy'); // a navigation end, fkPath "Role.ModifiedById"
 ```
 
 `TmDisplayNames` renders any row's display name by the rule the server declares, in the active
