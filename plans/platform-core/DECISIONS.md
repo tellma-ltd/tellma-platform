@@ -384,6 +384,17 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-321 (orchestrator, 2026-11-25): PC-F94 to R1; PC-F103 opened for core's missing label strings
+
+- PC-F94's impl (8b07aa85) goes to R1.
+  - R1 also gives a recommendation on gl.Center. Its stand-in and the server's test model both keep ManagerId and Manager, which the real Tellma.Module.Gl Center lacks. The question is whether the real-names-mean-real-fields rule covers module entities too.
+  - PC-F94 used one parenthesized subshell for a gate batch. It reported this itself, and nothing else came of it. It is reminded of D-271 and not notified.
+- PC-F94 found that the platform alone emits 306 label fallbacks, because core's Strings.resx has no labels for core's own entities (Core_User, Core_Blob, Core_Job, Core_Notification and others).
+  - So every distribution's tmCheckAppConfig warns label-missing for keys it cannot fix. That explains the roughly 323 label-missing warnings in every Acme build.
+  - This is a product gap, not test noise, so PC-F103 is opened (non-blocking): declare the core labels per the specs' label rules, re-record the fixtures, and check the warning count.
+- PC-118 is integrating (1f177e46, CI 45653637336). It measures 226.86 Acme and 226.19 fixture, with no warning.
+- PC-F102's brief is ready for pc-1, the moment PC-118 lands.
+
 ### D-320 (orchestrator, 2026-11-25): the first-frame set; PC-F102 re-enables the chunk optimizer within section 6
 
 - The D-318 analysis (scratchpad first-frame-analysis.md) built the full merge. Acme initialJs, step by step:
