@@ -5,6 +5,7 @@
 
 import { TM_SHELL_STRINGS_AR } from '@tellma/locale-ar/shell-strings';
 
+import { TM_SHELL_HISTORY_STRINGS_EN } from './app-bar/tm-shell-history';
 import { TM_ABOUT_DIALOG_STRINGS_EN } from './dialogs/tm-about-dialog';
 import { TM_SHORTCUTS_DIALOG_STRINGS_EN } from './dialogs/tm-shortcuts-dialog';
 import { TM_SHELL_OVERLAYS_STRINGS_EN } from './session/tm-shell-overlays-strings';
@@ -22,6 +23,7 @@ const ENGLISH: Readonly<Record<string, unknown>> = {
   tenantless: TM_TENANTLESS_STRINGS_EN,
   tenantShell: TM_TENANT_SHELL_STRINGS_EN,
   shellOverlays: TM_SHELL_OVERLAYS_STRINGS_EN,
+  shellHistory: TM_SHELL_HISTORY_STRINGS_EN,
   aboutDialog: TM_ABOUT_DIALOG_STRINGS_EN,
   shortcutsDialog: TM_SHORTCUTS_DIALOG_STRINGS_EN,
 };

@@ -7,11 +7,12 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { RouterTestingHarness } from '@angular/router/testing';
-import { type TmLanguageDefinition, type TmLaunchDocs, tmEnglish, tmFeature, TmLocalization } from '@tellma/core';
+import { TmAppVersion, type TmLanguageDefinition, type TmLaunchDocs, tmEnglish, tmFeature, TmLocalization } from '@tellma/core';
 import { TmFakeSession, type TmSessionMenuHarness, TmTenantShellHarness, tmTestShellSlot } from '@tellma/core-testing';
 import { type TmBreakpoint, TmBreakpoints, TmTheme } from '@tellma/core-ui';
 import { TmModalHarness } from '@tellma/core-ui-testing';
 import { tmAvatarTone } from '@tellma/core-ui/initials';
+import { tmFormatKeys } from '@tellma/core-ui/kbd';
 
 import {
   TM_T17_DOCS,
@@ -23,11 +24,13 @@ import {
   type TmAppRig,
   type TmAppRigOptions,
 } from '../../../src/routes/tm-app.testing.util';
+import { TM_SHELL_SUPPORT, type TmShellSupport } from '../tm-shell-support';
 
 // The session menu through its harness, opened from the tenant shell's
 // session button: its header and avatar tone, the tenant card, the rows and
 // the conditions that show them (two languages, two calendars, the slots
-// below md), and what each row does.
+// below md, Report a problem with the support seam), and what each row
+// does.
 
 /** Every width class in ascending order. */
 const ORDER: readonly TmBreakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
@@ -89,6 +92,46 @@ describe('the session menu', () => {
     expect(await menu.isChecked(TestBed.inject(TmTheme).setting() === 'system' ? 'System' : 'Light')).toBe(true);
   });
 
+  it("shows the app's version on About and the shortcut's keys on Keyboard shortcuts", async () => {
+    const menu = await open();
+    const rows = await menu.getItems();
+    const labels = await menu.getItemLabels();
+    expect(await rows[labels.indexOf('About')].getDetail()).toBe(TestBed.inject(TmAppVersion).display);
+    const shortcuts = Array.from(document.querySelectorAll('.tm-session-menu [role="menuitem"]')).find((row) => row.textContent?.includes('Keyboard shortcuts'));
+    expect(Array.from(shortcuts?.querySelectorAll('.tm-kbd__key') ?? []).map((cap) => cap.textContent)).toEqual(tmFormatKeys('Mod+/'));
+  });
+
+  it('switches the theme from its radios and stays open', async () => {
+    const menu = await open();
+    await menu.clickItem('Dark');
+    await tmSettle();
+    expect(TestBed.inject(TmTheme).setting()).toBe('dark');
+    expect(await menu.isChecked('Dark')).toBe(true);
+    expect(document.querySelector('.tm-menu__panel.tm-session-menu')).not.toBeNull();
+    await menu.clickItem('Light');
+    await tmSettle();
+    expect(TestBed.inject(TmTheme).setting()).toBe('light');
+  });
+
+  it('adds Report a problem after About while the support seam is provided, which opens its form, and gives About its Diagnostics tab', async () => {
+    let reports = 0;
+    const support: TmShellSupport = {
+      reportLabel: signal('Report a problem'),
+      reportProblem: () => reports++,
+      diagnosticsLabel: signal('Diagnostics'),
+      diagnostics: () => Promise.reject(new Error('unused')),
+    };
+    const menu = await open({ providers: [{ provide: TM_SHELL_SUPPORT, useValue: support }] });
+    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Sign out']);
+    await menu.clickItem('Report a problem');
+    await tmSettleUntil(() => document.querySelector('.tm-menu__panel.tm-session-menu') === null, 'the menu closes');
+    expect(reports).toBe(1);
+    // The overlays' host hands About the same seam.
+    const shell = await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmTenantShellHarness);
+    await (await shell.openSessionMenu()).clickItem('About');
+    await tmSettleUntil(() => document.querySelector('tm-modal-shell tm-about-dialog tm-tab-group') !== null, "About's tabs render");
+  });
+
   it("adds the markers to the tenant card's second line", async () => {
     const menu = await open({ docs: { ...TM_T17_DOCS, tenant: { ...TM_T17_DOCS.tenant, category: 'Sandbox', liveTenantId: 2, state: 'Frozen' } } });
     expect((await menu.getTenantCard()).description).toBe('Tenant 17 · Sandbox · Under maintenance');
@@ -108,6 +151,9 @@ describe('the session menu', () => {
     expect(await calendar.getItemLabels()).toEqual(['Gregorian', 'Umm al-Qura']);
     await calendar.clickItem('Umm al-Qura');
     await tmSettleUntil(() => TestBed.inject(TmLocalization).calendarCode() === 'uq', 'the calendar switches');
+    const shell = await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmTenantShellHarness);
+    await (await (await shell.openSessionMenu()).openSubmenu('Language')).clickItem('العربية');
+    await tmSettleUntil(() => TestBed.inject(TmLocalization).language() === 'ar', 'the language switches');
   });
 
   it('lists the slots below md, each with its count, and opens a slot in a drawer', async () => {

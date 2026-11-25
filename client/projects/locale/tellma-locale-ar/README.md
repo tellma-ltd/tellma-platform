@@ -70,7 +70,7 @@ Copy this package's structure:
    Latin-script locales.
 3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
    `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
-   the `shell`, `tenantless`, `tenantShell`, `shellOverlays`, `aboutDialog` and
+   the `shell`, `tenantless`, `tenantShell`, `shellOverlays`, `shellHistory`, `aboutDialog` and
    `shortcutsDialog` scopes the shell frame, the tenantless pages and the tenant
    shell register in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
    and `pathPicker` scopes the expression editor and the path picker register in

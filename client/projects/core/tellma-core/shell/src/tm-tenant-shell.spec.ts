@@ -24,17 +24,20 @@ import {
   type TmAppRig,
   type TmAppRigOptions,
 } from '../../src/routes/tm-app.testing.util';
-import { TM_HISTORY_HOST } from './app-bar/tm-installed-history';
+import { TM_HISTORY_HOST } from './app-bar/tm-installed-mode';
+import { TM_SHELL_PANELS_LOAD } from './app-bar/tm-shell-overlays';
 import { TmLauncher } from './launcher/tm-launcher';
 import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 
 // The tenant shell in a whole test app, through its harness: each of its
-// states (warm, a cold sync pending, failed, client-outdated, a replaced
-// main), the app bar's names, avatar tone, markers with their popovers,
-// slots, reserved boxes and installed-mode history, and a tenant switch,
+// states (warm, a cold sync pending, failed, client-outdated, a tenant that
+// is gone or unavailable, a replaced main), the app bar's names, avatar
+// tone, markers with their popovers, slots, reserved boxes, session button
+// keys and installed-mode history (through the Navigation API or the
+// router), Mod+/, the overlays' chunk failing to load, and a tenant switch,
 // which closes the shell's overlays and clears the launcher's text. The
-// overlays live in a lazily loaded chunk, so each wait is on the state it
-// produces.
+// overlays and the history buttons live in lazily loaded chunks, so each
+// wait is on the state it produces.
 
 /** What replaces the route host in the replaced state. */
 @Component({
@@ -45,6 +48,64 @@ import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 class TmTestTenantState {
   /** Why the tenant is unavailable. */
   readonly reason = input('');
+}
+
+/** A history move's result whose promises reject, as a move with no entry that way does. */
+function refusedMove(): NavigationResult {
+  const refused = (): Promise<never> => Promise.reject(new DOMException('No entry', 'InvalidStateError'));
+  return { committed: refused(), finished: refused() } as NavigationResult;
+}
+
+/** The Navigation API, answering from fields a test sets. */
+class TmFakeNavigation extends EventTarget {
+  /** Whether Back has an entry. */
+  canGoBack = false;
+  /** Whether Forward has an entry. */
+  canGoForward = false;
+  /** The moves asked for. */
+  readonly moves: string[] = [];
+
+  /** Asks for a move back. */
+  back(): NavigationResult {
+    this.moves.push('back');
+    return refusedMove();
+  }
+
+  /** Asks for a move forward. */
+  forward(): NavigationResult {
+    this.moves.push('forward');
+    return refusedMove();
+  }
+
+  /** Changes the entry, as a navigation does. */
+  enter(canGoBack: boolean, canGoForward: boolean): void {
+    this.canGoBack = canGoBack;
+    this.canGoForward = canGoForward;
+    this.dispatchEvent(new Event('currententrychange'));
+  }
+}
+
+/** A display-mode query a test switches. */
+class TmFakeDisplayMode extends EventTarget {
+  /** Whether the mode matches. */
+  matches: boolean;
+
+  /** Creates the query in a mode. */
+  constructor(matches: boolean) {
+    super();
+    this.matches = matches;
+  }
+
+  /** Switches the mode, as installing the app or opening it in a tab does. */
+  set(matches: boolean): void {
+    this.matches = matches;
+    this.dispatchEvent(new Event('change'));
+  }
+}
+
+/** Presses a key combination on the page. */
+function press(init: KeyboardEventInit, target: EventTarget = document.body): void {
+  target.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
 }
 
 /** Tenant 17's documents with other facts. */
@@ -115,6 +176,7 @@ describe('the tenant shell', () => {
       expect(await shell.getUserName()).toBe(TestBed.inject(TmFakeSession).profile()?.name);
       expect(await shell.isTenantNameLoading()).toBe(true);
       expect(await shell.getTenantName()).toBeNull();
+      expect(await shell.getAccountName()).toBe(`Account: ${TestBed.inject(TmFakeSession).profile()?.name}`);
       expect(await shell.getMarkers()).toEqual([]);
       expect(await shell.getAvatarTone()).toBeNull();
       expect(await shell.getMain()).toBe('page');
@@ -165,6 +227,34 @@ describe('the tenant shell', () => {
       await shell.clickErrorAction('Try again');
       await tmSettleUntil(() => document.querySelector('.tm-tenant-shell__failed') === null, 'the failure line ends');
       expect(await shell.getMain()).toBe('page');
+    });
+
+    it('says the sync failed, with Try again in place of the route host, for a failure that is not an API error', async () => {
+      await start({ cold: true });
+      const failure = new TypeError('Failed to fetch');
+      rig.api.respond('client/sync', () => Promise.reject(failure));
+      const shell = await open();
+      await tmSettleUntil(() => document.querySelector('.tm-tenant-shell__failed') !== null, 'the failure line renders');
+      expect(await shell.getMain()).toBe('error');
+      expect(await shell.getError()).toBe("Couldn't load this tenant. Try again");
+      expect(document.querySelector('tm-tenant-shell main router-outlet')).toBeNull();
+      expect(document.querySelector('tm-tenant-shell main tm-error-state')).toBeNull();
+      expect(rig.telemetry.errors()).toEqual([failure]);
+      rig.api.respond('client/sync', TM_COLD_SYNC);
+      await shell.clickErrorAction('Try again');
+      await tmSettleUntil(() => document.querySelector('.tm-tenant-shell__failed') === null, 'the failure line ends');
+      expect(await shell.getMain()).toBe('page');
+      expect(await shell.getTenantName()).toBe('Acme');
+    });
+
+    it('leaves a tenant that is gone to the error presenter, which opens the picker with its notice', async () => {
+      await start({ cold: true });
+      rig.api.respond('client/sync', () => {
+        throw new TmApiError({ kind: 'tenant-not-found', status: 404, code: 'tenant-not-found' });
+      });
+      router = await tmNavigate('/17');
+      await tmSettleUntil(() => rig.router.url.startsWith('/tenants'), 'the picker opens');
+      expect(document.querySelector('.tm-tenant-shell__error')).toBeNull();
     });
 
     it("leaves an unavailable tenant to the error presenter, whose tenant-state page replaces the route host", async () => {
@@ -242,9 +332,54 @@ describe('the tenant shell', () => {
     });
   });
 
+  describe('the session button', () => {
+    it('opens the menu on its first row with ArrowDown and on its last with ArrowUp', async () => {
+      await start();
+      await open();
+      const button = document.querySelector<HTMLButtonElement>('.tm-app-bar__session')!;
+      button.focus();
+      press({ key: 'ArrowDown' }, button);
+      await tmSettleUntil(() => document.activeElement?.closest('.tm-session-menu') != null, 'the menu takes focus');
+      expect(document.activeElement?.textContent).toContain('Acme');
+      press({ key: 'Escape' }, document.activeElement!);
+      await tmSettleUntil(() => document.activeElement === button, 'focus returns');
+      press({ key: 'ArrowUp' }, button);
+      await tmSettleUntil(() => document.activeElement?.closest('.tm-session-menu') != null, 'the menu takes focus');
+      expect(document.activeElement?.textContent).toContain('Sign out');
+    });
+
+    it("opens the menu on the gesture after the overlays' chunk failed to load", async () => {
+      let failing = true;
+      const missing = new TypeError('Failed to fetch dynamically imported module');
+      await start({
+        providers: [{ provide: TM_SHELL_PANELS_LOAD, useValue: () => (failing ? Promise.reject(missing) : import('./session/tm-session-panels')) }],
+      });
+      const shell = await open();
+      // The idle load fails first; a press loads again, fails the same way and opens nothing.
+      await tmSettleUntil(() => rig.telemetry.errors().length > 0, 'the idle load fails');
+      document.querySelector<HTMLButtonElement>('.tm-app-bar__session')!.click();
+      await tmSettleUntil(() => rig.telemetry.errors().length > 1, 'the press loads again and fails');
+      expect(document.querySelector('.tm-session-menu')).toBeNull();
+      expect(rig.telemetry.errors()).toEqual([missing, missing]);
+      failing = false;
+      const menu = await shell.openSessionMenu();
+      expect(await menu.getItemLabels()).toContain('Sign out');
+    });
+  });
+
+  it('opens the Shortcuts dialog on Mod+/, listing the shortcuts active when it opens', async () => {
+    await start();
+    await open();
+    press({ key: '/', code: 'Slash', ctrlKey: true });
+    await tmSettleUntil(() => document.querySelector('tm-modal-shell tm-shortcuts-dialog section') !== null, 'the shortcuts render');
+    const general = document.querySelector('tm-shortcuts-dialog section');
+    expect(general?.querySelector('h3')?.textContent?.trim()).toBe('General');
+    expect(Array.from(general?.querySelectorAll('tbody tr td:first-child') ?? []).map((cell) => cell.textContent?.trim())).toContain('Keyboard shortcuts');
+  });
+
   describe('installed mode', () => {
     /** A display-mode query that matches. */
-    const installed = (): MediaQueryList => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) as unknown as MediaQueryList;
+    const installed = (): MediaQueryList => new TmFakeDisplayMode(true) as unknown as MediaQueryList;
 
     it('shows no Back and Forward in a browser tab', async () => {
       await start();
@@ -269,6 +404,37 @@ describe('the tenant shell', () => {
       expect(await shell.getHistoryState()).toEqual({ back: true, forward: false });
       const sources = rig.telemetry.recent().filter((item) => item.name === 'tm.shell.navigated').map((item) => item.props);
       expect(sources).toEqual([{ source: 'back' }, { source: 'forward' }]);
+    });
+
+    it("follows the Navigation API's answers and moves through it", async () => {
+      const navigation = new TmFakeNavigation();
+      navigation.canGoBack = true;
+      await start({ providers: [{ provide: TM_HISTORY_HOST, useValue: { installed: installed(), standalone: false, navigation } }] });
+      const shell = await open();
+      expect(await shell.getHistoryState()).toEqual({ back: true, forward: false });
+      navigation.enter(true, true);
+      await tmSettle();
+      expect(await shell.getHistoryState()).toEqual({ back: true, forward: true });
+      await shell.back();
+      await shell.forward();
+      await tmSettle();
+      // Each move's refused promises are settled, so none surfaces as an error.
+      expect(navigation.moves).toEqual(['back', 'forward']);
+      expect(rig.telemetry.errors()).toEqual([]);
+    });
+
+    it('draws Back and Forward once the app is installed while it runs, and drops them when it opens in a tab', async () => {
+      const mode = new TmFakeDisplayMode(false);
+      await start({ providers: [{ provide: TM_HISTORY_HOST, useValue: { installed: mode, standalone: false, navigation: new TmFakeNavigation() } }] });
+      const shell = await open();
+      expect(await shell.hasHistoryButtons()).toBe(false);
+      mode.set(true);
+      await tmSettle();
+      expect(await shell.hasHistoryButtons()).toBe(true);
+      expect(await shell.getHistoryState()).toEqual({ back: false, forward: false });
+      mode.set(false);
+      await tmSettle();
+      expect(await shell.hasHistoryButtons()).toBe(false);
     });
   });
 

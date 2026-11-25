@@ -16,7 +16,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChevronDown, ChevronRight } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
-import { TmCounter } from '@tellma/core-ui/badge';
+import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 
 /** The heading levels a {@link TmCard} can render its heading at. */

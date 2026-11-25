@@ -10,7 +10,7 @@ import { TmSearchFieldHarness } from '@tellma/core-ui-testing';
 import { TM_GRID_KEYS } from '@tellma/core-ui/grid';
 
 import { tmAppRig, tmSettle } from '../../../src/routes/tm-app.testing.util';
-import { tmRegisterTenantShellStrings } from '../tm-tenant-shell-strings';
+import { tmRegisterShellOverlaysStrings } from '../session/tm-shell-overlays-strings';
 import { TmShortcutsDialog } from './tm-shortcuts-dialog';
 
 // The Shortcuts dialog in the test app: its sections from the registrations
@@ -31,8 +31,8 @@ describe('the Shortcuts dialog', () => {
   /** Renders the dialog with the registrations it opened with. */
   async function open(registered: readonly TmShortcut[], strings: Readonly<Record<string, string>> = {}): Promise<HTMLElement> {
     await tmAppRig({ strings: { en: strings } });
-    // The tenant shell, which opens the dialog, registers the label of its own key.
-    tmRegisterTenantShellStrings(TestBed.inject(TmLocalization));
+    // The overlays' chunk, which opens the dialog, registers the label of its key.
+    tmRegisterShellOverlaysStrings(TestBed.inject(TmLocalization));
     fixture = TestBed.createComponent(TmShortcutsDialog);
     fixture.componentRef.setInput('registered', registered);
     await tmSettle();
@@ -49,7 +49,7 @@ describe('the Shortcuts dialog', () => {
   it('lists the general and page registrations, the grid keys and the launcher keys, each a table with headers', async () => {
     const element = await open(
       [
-        shortcut('tm.shortcuts.open', 'Mod+/', 'tm.tenantShell.bar.shortcuts', 'global'),
+        shortcut('tm.shortcuts.open', 'Mod+/', 'tm.shellOverlays.dialogs.shortcuts', 'global'),
         shortcut('acme.approve', 'Alt+A', 'Acme_Approve', 'page'),
       ],
       { Acme_Approve: 'Approve' },
@@ -72,12 +72,12 @@ describe('the Shortcuts dialog', () => {
   });
 
   it('hides This page while the page has no registration', async () => {
-    const element = await open([shortcut('tm.shortcuts.open', 'Mod+/', 'tm.tenantShell.bar.shortcuts', 'global')]);
+    const element = await open([shortcut('tm.shortcuts.open', 'Mod+/', 'tm.shellOverlays.dialogs.shortcuts', 'global')]);
     expect(sections(element).map(([title]) => title)).toEqual(['General', 'Lists and grids', 'Launcher']);
   });
 
   it('filters every section through the folded text, and says when nothing matches', async () => {
-    const element = await open([shortcut('tm.shortcuts.open', 'Mod+/', 'tm.tenantShell.bar.shortcuts', 'global')]);
+    const element = await open([shortcut('tm.shortcuts.open', 'Mod+/', 'tm.shellOverlays.dialogs.shortcuts', 'global')]);
     const filter = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmSearchFieldHarness);
     await filter.setValue('  LAUNCHER ');
     await tmSettle();

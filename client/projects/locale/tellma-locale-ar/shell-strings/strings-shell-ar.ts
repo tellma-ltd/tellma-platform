@@ -8,7 +8,8 @@ import type { TmStringTree } from '@tellma/core';
 // The Arabic of the platform's shell, which the shell frame reads under
 // `tm.shell`, the tenantless pages under `tm.tenantless`, the tenant shell's
 // app bar under `tm.tenantShell`, its session menu, markers and dialogs'
-// frames under `tm.shellOverlays`, and its About and Shortcuts dialogs under
+// frames under `tm.shellOverlays`, its installed-mode Back and Forward under
+// `tm.shellHistory`, and its About and Shortcuts dialogs under
 // `tm.aboutDialog` and `tm.shortcutsDialog`. It is a table of
 // its own beside the platform's main one, so that table's ceiling holds;
 // `tmArabic()` merges the two under `tm` on the first switch to Arabic.
@@ -30,8 +31,9 @@ function imperative(male: string, female: string): string {
  * list's title, the shared Sign in, the tenantless app bar's menus, the tenant
  * picker (search, loading, Connect, badges, unavailable reasons, empty,
  * no-match, failure and notice), the signed-out page, the tenant app bar,
- * the session menu, the markers' popovers, and the About and Shortcuts
- * dialogs. The same shape as their English.
+ * the session menu, the markers' popovers, the installed-mode Back and
+ * Forward, and the About and Shortcuts dialogs. The same shape as their
+ * English.
  */
 export const TM_SHELL_STRINGS_AR: TmStringTree = {
   shell: {
@@ -91,10 +93,9 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
       home: 'الصفحة الرئيسية في {name}',
       menu: 'القائمة',
       search: 'بحث',
-      back: 'رجوع',
-      forward: 'تقدّم',
       slotCount: '{label}، {count}',
       account: 'الحساب: {user}، {tenant}',
+      accountUser: 'الحساب: {user}',
       accountSandbox: '، بيئة تجريبية',
       accountReadOnly: '، للقراءة فقط',
       accountMaintenance: '، قيد الصيانة',
@@ -103,9 +104,12 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
         readOnly: 'للقراءة فقط',
         maintenance: 'صيانة',
       },
-      shortcuts: 'اختصارات لوحة المفاتيح',
     },
     failed: 'تعذّر تحميل هذه الشركة.',
+  },
+  shellHistory: {
+    back: 'رجوع',
+    forward: 'تقدّم',
   },
   shellOverlays: {
     menu: {
@@ -123,7 +127,6 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
       themeSystem: 'النظام',
       themeLight: 'فاتح',
       themeDark: 'داكن',
-      about: 'حول',
       signOut: 'تسجيل الخروج',
     },
     markers: {
@@ -134,6 +137,7 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
     },
     dialogs: {
       about: 'حول',
+      shortcuts: 'اختصارات لوحة المفاتيح',
       loading: 'جارٍ التحميل…',
       failed: `تعذّر فتح هذا. ${imperative('تحقّق', 'تحقّقي')} من اتصالك ثم ${imperative('حاول', 'حاولي')} مجددًا.`,
     },

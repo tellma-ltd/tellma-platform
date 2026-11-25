@@ -21,7 +21,7 @@ import { TmArrivals } from '@tellma/core/attention';
 import { TmButton } from '@tellma/core-ui/button';
 
 import { TmAppBar } from './app-bar/tm-app-bar';
-import { TmInstalledHistory } from './app-bar/tm-installed-history';
+import { TmInstalledMode } from './app-bar/tm-installed-mode';
 import { TmShellIdentity } from './app-bar/tm-shell-identity';
 import { TmShellOverlays } from './app-bar/tm-shell-overlays';
 import { TmShellSlots } from './app-bar/tm-shell-slots';
@@ -61,7 +61,7 @@ const ELSEWHERE: ReadonlySet<TmApiErrorKind> = new Set(['cancelled', 'unauthenti
 @Component({
   selector: 'tm-tenant-shell',
   imports: [NgComponentOutlet, RouterOutlet, TmAppBar, TmButton, TmShellFrame],
-  providers: [TmShellIdentity, TmShellOverlays, TmShellSlots, TmInstalledHistory],
+  providers: [TmInstalledMode, TmShellIdentity, TmShellOverlays, TmShellSlots],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <tm-shell-frame>
@@ -153,7 +153,7 @@ export class TmTenantShell {
     inject(TmShortcuts).register({
       id: 'tm.shortcuts.open',
       keys: 'Mod+/',
-      labelKey: 'tm.tenantShell.bar.shortcuts',
+      labelKey: 'tm.shellOverlays.dialogs.shortcuts',
       scope: 'global',
       run: () => overlays.run((panels) => panels.openDialog('shortcuts')),
     });
@@ -213,7 +213,7 @@ export class TmTenantShell {
         return;
       }
       if (!(error instanceof TmApiError)) {
-        this.#telemetry.error(error, { source: 'tm-tenant-shell' });
+        // The sync reported it already (or the store, for a refused write).
         this.#failure.set({ error: null });
       } else if (!ELSEWHERE.has(error.kind)) {
         this.#failure.set({ error });

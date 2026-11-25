@@ -4,18 +4,21 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { Injectable } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injectable, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { TmAppVersion, type TmDistributionInfo } from '@tellma/core';
-import { TmAlertHarness, TmCopyButtonHarness } from '@tellma/core-ui-testing';
+import { TmAppVersion, type TmDistributionInfo, TmLocalization } from '@tellma/core';
+import { TmAlertHarness, TmCopyButtonHarness, TmTabGroupHarness } from '@tellma/core-ui-testing';
 
 import { TM_TEST_SUB, tmAppRig, tmSettle, type TmAppRig, type TmAppRigOptions } from '../../../src/routes/tm-app.testing.util';
+import { tmRegisterShellOverlaysStrings } from '../session/tm-shell-overlays-strings';
+import type { TmShellSupport } from '../tm-shell-support';
 import { TM_ABOUT_ERROR_VIEWS, TmAboutDialog } from './tm-about-dialog';
 
 // The About dialog in the test app: the wordmark, the distribution's own
 // description only when its server text has one, the versions, the alert
 // and Reload while the server runs a newer build and none while it runs an
-// older one, Reload's failure and Reload anyway, and the legal lines.
+// older one, Reload's failure and Reload anyway, the legal lines, and the
+// Diagnostics tab beside the About tab while the support seam is provided.
 
 /** The error views' update service, answering each update with a scripted result. */
 @Injectable()
@@ -37,19 +40,34 @@ class TmFakeUpdates {
   }
 }
 
+/** What the support seam's Diagnostics tab shows in a test. */
+@Component({
+  selector: 'tm-test-diagnostics',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `<p class="tm-test-diagnostics">Diagnostics content</p>`,
+})
+class TmTestDiagnostics {}
+
 describe('the About dialog', () => {
   let rig: TmAppRig;
   let fixture: ComponentFixture<TmAboutDialog>;
 
   afterEach(() => TestBed.resetTestingModule());
 
-  /** Starts the app and renders the dialog's content. */
-  async function open(options: TmAppRigOptions = {}): Promise<HTMLElement> {
+  /** Starts the app and renders the dialog's content, with the support seam when one is given. */
+  async function open(options: TmAppRigOptions = {}, support: TmShellSupport | null = null): Promise<HTMLElement> {
     rig = await tmAppRig({
       ...options,
-      providers: [TmFakeUpdates, { provide: TM_ABOUT_ERROR_VIEWS, useValue: () => Promise.resolve({ ɵTmErrorUpdates: TmFakeUpdates }) }],
+      providers: [
+        TmFakeUpdates,
+        { provide: TM_ABOUT_ERROR_VIEWS, useValue: () => Promise.resolve({ ɵTmErrorUpdates: TmFakeUpdates }) },
+        ...(options.providers ?? []),
+      ],
     });
+    // The overlays' chunk, which opens the dialog, registers the strings the two share.
+    tmRegisterShellOverlaysStrings(TestBed.inject(TmLocalization));
     fixture = TestBed.createComponent(TmAboutDialog);
+    fixture.componentRef.setInput('support', support);
     await tmSettle();
     return fixture.nativeElement as HTMLElement;
   }
@@ -77,6 +95,32 @@ describe('the About dialog', () => {
     const copy = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmCopyButtonHarness);
     expect(await copy.getLabel()).toBe('Copy version');
     expect(element.querySelector('tm-alert')).toBeNull();
+    expect(element.querySelector('tm-tab-group')).toBeNull();
+  });
+
+  it('puts the content in an About tab beside Diagnostics while the support seam is provided, loading Diagnostics on its first selection', async () => {
+    let loads = 0;
+    const support: TmShellSupport = {
+      reportLabel: signal('Report a problem'),
+      reportProblem: () => undefined,
+      diagnosticsLabel: signal('Diagnostics'),
+      diagnostics: () => (++loads === 1 ? Promise.reject(new TypeError('Failed to fetch')) : Promise.resolve(TmTestDiagnostics)),
+    };
+    const element = await open({}, support);
+    await tmSettle();
+    const tabs = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmTabGroupHarness);
+    expect(await Promise.all((await tabs.getTabs()).map((tab) => tab.getLabel()))).toEqual(['About', 'Diagnostics']);
+    expect(element.querySelector('[role="tabpanel"] dl')).not.toBeNull();
+    expect(loads).toBe(0);
+    // A failed load says so; the next selection tries again.
+    await tabs.selectTab('Diagnostics');
+    await tmSettle();
+    expect(await tabs.getActivePanelText()).toContain("Couldn't open this.");
+    await tabs.selectTab('About');
+    await tabs.selectTab('Diagnostics');
+    await tmSettle();
+    expect(element.querySelector('.tm-test-diagnostics')?.textContent).toBe('Diagnostics content');
+    expect(loads).toBe(2);
   });
 
   it("shows the distribution's own description when its server text has one", async () => {

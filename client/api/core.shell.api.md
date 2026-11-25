@@ -29,15 +29,13 @@ import { ViewContainerRef } from '@angular/core';
 export class TmAppBar {
     constructor();
     protected readonly accountLabel: _angular_core.Signal<string>;
-    protected back(): void;
-    protected readonly backLabel: _angular_core.Signal<string>;
-    protected forward(): void;
-    protected readonly forwardLabel: _angular_core.Signal<string>;
-    protected readonly history: TmInstalledHistory;
+    protected readonly historyButtons: _angular_core.Signal<Type<unknown> | null>;
+    protected readonly historyInputs: Readonly<Record<string, unknown>>;
     protected readonly home: _angular_core.Signal<string>;
     protected readonly homeLabel: _angular_core.Signal<string>;
     protected readonly identity: TmShellIdentity;
     protected readonly initials: _angular_core.Signal<string>;
+    protected readonly installed: _angular_core.Signal<boolean>;
     protected readonly keycap: string;
     protected readonly launcher: TmLauncher;
     protected readonly launcherOpen: _angular_core.Signal<boolean>;

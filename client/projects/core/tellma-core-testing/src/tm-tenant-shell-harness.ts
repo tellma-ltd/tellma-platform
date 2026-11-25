@@ -13,7 +13,8 @@ import { TmSessionMenuHarness } from './tm-session-menu-harness';
 // and its app bar: the wordmark, the installed-mode history, the slots, the
 // reserved boxes, the markers with their popovers and the session button
 // with its menu. The menu and the popovers live in a chunk the shell loads
-// after its first frame, so opening one waits for it.
+// after its first frame, and the installed-mode Back and Forward in a chunk
+// of their own, so opening one or reading the other waits for it.
 
 /** What the tenant shell's main landmark shows. */
 export type TmTenantShellMain = 'page' | 'error' | 'replaced';
@@ -63,7 +64,8 @@ export class TmTenantShellHarness extends ComponentHarness {
   readonly #markers = this.locatorForAll('.tm-app-bar__marker');
   readonly #slots = this.locatorForAll('button.tm-app-bar__slot');
   readonly #reserved = this.locatorForAll('span[data-tm-slot]');
-  readonly #history = this.locatorForAll('.tm-app-bar__history');
+  readonly #historyBox = this.locatorForOptional('.tm-app-bar__history');
+  readonly #history = this.locatorForAll('.tm-shell-history__button');
   readonly #error = this.locatorForOptional('.tm-tenant-shell__error');
   readonly #outlet = this.locatorForOptional('main router-outlet');
   readonly #errorActions = this.locatorForAll('.tm-tenant-shell__error button');
@@ -228,12 +230,13 @@ export class TmTenantShellHarness extends ComponentHarness {
   }
 
   /**
-   * Whether the installed-mode Back and Forward buttons show.
+   * Whether the bar has the installed-mode Back and Forward, whose box shows
+   * before their chunk fills it.
    *
    * @returns Whether they show.
    */
   async hasHistoryButtons(): Promise<boolean> {
-    return (await this.#history()).length > 0;
+    return (await this.#historyBox()) !== null;
   }
 
   /**
@@ -271,13 +274,23 @@ export class TmTenantShellHarness extends ComponentHarness {
     return this.#waitFor(TmSessionMenuHarness, 'the session menu');
   }
 
-  /** The history buttons, which must show. */
+  /** The history buttons, which must show, waiting for their chunk. */
   async #requireHistory(): Promise<TestElement[]> {
-    const buttons = await this.#history();
-    if (buttons.length !== 2) {
+    if ((await this.#historyBox()) === null) {
       throw new Error('The tenant shell shows no Back and Forward: they show in installed mode only.');
     }
-    return buttons;
+    const deadline = Date.now() + OPEN_DEADLINE_MS;
+    for (;;) {
+      await this.forceStabilize();
+      const buttons = await this.#history();
+      if (buttons.length === 2) {
+        return buttons;
+      }
+      if (Date.now() > deadline) {
+        throw new Error('The tenant shell did not load its Back and Forward.');
+      }
+      await tick();
+    }
   }
 
   /** Waits for an overlay in the document, its chunk's load included. */

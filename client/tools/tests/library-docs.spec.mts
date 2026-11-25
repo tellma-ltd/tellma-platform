@@ -43,7 +43,8 @@ const ADDITIONS: Readonly<Record<string, readonly string[]>> = {
   icon: [],
   kbd: [],
   copy: ['TmCopyButtonHarness', 'TmReferenceHarness'],
-  badge: ['TmCounterHarness'],
+  badge: [],
+  counter: ['TmCounterHarness'],
   avatar: ['TmAvatarHarness'],
   chip: ['TmChipHarness', 'TmChipSetHarness'],
   progress: ['TmProgressBarHarness'],
@@ -80,6 +81,15 @@ const ADDITIONS: Readonly<Record<string, readonly string[]>> = {
  */
 const REACHED_THROUGH: Readonly<Record<string, string>> = {
   TmTileHarness: 'TmTilesHarness',
+};
+
+/**
+ * The additions entry points shown in another entry point's showcase story:
+ * the counter, split out of the badges so a first frame can draw a count
+ * without tm-badge, keeps its place in the badges and counters story.
+ */
+const STORY_OF: Readonly<Record<string, string>> = {
+  counter: 'badge',
 };
 
 /**
@@ -166,7 +176,8 @@ describe('the library docs', () => {
       'utf8',
     );
     for (const id of Object.keys(ADDITIONS)) {
-      expect(stories, `the showcase has the ${id} story`).toContain(`id: '${id}'`);
+      const story = STORY_OF[id] ?? id;
+      expect(stories, `the showcase has the ${story} story`).toContain(`id: '${story}'`);
     }
   });
 

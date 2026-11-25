@@ -23,12 +23,13 @@ import {
 } from '@tellma/core';
 import { TmBreakpoints, TmTheme, type TmThemeSetting } from '@tellma/core-ui';
 import { TmMenu, type TmMenuEntry, TmMenuHeaderDef, type TmMenuItem } from '@tellma/core-ui/menu';
-import { Building2, CalendarDays, Globe, Info, Keyboard, UserCog } from 'lucide';
+import { Building2, CalendarDays, Globe, Info, Keyboard, LifeBuoy, UserCog } from 'lucide';
 
 import type { TmShellMarker } from '../app-bar/tm-shell-identity';
 import { TmShellIdentity } from '../app-bar/tm-shell-identity';
 import type { TmShellDialog } from '../app-bar/tm-shell-overlays';
 import { TmShellSlots } from '../app-bar/tm-shell-slots';
+import { TM_SHELL_SUPPORT } from '../tm-shell-support';
 import { TmSessionAvatar } from './tm-session-avatar';
 
 // The session menu (spec 0027 §10): a tm-menu 268 px wide (the viewport less
@@ -36,9 +37,9 @@ import { TmSessionAvatar } from './tm-session-avatar';
 // bar's session button. Its header is who the user is; its rows, in order:
 // the tenant card, My settings, the language and calendar switches (each
 // with two or more choices), the theme, Keyboard shortcuts, About, the
+// Report a problem while the support entry point provides its seam, the
 // distribution's slots below md (where the bar has no room for them), and
-// Sign out after a separator. Report a problem joins between About and the
-// slots once the support dialog lands.
+// Sign out after a separator.
 
 /** The suffix each marker adds to the tenant card's second line. */
 const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
@@ -133,6 +134,7 @@ export class TmSessionMenu {
   readonly #metadata = inject(ɵTmClientMetadataStore);
   readonly #slots = inject(TmShellSlots).items;
   readonly #wide = inject(TmBreakpoints).atLeast('md');
+  readonly #support = inject(TM_SHELL_SUPPORT, { optional: true });
   /** The menu. */
   private readonly menu = viewChild.required(TmMenu);
 
@@ -183,18 +185,19 @@ export class TmSessionMenu {
       },
       {
         id: 'shortcuts',
-        label: this.#l10n.ɵtext('tm.tenantShell.bar.shortcuts')(),
+        label: this.#l10n.ɵtext('tm.shellOverlays.dialogs.shortcuts')(),
         icon: Keyboard,
         shortcut: 'Mod+/',
         action: () => this.#ask(() => this.dialog.emit('shortcuts')),
       },
       {
         id: 'about',
-        label: this.#text('about'),
+        label: this.#l10n.ɵtext('tm.shellOverlays.dialogs.about')(),
         icon: Info,
         detail: this.#version.display,
         action: () => this.#ask(() => this.dialog.emit('about')),
       },
+      ...this.#reportProblem(),
       ...this.#slotRows(),
       { separator: true },
       {
@@ -255,6 +258,15 @@ export class TmSessionMenu {
   /** Closes the menu, leaving focus where it is. */
   close(): void {
     this.menu().close({ restoreFocus: false });
+  }
+
+  /** Report a problem's row, while the support entry point provides its seam. */
+  #reportProblem(): readonly TmMenuItem[] {
+    const support = this.#support;
+    if (support === null) {
+      return [];
+    }
+    return [{ id: 'report-problem', label: support.reportLabel(), icon: LifeBuoy, action: () => this.#ask(() => support.reportProblem()) }];
   }
 
   /**

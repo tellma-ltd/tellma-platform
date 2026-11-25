@@ -176,6 +176,8 @@ export class TmShellOverlays {
       (chunk) => {
         const host = this.#host;
         if (this.#ended || host === null) {
+          // Before the bar hands over its host, a later gesture loads again.
+          this.#loading = null;
           return null;
         }
         const ref = host.createComponent(chunk.TmSessionPanels);

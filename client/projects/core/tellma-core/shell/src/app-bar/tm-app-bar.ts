@@ -9,13 +9,17 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
+  signal,
+  type Type,
+  untracked,
   ViewContainerRef,
   viewChild,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TmLocalization, type TmShellSlot, TmTelemetry, TmUrls } from '@tellma/core';
-import { TmCounter } from '@tellma/core-ui/badge';
+import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
 import { tmFormatKeys } from '@tellma/core-ui/kbd';
@@ -24,7 +28,7 @@ import { Eye, FlaskConical, Menu, Search, Wrench } from 'lucide';
 
 import { TmLauncher } from '../launcher/tm-launcher';
 import { tmRegisterTenantShellStrings } from '../tm-tenant-shell-strings';
-import { TmInstalledHistory } from './tm-installed-history';
+import { TM_SHELL_HISTORY_LOAD, TmInstalledMode } from './tm-installed-mode';
 import { type TmShellMarker, TmShellIdentity } from './tm-shell-identity';
 import { TmShellOverlays } from './tm-shell-overlays';
 import { TmShellSlots, type TmShellSlotView } from './tm-shell-slots';
@@ -41,7 +45,9 @@ import { TmShellSlots, type TmShellSlotView } from './tm-shell-slots';
 // panels. The session button paints its initials here, on the same tone as
 // tm-avatar's, and the chunk's avatar, which can show the user's photo,
 // replaces them once it loads. The Menu button, the search field and the
-// search button call the launcher.
+// search button call the launcher. In installed mode the bar reserves Back
+// and Forward's box and fills it from a chunk of their own, which a browser
+// tab never loads.
 
 /** The icon of each marker. */
 const MARKER_ICONS = { sandbox: FlaskConical, readOnly: Eye, maintenance: Wrench } as const;
@@ -118,26 +124,13 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
         <kbd class="tm-app-bar__keycap" aria-hidden="true">{{ keycap }}</kbd>
       </label>
     </div>
-    <!-- Back and forward, in installed mode only, from md. -->
-    @if (history.installed()) {
-      <button
-        type="button"
-        class="tm-app-bar__icon-button tm-app-bar__history"
-        [disabled]="!history.canGoBack()"
-        [attr.aria-label]="backLabel()"
-        (click)="back()"
-      >
-        <tm-icon name="arrow-left" />
-      </button>
-      <button
-        type="button"
-        class="tm-app-bar__icon-button tm-app-bar__history"
-        [disabled]="!history.canGoForward()"
-        [attr.aria-label]="forwardLabel()"
-        (click)="forward()"
-      >
-        <tm-icon name="arrow-right" />
-      </button>
+    <!-- Back and forward, in installed mode only, from md: their box, which their chunk fills. -->
+    @if (installed()) {
+      <span class="tm-app-bar__history">
+        @if (historyButtons(); as buttons) {
+          <ng-container [ngComponentOutlet]="buttons" [ngComponentOutletInputs]="historyInputs" />
+        }
+      </span>
     }
     <span class="tm-app-bar__spacer"></span>
     <!-- Search, after the spacer below md. -->
@@ -305,6 +298,15 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
 
     .tm-app-bar__slot {
       position: relative;
+    }
+
+    /* The two history buttons' box, reserved before their chunk lands. */
+    .tm-app-bar__history {
+      display: flex;
+      flex: none;
+      gap: var(--space-2);
+      inline-size: calc(60px + var(--space-2));
+      block-size: 30px;
     }
 
     /* Menu and search in one bordered box. */
@@ -626,8 +628,19 @@ export class TmAppBar {
   /** Who and where the user is. */
   protected readonly identity = inject(TmShellIdentity);
 
-  /** The installed-mode history. */
-  protected readonly history = inject(TmInstalledHistory);
+  readonly #loadHistory = inject(TM_SHELL_HISTORY_LOAD);
+  readonly #historyButtons = signal<Type<unknown> | null>(null);
+
+  readonly #installedMode = inject(TmInstalledMode);
+
+  /** Whether the app runs installed, where the bar draws Back and Forward. */
+  protected readonly installed = this.#installedMode.installed;
+
+  /** The history buttons' inputs: the Navigation API they read, where the browser has it. */
+  protected readonly historyInputs: Readonly<Record<string, unknown>> = { navigation: this.#installedMode.navigation };
+
+  /** The loaded Back and Forward buttons, or `null` until their chunk is in. */
+  protected readonly historyButtons = this.#historyButtons.asReadonly();
 
   /** The Menu glyph. */
   protected readonly menuIcon = Menu;
@@ -656,22 +669,23 @@ export class TmAppBar {
   /** The search's name. */
   protected readonly searchLabel = this.#l10n.ɵtext('tm.tenantShell.bar.search');
 
-  /** Back's name. */
-  protected readonly backLabel = this.#l10n.ɵtext('tm.tenantShell.bar.back');
-
-  /** Forward's name. */
-  protected readonly forwardLabel = this.#l10n.ɵtext('tm.tenantShell.bar.forward');
-
   /** Whether the launcher is open, which the buttons that open it report. */
   protected readonly launcherOpen = computed(() => this.launcher.state() !== 'closed');
 
   /** The markers that show. */
   protected readonly markers = this.identity.markers;
 
-  /** The session button's name: "Account: {user}, {tenant}", then a suffix per marker. */
+  /**
+   * The session button's name: "Account: {user}, {tenant}", then a suffix
+   * per marker; "Account: {user}" while a cold launch has no tenant name.
+   */
   protected readonly accountLabel = computed(() => {
-    const tenant = this.identity.tenantName() ?? '';
-    const base = this.#l10n.ɵtext('tm.tenantShell.bar.account', { user: this.identity.userName(), tenant })();
+    const user = this.identity.userName();
+    const tenant = this.identity.tenantName();
+    const base =
+      tenant === null
+        ? this.#l10n.ɵtext('tm.tenantShell.bar.accountUser', { user })()
+        : this.#l10n.ɵtext('tm.tenantShell.bar.account', { user, tenant })();
     return this.markers().reduce((name, marker) => name + this.#l10n.ɵtext(MARKER_SUFFIXES[marker])(), base);
   });
 
@@ -688,6 +702,29 @@ export class TmAppBar {
   constructor() {
     tmRegisterTenantShellStrings(this.#l10n);
     afterNextRender(() => this.overlays.attach(this.overlayHost()));
+
+    // --- The history buttons' chunk, loaded once the app runs installed ---
+    // A failed load (offline, or after a deploy removed the chunk) leaves the
+    // reserved box empty; the next change into installed mode tries again.
+    let loading = false;
+    effect(() => {
+      if (!this.installed() || this.#historyButtons() !== null) {
+        return;
+      }
+      untracked(() => {
+        if (loading) {
+          return;
+        }
+        loading = true;
+        this.#loadHistory().then(
+          (chunk) => this.#historyButtons.set(chunk.TmShellHistory),
+          (error: unknown) => {
+            this.#telemetry.error(error, { source: 'tm-app-bar' });
+            loading = false;
+          },
+        );
+      });
+    });
   }
 
   /**
@@ -764,17 +801,5 @@ export class TmAppBar {
   /** The wordmark's navigation, for telemetry. */
   protected navigated(): void {
     this.#telemetry.event('tm.shell.navigated', { source: 'wordmark' }, { sampled: true });
-  }
-
-  /** Moves one entry back. */
-  protected back(): void {
-    this.#telemetry.event('tm.shell.navigated', { source: 'back' }, { sampled: true });
-    this.history.back();
-  }
-
-  /** Moves one entry forward. */
-  protected forward(): void {
-    this.#telemetry.event('tm.shell.navigated', { source: 'forward' }, { sampled: true });
-    this.history.forward();
   }
 }

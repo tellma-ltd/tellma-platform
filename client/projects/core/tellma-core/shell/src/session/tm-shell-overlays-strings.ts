@@ -35,7 +35,6 @@ export const TM_SHELL_OVERLAYS_STRINGS_EN = {
     themeSystem: 'System',
     themeLight: 'Light',
     themeDark: 'Dark',
-    about: 'About',
     signOut: 'Sign out',
   },
   /** The markers' popovers. */
@@ -45,9 +44,10 @@ export const TM_SHELL_OVERLAYS_STRINGS_EN = {
     readOnly: '{tenant} is read-only. You can view data but not change it. Contact your administrator.',
     maintenance: '{tenant} is under maintenance. You can view data but not change it until it ends.',
   },
-  /** The dialogs' titles, and the placeholder's status while a dialog loads. */
+  /** The dialogs' titles, which also name their menu rows (and Keyboard shortcuts its shortcut), and the placeholder's status while a dialog loads. */
   dialogs: {
     about: 'About',
+    shortcuts: 'Keyboard shortcuts',
     loading: 'Loading…',
     failed: "Couldn't open this. Check your connection and try again.",
   },
