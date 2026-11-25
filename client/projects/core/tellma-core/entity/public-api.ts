@@ -64,14 +64,12 @@ export { TmConfirmations, type TmConfirmationAttempt, type TmConfirmationContext
 // Queryex: the lexer, and the builder and printer of the Queryex the client writes.
 export {
   tmQxLex,
-  tmQxParameters,
   type TmQxLexDiagnostic,
   type TmQxLexResult,
-  type TmQxParameter,
   type TmQxToken,
   type TmQxTokenKind,
 } from './src/tm-qx-lex';
-export { tmQx, tmQxInsert, tmQxPrint, type TmQx, type TmQxBinaryOp } from './src/tm-qx';
+export { tmQx, tmQxPrint, type TmQx, type TmQxBinaryOp } from './src/tm-qx';
 
 // Column filters: the URL value, its Queryex leaf and its description; the
 // operators and strings the column filter entry point's control offers.

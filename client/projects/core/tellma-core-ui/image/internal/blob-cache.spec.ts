@@ -7,7 +7,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 
-import { TM_BLOB_FETCHER, type TmBlobFetchOptions } from '../tm-blob-fetcher';
+import { TM_BLOB_FETCHER, type TmBlobFetchOptions } from '@tellma/core-ui/blob-fetcher';
 import { ɵTM_CACHE_STORAGE, ɵTmImageBlobCache } from './blob-cache';
 
 /** The real Cache API keys by ABSOLUTE request URL — the fake must too. */

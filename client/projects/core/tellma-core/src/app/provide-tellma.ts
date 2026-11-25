@@ -29,7 +29,7 @@ import {
   TM_UI_ARGUMENT_FORMATTER,
 } from '@tellma/core-ui';
 import { provideTellmaIcons } from '@tellma/core-ui/icon';
-import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/image';
+import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/blob-fetcher';
 
 import { TmApi } from '../api/tm-api';
 import { TM_ATTENTION_DOCUMENTS } from '../attention/tm-attention-documents';

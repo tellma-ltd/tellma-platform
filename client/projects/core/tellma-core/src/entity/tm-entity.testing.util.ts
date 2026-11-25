@@ -19,7 +19,7 @@ import {
 import type { TmSecurableMetadata } from '../admin/tm-admin-metadata';
 import { TM_API_UPDATES } from '../api/tm-api-seams';
 import { provideTellma } from '../app/provide-tellma';
-import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
+import type { TmCalendarDefinition, TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import { tmFeature } from '../declarations/tm-feature';
 import { tmEnglish } from '../l10n/tm-english';
@@ -146,6 +146,10 @@ export interface TmEntityRigOptions {
   readonly pickers?: Partial<Readonly<Record<'acme.Customer' | 'gl.Center' | 'acme.Currency', TmPickerDeclaration<string>>>>;
   /** The actions `acme.Customer` declares; `set-credit-limit` as a button when omitted. */
   readonly actions?: readonly TmEntityActionDeclaration<'acme.Customer'>[];
+  /** The tenant's calendars, the first its default, such as `['uq', 'gc']`; `['gc']` when omitted. */
+  readonly calendars?: readonly string[];
+  /** The app's own calendars beside the platform's, such as a test calendar; none when omitted. */
+  readonly calendarDefinitions?: readonly TmCalendarDefinition[];
 }
 
 /** What an entity registry spec drives and inspects. */
@@ -198,7 +202,7 @@ export function tmEntityDocs(options: TmEntityRigOptions = {}): TmLaunchDocs {
     tenantId: 17,
     names: ['Acme Trading', 'أكمي للتجارة', null],
     languages: CONTENT_LANGUAGES.slice(0, options.languages ?? 1),
-    calendars: ['gc'],
+    calendars: options.calendars ?? ['gc'],
     timeZone: 'Asia/Riyadh',
     entries: {},
   };
@@ -230,6 +234,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
           },
         },
         languages: [tmEnglish(), language('ar', 'rtl', options.tmStrings?.ar), language('am', 'ltr', options.tmStrings?.am)],
+        ...(options.calendarDefinitions && { calendars: options.calendarDefinitions }),
         features: [
           tmFeature({
             key: 'acme',

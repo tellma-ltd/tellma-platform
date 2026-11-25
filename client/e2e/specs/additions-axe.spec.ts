@@ -42,12 +42,14 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /**
  * The library's folders that are not additions: the entry points that came
  * before them or stand outside them (the pivot and the chart, whose own
- * suites, pivot.spec.ts and chart.spec.ts, run their axe scans), and the
- * shared folders with no entry point of their own. A new folder must join
- * this list or the additions, so that none is skipped unclassified.
+ * suites, pivot.spec.ts and chart.spec.ts, run their axe scans), the shared
+ * folders with no entry point of their own, and the image's blob-fetching
+ * seam, split out of the image's entry point with no UI to scan. A new folder
+ * must join this list or the additions, so that none is skipped unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
   'alert',
+  'blob-fetcher',
   'button',
   'cache',
   'calendar-ethiopic',

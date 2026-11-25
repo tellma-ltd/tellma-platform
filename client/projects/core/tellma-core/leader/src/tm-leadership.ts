@@ -42,19 +42,22 @@ type TmTenantPartition = Extract<TmPartition, { readonly kind: 'tenant' }>;
 
 /**
  * Creates the realtime connection of a tenant, which reports to the sink.
- * Internal: the realtime entry point provides it.
+ * Internal: by default it loads the realtime entry point, which only a
+ * leader tab downloads.
  */
 export type TmHubFactory = (tenantId: number, sink: TmHubSink, injector: Injector) => Promise<TmHubConnection>;
 
 /**
- * The realtime connection's factory, or `null` while no realtime entry point
- * provides one: the leader then stays `connecting`, and polls once the hub
+ * The realtime connection's factory: by default, the realtime entry point's,
+ * which it loads on the first call; a test provides a fake one. `null` means
+ * no realtime: the leader then stays `connecting`, and polls once the hub
  * has not connected for a minute, as it would for a hub that never connects.
  * Internal.
  */
 export const TM_HUB_FACTORY = new InjectionToken<TmHubFactory | null>('TM_HUB_FACTORY', {
   providedIn: 'root',
-  factory: () => null,
+  // The SignalR client loads with the entry point, in the leader tab alone (spec 0025 §8.1).
+  factory: () => (tenantId, sink, injector) => import('@tellma/core/realtime').then((realtime) => realtime.tmCreateHub(tenantId, sink, injector)),
 });
 
 /** How long the hub may be down before the leader polls. */
@@ -97,6 +100,21 @@ interface TmDocReads {
  */
 export function tmKnowsEvent(metadata: ɵTmClientMetadataStore, name: string): boolean {
   return metadata.peek()?.clientEvents.includes(name) ?? false;
+}
+
+/**
+ * Whether a hub event ends the user's access to its tenant: a
+ * `session.ended` whose reason is `access-revoked` or `tenant-unavailable`.
+ *
+ * @param event - The event.
+ * @returns Whether it does.
+ */
+export function tmAccessEnded(event: TmClientEvent): boolean {
+  if (event.name !== 'session.ended' || typeof event.payload !== 'object' || event.payload === null) {
+    return false;
+  }
+  const { reason } = event.payload as Readonly<Record<string, unknown>>;
+  return reason === 'access-revoked' || reason === 'tenant-unavailable';
 }
 
 /** Whether a value is a `cache.changed` payload: a tag, and an optional string value. */
@@ -153,6 +171,10 @@ export class TmLeadership {
   #loading = false;
   /** Counts the connections, so a stopped one's reports are ignored. */
   #generation = 0;
+  /** Restarts the connection once a sync lands after a terminal signal, or `null` while none waits. */
+  #resume: EffectRef | null = null;
+  /** Counts the terminal signals; only the latest one's wait restarts the connection. */
+  #signals = 0;
   /** The leader's own poll timer, which runs while the leader is visible. */
   #timer: ReturnType<typeof setTimeout> | undefined;
   /** The one-shot poll a probe that came a little early asked for. */
@@ -266,6 +288,7 @@ export class TmLeadership {
     this.#abort.abort();
     this.#realtime.destroy();
     this.#asking.destroy();
+    this.#resume?.destroy();
     clearTimeout(this.#timer);
     clearTimeout(this.#probeTimer);
     this.#reads.forEach((reads) => clearTimeout(reads.timer));
@@ -322,6 +345,8 @@ export class TmLeadership {
   #disconnect(): void {
     this.#generation++;
     this.#loading = false;
+    this.#resume?.destroy();
+    this.#resume = null;
     const hub = this.#hub;
     this.#hub = null;
     void hub?.stop().catch((error: unknown) => this.#telemetry.error(error, { where: 'tm-leader' }));
@@ -367,17 +392,40 @@ export class TmLeadership {
   }
 
   /**
-   * A terminal signal: a background sync decides what it means (§8.5). A sync
-   * that lands restarts the connection, once a stop in progress has settled;
-   * one reporting realtime off stops it.
+   * A terminal signal: a background sync decides what it means. The
+   * first sync that lands after the signal, this one or any later one such
+   * as a poll's, restarts the connection, once a stop in progress has
+   * settled; a sync reporting realtime off stops it instead.
    */
   #terminal(generation: number, stopped: Promise<unknown> = Promise.resolve()): void {
+    // Spec 0025 §8.5: the sync the signal asks for, not the signal, decides what follows.
     const requested = this.#now();
-    void Promise.all([this.#refresher.refresh(this.#t, ['tenant'], 'terminal'), stopped]).then(() => {
-      const at = untracked(this.#store.doc<ɵTmSyncDoc>(this.#partition, 'sync'))?.data.at ?? -Infinity;
-      if (!this.#stopped && generation === this.#generation && this.#state !== 'disabled' && at >= requested) {
-        this.#hub?.start();
+    const signal = ++this.#signals;
+    void this.#refresher.refresh(this.#t, ['tenant'], 'terminal');
+    this.#resume?.destroy();
+    this.#resume = null;
+    const sync = this.#store.doc<ɵTmSyncDoc>(this.#partition, 'sync');
+    void stopped.then(() => {
+      // A later signal's wait replaces this one's; a connection stopped since never restarts.
+      if (this.#stopped || generation !== this.#generation || signal !== this.#signals) {
+        return;
       }
+      const resume = (this.#resume = effect(
+        () => {
+          // A stamp ahead of the clock, left by a clock set back, proves nothing.
+          const at = sync()?.data.at ?? -Infinity;
+          if (at >= requested && at <= this.#now()) {
+            untracked(() => {
+              resume.destroy();
+              this.#resume = null;
+              if (this.#state !== 'disabled') {
+                this.#hub?.start();
+              }
+            });
+          }
+        },
+        { injector: this.#injector, manualCleanup: true },
+      ));
     });
   }
 

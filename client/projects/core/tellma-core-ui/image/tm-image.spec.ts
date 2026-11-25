@@ -14,7 +14,7 @@ import {
   TM_BLOB_FETCHER,
   type TmBlobFetchOptions,
   type TmBlobFetchResult,
-} from './tm-blob-fetcher';
+} from '@tellma/core-ui/blob-fetcher';
 import { ɵTM_CACHE_STORAGE } from './internal/blob-cache';
 import { TmImage, TmImagePlaceholder } from './tm-image';
 import type { TmImageEdit } from './tm-image-types';

@@ -42,7 +42,9 @@ describe('the @tellma/core entry-point table', () => {
       './column-filter',
       './entity',
       './error-paths',
+      './expression-editor',
       './memory',
+      './path-picker',
       './private',
       './search-normalize',
       './shell',
@@ -66,6 +68,20 @@ describe('the @tellma/core entry-point table', () => {
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './support').has('./page-snapshot')).toBe(true);
     for (const eager of ['.', './attention', './shell']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./page-snapshot')).toBe(false);
+    }
+  });
+
+  it('keeps the expression editor and the path picker out of the entity entry point, for their hosts to load', () => {
+    expect(TM_CORE_ENTRY_POINTS['./expression-editor']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    expect(TM_CORE_ENTRY_POINTS['./path-picker']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    for (const host of ['./search', './admin', './report-studio']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./expression-editor')).toBe(true);
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./path-picker')).toBe(true);
+    }
+    expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './reports').has('./expression-editor')).toBe(true);
+    for (const other of ['.', './attention', './shell', './entity', './column-filter']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./expression-editor')).toBe(false);
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./path-picker')).toBe(false);
     }
   });
 

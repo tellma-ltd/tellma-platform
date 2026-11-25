@@ -5,7 +5,7 @@
 
 import { DestroyRef, effect, inject, Injectable, Injector, signal, untracked, type Signal } from '@angular/core';
 import { Router } from '@angular/router';
-import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/image';
+import type { TmBlobFetchOptions, TmBlobFetchResult } from '@tellma/core-ui/blob-fetcher';
 
 import { TM_NOW } from '../app/tm-now';
 import { TmLaunch } from '../launch/tm-launch';

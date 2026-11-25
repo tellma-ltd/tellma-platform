@@ -399,13 +399,6 @@ export const tmQx: Readonly<{
 export type TmQxBinaryOp = '!=' | '%' | '*' | '+' | '-' | '/' | '<' | '<=' | '=' | '>' | '>=' | 'and' | 'or' | '||';
 
 // @public
-export function tmQxInsert(text: string, caret: number, insertion: string): {
-    readonly text: string;
-    readonly start: number;
-    readonly end: number;
-};
-
-// @public
 export function tmQxLex(text: string): TmQxLexResult;
 
 // @public
@@ -420,18 +413,6 @@ export interface TmQxLexResult {
     readonly diagnostics: readonly TmQxLexDiagnostic[];
     readonly tokens: readonly TmQxToken[];
 }
-
-// @public
-export interface TmQxParameter {
-    readonly name: string;
-    readonly sites: readonly {
-        readonly start: number;
-        readonly length: number;
-    }[];
-}
-
-// @public
-export function tmQxParameters(text: string): readonly TmQxParameter[];
 
 // @public
 export function tmQxPrint(expression: TmQx): string;

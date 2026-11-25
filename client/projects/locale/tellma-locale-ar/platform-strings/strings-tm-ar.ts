@@ -118,10 +118,6 @@ export const TM_STRINGS_AR: TmStringTree = {
       meDisplay: 'السمة، الشريط المثبت',
     },
   },
-  shell: {
-    tenantPicker: { title: `${imperative('اختر', 'اختاري')} شركة` },
-    signedOut: { title: imperative('لقد سجّلت الخروج', 'لقد سجّلتِ الخروج'), signIn: 'تسجيل الدخول' },
-  },
   entity: {
     permission: '{resource}: {action}',
     tenantReadOnly: '{tenant} للقراءة فقط.',
