@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-314 (orchestrator, 2026-11-25): PC-F97 landed; the harness switches; PC-F101 goes ahead of PC-118
+
+- PC-F97 landed at e4d30847. CI 45622441151 was green on a292f8a7, and the plans-only merge went on top.
+- The gates' delay harness now switches to the PC-F86 postTask scripts for every checkpoint (D-295). The leaky scratchpad harness is retired.
+- The flaky rows tracked by PC-F83, PC-F85, PC-F86, PC-F87, PC-F93 and PC-F97 are marked fixed, with their landing shas.
+- Release order: PC-F101 goes first, ahead of PC-118. This amends D-311, which predates PC-F101 being held.
+  - PC-F101 is a blocking fix, and D-229 puts blocking fixes before T1.
+  - PC-F101 held at 7d6b2f20. R1 was 0/0/2, with notes-only fixes.
+  - Then PC-118. Then PC-126, once PC-F101 has landed and its search-route saving is in hand (D-313). Then PC-F88. One at a time (D-087/D-190).
+  - PC-126's integration must merge its "./search" staticGraphExcludes array with PC-F101's ["./drafts"] into one key. JSON keeps only the last duplicate key, silently (PC-F101 R1-2).
+- D-229 fill for pc-f2:
+  - The only open blocking fix, PC-F101, is held.
+  - PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready.
+  - So the next non-blocking fix in ledger order, PC-F89, takes the slot. PC-F90 is gated on a release; PC-F91, PC-F92 and PC-F100 wait for PC-118; PC-F99 waits for PC-126.
+
 ### D-313 (orchestrator, 2026-11-25): PC-F101 leaves the search route 0.08 KB over; PC-126 owns the rest
 
 - PC-F101's impl (c9f8ab8e) moves TmDrafts into a new lazy entry point, @tellma/core/drafts.
