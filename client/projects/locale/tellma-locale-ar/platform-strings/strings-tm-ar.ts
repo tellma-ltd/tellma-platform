@@ -225,4 +225,18 @@ export const TM_STRINGS_AR: TmStringTree = {
       message: `انقطع الاتصال قبل أن ينتهي الإجراء. ${imperative('تحقق', 'تحققي')} مما إذا كان قد تم قبل أن ${imperative('تشغّله', 'تشغّليه')} مرة أخرى.`,
     },
   },
+  zone: {
+    changed: 'تُعرض الأوقات الآن بتوقيت {zone} ({offset}).',
+    change: 'تغيير',
+  },
+  zonePrompt: {
+    title: 'استخدام المنطقة الزمنية لجهازك؟',
+    message: 'أصبح جهازك الآن على {deviceZone} ({deviceOffset}). يعرض {displayName} الأوقات بتوقيت {displayZone} ({displayOffset}).',
+    auto: 'التغيير تلقائيًا في المرة القادمة',
+    autoHint: 'على هذا الجهاز فقط. يمكنك إيقاف ذلك من «إعداداتي».',
+    change: 'تغيير المنطقة الزمنية',
+    keep: 'الإبقاء على الحالية',
+    unknown: `لا يدعم {displayName} المنطقة الزمنية لجهازك. ${imperative('اختر', 'اختاري')} واحدة من «إعداداتي».`,
+    failed: `تعذّر تغيير منطقتك الزمنية. ${imperative('حاول', 'حاولي')} مرة أخرى.`,
+  },
 };

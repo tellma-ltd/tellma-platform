@@ -105,6 +105,11 @@ export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization'
 export type { TmLocaleSave } from './src/l10n/tm-locale-write';
 export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
 export { tmEnglish } from './src/l10n/tm-english';
+// The device's time zone: the per-device option and the check that offers
+// to follow a change. The check and its prompt are lazily loaded chunks of
+// this entry point, whose loader the state testing providers replace.
+export { TmDeviceZone, type TmZoneDoc, type TmZoneUser } from './src/l10n/tm-device-zone';
+export { TM_ZONE_CHECK_LOAD as ɵTM_ZONE_CHECK_LOAD, type TmZoneCheckModule as ɵTmZoneCheckModule } from './src/l10n/tm-device-zone';
 
 // Routes and URLs: the title strategy, the app's URLs and the search query codec.
 export { TmTitleStrategy } from './src/routes/tm-title-strategy';

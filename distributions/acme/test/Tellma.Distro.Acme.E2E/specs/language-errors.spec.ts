@@ -5,10 +5,10 @@
 
 import { test } from '../support/acme';
 
-// The language, formats and errors flows (spec 0024 §13), and the time-zone
-// flows. Each needs a surface not built yet: the language menu, the pages
-// whose reads fail, Language & region, and the device-zone prompt. They are
-// listed here, pending, and turn on with those surfaces.
+// The language, formats and errors flows (spec 0024 §13), and the zone
+// labels. Each needs a surface not built yet: the language menu, the pages
+// whose reads fail, Language & region, and the grids. They are listed here,
+// pending, and turn on with those surfaces.
 
 test.describe('language, formats and errors', () => {
   // The language menu of the shells (spec 0027) and Language & region (spec 0032).
@@ -22,9 +22,7 @@ test.describe('language, formats and errors', () => {
 });
 
 test.describe('time zones', () => {
-  // The device-zone prompt (spec 0024 §7.8) is not built yet; these turn on when it is.
-  test.fixme('device-zone: a silent first run, a prompt after the idle gate, every tab re-rendered, the automatic toast', async () => {});
-  test.fixme('device-zone: an override to Asia/Kolkata, reported as Asia/Calcutta, offers and saves Asia/Kolkata', async () => {});
-  // Zone labels in grids (spec 0024 §7.8 over spec 0030's grids).
+  // The device-zone prompt's flows are in device-zone.spec.ts. Zone labels
+  // in grids (spec 0024 §7.8 over spec 0030's grids) turn on with the grids.
   test.fixme('zone-labels: labels present or absent with the device in London against a Riyadh preference @cross-engine', async () => {});
 });

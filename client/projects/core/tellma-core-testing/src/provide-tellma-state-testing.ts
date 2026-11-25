@@ -11,6 +11,7 @@ import {
   ɵTM_LEADER_LOAD,
   ɵTM_STORE_HOST,
   ɵTM_UPDATES_LOAD,
+  ɵTM_ZONE_CHECK_LOAD,
   ɵTmLocks,
   type ɵTmStoreHost,
 } from '@tellma/core';
@@ -93,7 +94,9 @@ export function tmMemoryStoreProvider(): Provider {
  * leader election, since it has no other tabs and no hub: `TmLeader` reports
  * a follower until the test sets it; a test that starts the election itself
  * finds the leader's realtime connections in {@link TmFakeHub}. Nor does it
- * run a service worker: the update checks find updates disabled. Use it
+ * run a service worker: the update checks find updates disabled. Nor does
+ * it check the device's time zone, which a test app never sees move:
+ * `TmDeviceZone` keeps its option, and its check does nothing. Use it
  * beside `provideTellmaTesting()`.
  *
  * @example
@@ -121,5 +124,6 @@ export function provideTellmaStateTesting(): EnvironmentProviders {
     { provide: ɵTM_HUB_FACTORY, useFactory: () => inject(TmFakeHub).factory },
     { provide: ɵTM_LEADER_LOAD, useValue: () => Promise.resolve(null) },
     { provide: ɵTM_UPDATES_LOAD, useValue: () => Promise.resolve(null) },
+    { provide: ɵTM_ZONE_CHECK_LOAD, useValue: () => Promise.resolve(null) },
   ]);
 }
