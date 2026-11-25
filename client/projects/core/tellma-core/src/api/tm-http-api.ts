@@ -13,6 +13,7 @@ import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
 import { TM_METADATA_LOADERS } from '../metadata/tm-metadata-loaders';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { TmAppVersion } from '../requests/tm-app-version';
 import { TmRequestLog, type TmRequestEnd } from '../requests/tm-request-log';
 import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
@@ -1125,12 +1126,13 @@ export class TmHttpApi implements TmApi {
    * @returns The kind and the code, or `null` when the app ended while the verdict was decided.
    */
   async #verdict(build: string | null): Promise<{ kind: TmApiErrorKind; code: string } | null> {
-    // The build rules load with the first such answer; a chunk that cannot
-    // load leaves the builds unordered, so the worker decides.
+    // The builds' order is the UI version's own (spec 0026 §7), so the About
+    // dialog's Reload alert and this verdict agree. The build rules load with
+    // the first such answer; a chunk that cannot load leaves the builds
+    // unordered, so the worker decides.
+    const order = build === null ? null : this.#injector.get(TmAppVersion).compare(build);
     const decided = await import('./tm-api-verdict')
-      .then(({ tmBuildVerdict }) =>
-        tmBuildVerdict(this.#uiVersion(), build, this.#judgedOlder, this.#now(), SERVER_OUTDATED_WAIT_MS),
-      )
+      .then(({ tmBuildVerdict }) => tmBuildVerdict(order, build, this.#judgedOlder, this.#now(), SERVER_OUTDATED_WAIT_MS))
       .catch(() => null);
     // Unordered builds, or a second older verdict for the same build past the
     // first one's retry window (a rollback): the worker decides, and only a
@@ -1168,15 +1170,6 @@ export class TmHttpApi implements TmApi {
     } finally {
       clearTimeout(timer);
     }
-  }
-
-  /**
-   * The UI version, from the client metadata.
-   *
-   * @returns The version, such as `1.4.0+3f9c2ab`.
-   */
-  #uiVersion(): string {
-    return this.#clientId().slice('web/'.length);
   }
 
   /**

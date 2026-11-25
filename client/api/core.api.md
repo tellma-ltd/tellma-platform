@@ -237,6 +237,21 @@ export interface TmAppDeclarations {
 }
 
 // @public
+export class TmAppVersion {
+    get commit(): string | null;
+    compare(build: string): -1 | 0 | 1 | null;
+    get display(): string;
+    get features(): readonly TmFeatureVersion[];
+    get label(): string;
+    get platform(): string;
+    readonly server: Signal<string | null>;
+    readonly serverNewer: Signal<boolean>;
+    get ui(): string;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmAppVersion, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmAppVersion>;
+}
+
+// @public
 export interface TmAssignmentsSummary {
     readonly latest: readonly TmEntityType<'core.Assignment'>[];
     readonly latestByMe: readonly TmEntityType<'core.Assignment'>[];
@@ -620,6 +635,18 @@ export interface TmDetailsSnapshot {
 }
 
 // @public
+export class TmDeviceZone {
+    readonly auto: Signal<boolean>;
+    check(): Promise<void>;
+    setAuto(on: boolean, source: 'prompt' | 'settings'): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDeviceZone, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmDeviceZone>;
+}
+
+// @public
+export type TmDiagnosticsTrigger = 'button' | 'dialog' | 'shortcut';
+
+// @public
 export type TmDigitStyle = 'Latin' | 'Native';
 
 // @public
@@ -970,6 +997,12 @@ export interface TmFeatureDefinition {
 
 // @public
 export interface TmFeatureMetadata {
+    readonly key: string;
+    readonly version: string;
+}
+
+// @public
+export interface TmFeatureVersion {
     readonly key: string;
     readonly version: string;
 }
@@ -1822,7 +1855,7 @@ export interface TmRequestHandle {
 // @public
 export abstract class TmRequestLog {
     abstract begin(start: TmRequestStart): TmRequestHandle;
-    abstract copy(): void;
+    abstract copy(trigger?: TmDiagnosticsTrigger): void;
     abstract diagnosticsText(count?: number): string;
     abstract readonly recent: Signal<readonly TmRequestRecord[]>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmRequestLog, never>;
@@ -2431,6 +2464,18 @@ export interface TmWriteOptions {
     readonly confirmations?: readonly string[];
     readonly long?: boolean;
     readonly tenantId?: number;
+}
+
+// @public
+export interface TmZoneDoc {
+    readonly users: Readonly<Record<string, TmZoneUser>>;
+}
+
+// @public
+export interface TmZoneUser {
+    readonly at: number;
+    readonly auto: boolean;
+    readonly seen: Readonly<Record<string, string>>;
 }
 
 ```

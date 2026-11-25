@@ -7,13 +7,14 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), and the seam through which the request log (`TmRequestLog`) is provided; the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`) and the running build's identity (`TmAppVersion`); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
 | `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell, still a stand-in inside the frame; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); and the record's context a layout reads with `injectTmDetails()` | lazy, with the first details route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
 | `@tellma/core/path-picker` | `tm-path-picker`, a root entity's fields as a tree: column keys or Queryex paths, navigations as branches, the multilingual twins, image and file navigations, date parts in the active calendar, a search three navigation steps deep, `tm.path` drags whose text is valid Queryex, activation and selection; paths the user cannot reach never show | lazy, with the search page's column chooser and advanced filter, the role editor and the report studio |
@@ -437,8 +438,8 @@ production both reject `server` unsent.
   probes `GET /health/live` every 5 s, backing off to 30 s, until any answer.
 
 Two parts of the layer are chunks of their own, loaded with `import()`, because no first-frame
-call needs them: the build comparison behind the outdated-client verdict (`tm-api-verdict`), loaded
-with the first such answer, and the file transfers (`tm-api-transfer`), a download's streamed read
+call needs them: the outdated-client verdict's rules (`tm-api-verdict`), loaded with the first
+such answer, which order the builds through `TmAppVersion.compare`, and the file transfers (`tm-api-transfer`), a download's streamed read
 and an upload's send, loaded with the first download's answer or the first upload. A verdict whose
 chunk cannot load leaves the builds to the worker's update check; a transfer whose chunk cannot load
 fails as a network failure would.
@@ -985,6 +986,50 @@ const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credi
   giving the next entity, and returns the field, the PascalCase path and the entity, or the
   deepest field reached when a segment does not resolve.
 
+### The details page
+
+`@tellma/core/details` holds the page every entity record opens in. The route host loads it with
+the first details route and renders `TmDetailsHost` with the entity, the route's id (or none on
+`new`) and `?clone=`; the host loads the entity's declared `details` layout and renders it in the
+page's band, under a header the host owns: the crumb back to the entity's search page, the
+record's display name (the entity's singular while it loads, "New {entity}" in create mode), the
+Active or Inactive badge of an activatable entity, Edit, New, Refresh and the actions menu, and
+Save and Cancel in edit mode. Edit and New are disabled with `TmPermissions.disabledReason` when the
+user lacks Save, and Edit is disabled again by the record's own refusals in the `permissions` extra.
+
+```ts
+tmEntity('acme.Customer', { details: () => import('./customers/customer-details') });
+
+// customer-details.ts: the body alone; the host owns the record, its modes and its header.
+export default class CustomerDetails {
+  protected readonly details = injectTmDetails<Customer>();
+  // details.entity(), details.model(), details.form, details.mode(), details.can.edit() …
+}
+```
+
+- **The read.** One read per record key and refresh, `{segment}/get` with `include` naming every
+  extra the entity declares. While a read is out and a record is already held (a refresh, a step
+  to another record, a return to a stale one), the held record stays on screen under a progress
+  bar, the band is `aria-busy` and Edit is disabled; `refresh({ quiet: true })` reads with neither.
+  With nothing held the layout renders over an empty record, busy. A read that fails replaces the
+  body with `tm-error-state`, whose way out to the entity's search page is named by its plural.
+- **The record.** One Signal Forms form over the working copy, per record. Edit sends nothing: it
+  keeps the server copy as the base, makes it the working copy and focuses the first registered
+  field. A write through the form or `update(recipe)` copies the objects on its path, so the
+  record is dirty exactly when the working copy is another object than the base. Cancel asks
+  "Discard changes?" when dirty, then puts the base back and sends nothing.
+- **A new record.** `new` starts in create mode from the entity's defaults (every child
+  collection empty, every non-nullable flag the client writes `false`, then the declaration's
+  `defaults()`), sending nothing; Cancel leaves the page, Back when the app opened another page
+  before it, else to the search page. `new?clone={id}` reads that record and starts from its
+  copy, stripped of its key, the members the server writes and its blobs, its child rows numbered
+  as new rows, then passed through the declaration's `clone(copy, source)`.
+- **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
+  over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
+- **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
+  mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
+  state over a fake host, with `providers` to give the layout.
+
 ### Strings of a lazy entry point
 
 Strings that only a lazily loaded entry point reads ship with it, never in the primary's English
@@ -1003,7 +1048,7 @@ registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `Tm
 `TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
-the same seam. `@tellma/core/attention`
+the same seam. `@tellma/core/details` registers `tm.details` when its first page is created. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
 `tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.
@@ -1033,6 +1078,34 @@ canonical `TmSearchQuery`, the shown columns and their source). Pure functions o
   with the tile's paths and the tree's keys beside them) and the rows request, its leaves and
   named filters in a fixed order with their origins; `tmSearchDiagnose` maps a refused query's
   diagnostics back to those origins.
+
+## The device time zone
+
+`TmDeviceZone` follows the device's time zone for the signed-in user. Its check runs after the
+first render at idle, on each tenant entry and whenever the tab comes into view, in a visible tab
+of a tenant whose launch documents are present. It compares the device's zone, mapped through the
+`core.TimeZone` aliases of the Entities chunk (`Asia/Calcutta` becomes `Asia/Kolkata`), with the
+one the tenant last handled on this device. A first run, a zone that already is the display zone,
+a frozen tenant and a zone at the display zone's offset now are recorded silently. Any other change
+either updates the user's zone in the background, with a toast, when the per-device option is on,
+or asks once in a small dialog, once the user's hands are off the keyboard and pointer (two
+seconds without input) and no other modal is open. Only one tab of the user asks or updates: each
+takes the user's `zone-prompt` lock only if no tab holds it, and a tab that finds it taken checks
+again once it frees, in case the holder gave up without asking.
+
+```ts
+// My settings' "Change my time zone automatically" checkbox.
+const zone = inject(TmDeviceZone);
+const checked = zone.auto; // this user's option on this device
+await zone.setAuto(true, 'settings');
+```
+
+The option and what each tenant last handled live in one document of the store's device partition
+(`zone`), which keeps at most twenty users, so they outlive a sign-out. The primary holds the
+option's reading and the doors alone: the check (`tm-zone-check`), the dialog (`tm-zone-prompt`)
+and the document's writes (`tm-zone-doc`) are lazy chunks. A test app checks nothing: the state
+testing providers replace the check's loader with one that loads none. Telemetry names the step
+and the answer, never a zone or an offset.
 
 ## Decimals
 
@@ -1084,12 +1157,48 @@ its kind and code) is sent once per 10 minutes, and 30 error items at most per
 An injector whose app never starts the pipeline, a unit test's, keeps at most 1,000 calls and sends
 nothing. Tests replace the service with `@tellma/core-testing`'s `TmFakeTelemetry`.
 
+The platform measures itself through the same service:
+
+- **Page visits.** Each routed page is one sampled `tm.page.visit` timing, from its navigation (or
+  the document's time origin for the first route) to the next navigation or `pagehide`. Its `ms`
+  runs to the page context's first status away from `loading`, its `chromeMs` to the first paint
+  after the context registers; `entry` is `load` or `navigation`, and `outcome` is `ready`,
+  `error`, or `left` for a page left before its data arrived. A navigation that renders a route
+  but registers no context, such as the launch page's redirect, passes its start to the next
+  visit; one abandoned in a guard or a resolver is reported as `left`.
+- **The load's paints.** A lazy chunk (`tm-load-metrics`), loaded at idle, observes the paint
+  timeline with `buffered: true` and emits one sampled `tm.vitals.load` (`ttfbMs`, `fcpMs`,
+  `lcpMs`, `navigationType`, and `controlled` when a service worker handled the navigation's
+  request) at the first input or when the page is hidden. A metric the browser lacks is left out,
+  never sent as zero.
+- **Request outcomes.** The pipeline reads the request log on every change. Each flush sends one
+  unsampled `tm.api.requests` per tenant and route for the 20 busiest routes of its window (counts
+  by outcome, the sum and maximum of the durations, the calls over 1 s and 3 s, the background
+  ones); a request that reached 3 s becomes one `tm.api.slow` with its trace id as it settles, or
+  as the page is hidden while it is pending, at most 20 a tab per 10 minutes.
+
+## The request log and Copy diagnostics
+
+`TmRequestLog` keeps the tab's last 100 requests, newest first, in `recent`: the HTTP layer begins
+each entry as it sends and ends it as the request settles, and a pending request turns `slow` at
+3 s. Each answer's `Tellma-Build` goes to `TmAppVersion`, which holds the running build's identity
+(the UI version from the client metadata, its `display` form and `label` with the abbreviated
+commit, the platform's and the features' versions) and orders another build against it by SemVer
+precedence, ignoring the build metadata; `serverNewer` holds while the last server build seen is
+newer.
+
+`diagnosticsText()` is the plain-text block support reads: the versions, the tenant, tab, locale,
+calendar and connection, the routed page and its dialogs, and the last requests with their trace
+ids. It is English with Latin digits in every UI language, with local times and the offset in its
+header, and holds no bidi control. `copy()` writes it to the clipboard synchronously, so call it in
+the user's gesture, and toasts the outcome once; `Mod+Alt+Shift+D` copies it from anywhere, in
+fields and over modals, from the app's first page on.
+
 ## Seams
 
-`TmRequestLog` is an abstract class provided in root with a quiet default that keeps nothing.
-Code records against it today; the observability features replace the default without changing a
-call site. Tests replace it through `@tellma/core-testing`, which also puts `TmFakeApi` behind
-`TmApi` and `TmFakeTelemetry` behind `TmTelemetry`.
+`TmRequestLog` is an abstract class provided in root, whose default is the app's ring of the last
+100 requests; a spec may provide a recording log in its place. `@tellma/core-testing` puts
+`TmFakeApi` behind `TmApi` and `TmFakeTelemetry` behind `TmTelemetry`.
 
 The HTTP layer reaches three services that arrive later through internal seams in `src/api/`, each
 with a default that is correct until its owner replaces it: the request locale (the document's

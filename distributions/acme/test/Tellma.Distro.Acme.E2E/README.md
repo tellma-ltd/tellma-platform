@@ -103,6 +103,11 @@ the development host on `ACME_WEB` or with another worktree.
   representative and the center reader (every tenant), and the sandbox tester (tenant 2 alone).
 - Wait on observable state (a heading, the boot result, the store, a held request), never on the
   clock. `warmUp` waits for the service worker's shell cache and the stored launch documents.
+- A flow that moves the browser's time zone does it per tab, with the DevTools protocol's
+  `Emulation.setTimezoneOverride`, and brings the tab into view, as the device-zone flows do. A
+  flow that changes a user's stored preferences runs its tests serially, and starts and ends with
+  the preference cleared (the device-zone flows reset the time zone through the page, as My
+  settings does), so a later run starts from the same state even after one was killed.
 - A CPU-bound timing budget is a quiet machine's, times `ACME_PERF_MULTIPLIER`
   (`TM_PERF_MULTIPLIER`, a positive number, else 2 on CI), and judges the `median` of
   `ACME_TIMING_SAMPLES` measurements. The cold launch's network-bound budget takes no multiplier.

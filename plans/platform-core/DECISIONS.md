@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-289 (orchestrator, 2026-11-24): split /entity along its read/edit line
+
+- PC-126's search route measured a real closure of 150.8 KB against spec 0024 §12's 110 KB. The chunks were the grid, host and entity view (79), the entity edit stack (18), the forms, pickers, select and date-picker (46), and the modal (6.5).
+- The cause, reproduced with plain esbuild, is code splitting over the /entity barrel. /entity's own import() chunks (the action dialog and the rest) keep its edit stack live, and the barrel spreads that stack into every importer's static chunks.
+- With leaf imports the route comes to 104.5 KB, which is not legitimate across entry points. This is the same cause behind PC-127's 107 KB details route with a TmValue layout (D-287).
+- Ruling: the route budgets stand (110 search, 80 details).
+  - /entity splits along its read/edit line, as @tellma/core-ui/grid and /grid-editing already do. /entity keeps the view side: select plans, value formats, typed value components, blob checks, and the actions' front with its confirmation loop.
+  - A new entry point holds the edit stack: the entity picker binding, the entity fields, and everything that reaches the core-ui editors or @angular/forms.
+  - /entity's lazily loaded dialogs import it only by import().
+  - A staticGraphExcludes guard keeps /entity, /search and /details off it.
+  - D-285's "do not split /entity" is superseded. It rested on the over-count, and the closure measured from the host's import() is still over budget.
+- PC-126 does the split on its branch, because it is blocked on it and holds the measurements. PC-129 starts only after PC-126 lands, so that tm-field builds on the split, and D-287's lazy edit controls follow from it.
+- ./search measured 17.76 KB against spec 0030 §1's 16. After the split PC-126 re-measures and looks for honest savings. If it is still over, the ceiling is the honest measure (D-031), and it is flagged to Ahmad.
+- For Ahmad: ARCHITECTURE.md's @tellma/core row lists the entity picker binding and the entity fields under /entity. The new edit entry point moves them out, so one of the two needs bringing in line. Spec 0030 §1's 16 KB for ./search may need revisiting, and PC-126 will report the figure.
+
 ### D-288 (orchestrator, 2026-11-24): PC-F82's Windows build stall
 
 - CI 45524650837 on PC-F82's integrate commit 907f5290 went red because build-test (windows-latest) was cancelled at the 30 min job limit.

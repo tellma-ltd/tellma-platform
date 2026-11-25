@@ -90,6 +90,12 @@ export interface AcmeText {
   readonly signIn: string | RegExp;
   /** The signed-out page's heading. */
   readonly signedOut: string | RegExp;
+  /** A details page's Edit button. */
+  readonly edit: string;
+  /** A details page's Save button. */
+  readonly save: string;
+  /** A details page's Cancel button. */
+  readonly cancel: string;
 }
 
 /** The texts in each language, as the app's string packs word them; an Arabic imperative takes either gender's form. */
@@ -102,6 +108,9 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     sessionEndedMessage: 'Sign in to continue. Your work is kept.',
     signIn: 'Sign in',
     signedOut: 'You signed out',
+    edit: 'Edit',
+    save: 'Save',
+    cancel: 'Cancel',
   },
   ar: {
     home: 'الرئيسية',
@@ -111,6 +120,9 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     sessionEndedMessage: /(?:سجّل|سجّلي) الدخول للمتابعة\. عملك محفوظ\./,
     signIn: 'تسجيل الدخول',
     signedOut: /^(?:لقد سجّلت الخروج|لقد سجّلتِ الخروج)$/,
+    edit: 'تعديل',
+    save: 'حفظ',
+    cancel: 'إلغاء',
   },
 };
 

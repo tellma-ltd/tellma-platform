@@ -29,6 +29,14 @@ describe('Acme app configuration', () => {
     expect((arabic['forbidden'] as Readonly<Record<string, string>>)['title']).toBe('ليست لديك صلاحية لذلك');
   });
 
+  it("declares the customers' details page, whose layout loads on demand", async () => {
+    const customer = acmeFeature.entities?.find((entity) => entity.name === 'acme.Customer');
+    const load = customer?.['details'] as (() => Promise<{ readonly default: unknown }>) | undefined;
+
+    expect(typeof load).toBe('function');
+    expect(typeof (await load!()).default).toBe('function');
+  });
+
   it("composes Acme's own feature last, under the server feature's name", () => {
     const config = tmAppConfigOf(appConfig);
 

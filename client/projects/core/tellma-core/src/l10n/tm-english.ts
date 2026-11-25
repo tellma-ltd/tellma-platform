@@ -63,6 +63,12 @@ export const TM_STRINGS_EN = {
   attention: {
     banners: { offline: 'Connection lost. Reconnecting…' },
   },
+  // Copy diagnostics: the shortcut's row in the keyboard shortcuts dialog and the copy's two toasts.
+  diagnostics: {
+    copy: 'Copy diagnostics',
+    copied: 'Diagnostics copied.',
+    copyFailed: "Couldn't copy. Open About, then Diagnostics, to see the details.",
+  },
 } as const satisfies TmStringTree;
 
 /**

@@ -16,8 +16,9 @@ import type { TmRouteDataInternal } from './tm-routes';
 // The document title (spec 0024 §4.4): `<page title> · {displayName}`. A
 // route's title is its data's `titleKey`, a coded report's title, else its
 // entity's label: plural on a search page or a list, singular on a details
-// page, the create label on a create page. The title follows the language,
-// since it is a signal.
+// page, the create label on a create page. A page may name itself instead,
+// as a details page names its record, while its own title is not empty. The
+// title follows the language, since it is a signal.
 
 /**
  * Sets the document title to the routed page's title and the distribution's
@@ -32,8 +33,11 @@ export class TmTitleStrategy extends TitleStrategy {
   /** The routed page's title signal. */
   readonly #page = signal<Signal<string> | null>(null);
 
-  /** The routed page's title, without the display name; empty outside any page. */
-  readonly pageTitle: Signal<string> = computed(() => this.#page()?.() ?? '');
+  /** The title the rendered page gives itself, and the page that gave it. */
+  readonly #own = signal<{ readonly owner: object; readonly title: Signal<string> } | null>(null);
+
+  /** The routed page's title, without the display name: the page's own while not empty, else its route's; empty outside any page. */
+  readonly pageTitle: Signal<string> = computed(() => this.#own()?.title() || (this.#page()?.() ?? ''));
 
   /** Creates the strategy, which writes the document title as the page's title changes. */
   constructor() {
@@ -57,6 +61,21 @@ export class TmTitleStrategy extends TitleStrategy {
       found = this.ɵtitleOf(route) ?? found;
     }
     this.#page.set(found);
+  }
+
+  /**
+   * Gives the document the rendered page's own title, or takes it back.
+   * Internal: a details page names its record this way.
+   *
+   * @param owner - The page that names itself; taking the title back only clears that page's.
+   * @param title - The title, or `null` to take the page's title back.
+   */
+  ɵsetPageTitle(owner: object, title: Signal<string> | null): void {
+    if (title !== null) {
+      this.#own.set({ owner, title });
+    } else if (this.#own()?.owner === owner) {
+      this.#own.set(null);
+    }
   }
 
   /**
