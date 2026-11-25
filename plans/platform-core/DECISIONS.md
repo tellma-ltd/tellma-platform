@@ -384,6 +384,17 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-326 (orchestrator, 2026-11-25): PC-F88 landed; PC-122 takes pc-3; PC-F89 released
+
+- PC-F88 landed at 48067cf6. CI 45702642729 was green on 99ac16a7, and the plans-only merge went on top.
+  - The Windows nightly's HTTPS trust step was proven on CI dispatch 45604475795 (D-300).
+  - The nightly Acme legs stay red on the skeleton-frame gate until PC-F100 lands.
+- D-229 fill for pc-3:
+  - No blocking fix is waiting; PC-F102 is already in pc-1.
+  - PC-122 (T1) is ready; PC-129 waits for PC-126 (D-289). So PC-122 takes the slot.
+  - Its brief keeps the launcher and its search off the first frame (226.90 against 230, D-320), and it reports every first-frame byte it adds.
+- PC-F89 is released to integrate, one at a time (D-087/D-190). Next comes PC-F94.
+
 ### D-325 (orchestrator, 2026-11-25): PC-118 landed; PC-F102 in pc-1; PC-F88 released; the slot order
 
 - PC-118 landed at 67c6c796.
