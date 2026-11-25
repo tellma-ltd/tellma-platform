@@ -246,3 +246,24 @@ R1-3: fixed in fix 1.
 R1-4: fixed in fix 1.
 - The selection now also requires `Subject -eq 'CN=localhost'`, `Issuer -eq Subject` (self-signed)
   and `HasPrivateKey`. If nothing qualifies, the step throws.
+
+#### Proof after fix 1
+
+Fix 1 (f94aeabe) was dispatched with `gh workflow run nightly-tier.yml --ref pc/PC-F88`, as run
+45604475795.
+- **The add path ran on the Windows runner.** The step logged, in order:
+  - "A valid HTTPS certificate is already present.": the SDK's first run, during restore or
+    publish, had already created the certificate;
+  - "Adding 5E92BD4C4C555D68CD8A1B47678B883FCEA600E1 to LocalMachine\Root.";
+  - "The development certificate 5E92BD4C… is trusted."
+  So the image does not trust its development certificate. The step did the trusting, without a
+  prompt, and the runner account could write the machine store. The step is the fix, not only a
+  safeguard. Without it, the Windows leg's sign-ins would hit the UntrustedRoot 500 (D-278).
+- **acme-e2e-windows: red only on the PC-F100 gate.** 86 passed, 46 skipped (fixme), 2 failed.
+  Both failures are route-feedback.spec.ts:99, the skeleton-frame @perf gate, in chromium and
+  chromium-ar. Every sign-in flow passed.
+- **acme-e2e (Linux): red only on the same gate.** 3 passed, 2 failed.
+- **The reports upload now (R1-1).** The run's artifacts include nightly-acme-e2e-windows-report
+  (39 files, 4.6 MB) and nightly-acme-e2e-report, beside nightly-quarantine-e2e-report.
+- The other five jobs are green. The cold launch's largest paint warned at 8740 ms on Windows,
+  against its 4000 ms budget. That gate is a warning by design.
