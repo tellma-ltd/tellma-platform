@@ -38,6 +38,9 @@
     <Content Include="..\..\..\infra\monitoring\host\*.kql" Link="AlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\infra\monitoring\realtime\*.kql" Link="RealtimeAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\..\infra\monitoring\api\*.kql" Link="ApiAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\infra\monitoring\client\*.kql" Link="ClientAlertQueries/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The client's API error kinds, which the relay's error counter takes as its closed kind tags. -->
+    <None Include="../../../client/projects/core/tellma-core/src/api/tm-api-error.ts" Link="Observability\tm-api-error.ts" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

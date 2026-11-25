@@ -5,13 +5,14 @@
 
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace Tellma.Core.AspNetCore.Tests.Infrastructure
 {
     /// <summary>
     ///     A logger provider that keeps every event it receives: its level, its rendered message, its
     ///     structured members (for an event Serilog forwards, the event's properties, its scopes'
-    ///     members among them) and its event name.
+    ///     members among them), its event name and the trace it was written under.
     /// </summary>
     internal sealed class CapturingLoggerProvider : ILoggerProvider
     {
@@ -72,7 +73,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
                     }
                 }
 
-                events.Enqueue(new CapturedEvent(logLevel, formatter(state, exception), members, eventId.Name));
+                events.Enqueue(new CapturedEvent(logLevel, formatter(state, exception), members, eventId.Name, Activity.Current?.TraceId.ToHexString()));
             }
         }
     }
@@ -82,5 +83,7 @@ namespace Tellma.Core.AspNetCore.Tests.Infrastructure
     /// <param name="Message">Its rendered message.</param>
     /// <param name="Members">Its structured members, each rendered as text.</param>
     /// <param name="EventName">Its event's name; null when it has none.</param>
-    internal sealed record CapturedEvent(LogLevel Level, string Message, IReadOnlyDictionary<string, string?> Members, string? EventName = null);
+    /// <param name="TraceId">The trace of the activity current when it was written; null when none was.</param>
+    internal sealed record CapturedEvent(
+        LogLevel Level, string Message, IReadOnlyDictionary<string, string?> Members, string? EventName = null, string? TraceId = null);
 }
