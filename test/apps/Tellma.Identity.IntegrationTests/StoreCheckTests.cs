@@ -158,7 +158,8 @@ namespace Tellma.Identity.IntegrationTests
 
             await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
 
-            Assert.Contains(TellmaIdentityConstants.LatestMigration, await AppliedMigrationsAsync(connectionString));
+            List<string> applied = await AppliedMigrationsAsync(connectionString);
+            Assert.Contains(TellmaIdentityConstants.LatestMigration, applied);
             using StandaloneFactory factory = Factory(connectionString, applyMigrations: false);
             using (factory.CreateClient())
             {
@@ -167,7 +168,7 @@ namespace Tellma.Identity.IntegrationTests
 
             // The entry applies nothing more on a second run.
             await TellmaIdentityStore.MigrateAsync(connectionString, TestContext.Current.CancellationToken);
-            Assert.Single(await AppliedMigrationsAsync(connectionString));
+            Assert.Equal(applied, await AppliedMigrationsAsync(connectionString));
         }
 
         [Fact]

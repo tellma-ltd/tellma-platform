@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { makeEnvironmentProviders, type EnvironmentProviders, type Provider } from '@angular/core';
+import { inject, makeEnvironmentProviders, type EnvironmentProviders, type Provider } from '@angular/core';
 import {
   TmSession,
   TmTabBus,
@@ -14,7 +14,9 @@ import {
   ɵTmLocks,
   type ɵTmStoreHost,
 } from '@tellma/core';
+import { ɵTM_HUB_FACTORY } from '@tellma/core/leader';
 
+import { TmFakeHub } from './tm-fake-hub';
 import { TmFakeLocks } from './tm-fake-locks';
 import { TmFakeSession } from './tm-fake-session';
 import { TmFakeTabBus } from './tm-fake-tab-bus';
@@ -22,7 +24,8 @@ import { TmFakeTabBus } from './tm-fake-tab-bus';
 // The client store over no browser storage: no IndexedDB, so the store runs
 // on its mirror alone, a boot record kept in a map, and drafts kept in
 // another, with locks kept in memory too. A test therefore starts with an
-// empty store and leaves nothing behind for the next one.
+// empty store and leaves nothing behind for the next one. A test that runs
+// the leader election itself gets a fake realtime connection.
 
 /** A web storage held in a map. */
 class TmMapStorage {
@@ -88,8 +91,10 @@ export function tmMemoryStoreProvider(): Provider {
  * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
  * storage of its own, so no draft outlives the test. A test app starts no
  * leader election, since it has no other tabs and no hub: `TmLeader` reports
- * a follower until the test sets it. Nor does it run a service worker: the
- * update checks find updates disabled. Use it beside `provideTellmaTesting()`.
+ * a follower until the test sets it; a test that starts the election itself
+ * finds the leader's realtime connections in {@link TmFakeHub}. Nor does it
+ * run a service worker: the update checks find updates disabled. Use it
+ * beside `provideTellmaTesting()`.
  *
  * @example
  * ```ts
@@ -112,6 +117,8 @@ export function provideTellmaStateTesting(): EnvironmentProviders {
     { provide: ɵTmLocks, useExisting: TmFakeLocks },
     TmFakeSession,
     { provide: TmSession, useExisting: TmFakeSession },
+    TmFakeHub,
+    { provide: ɵTM_HUB_FACTORY, useFactory: () => inject(TmFakeHub).factory },
     { provide: ɵTM_LEADER_LOAD, useValue: () => Promise.resolve(null) },
     { provide: ɵTM_UPDATES_LOAD, useValue: () => Promise.resolve(null) },
   ]);

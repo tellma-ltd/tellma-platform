@@ -36,6 +36,7 @@ catalog:
   '@internationalized/date': 3.12.2
   '@jsverse/transloco': 8.4.0
   '@microsoft/api-extractor': 7.58.9
+  '@microsoft/signalr': 10.0.11
   '@modelcontextprotocol/sdk': 1.29.0
   '@playwright/test': 1.61.1
   '@types/node': ^24.13.2

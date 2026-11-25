@@ -61,17 +61,24 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // /entity; a column header's popover opens it, so the search page loads
   // it then, and /entity's own measure never carries it.
   './column-filter': { load: 'lazy', imports: ['./entity'] },
+  // Spec 0029 §10's expression editor and §11's path picker, which spec 0029
+  // §1 places in /entity; the hosts that edit Queryex or choose fields (the
+  // search page's advanced filter and column chooser, the role editor's
+  // permission filters, the report studio and report parameters) load them,
+  // so /entity's own measure never carries them.
+  './expression-editor': { load: 'lazy', imports: ['./entity'] },
+  './path-picker': { load: 'lazy', imports: ['./entity'] },
   './sharing': { load: 'lazy', imports: [] },
   // The page hosts load the tab's memory with them: the search page's state
   // and tree expansion, the details page's drafts and state, the stock
   // pages' and the report studio's drafts, a report's state. The home page,
   // in `/dashboards`, lists the recent pages.
-  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter'] },
+  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
   './details': { load: 'lazy', imports: ['./entity', './memory'] },
-  './admin': { load: 'lazy', imports: ['./memory'] },
+  './admin': { load: 'lazy', imports: ['./memory', './expression-editor', './path-picker'] },
   './attention-pages': { load: 'lazy', imports: [] },
-  './reports': { load: 'lazy', imports: ['./memory'] },
-  './report-studio': { load: 'lazy', imports: ['./memory'] },
+  './reports': { load: 'lazy', imports: ['./memory', './expression-editor'] },
+  './report-studio': { load: 'lazy', imports: ['./memory', './expression-editor', './path-picker'] },
   './dashboards': { load: 'lazy', imports: ['./recents'] },
   './config-check': { load: 'lazy', imports: [] },
   // Spec 0025's tab memory, recent pages and leader election, which spec 0025
