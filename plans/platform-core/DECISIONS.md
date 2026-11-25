@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-316 (orchestrator, 2026-11-25): PC-126's search-route saving is candidate C, applied at integration
+
+- PC-126's read-only investigation (D-313) found the over-budget edge.
+  - The pager's page-size tm-select imports @tellma/core-ui/form-field in two places: tm-select-base injects TmFormField optionally, only to test for an enclosing field; tm-select provides TM_FORM_FIELD_CONTROL.
+  - Under D-281's mechanism, either import pulls the whole form-field chunk (3.93 KB) into the search route.
+- Ruling: candidate C.
+  - The token definitions move to @tellma/core-ui/private as ɵTM_FORM_FIELD_CONTROL, plus a new ɵTM_FORM_FIELD_HOST that tm-form-field provides.
+  - form-field re-exports the control token under its public name, so the public name, token identity and every other control are unchanged.
+  - tm-select-base injects the host seam instead of TmFormField.
+  - Measured on a merge of platform-core, pc/PC-F101 and PC-126: the search route is 107.43 of 110, initialJs 222.79, unchanged. The core-ui primary stays at 9.20 of 9.21, private goes from 1.55 to 1.62 of 1.69, and form-field from 3.55 to 3.59 of 3.74.
+  - Option A puts the tokens in the core-ui primary beside TM_CELL_EDITOR_HOST. That would put the primary at 9.23, over its 9.21 ceiling, so it would need a raise. C needs none, and private is the ɵ seam home.
+  - Spec 0029 only requires that controls provide the token, so C is spec-neutral.
+- PC-126's three implementer rounds are spent (section 4.4), so C goes in at its integration, from the scratchpad diff PC-126-D313-candC.diff.
+  - The integrate gates and CI cover it, together with the select, form-field and control suites.
+  - For the api golden, prefer the types-only contentChild<TmFormFieldControl> edit if it keeps core-ui.form-field.api.md unchanged; otherwise approve the one-line type print change.
+- Release order is unchanged (D-314): PC-F101, then PC-118, then PC-126, then PC-F88.
+
 ### D-315 (orchestrator, 2026-11-25): PC-154 goes to R1 before its shell rows; the first frame
 
 - PC-154's impl (ce6f1973, on 8646bb53) delivers /support but not the D-305 shell rows, because PC-118 has not landed.
