@@ -76,9 +76,10 @@ export { TmAppVersion, type TmFeatureVersion } from './src/requests/tm-app-versi
 // panel and the support dialog are @tellma/core/support's.
 export { TmSupport } from './src/support/tm-support';
 // What @tellma/core/support and the About dialog build on, and the loaders
-// @tellma/core-testing replaces: the snapshot the facade takes, the request
-// line the panel copies, the error class a failed section names, and the
-// offline line. Not for app code.
+// @tellma/core-testing replaces: the snapshot the facade takes and the request
+// line the panel copies. The offline line stays off this list: only the
+// support host chunk imports it, which keeps it off the first frame. Not for
+// app code.
 export {
   TM_SUPPORT_LOAD as ɵTM_SUPPORT_LOAD,
   TM_SUPPORT_TOOLS_LOAD as ɵTM_SUPPORT_TOOLS_LOAD,
@@ -92,7 +93,6 @@ export {
   type TmSupportSnapshot as ɵTmSupportSnapshot,
   type TmSupportTools as ɵTmSupportTools,
 } from './src/support/tm-support';
-export { ɵTmSupportOffline } from './src/support/tm-support-offline';
 export { tmDiagnosticsLine as ɵtmDiagnosticsLine } from './src/requests/tm-diagnostics';
 
 // The page context and the page actions: the registry, page scopes, the

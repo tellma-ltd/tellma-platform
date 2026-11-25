@@ -11,10 +11,12 @@ import { TmLocalization } from '../l10n/tm-localization';
 
 // What shows when the support entry point cannot load, as offline before the
 // worker cached it (spec 0026 §8.4, §12.2): one line naming Copy
-// diagnostics' shortcut, which works without it. The line ships in the
-// primary, since the chunk that holds the panel and the dialog did not load;
-// so do the support dialog's title and Close, which the dialog shows before
-// that chunk lands. The strings register under `tm.supportHost` when the
+// diagnostics' shortcut, which works without it. The line ships with the
+// primary's support host chunk, which the startup preloads at idle and the
+// worker caches with the shell, not with @tellma/core/support, since that is
+// the chunk that did not load; so do the support dialog's title and Close,
+// which the dialog shows before that chunk lands. Nothing on the first frame
+// imports this file. The strings register under `tm.supportHost` when the
 // line or the support host is first created.
 
 /** The support host's English strings, under `tm.supportHost`. */
