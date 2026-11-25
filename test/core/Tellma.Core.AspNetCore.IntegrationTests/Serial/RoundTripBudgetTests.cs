@@ -11,6 +11,8 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.AspNetCore.IntegrationTests.Infrastructure;
 using Tellma.Core.AspNetCore.IntegrationTests.Stacks;
@@ -27,7 +29,9 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
     ///     the measurement carrying its own operation tag, so no request's measurement is ever left
     ///     behind to be taken for a later one's. Every entity action shares one tag, so those are told
     ///     apart by the route; the case runs alone, so no other caller's unit of work lands among the
-    ///     measurements.
+    ///     measurements. An operation above its budget is reported with what was recorded while it
+    ///     ran that costs a round trip on a warm path: a cache lookup that missed, a connection that
+    ///     was not warm, and a round trip re-run after a failure.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -43,9 +47,14 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
         {
             // The session is opened before the collector starts, so its sign-in's units of work are never among the measurements.
             using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
-            using MetricCollector<int> trips = new(
-                deployment.Host.Services.GetRequiredService<IMeterFactory>(), DataTelemetryNames.MeterName, DataTelemetryNames.RoundTrips);
-            Budget budget = new(trips, admin);
+            IMeterFactory meters = deployment.Host.Services.GetRequiredService<IMeterFactory>();
+            using MetricCollector<int> trips = new(meters, DataTelemetryNames.MeterName, DataTelemetryNames.RoundTrips);
+
+            // The instruments that name why a warm operation took more round trips than its budget.
+            using MetricCollector<long> lookups = new(meters, CacheTelemetryNames.MeterName, CacheTelemetryNames.Requests);
+            using MetricCollector<long> connects = new(meters, AccessTelemetryNames.MeterName, AccessTelemetryNames.ConnectResults);
+            using MetricCollector<long> retries = new(meters, DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
+            Budget budget = new(trips, new Causes(lookups, connects, retries), admin);
 
             // --- Centers. A save names its parent and carries its natural key, so even a create
             // validates in a round of its own; a delete runs the stack's own delete validation ---
@@ -163,10 +172,50 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
             return [.. rows.Select(static row => (JsonNode)new JsonObject { ["type"] = row.Type, ["channel"] = row.Channel, ["enabled"] = row.Enabled })];
         }
 
+        /// <summary>
+        ///     The collectors of what costs a warm operation a round trip of its own: the cache lookups,
+        ///     the connect results and the re-runs.
+        /// </summary>
+        /// <param name="Lookups">The cache lookups, by kind and outcome.</param>
+        /// <param name="Connects">The connect results.</param>
+        /// <param name="Retries">The round trips re-run after a failure.</param>
+        private sealed record Causes(MetricCollector<long> Lookups, MetricCollector<long> Connects, MetricCollector<long> Retries)
+        {
+            /// <summary>The outcome of a cache lookup that a stored entry answered.</summary>
+            private const string Hit = "hit";
+
+            /// <summary>Forgets everything recorded until now.</summary>
+            public void Clear()
+            {
+                Lookups.Clear();
+                Connects.Clear();
+                Retries.Clear();
+            }
+
+            /// <summary>
+            ///     What was recorded since the last <see cref="Clear" /> that costs a round trip on a
+            ///     warm path: every lookup but a hit, every connection but a warm one, and every re-run.
+            /// </summary>
+            /// <returns>The measurements, comma-separated; empty when none was recorded.</returns>
+            public string Describe()
+            {
+                IEnumerable<string> lookups = Lookups.GetMeasurementSnapshot()
+                    .Where(static measured => !string.Equals(measured.Tags.GetValueOrDefault(CacheTelemetryNames.OutcomeTag) as string, Hit, StringComparison.Ordinal))
+                    .Select(static measured => $"{measured.Tags.GetValueOrDefault(CacheTelemetryNames.KindTag)} lookup {measured.Tags.GetValueOrDefault(CacheTelemetryNames.OutcomeTag)}");
+                IEnumerable<string> connects = Connects.GetMeasurementSnapshot()
+                    .Where(static measured => !string.Equals(measured.Tags.GetValueOrDefault(AccessTelemetryNames.ResultTag) as string, AccessTelemetryNames.ResultWarm, StringComparison.Ordinal))
+                    .Select(static measured => $"connect {measured.Tags.GetValueOrDefault(AccessTelemetryNames.ResultTag)}");
+                IEnumerable<string> retries = Retries.GetMeasurementSnapshot()
+                    .Select(static measured => $"re-run {measured.Tags.GetValueOrDefault(DataTelemetryNames.ClassTag)} {measured.Tags.GetValueOrDefault(DataTelemetryNames.ErrorTag)}");
+                return string.Join(", ", lookups.Concat(connects).Concat(retries));
+            }
+        }
+
         /// <summary>Measures operations one at a time and keeps those above their budget.</summary>
         /// <param name="trips">The round-trip instrument's collector.</param>
+        /// <param name="causes">The collectors of what costs a warm operation a round trip of its own.</param>
         /// <param name="client">The caller.</param>
-        private sealed class Budget(MetricCollector<int> trips, SpaClient client)
+        private sealed class Budget(MetricCollector<int> trips, Causes causes, SpaClient client)
         {
             /// <summary>The warming read's route.</summary>
             private const string WarmingRoute = "users/me";
@@ -209,16 +258,20 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
             /// <returns>The operation's answer.</returns>
             public async Task<JsonNode> MeasureAsync(string route, JsonNode? body, string operation, int allowed)
             {
-                // --- The warming read, measured and set aside ---
+                // --- The warming read, measured and set aside with what it recorded ---
                 _ = await SetUpAsync(WarmingRoute, null, WarmingOperation);
+                causes.Clear();
 
-                // --- The operation ---
+                // --- The operation; one above its budget names what was recorded while it ran ---
                 JsonNode answer = (await client.PostAsync(Tenant, route, body)).Expect(HttpStatusCode.OK);
                 int taken = await AwaitAsync(operation, route);
                 _ = All.Append(CultureInfo.InvariantCulture, $"{route} ({operation}): {taken} (budget {allowed})").Append('\n');
                 if (taken > allowed)
                 {
-                    _ = Over.Append(CultureInfo.InvariantCulture, $"{route} ({operation}): {taken} round trips, budget {allowed}").Append('\n');
+                    string recorded = causes.Describe();
+                    _ = Over.Append(
+                        CultureInfo.InvariantCulture,
+                        $"{route} ({operation}): {taken} round trips, budget {allowed}; recorded meanwhile: {(recorded.Length == 0 ? "nothing" : recorded)}").Append('\n');
                 }
 
                 return answer;
