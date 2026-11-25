@@ -9,6 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { TmToasts } from '@tellma/core-ui/toast';
 import { tmTestEntitiesChunk, TmFakeLocks } from '@tellma/core-testing';
+import type { MockInstance } from 'vitest';
 
 import { TmApiError } from '../api/tm-api-error';
 import { TM_API_HOST, type TmApiHost } from '../api/tm-api-host';
@@ -58,6 +59,9 @@ let visible = true;
 /** The input-idle moment the prompt waits for; settled unless a test holds it. */
 let idleGate: Promise<void> = Promise.resolve();
 
+/** How many times a check has waited for the input-idle moment. */
+let idleWaits = 0;
+
 /** The browser behind the app: the real page's events, with the visibility scripted. */
 function host(): TmApiHost {
   return {
@@ -102,15 +106,26 @@ interface TmZoneRigOptions {
   readonly state?: TmTenantFacts['state'];
   /** How the server answers the write; with the user's new zone when omitted. */
   readonly respond?: (call: { readonly body: { readonly timeZone: string } }) => unknown;
+  /** Whether the server is unreachable from the start. */
+  readonly offline?: boolean;
 }
 
 /** The rig, and the app's device-zone service. */
 interface TmZoneRig extends TmAppRig {
   /** The device-zone service. */
   readonly zone: TmDeviceZone;
+  /** Every check the app's check service ran, the startup's first. */
+  readonly checks: MockInstance<() => Promise<void>>;
 }
 
-/** Starts the app in tenant 17, with the device's zone document and the write's answer scripted. */
+/**
+ * Starts the app in tenant 17, with the device's zone document, the write's
+ * answer and the server's reach scripted before the app's startup check can
+ * read them.
+ *
+ * @param options - What the spec scripts.
+ * @returns The rig.
+ */
 async function setUp(options: TmZoneRigOptions = {}): Promise<TmZoneRig> {
   deviceZone = options.device ?? 'Europe/London';
   const loaders = tmRouteTestConfig().metadata;
@@ -120,7 +135,15 @@ async function setUp(options: TmZoneRigOptions = {}): Promise<TmZoneRig> {
       { provide: TM_ZONE_CHECK_LOAD, useValue: () => import('./tm-zone-check') },
       { provide: TM_METADATA_LOADERS, useValue: { ...loaders, entities: () => Promise.resolve(tmTestEntitiesChunk({ enums: [TIME_ZONE] })) } },
       { provide: TM_API_HOST, useFactory: host },
-      { provide: TmInputIdle, useValue: { whenIdle: () => idleGate } },
+      {
+        provide: TmInputIdle,
+        useValue: {
+          whenIdle: () => {
+            idleWaits++;
+            return idleGate;
+          },
+        },
+      },
     ],
   });
   if (options.seen !== null) {
@@ -134,8 +157,30 @@ async function setUp(options: TmZoneRigOptions = {}): Promise<TmZoneRig> {
     'users/me/locale',
     options.respond ?? ((call: { readonly body: { readonly timeZone: string } }) => localeResult(call.body.timeZone)),
   );
+  if (options.offline === true) {
+    rig.api.setOnline(false);
+  }
+  // The checks are recorded from the first, the startup's.
+  const checks = vi.spyOn(TmZoneCheck.prototype, 'check');
   await tmNavigate('/17');
-  return { ...rig, zone: TestBed.inject(TmDeviceZone) };
+  return { ...rig, zone: TestBed.inject(TmDeviceZone), checks };
+}
+
+/**
+ * Starts the check's triggers now, as the app does at idle after the first
+ * render, and waits for the startup check they run to finish. That check
+ * reads the stored zone only once the Entities chunk has loaded, which no
+ * number of turns bounds; a spec that changes what the check reads waits
+ * for it first, or the startup check reads the change. A busy page may
+ * hold an idle callback back for seconds, so the spec does not wait for
+ * the app's own; that one then finds the triggers started.
+ *
+ * @param rig - The rig.
+ */
+async function startup(rig: TmZoneRig): Promise<void> {
+  rig.zone.ɵstart();
+  await tmSettleUntil(() => rig.checks.mock.calls.length > 0, 'the startup check started');
+  await rig.checks.mock.results[0]!.value;
 }
 
 /** The device zone tenant 17 handled last, as the device's document holds it. */
@@ -211,6 +256,7 @@ describe('TmZoneCheck', () => {
   beforeEach(() => {
     visible = true;
     idleGate = Promise.resolve();
+    idleWaits = 0;
     // The browser reports the scripted zone wherever it would report its own.
     const real = Intl.DateTimeFormat.prototype.resolvedOptions;
     vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(function (this: Intl.DateTimeFormat) {
@@ -228,7 +274,8 @@ describe('TmZoneCheck', () => {
   describe('the steps', () => {
     it("records a first run's zone at idle after the first render, and asks nothing", async () => {
       const rig = await setUp({ seen: null });
-      await tmSettleUntil(() => seen(rig) === 'Europe/London');
+      // The app's own start, at idle, with no help from the spec.
+      await tmSettleUntil(() => seen(rig) === 'Europe/London', 'the startup check recorded the zone');
       expect(zoneEvents(rig)).toEqual([['zone-change', { action: 'first-run' }]]);
       expect(prompt()).toBeNull();
       expect(writes(rig)).toEqual([]);
@@ -272,8 +319,10 @@ describe('TmZoneCheck', () => {
     });
 
     it('does nothing in a hidden tab', async () => {
-      const rig = await setUp({ seen: null });
+      // The tab opens in the background, so the startup's check finds it hidden too.
       visible = false;
+      const rig = await setUp({ seen: null });
+      await startup(rig);
       await rig.zone.check();
       expect(seen(rig)).toBeUndefined();
       expect(zoneEvents(rig)).toEqual([]);
@@ -281,7 +330,8 @@ describe('TmZoneCheck', () => {
 
     it('checks again when the tab comes into view, after the device zone is re-read', async () => {
       const rig = await setUp({ seen: null, device: 'Asia/Riyadh' });
-      await tmSettleUntil(() => seen(rig) === 'Asia/Riyadh');
+      await startup(rig);
+      expect(seen(rig)).toBe('Asia/Riyadh');
       await rig.zone.setAuto(true, 'settings');
       deviceZone = 'Europe/London';
       document.dispatchEvent(new Event('visibilitychange'));
@@ -293,7 +343,7 @@ describe('TmZoneCheck', () => {
   describe('the triggers', () => {
     it('checks on each entry into a tenant, and not on a navigation within it', async () => {
       const rig = await setUp({ seen: 'Europe/London', auto: true });
-      await tmSettle();
+      await startup(rig);
       // The startup's check found nothing to do; the change below waits for a trigger.
       await setSeen(rig, 'Asia/Riyadh');
       await rig.router.navigateByUrl('/17/credit-review');
@@ -303,14 +353,14 @@ describe('TmZoneCheck', () => {
       await tmSettle();
       expect(writes(rig)).toEqual([]);
       await rig.router.navigateByUrl('/17');
-      await tmSettleUntil(() => writes(rig).length === 1);
-      expect(seen(rig)).toBe('Europe/London');
+      await tmSettleUntil(() => seen(rig) === 'Europe/London', 'the entry check updated and recorded the zone');
+      expect(writes(rig)).toEqual([{ timeZone: 'Europe/London' }]);
       expect(zoneEvents(rig).filter(([name]) => name === 'zone-change')).toEqual([['zone-change', { action: 'auto' }]]);
     });
 
     it('runs one check for a burst of triggers, so one change is handled once', async () => {
       const rig = await setUp({ seen: 'Europe/London', auto: true });
-      await tmSettle();
+      await startup(rig);
       await setSeen(rig, 'Asia/Riyadh');
       // A tenant entry, the tab coming into view and a caller's check, in one task.
       const entry = rig.router.navigateByUrl('/tenants').then(() => rig.router.navigateByUrl('/17'));
@@ -325,8 +375,9 @@ describe('TmZoneCheck', () => {
 
   describe('the automatic update', () => {
     it('writes the zone in the background, adopts it, records it and says so in a toast with Change', async () => {
+      // Watched from the start, since the startup's check may be the one that updates.
+      const toast = vi.spyOn(TmToasts.prototype, 'show');
       const rig = await setUp({ auto: true });
-      const toast = vi.spyOn(TestBed.inject(TmToasts), 'show');
       await rig.zone.check();
       expect(writes(rig)).toEqual([{ timeZone: 'Europe/London' }]);
       expect(rig.api.calls().find((call) => call.route === 'users/me/locale')?.options).toEqual({ tenantId: 17 });
@@ -354,13 +405,14 @@ describe('TmZoneCheck', () => {
     it('tries an offline write once more when the server is reachable again, and only once', async () => {
       const rig = await setUp({
         auto: true,
+        offline: true,
         respond: () => {
           throw new TmApiError({ kind: 'offline' });
         },
       });
-      rig.api.setOnline(false);
-      // The startup's check, at idle after the first render, finds the server unreachable.
-      await tmSettleUntil(() => writes(rig).length === 1);
+      // The startup's check finds the server unreachable.
+      await startup(rig);
+      expect(writes(rig)).toHaveLength(1);
       // A later check while still offline waits for the same retry.
       await rig.zone.check();
       expect(writes(rig)).toHaveLength(2);
@@ -381,9 +433,11 @@ describe('TmZoneCheck', () => {
     });
 
     it("records a zone outside the server's set, so it is never tried again until the device moves", async () => {
-      const rig = await setUp({ auto: true });
-      rig.api.respond('users/me/locale', () => {
-        throw zoneUnknown();
+      const rig = await setUp({
+        auto: true,
+        respond: () => {
+          throw zoneUnknown();
+        },
       });
       await rig.zone.check();
       expect(seen(rig)).toBe('Europe/London');
@@ -393,11 +447,15 @@ describe('TmZoneCheck', () => {
     });
 
     it('records nothing after any other failure, so the next check tries again', async () => {
-      const rig = await setUp({ auto: true });
-      rig.api.respond('users/me/locale', () => {
-        throw new TmApiError({ kind: 'server', status: 500, code: 'server' });
+      const rig = await setUp({
+        auto: true,
+        respond: () => {
+          throw new TmApiError({ kind: 'server', status: 500, code: 'server' });
+        },
       });
-      await rig.zone.check();
+      // The startup's check fails on the server.
+      await startup(rig);
+      expect(writes(rig)).toHaveLength(1);
       expect(seen(rig)).toBe('Asia/Riyadh');
       expect(zoneEvents(rig).at(-1)).toEqual(['zone-auto', { outcome: 'rejected' }]);
       // A server failure is reported, as the error views would report it.
@@ -408,7 +466,7 @@ describe('TmZoneCheck', () => {
 
     it('reports a write whose outcome is unknown, and tries it again once the server is reachable', async () => {
       const rig = await setUp({ seen: 'Europe/London', auto: true });
-      await tmSettle();
+      await startup(rig);
       await setSeen(rig, 'Asia/Riyadh');
       rig.api.respond('users/me/locale', () => {
         throw new TmApiError({ kind: 'offline', code: 'outcome-unknown' });
@@ -419,9 +477,11 @@ describe('TmZoneCheck', () => {
     });
 
     it('reports nothing for a refusal the error views would not report', async () => {
-      const rig = await setUp({ auto: true });
-      rig.api.respond('users/me/locale', () => {
-        throw new TmApiError({ kind: 'forbidden', status: 403, code: 'forbidden' });
+      const rig = await setUp({
+        auto: true,
+        respond: () => {
+          throw new TmApiError({ kind: 'forbidden', status: 403, code: 'forbidden' });
+        },
       });
       await rig.zone.check();
       expect(zoneEvents(rig).at(-1)).toEqual(['zone-auto', { outcome: 'rejected' }]);
@@ -520,7 +580,8 @@ describe('TmZoneCheck', () => {
       const rig = await setUp();
       const page: TmModalRef = TestBed.inject(TmModal).open(TmSpecDialog, { title: 'A page dialog' });
       void rig.zone.check();
-      await tmSettle();
+      // The dialog's chunk loads before the wait.
+      await tmSettleUntil(() => idleWaits > 0, 'the check waits for the user to be idle');
       expect(prompt()).toBeNull();
       idle();
       await tmSettle();
@@ -534,7 +595,7 @@ describe('TmZoneCheck', () => {
       idleGate = new Promise((resolve) => (idle = resolve));
       const rig = await setUp();
       const done = rig.zone.check();
-      await tmSettle();
+      await tmSettleUntil(() => idleWaits > 0, 'the check waits for the user to be idle');
       // Another tab answered meanwhile.
       await rig.store.patch<TmZoneDoc>(DEVICE, 'zone', (doc) => ({
         users: { [TM_TEST_SUB]: { ...doc!.users[TM_TEST_SUB]!, seen: { 17: 'Europe/London' } } },
@@ -547,7 +608,7 @@ describe('TmZoneCheck', () => {
 
     it("asks nothing while another tab holds the user's prompt lock, and asks once that tab gives up without asking", async () => {
       const rig = await setUp({ seen: 'Europe/London' });
-      await tmSettle();
+      await startup(rig);
       let release!: () => void;
       const held = TestBed.inject(TmFakeLocks).run(`tm:acme:${TM_TEST_SUB}:zone-prompt`, () => new Promise<void>((resolve) => (release = resolve)));
       await setSeen(rig, 'Asia/Riyadh');
@@ -563,7 +624,7 @@ describe('TmZoneCheck', () => {
 
     it('asks nothing once the tab that held the lock answered, and waits for the lock once however often it checks', async () => {
       const rig = await setUp({ seen: 'Europe/London' });
-      await tmSettle();
+      await startup(rig);
       const locks = TestBed.inject(TmFakeLocks);
       let release!: () => void;
       const held = locks.run(`tm:acme:${TM_TEST_SUB}:zone-prompt`, () => new Promise<void>((resolve) => (release = resolve)));
