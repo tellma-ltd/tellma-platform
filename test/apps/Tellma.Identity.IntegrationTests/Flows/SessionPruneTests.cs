@@ -66,7 +66,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
             foreach (string sid in (string[])["old", "recent"])
             {
                 await registry.UpsertSessionAsync(sid, user.Id, "agent", "203.0.113.7", TestContext.Current.CancellationToken);
-                await registry.RegisterClientAsync(sid, distribution.BffClientId, null, TestContext.Current.CancellationToken);
+                await registry.RegisterClientAsync(
+                    sid, distribution.BffClientId, "authorization-" + sid, TestContext.Current.CancellationToken);
                 await registry.TerminateAsync(sid, TestContext.Current.CancellationToken);
             }
 
@@ -78,8 +79,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             Assert.Equal(1, result.Removed);
 
-            // The row is gone, and so is its client registration — a leftover would keep pointing
-            // at a session that no longer exists.
+            // The row is gone, and so are its client registration and the authorization recorded
+            // beneath it — a leftover would keep pointing at a session that no longer exists.
             using IServiceScope reader = factory.Services.CreateScope();
             TellmaIdentityDbContext context = reader.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
             Assert.Equal(
@@ -90,6 +91,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 ["recent"],
                 await context.Set<IdentitySessionClient>().Select(static c => c.Sid).OrderBy(static sid => sid)
                     .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                ["authorization-recent"],
+                await context.Set<IdentitySessionClientAuthorization>().Select(static a => a.AuthorizationId)
+                    .OrderBy(static id => id).ToListAsync(TestContext.Current.CancellationToken));
         }
 
         [Fact]

@@ -7,8 +7,9 @@ namespace Tellma.Identity.Data.Entities
 {
     /// <summary>
     ///     A client (distribution) that obtained tokens under an SSO session — the fan-out target
-    ///     list for back-channel logout. The recorded OpenIddict authorization id lets a global
-    ///     logout also revoke the grants backing that client's refresh tokens.
+    ///     list for back-channel logout. The OpenIddict authorizations its grants used under the
+    ///     session (<see cref="Authorizations" />) let a logout also revoke the grants backing the
+    ///     client's refresh tokens.
     /// </summary>
     public sealed class IdentitySessionClient
     {
@@ -18,7 +19,12 @@ namespace Tellma.Identity.Data.Entities
         /// <summary>The client identifier.</summary>
         public string ClientId { get; set; } = string.Empty;
 
-        /// <summary>The physical id of the OpenIddict authorization backing the client's grant.</summary>
+        /// <summary>
+        ///     The physical id of the OpenIddict authorization the client's latest grant under the
+        ///     session used. It is still written beside <see cref="Authorizations" /> because the
+        ///     previous engine release reads only this column, and a logout revokes it too, since a
+        ///     registration that release made has nothing else.
+        /// </summary>
         public string? AuthorizationId { get; set; }
 
         /// <summary>When the client first obtained tokens under this session.</summary>
@@ -26,5 +32,8 @@ namespace Tellma.Identity.Data.Entities
 
         /// <summary>When the client last acknowledged a back-channel logout, if ever.</summary>
         public DateTimeOffset? NotifiedUtc { get; set; }
+
+        /// <summary>Every OpenIddict authorization the client's grants used under the session.</summary>
+        public ICollection<IdentitySessionClientAuthorization> Authorizations { get; } = [];
     }
 }

@@ -15,7 +15,8 @@ import { TmApiError } from '../api/tm-api-error';
 import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
-import { tmAppRig, tmNavigate, tmSettle, TM_T17, TM_TEST_SUB, type TmAppRig } from '../routes/tm-app.testing.util';
+import { TmLocalization } from '../l10n/tm-localization';
+import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_T17, TM_TEST_SUB, type TmAppRig } from '../routes/tm-app.testing.util';
 import type { TmBusMessage } from '../state/bus/tm-bus-messages';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../state/bus/tm-tab-bus.testing.util';
@@ -106,7 +107,12 @@ async function setUp(options: { boot?: Partial<TmBootResult> } = {}): Promise<Tm
   });
   // The first render loads the flows' chunk, as the app's does.
   await tmNavigate('/17/centers');
-  await tmSettle();
+  // The navigation's own time is no wait for the chunk: once the shell is
+  // loaded, a route activates in the same task. So this waits for the flows
+  // themselves, which register their strings as they start, before a spec
+  // fakes the clock, which would not move a load still running.
+  const l10n = TestBed.inject(TmLocalization);
+  await tmSettleUntil(() => l10n.ɵhas('tm.session.signingOut'), 'the session flows loaded');
   return {
     ...rig,
     host,

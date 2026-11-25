@@ -20,6 +20,7 @@
       "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/public-api.ts"],
       "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"],
       "@tellma/locale-ar/platform-strings": ["./projects/locale/tellma-locale-ar/platform-strings/public-api.ts"],
+      "@tellma/locale-ar/queryex-strings": ["./projects/locale/tellma-locale-ar/queryex-strings/public-api.ts"],
       "@tellma/locale-ar/shell-strings": ["./projects/locale/tellma-locale-ar/shell-strings/public-api.ts"],
       "@tellma/locale-ar/strings": ["./projects/locale/tellma-locale-ar/strings/public-api.ts"],
       /* The stylesheets a global stylesheet imports by package name, which the build's CSS bundler resolves here too. */

@@ -15,6 +15,7 @@
     "test": "pnpm --dir client run test",
     "lint": "pnpm --dir client run lint",
     "typecheck": "pnpm --dir client run typecheck",
+    "typecheck:emitted": "pnpm --dir client run typecheck:emitted",
     "lint:test": "pnpm --dir client run lint:test",
     "e2e": "pnpm --dir client run e2e",
     "tokens:build-css": "pnpm --dir client run tokens:build-css",

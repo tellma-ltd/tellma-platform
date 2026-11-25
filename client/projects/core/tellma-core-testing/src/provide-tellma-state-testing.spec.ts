@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   TmClientStore,
@@ -14,10 +15,12 @@ import {
   type TmPartition,
   ɵTM_LEADER_LOAD,
 } from '@tellma/core';
+import { ɵTM_HUB_FACTORY } from '@tellma/core/leader';
 import { TmDrafts } from '@tellma/core/memory';
 
 import { provideTellmaStateTesting } from './provide-tellma-state-testing';
 import { provideTellmaTesting } from './provide-tellma-testing';
+import { TmFakeHub } from './tm-fake-hub';
 import { TmFakeSession, tmTestProfile } from './tm-fake-session';
 import { TmFakeTabBus } from './tm-fake-tab-bus';
 import { TmFakeTelemetry } from './tm-fake-telemetry';
@@ -34,6 +37,44 @@ describe('provideTellmaStateTesting', () => {
   it('puts the fakes behind the tab bus and the session', () => {
     expect(TestBed.inject(TmTabBus)).toBe(TestBed.inject(TmFakeTabBus));
     expect(TestBed.inject(TmSession)).toBe(TestBed.inject(TmFakeSession));
+  });
+
+  it("opens the leader's realtime connections on the fake hub, which reports through the leader's sink", async () => {
+    const factory = TestBed.inject(ɵTM_HUB_FACTORY)!;
+    const reports: string[] = [];
+    const sink = {
+      event: (event: { readonly name: string }) => reports.push(`event ${event.name}`),
+      state: (state: string) => reports.push(`state ${state}`),
+      connected: () => reports.push('connected'),
+      refused: (status: number) => reports.push(`refused ${status}`),
+      ended: (reason: string) => reports.push(`ended ${reason}`),
+    };
+    const connection = await factory(17, sink, TestBed.inject(Injector));
+    const hub = TestBed.inject(TmFakeHub);
+    expect(hub.connections).toEqual([connection]);
+    connection.start();
+    connection.nudge();
+    await connection.stop();
+    const fake = hub.connections[0]!;
+    expect([fake.tenantId, fake.starts, fake.nudges, fake.stops]).toEqual([17, 1, 1, 1]);
+    // A test may hold the stop open.
+    fake.stopResult = new Promise<void>(() => undefined);
+    expect(fake.stop()).toBe(fake.stopResult);
+    fake.connect();
+    fake.emit('acme.jobs.changed', { id: 4 });
+    fake.drop();
+    fake.refuse(403);
+    fake.end('access-revoked');
+    expect(reports).toEqual([
+      'state connected',
+      'connected',
+      'event acme.jobs.changed',
+      'state reconnecting',
+      'refused 403',
+      'event session.ended',
+      'state reconnecting',
+      'ended access-revoked',
+    ]);
   });
 
   it('runs the store in memory, with the guard passing for the test user', async () => {

@@ -1,7 +1,7 @@
 # Tellma.Queryex.ClientCorpus
 
-Writes the two files the client's Queryex suites in `@tellma/core/entity` are held to, from the
-engine's own lexer, parser and printer:
+Writes the two files the client's Queryex suites in `@tellma/core/entity` and
+`@tellma/core/expression-editor` are held to, from the engine's own lexer, parser and printer:
 
 - `client/projects/core/tellma-core/entity/src/queryex-lexer-corpus.json`: for each text, the
   tokens the engine reads (with the runs it cannot read as `error` tokens), its parameters grouped

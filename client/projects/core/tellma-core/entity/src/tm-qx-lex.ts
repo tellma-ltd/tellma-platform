@@ -53,14 +53,6 @@ export interface TmQxLexResult {
   readonly diagnostics: readonly TmQxLexDiagnostic[];
 }
 
-/** One parameter of a text: its name and every place it is written. */
-export interface TmQxParameter {
-  /** The name, without `@`, as it is first spelled. */
-  readonly name: string;
-  /** Each occurrence's whole token, `@` included, in order. */
-  readonly sites: readonly { readonly start: number; readonly length: number }[];
-}
-
 /** The reserved words, matched without regard to ASCII case. */
 const KEYWORDS: ReadonlySet<string> = new Set(['and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'asc', 'desc']);
 
@@ -489,53 +481,6 @@ export function tmQxLex(text: string): TmQxLexResult {
     next = token;
   }
   return { tokens, diagnostics: scan.diagnostics };
-}
-
-/**
- * The parameters of a Queryex text, grouped by name as the engine matches
- * them, without regard to case, under the first spelling. Text inside a
- * string literal is never a parameter.
- *
- * @param text - The text.
- * @returns Each parameter and its sites, in order of first use.
- *
- * @example
- * ```ts
- * tmQxParameters("PostingDate >= @From and Memo != 'a@b' and @from < Due");
- * // [{ name: 'From', sites: [{ start: 15, length: 5 }, { start: 43, length: 5 }] }]
- * ```
- */
-export function tmQxParameters(text: string): readonly TmQxParameter[] {
-  const groups = new Map<string, { readonly name: string; readonly sites: { start: number; length: number }[] }>();
-  for (const token of tmQxLex(text).tokens) {
-    if (token.kind === 'parameter') {
-      const folded = ɵtmQxFold(token.text);
-      let group = groups.get(folded);
-      if (group === undefined) {
-        groups.set(folded, (group = { name: token.text, sites: [] }));
-      }
-      group.sites.push({ start: token.start, length: token.length });
-    }
-  }
-  return [...groups.values()];
-}
-
-/**
- * A name folded as the engine compares names without regard to case: each
- * code unit upper-cased by itself, except where that would turn a
- * non-ASCII letter into an ASCII one (the dotless i, the long s), which
- * the engine's ordinal comparison never does.
- *
- * @param name - The name.
- * @returns The folded name.
- */
-export function ɵtmQxFold(name: string): string {
-  let folded = '';
-  for (const unit of name.split('')) {
-    const upper = unit.toUpperCase();
-    folded += upper.length === 1 && !(unit > '\x7f' && upper <= '\x7f') ? upper : unit;
-  }
-  return folded;
 }
 
 /**

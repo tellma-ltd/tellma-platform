@@ -30,8 +30,11 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   `@tellma/locale-ar/platform-strings` entry point, with the shell's part, the
   shell frame's, the tenantless shell's, the tenant picker's and the
   signed-out page's strings, in `shell-strings/strings-shell-ar.ts`, the
-  `@tellma/locale-ar/shell-strings` entry point), which `tmArabic()` merges
-  and hands the platform. `tmArabic()` loads the three entry points at once on
+  `@tellma/locale-ar/shell-strings` entry point, and the Queryex tools' part,
+  the expression editor's and the path picker's strings, in
+  `queryex-strings/strings-queryex-ar.ts`, the
+  `@tellma/locale-ar/queryex-strings` entry point), which `tmArabic()` merges
+  and hands the platform. `tmArabic()` loads the four entry points at once on
   the first switch to Arabic, so an app's other languages never download
   them, and an app on the component library alone never downloads the
   platform's tables.
@@ -67,10 +70,13 @@ Copy this package's structure:
 3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
    `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
    the `shell` and `tenantless` scopes the shell frame and the tenantless pages
-   register in English.
+   register in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
+   and `pathPicker` scopes the expression editor and the path picker register in
+   English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and its tables, loaded
-   together with `import()` from the `platform-strings`, `shell-strings` and
+   together with `import()` from the `platform-strings`, `shell-strings`,
+   `queryex-strings` and
    `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token

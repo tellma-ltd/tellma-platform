@@ -1,0 +1,32 @@
+/*
+ * The suite's TypeScript view, for the editor and `pnpm run typecheck`:
+ * Playwright transpiles the config and specs itself, honouring the path
+ * mapping below, so no build uses this file.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "preserve",
+    "noEmit": true,
+    "types": ["node"],
+    /*
+     * Inside the platform's repository @tellma/core-testing is not installed:
+     * its e2e entry point resolves to its sources in the platform's client
+     * workspace. A distribution in a repository of its own installs the
+     * package instead and has no mapping.
+     */
+    "paths": {
+      "@tellma/core-testing/e2e": ["../../../../client/projects/core/tellma-core-testing/e2e/public-api.ts"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", ".artifacts"]
+}
