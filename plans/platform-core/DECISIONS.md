@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-325 (orchestrator, 2026-11-25): PC-118 landed; PC-F102 in pc-1; PC-F88 released; the slot order
+
+- PC-118 landed at 67c6c796.
+  - CI 45698744697 was green on e3a4ddbf, and the plans-only merge went on top.
+  - Acme initialJs is 226.90 on platform-core now.
+- D-229 fill for pc-1: PC-F102 is blocking (D-320), so it takes the slot ahead of the T1 items now ready. PC-F102 branches from 67c6c796.
+- PC-154 resumes fix1:
+  - it merges platform-core and builds the D-305 shell rows;
+  - then R2 runs at xhigh on all of fix1;
+  - its integration waits for PC-F102 (D-320).
+- Release: PC-126 is blocked by PC-F102 and skipped (D-319). PC-F88 is released, then PC-F89, then PC-F94, one at a time (D-087/D-190).
+- Newly ready:
+  - PC-122 (T1) and PC-129 (T1). PC-129 still waits for PC-126 (D-289).
+  - The non-blocking PC-F91, PC-F92 and PC-F100, which waited for PC-118.
+  - No slot is free: all six hold an item in flight or held (D-255). The next slot to free goes to PC-122 (T1), ahead of the non-blocking fixes (D-229).
+- PC-B06's batch review still waits for PC-122 and PC-123.
+
 ### D-324 (orchestrator, 2026-11-25): PC-118's CI fixes; the session button gets a fixed box
 
 - PC-118's CI fixes (8daaf1b0) root-caused all three CI failures.
