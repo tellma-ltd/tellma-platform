@@ -384,6 +384,26 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-328 (orchestrator, 2026-11-25): PC-154 fix1 rulings, and R2 at xhigh
+
+- fix1 is ce6f1973..670d05e9. It holds the earlier local work d4be5765, the merge 3898b720 of platform-core at 67c6c796, and 670d05e9, which adds D-305's shell rows (Report a problem, and About's Diagnostics tab) through an internal TM_SHELL_SUPPORT token.
+- fix1 is large, so R2 runs at xhigh on the whole range (§4.4).
+- Ceilings, against D-031's cap:
+  - locale-ar ./shell-strings goes from 2 to 2.5 at 2.04. The two Arabic labels must render before /support loads, and tmArabic merges its parts by scope, so they cannot go in ./support-strings.
+  - tm-about-dialog goes from 3 to 3.5 at 3.42; the checkpoint adds 0.78.
+  - "." stays at 54.5, set in D-320, at 54.42.
+  - All three are within the cap. R2 checks that none is a third raise of the same ceiling.
+- The Diagnostics tab loads its panel with import() on its first selection, not with @defer. Spec 0027 §11.1 words it this way, and it lets a failed load show spec 0026 §8.4's offline line and retry on a later selection. Accepted. For Ahmad: spec 0026 §8.4 says @defer.
+- About's 25rem placeholder is computed from the tokens and has not been measured. R2 measures it in a real browser.
+- Acme initialJs is 235.33, over 230. With Angular's chunk optimizer on it is 226.93, so PC-154's integration waits for PC-F102 (D-320).
+
+### D-327 (orchestrator, 2026-11-25): PC-F89's red CI is an unrelated layout-shift flake, so PC-F105 becomes blocking
+
+- CI 45709713144 on 8ae660fc failed in one job, acme-client (ubuntu-latest), on one test: layout-shift.spec:14, "a cold entry moves from its skeleton to its chrome with zero shift". It saw a shift of 0.000617 and passed on retry. Every other job passed.
+- PC-F89 changes only BackchannelLogoutService and its tests, all on the server, so this is not PC-F89's failure. Following D-292, PC-F89 merges platform-core and integrates again. This does not retry a failure of PC-F89's own.
+- The likely cause is PC-F105's uncached wordmark, which has no reserved box. PC-F105 now carries this failure and becomes blocking, because a flake like this can turn any integration red (D-011: root-cause it; no retries). Its agent confirms the cause before fixing it.
+- The flaky table gains a row tracked by PC-F105.
+
 ### D-326 (orchestrator, 2026-11-25): PC-F88 landed; PC-122 takes pc-3; PC-F89 released
 
 - PC-F88 landed at 48067cf6. CI 45702642729 was green on 99ac16a7, and the plans-only merge went on top.
