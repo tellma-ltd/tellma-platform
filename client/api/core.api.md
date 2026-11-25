@@ -237,6 +237,21 @@ export interface TmAppDeclarations {
 }
 
 // @public
+export class TmAppVersion {
+    get commit(): string | null;
+    compare(build: string): -1 | 0 | 1 | null;
+    get display(): string;
+    get features(): readonly TmFeatureVersion[];
+    get label(): string;
+    get platform(): string;
+    readonly server: Signal<string | null>;
+    readonly serverNewer: Signal<boolean>;
+    get ui(): string;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmAppVersion, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmAppVersion>;
+}
+
+// @public
 export interface TmAssignmentsSummary {
     readonly latest: readonly TmEntityType<'core.Assignment'>[];
     readonly latestByMe: readonly TmEntityType<'core.Assignment'>[];
@@ -524,6 +539,11 @@ export type TmColumnInput<N extends string> = TmPath<N> | {
 };
 
 // @public
+export type TmColumnPreference = string | {
+    readonly expression: string;
+};
+
+// @public
 export interface TmContextError {
     readonly code: string;
     readonly message: string;
@@ -622,6 +642,9 @@ export class TmDeviceZone {
     static ɵfac: i0.ɵɵFactoryDeclaration<TmDeviceZone, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmDeviceZone>;
 }
+
+// @public
+export type TmDiagnosticsTrigger = 'button' | 'dialog' | 'shortcut';
 
 // @public
 export type TmDigitStyle = 'Latin' | 'Native';
@@ -974,6 +997,12 @@ export interface TmFeatureDefinition {
 
 // @public
 export interface TmFeatureMetadata {
+    readonly key: string;
+    readonly version: string;
+}
+
+// @public
+export interface TmFeatureVersion {
     readonly key: string;
     readonly version: string;
 }
@@ -1826,7 +1855,7 @@ export interface TmRequestHandle {
 // @public
 export abstract class TmRequestLog {
     abstract begin(start: TmRequestStart): TmRequestHandle;
-    abstract copy(): void;
+    abstract copy(trigger?: TmDiagnosticsTrigger): void;
     abstract diagnosticsText(count?: number): string;
     abstract readonly recent: Signal<readonly TmRequestRecord[]>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmRequestLog, never>;
@@ -1926,6 +1955,29 @@ export interface TmSearchQuery {
     readonly size?: number;
     readonly tab?: string;
     readonly view?: 'grid' | 'tiles';
+}
+
+// @public
+export interface TmSearchSnapshot {
+    readonly canonical: string;
+    readonly entity: string;
+    readonly expanded?: readonly TmId[];
+    readonly highlight: TmId | null;
+    readonly ids: readonly TmId[];
+    readonly query: TmSearchQuery;
+    readonly request: {
+        readonly route: string;
+        readonly body: TmJsonObject;
+    } | null;
+    readonly result: {
+        readonly set: TmQueryRowSet;
+        readonly ancestors?: TmQueryRowSet;
+        readonly total: number | null;
+        readonly capped: boolean;
+    } | null;
+    readonly scroll?: number;
+    readonly selection: readonly TmId[];
+    readonly supersedes?: string;
 }
 
 // @public

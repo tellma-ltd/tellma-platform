@@ -158,6 +158,7 @@ committed (`pnpm run tokens:build-css` writes the tokens CSS alone).
 ```bash
 pnpm run lint
 pnpm run typecheck
+pnpm run typecheck:emitted
 pnpm run lint:test
 pnpm run tokens:check
 pnpm run build

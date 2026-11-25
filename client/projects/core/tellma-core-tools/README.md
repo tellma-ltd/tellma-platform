@@ -96,6 +96,12 @@ own files). `label-missing` and `budget-warning` are warnings, which print and p
 (55), `codedReports` (16) and `bootScript` (3 KB for the script with English, plus 0.4 KB per
 further string table).
 
+A route's figure is what its first visit loads before it renders, beyond the initial set: the
+static imports of the chunk its host loads with `import()` (`@tellma/core/search` or
+`@tellma/core/details`), and of each of the distribution's own lazily loaded chunks that uses that
+entry point, such as a details layout. A chunk the platform loads on use from there, such as an
+entity's action dialog, is not on the route; it prints on a lazy line of its own.
+
 `corePrimaryFirstFrame` is the `@tellma/core` primary entry point's code on this app's first frame:
 what its modules (the module it starts at and every module reached from it through relative
 imports, whether from the built package or its sources) contribute to the initial JavaScript, cut

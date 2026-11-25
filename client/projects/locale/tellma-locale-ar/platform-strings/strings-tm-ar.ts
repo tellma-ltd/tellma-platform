@@ -101,6 +101,11 @@ export const TM_STRINGS_AR: TmStringTree = {
     },
   },
   updates: { banner: 'يتوفر إصدار جديد.' },
+  diagnostics: {
+    copy: 'نسخ بيانات التشخيص',
+    copied: 'تم نسخ بيانات التشخيص.',
+    copyFailed: `تعذّر النسخ. ${imperative('افتح', 'افتحي')} «حول» ثم «التشخيص» لعرض التفاصيل.`,
+  },
   nav: {
     analysis: 'التحليل',
     administration: 'الإدارة',
