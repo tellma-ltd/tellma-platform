@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-317 (orchestrator, 2026-11-25): PC-F101 landed; PC-118 released; PC-F94 fills pc-f
+
+- PC-F101 landed at 13cbb8e5. CI 45631846535 was green on ddef354d, and the plans-only merge went on top.
+  - PC-126 is no longer blocked by it. PC-126 still integrates after PC-118 (D-314), applying D-316's candidate C.
+- PC-118 is released to integrate. Its 6-file conflict set from 8646bb53 now meets PC-F101's package.json and ARCHITECTURE.md edits.
+  - Every map in package.json keeps one key per entry.
+  - PC-118 lands first of PC-118, PC-126 and PC-154. Those that land after it re-measure the 230 line (D-214, D-315).
+- D-229 fill for pc-f:
+  - No blocking fix is open. PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready.
+  - So the next non-blocking fix in ledger order, PC-F94, takes the slot. PC-F89 is in pc-f2.
+  - PC-F94 overlaps PC-118 in core-testing's api golden and README. It keeps those edits minimal, and the second of the two to land resolves the conflict.
+- PC-F89's R1 was 0/0/1. Its fix1 makes the gives-up test prove that the logout carried on.
+  - Not opened: a sweep that revokes an authorization whose revoke kept losing. It is very unlikely, and it is logged and audited today.
+
 ### D-316 (orchestrator, 2026-11-25): PC-126's search-route saving is candidate C, applied at integration
 
 - PC-126's read-only investigation (D-313) found the over-budget edge.
