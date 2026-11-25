@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-319 (orchestrator, 2026-11-25): PC-F89 held; release queue; restart recovery
+
+- PC-F89 held at 3b3a31a5. Its fix1 is test-only: the gives-up test now proves the logout carried on, and it fails under the early-return mutation.
+- Release queue after PC-118 lands, one at a time (D-087/D-190):
+  1. PC-126, unless the D-318 analysis shows that it would cross 230 on top of PC-118. Then a saving lands first, or the line goes to Ahmad.
+  2. PC-F88.
+  3. PC-F89.
+  - A blocked item is skipped, not waited on.
+- Claude Code restarted mid-run (section 10). One agent ended earlier on an OAuth 401: PC-118, mid-merge with every conflict resolved. The rest stopped with the restart:
+  - PC-154: uncommitted fix1 work.
+  - PC-F94: no commits yet.
+  - The first-frame analysis: no output file yet.
+  - All four were resumed from their transcripts with their slot state.
+  - A token expiry is not a permission block (section 9), so it is not notified.
+
 ### D-318 (orchestrator, 2026-11-25): PC-154 R1; the 230 line under PC-118, PC-126 and PC-154 together
 
 - PC-154's R1 is 1/0/5.
