@@ -50,7 +50,9 @@ import type { TmZoneAnswer } from './tm-zone-prompt';
 //
 // The automatic update and the prompt both run under the user's
 // `zone-prompt` lock, taken only if no tab holds it: two visible tabs never
-// write twice or ask twice. Telemetry carries the step and the answer,
+// write twice or ask twice. A tab that finds the lock taken waits for it
+// once, in the background, and then checks again: the holder may give up
+// without asking, as when it turns hidden before the user is idle. Telemetry carries the step and the answer,
 // never a zone or an offset, since either tells where the user is.
 
 /** The device-zone check's English strings, under `tm.zone`. */
@@ -150,6 +152,24 @@ function zoneUnknown(error: unknown): boolean {
   return Array.isArray(errors) && errors.some((item: { readonly code?: unknown } | null) => item?.code === ZONE_UNKNOWN);
 }
 
+// The kinds spec 0026 §4.1 has the error views report.
+/**
+ * Whether the error views would report a failure to telemetry when they
+ * show it; the prompt and the automatic update describe failures without
+ * showing those views, so they report them themselves.
+ *
+ * @param error - The failure.
+ * @returns Whether it is a server, availability or partial failure, or an outcome the client cannot know.
+ */
+function reported(error: TmApiError): boolean {
+  return (
+    error.kind === 'server' ||
+    error.kind === 'unavailable' ||
+    error.kind === 'partial-failure' ||
+    (error.kind === 'offline' && error.code === 'outcome-unknown')
+  );
+}
+
 /**
  * The device-zone check: its triggers, the steps, the automatic update with
  * its toast, and the prompt. Internal: `TmDeviceZone` loads it at idle
@@ -184,6 +204,8 @@ export class TmZoneCheck {
   #retrying: string | null = null;
   /** The change whose offline update was tried once more already. */
   #retried: string | null = null;
+  /** The prompt locks this tab waits for, in the background, to check again once another tab frees them. */
+  readonly #waiting = new Set<string>();
 
   /** Registers the strings. */
   constructor() {
@@ -261,7 +283,33 @@ export class TmZoneCheck {
     }
     // Another tab holding the lock asks, or updates, for every tab of the user.
     const slug = this.#injector.get(TmClientMetadataStore).peek()?.distribution.slug ?? '';
-    await this.#injector.get(TmLocks).tryRun(`tm:${slug}:${context.sub}:zone-prompt`, () => this.#locked());
+    const name = `tm:${slug}:${context.sub}:zone-prompt`;
+    if (!(await this.#injector.get(TmLocks).tryRun(name, () => this.#locked()))) {
+      this.#awaitLock(name);
+    }
+  }
+
+  /**
+   * Waits for a prompt lock another tab holds, in the background, and then
+   * runs the steps again under it: they stop when the holder handled the
+   * change, and ask when it gave up first. One wait per lock at a time.
+   *
+   * @param name - The lock's name.
+   */
+  #awaitLock(name: string): void {
+    if (this.#waiting.has(name) || this.#app.destroyed) {
+      return;
+    }
+    this.#waiting.add(name);
+    void this.#injector
+      .get(TmLocks)
+      .run(name, async () => {
+        // The holder's record may not have reached this tab's mirror yet.
+        await this.#store.readAll(DEVICE);
+        await this.#locked();
+      })
+      .catch((error: unknown) => this.#telemetry.error(error, { where: 'tm.l10n.zone-check' }))
+      .finally(() => this.#waiting.delete(name));
   }
 
   /** Under the lock: the steps again, then the automatic update, or the prompt once the user is idle and no modal is open. */
@@ -407,6 +455,10 @@ export class TmZoneCheck {
     } catch (error) {
       if (error instanceof TmApiError && error.kind === 'offline') {
         this.#telemetry.event('tm.l10n.zone-auto', { outcome: 'offline' });
+        // A write whose outcome is unknown is reported as the error views would, and tried again too.
+        if (reported(error)) {
+          this.#telemetry.error(error, { source: 'api' });
+        }
         this.#retryOnline(change);
         return;
       }
@@ -415,6 +467,8 @@ export class TmZoneCheck {
         await this.#record(context);
       } else if (!(error instanceof TmApiError)) {
         throw error;
+      } else if (reported(error)) {
+        this.#telemetry.error(error, { source: 'api' });
       }
       return;
     }
@@ -521,6 +575,9 @@ export class TmZoneCheck {
     } catch (error) {
       if (zoneUnknown(error)) {
         return 'unknown';
+      }
+      if (error instanceof TmApiError && reported(error)) {
+        this.#telemetry.error(error, { source: 'api' });
       }
       throw error;
     }

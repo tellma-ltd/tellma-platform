@@ -79,12 +79,14 @@ export interface TmZoneAnswer {
   readonly auto: boolean;
 }
 
-/** What the inline failure shows: a heading, when the failure has one, and a message. */
+/** What the inline failure shows: a heading, when the failure has one, a message, and the server's errors. */
 interface TmZoneFailure {
   /** The heading, or `undefined` for a message alone. */
   readonly heading: string | undefined;
   /** The message. */
   readonly message: string;
+  /** The server's errors, each in the user's language; empty when it named none. */
+  readonly items: readonly string[];
 }
 
 /** What the dialog's content reads and shares with its opener. */
@@ -120,6 +122,10 @@ let nextId = 0;
     .tm-zone-prompt p {
       margin: 0;
     }
+    .tm-zone-prompt__items {
+      margin: var(--space-1) 0 0;
+      padding-inline-start: var(--space-5);
+    }
     .tm-zone-prompt__hint {
       margin-block-start: calc(-1 * var(--space-2));
       padding-inline-start: var(--space-6);
@@ -136,7 +142,17 @@ let nextId = 0;
       <p class="tm-zone-prompt__hint" [id]="hintId">{{ text.autoHint() }}</p>
       <!-- Why Change time zone failed, announced at once. -->
       @if (failure(); as failure) {
-        <tm-alert kind="error" live="assertive" [heading]="failure.heading">{{ failure.message }}</tm-alert>
+        <tm-alert kind="error" live="assertive" [heading]="failure.heading">
+          {{ failure.message }}
+          <!-- The server's errors, as the error views list them. -->
+          @if (failure.items.length > 0) {
+            <ul class="tm-zone-prompt__items">
+              @for (item of failure.items; track $index) {
+                <li>{{ item }}</li>
+              }
+            </ul>
+          }
+        </tm-alert>
       }
     </div>
     <!-- Keep current, and Change time zone, which takes the focus and turns busy at once. -->
@@ -209,6 +225,7 @@ export class ɵTmZonePrompt {
       this.failure.set({
         heading: undefined,
         message: untracked(this.#l10n.ɵtext('tm.zonePrompt.unknown', { displayName: untracked(this.#l10n.displayName) })),
+        items: [],
       });
     } catch (error) {
       this.failure.set(await this.#describe(error));
@@ -219,14 +236,14 @@ export class ɵTmZonePrompt {
 
   /**
    * A failure's inline text: the error views' description of a save that
-   * failed, or the prompt's own line when the failure is not the server's
-   * or the error views do not load.
+   * failed, with the server's errors, or the prompt's own line when the
+   * failure is not the server's or the error views do not load.
    *
    * @param error - The failure.
-   * @returns The heading and message.
+   * @returns The heading, the message and the server's errors.
    */
   async #describe(error: unknown): Promise<TmZoneFailure> {
-    const fallback: TmZoneFailure = { heading: undefined, message: untracked(this.#l10n.ɵtext('tm.zonePrompt.failed')) };
+    const fallback: TmZoneFailure = { heading: undefined, message: untracked(this.#l10n.ɵtext('tm.zonePrompt.failed')), items: [] };
     if (!(error instanceof TmApiError)) {
       this.#telemetry.error(error, { where: 'tm.l10n.zone-prompt' });
       return fallback;
@@ -235,7 +252,10 @@ export class ɵTmZonePrompt {
       const { TmErrorPresenter } = await this.#errors();
       const view = this.#injector.get(TmErrorPresenter).describe(error, { kind: 'save' });
       const message = untracked(view.message);
-      return message === '' ? { heading: undefined, message: untracked(view.title) } : { heading: untracked(view.title), message };
+      const items = untracked(view.items);
+      return message === ''
+        ? { heading: undefined, message: untracked(view.title), items }
+        : { heading: untracked(view.title), message, items };
     } catch {
       return fallback;
     }

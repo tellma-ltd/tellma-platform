@@ -143,6 +143,21 @@ function seen(rig: TmAppRig): string | undefined {
   return rig.store.doc<TmZoneDoc>(DEVICE, 'zone')()?.data.users[TM_TEST_SUB]?.seen['17'];
 }
 
+/** Replaces the device zone tenant 17 last handled, as another tab's answer or an earlier session leaves it. */
+async function setSeen(rig: TmAppRig, zone: string): Promise<void> {
+  await rig.store.patch<TmZoneDoc>(DEVICE, 'zone', (doc) => ({
+    users: { [TM_TEST_SUB]: { ...doc!.users[TM_TEST_SUB]!, seen: { 17: zone } } },
+  }));
+}
+
+/** The errors reported to telemetry with the API's source, as the error views report them. */
+function apiErrors(rig: TmAppRig): readonly Readonly<Record<string, unknown>>[] {
+  return rig.telemetry
+    .recent()
+    .filter((item) => item.name === 'tm.error.captured' && item.props['source'] === 'api')
+    .map((item) => item.props);
+}
+
 /** The zone telemetry, by event, without the event names' common prefix. */
 function zoneEvents(rig: TmAppRig): readonly (readonly [string, Readonly<Record<string, unknown>>])[] {
   return rig.telemetry
@@ -182,9 +197,13 @@ class TmSpecDialog {}
 /** The error views' presenter, as far as the prompt reads it. */
 @Injectable({ providedIn: 'root' })
 class TmSpecPresenter {
-  /** The view of a failed save. */
-  describe(): { readonly title: Signal<string>; readonly message: Signal<string> } {
-    return { title: signal("Couldn't save"), message: signal('The server is busy. Try again in a moment.') };
+  /** The view of a failed save, with the server's errors. */
+  describe(): { readonly title: Signal<string>; readonly message: Signal<string>; readonly items: Signal<readonly string[]> } {
+    return {
+      title: signal("Couldn't save"),
+      message: signal('The server is busy. Try again in a moment.'),
+      items: signal(['Time zones are locked for this user.']),
+    };
   }
 }
 
@@ -271,6 +290,39 @@ describe('TmZoneCheck', () => {
     });
   });
 
+  describe('the triggers', () => {
+    it('checks on each entry into a tenant, and not on a navigation within it', async () => {
+      const rig = await setUp({ seen: 'Europe/London', auto: true });
+      await tmSettle();
+      // The startup's check found nothing to do; the change below waits for a trigger.
+      await setSeen(rig, 'Asia/Riyadh');
+      await rig.router.navigateByUrl('/17/credit-review');
+      await tmSettle();
+      expect(writes(rig)).toEqual([]);
+      await rig.router.navigateByUrl('/tenants');
+      await tmSettle();
+      expect(writes(rig)).toEqual([]);
+      await rig.router.navigateByUrl('/17');
+      await tmSettleUntil(() => writes(rig).length === 1);
+      expect(seen(rig)).toBe('Europe/London');
+      expect(zoneEvents(rig).filter(([name]) => name === 'zone-change')).toEqual([['zone-change', { action: 'auto' }]]);
+    });
+
+    it('runs one check for a burst of triggers, so one change is handled once', async () => {
+      const rig = await setUp({ seen: 'Europe/London', auto: true });
+      await tmSettle();
+      await setSeen(rig, 'Asia/Riyadh');
+      // A tenant entry, the tab coming into view and a caller's check, in one task.
+      const entry = rig.router.navigateByUrl('/tenants').then(() => rig.router.navigateByUrl('/17'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      const checked = rig.zone.check();
+      await Promise.all([entry, checked]);
+      await tmSettle();
+      expect(writes(rig)).toEqual([{ timeZone: 'Europe/London' }]);
+      expect(zoneEvents(rig).filter(([name]) => name === 'zone-change')).toEqual([['zone-change', { action: 'auto' }]]);
+    });
+  });
+
   describe('the automatic update', () => {
     it('writes the zone in the background, adopts it, records it and says so in a toast with Change', async () => {
       const rig = await setUp({ auto: true });
@@ -348,8 +400,32 @@ describe('TmZoneCheck', () => {
       await rig.zone.check();
       expect(seen(rig)).toBe('Asia/Riyadh');
       expect(zoneEvents(rig).at(-1)).toEqual(['zone-auto', { outcome: 'rejected' }]);
+      // A server failure is reported, as the error views would report it.
+      expect(apiErrors(rig)).toEqual([{ source: 'api', errorClass: 'TmApiError' }]);
       await rig.zone.check();
       expect(writes(rig)).toHaveLength(2);
+    });
+
+    it('reports a write whose outcome is unknown, and tries it again once the server is reachable', async () => {
+      const rig = await setUp({ seen: 'Europe/London', auto: true });
+      await tmSettle();
+      await setSeen(rig, 'Asia/Riyadh');
+      rig.api.respond('users/me/locale', () => {
+        throw new TmApiError({ kind: 'offline', code: 'outcome-unknown' });
+      });
+      await rig.zone.check();
+      expect(zoneEvents(rig).at(-1)).toEqual(['zone-auto', { outcome: 'offline' }]);
+      expect(apiErrors(rig)).toHaveLength(1);
+    });
+
+    it('reports nothing for a refusal the error views would not report', async () => {
+      const rig = await setUp({ auto: true });
+      rig.api.respond('users/me/locale', () => {
+        throw new TmApiError({ kind: 'forbidden', status: 403, code: 'forbidden' });
+      });
+      await rig.zone.check();
+      expect(zoneEvents(rig).at(-1)).toEqual(['zone-auto', { outcome: 'rejected' }]);
+      expect(apiErrors(rig)).toEqual([]);
     });
   });
 
@@ -430,9 +506,11 @@ describe('TmZoneCheck', () => {
       await tmSettleUntil(() => prompt() !== null);
       button('Change time zone').click();
       await tmSettleUntil(() => prompt()!.querySelector('tm-alert') !== null);
-      const alert = prompt()!.querySelector('tm-alert')!.textContent;
-      expect(alert).toContain("Couldn't save");
-      expect(alert).toContain('The server is busy. Try again in a moment.');
+      const alert = prompt()!.querySelector('tm-alert')!;
+      expect(alert.textContent).toContain("Couldn't save");
+      expect(alert.textContent).toContain('The server is busy. Try again in a moment.');
+      expect([...alert.querySelectorAll('li')].map((item) => item.textContent?.trim())).toEqual(['Time zones are locked for this user.']);
+      expect(apiErrors(rig)).toEqual([{ source: 'api', errorClass: 'TmApiError' }]);
       expect(seen(rig)).toBe('Asia/Riyadh');
     });
 
@@ -467,16 +545,41 @@ describe('TmZoneCheck', () => {
       expect(zoneEvents(rig)).toEqual([]);
     });
 
-    it("asks nothing while another tab holds the user's prompt lock", async () => {
-      const rig = await setUp();
+    it("asks nothing while another tab holds the user's prompt lock, and asks once that tab gives up without asking", async () => {
+      const rig = await setUp({ seen: 'Europe/London' });
+      await tmSettle();
       let release!: () => void;
       const held = TestBed.inject(TmFakeLocks).run(`tm:acme:${TM_TEST_SUB}:zone-prompt`, () => new Promise<void>((resolve) => (release = resolve)));
+      await setSeen(rig, 'Asia/Riyadh');
       await rig.zone.check();
+      await tmSettle();
       expect(prompt()).toBeNull();
+      // The other tab turned hidden before the user was idle, and let the lock go unanswered.
       release();
       await held;
-      void rig.zone.check();
       await tmSettleUntil(() => prompt() !== null);
+      expect(zoneEvents(rig).filter(([name]) => name === 'zone-change')).toEqual([['zone-change', { action: 'prompt' }]]);
+    });
+
+    it('asks nothing once the tab that held the lock answered, and waits for the lock once however often it checks', async () => {
+      const rig = await setUp({ seen: 'Europe/London' });
+      await tmSettle();
+      const locks = TestBed.inject(TmFakeLocks);
+      let release!: () => void;
+      const held = locks.run(`tm:acme:${TM_TEST_SUB}:zone-prompt`, () => new Promise<void>((resolve) => (release = resolve)));
+      await setSeen(rig, 'Asia/Riyadh');
+      const run = vi.spyOn(locks, 'run');
+      await rig.zone.check();
+      await rig.zone.check();
+      expect(run).toHaveBeenCalledOnce();
+      // The other tab answered, and recorded the change, before letting the lock go.
+      await setSeen(rig, 'Europe/London');
+      release();
+      await held;
+      await tmSettleUntil(() => locks.held().length === 0);
+      await tmSettle();
+      expect(prompt()).toBeNull();
+      expect(zoneEvents(rig)).toEqual([]);
     });
 
     it('opens one dialog for two tabs of the user, and the other asks nothing once it is answered', async () => {

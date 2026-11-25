@@ -1016,9 +1016,10 @@ of a tenant whose launch documents are present. It compares the device's zone, m
 one the tenant last handled on this device. A first run, a zone that already is the display zone,
 a frozen tenant and a zone at the display zone's offset now are recorded silently. Any other change
 either updates the user's zone in the background, with a toast, when the per-device option is on,
-or asks once in a small dialog, after two seconds without input and with no other modal open.
-Only one tab of the user asks or updates: each takes the user's `zone-prompt` lock only if no tab
-holds it.
+or asks once in a small dialog, once the user's hands are off the keyboard and pointer (two
+seconds without input) and no other modal is open. Only one tab of the user asks or updates: each
+takes the user's `zone-prompt` lock only if no tab holds it, and a tab that finds it taken checks
+again once it frees, in case the holder gave up without asking.
 
 ```ts
 // My settings' "Change my time zone automatically" checkbox.

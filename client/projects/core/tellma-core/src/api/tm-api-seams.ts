@@ -128,7 +128,7 @@ export interface TmErrorsModule {
     describe(
       error: TmApiError,
       context: { kind: 'save'; tenantId?: number },
-    ): { readonly title: Signal<string>; readonly message: Signal<string> };
+    ): { readonly title: Signal<string>; readonly message: Signal<string>; readonly items: Signal<readonly string[]> };
   }>;
   /** Renders the client-outdated view's inline state into a slot; its Reload gets the new version first. */
   readonly ɵtmClientOutdatedState: (slot: ViewContainerRef) => { ɵact(action: 'reload'): Promise<void> };
