@@ -384,6 +384,43 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-332 (orchestrator, 2026-11-25): a third fix slot for the layout-shift flake, and PC-F89 waits for it
+
+- CI 45717312412 on ec9368ca, PC-F89's third integration, failed only on acme-client (ubuntu-latest), on the same test as D-327: the layout-shift cold entry, a 0.000617 shift.
+- That is 2 of 3 runs, and PC-F102 reproduces it 6 of 6 under the delay harness. Integrating again would only spend CI, so PC-F89 is held, integrated, until PC-F105 lands. Then it merges platform-core and integrates again.
+- Both fix slots hold items that wait on this fix: PC-F94 is held in pc-f and PC-F89 in pc-f2. D-255 keeps a held item in its slot until it lands. Without a slot, the blocking fix could not start.
+- D-035's revisit condition, both fix slots busy at once, is met. So I added a third fix slot, `WT/pc-f3` (ports 4370/7170/4270, DB_SUFFIX pcf3), for stop-the-line fixes. PC-F105 takes it, and PC-F106 follows in the first free fix slot. No held item gives up its slot, so D-255 holds.
+- Four heavy agents now run, within D-028's cap of five.
+- This is not a §9 notification: the lanes keep working, and only integrations wait.
+
+### D-331 (orchestrator, 2026-11-25): PC-154 review 2 rulings
+
+- R2 at xhigh found 0 blocking, 1 major and 3 minor on 670d05e9. It confirmed the sizes, that neither ceiling raise is a third raise (tm-about-dialog 3, 3.5, 3, 3.5; locale-ar ./shell-strings 1, 2, 2.5), and that R1's pushbacks hold. fix2 is PC-154's third and last implementer round (§4.4).
+- R2-1 (major): the Diagnostics grid is wider than its dialog at every width, so the Reference column, which carries the trace id, lies outside the dialog. Fix it with min-inline-size: 0, columns keyed to the panel's own width, and a geometry test in a md and a 390 px modal.
+- R2-2 (minor): the client state's dump section is registered in TmSupport's constructor, which puts TmStateDump on the first frame (468 B gzip). It moves to the support host chunk, with the name `state` kept reserved.
+- R2-3 (minor): no single About placeholder fits both en and ar; measured in Chromium, the shift is -58 to +75 px. Fix by measurement: a reserved height per breakpoint and per language, within 8 px, and a min-block-size on the Diagnostics tab's loading and offline states. An Acme e2e pins it. The shifts fall within 500 ms of a click, so CLS ignores them, but spec 0027 §11's final geometry should hold.
+- R2-4 (minor): a dump built on one tenant carries the tab's records from other tenants, because the picker switches without a reload. Once Send stores the dump in a tenant's support request, that tenant's administrators could read another tenant's metadata. Ruled a fix, because tenant isolation is the safe default: the dump keeps only the routed tenant's records and those with no tenant tag. For Ahmad: spec 0026 §10.1 does not say this. It should, before PC-210's Send.
+- R2 also found that build.fixture.spec fails 5 of 13 on the fixture's initialJs warning (234.64 > 230). That clears when PC-154 merges PC-F102 at integration, which already waits for PC-F102 (D-328). No 230 line moves.
+
+### D-330 (orchestrator, 2026-11-25): PC-F102 reverses D-065 and goes to review 1
+
+- PC-F102's impl, cc258a43, turns Angular's chunk optimizer back on and keeps spec 0024 §6's hashed-name rule as written. This reverses D-065.
+  - The hash-alphabet route is impossible, because chunk-optimizer.js hard-codes Rollup's generate options.
+  - Instead, the tool's new chunk-names step renames every emitted chunk to an 8-character Crockford content hash. It names a cycle by its strongly connected component. It rewrites references, stats and source maps, and deletes orphans proven unreferenced.
+  - NG_BUILD_CHUNKS_ROLLDOWN=false is pinned.
+- Acme initialJs goes from 226.90 KB in 21 files to 220.52 KB in 3. With PC-126, candidate C and PC-154 merged, it goes from 234.36 to 224.40, under D-320's 230 line. Two clean builds were byte-identical. No ceiling changes.
+- R1 runs at high. It checks every reference form, determinism on Windows and Linux, and that orphan deletion is safe.
+- The impl reproduces D-327's layout-shift cold-entry failure 6 of 6 under the delay harness, with the optimizer on or off. That reproducer is added to PC-F105.
+- ARCHITECTURE.md's @tellma/core-tools row is updated in the branch.
+
+### D-329 (orchestrator, 2026-11-25): PC-F89's second red CI is another unrelated flake, so PC-F106 opens and PC-F89 integrates again
+
+- CI 45713926876 on edc6b4da failed in one job, client-windows, on one test: tm-session-flows.spec:410, "sign-out > asks after a minute of a save that never ends, and does not wait for it again". It expected host.assigned to be ['/signed-out'] and got [].
+- Every other job passed, including the acme-client Linux leg that D-327's flake had failed.
+- PC-F89 changes nothing on the client, so following D-292 and D-327 it integrates again, with an empty commit, since platform-core has only plans/ changes. This does not retry a failure of PC-F89's own.
+- PC-F106 opens to root-cause the test (D-011). It is blocking, like PC-F105, because it can turn any integration red.
+- Both fix lanes hold PC-F89 and PC-F94, so PC-F105 and then PC-F106 take the fix lanes as they free (D-229).
+
 ### D-328 (orchestrator, 2026-11-25): PC-154 fix1 rulings, and R2 at xhigh
 
 - fix1 is ce6f1973..670d05e9. It holds the earlier local work d4be5765, the merge 3898b720 of platform-core at 67c6c796, and 670d05e9, which adds D-305's shell rows (Report a problem, and About's Diagnostics tab) through an internal TM_SHELL_SUPPORT token.
