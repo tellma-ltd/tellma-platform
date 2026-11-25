@@ -8,6 +8,9 @@
 export type SignalLike<T> = () => T;
 
 // @public
+export const TM_GRID_KEYS: readonly TmGridKeyEntry[];
+
+// @public
 export const TM_PARSE_ERROR: unique symbol;
 
 // @public
@@ -73,6 +76,12 @@ export interface TmGridContentState {
     readonly history?: unknown;
     readonly scroll?: TmGridScrollPosition;
     readonly selection?: TmGridSelectionSnapshot;
+}
+
+// @public
+export interface TmGridKeyEntry {
+    readonly keys: string;
+    readonly labelKey: string;
 }
 
 // @public

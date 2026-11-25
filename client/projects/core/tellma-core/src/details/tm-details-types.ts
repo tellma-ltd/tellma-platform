@@ -10,8 +10,9 @@ import type { TmId, TmJson, TmJsonObject } from '../json/tm-json';
 // draft of a record being edited or created, which `TmDrafts` stores under
 // the source's draft key, and the snapshot of a record shown, which
 // `TmPageState` holds under the record's page-state key. They are types
-// only, here rather than in the details entry point, so the tab's memory
-// and its support dump can name what they hold without loading the page.
+// only, here rather than in the details entry point, so the drafts, the
+// page state and the support dump can name what they hold without loading
+// the page.
 
 /**
  * The draft of a record being edited or created on a details page: the

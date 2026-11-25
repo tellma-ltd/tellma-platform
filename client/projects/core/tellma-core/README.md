@@ -9,8 +9,9 @@ own.
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`) and the running build's identity (`TmAppVersion`); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
-| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell, still a stand-in inside the frame; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the tenantless pages lazy |
-| `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`), drafts (`TmDrafts`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
+| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button) and its states; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the About and Shortcuts dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
+| `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
+| `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
@@ -285,10 +286,15 @@ a composed feature's key.
   drops the write (`key-cap`); another validation code drops the keys it names (`rejected`) and saves
   the rest again; a dropped key leaves the overlay and every tab hears its stored string again.
 
-### The tab's memory and recent pages
+### The tab's memory, drafts and recent pages
 
-`@tellma/core/memory` holds what a tab remembers of its pages beyond the store, and loads with the
-page hosts that use it, not with the app; the drafts' storage and keys stay in the primary
+`@tellma/core/memory` holds what a tab remembers of its pages beyond the store, and
+`@tellma/core/drafts` its unsaved form copies. Each loads with the page hosts that use it, not with
+the app. They are two entry points because an app's bundler places the code its routes use from
+one entry point in chunks that every route importing that entry point loads: in one entry point,
+the details page's drafts would load with the search page, which keeps none. The size gate's
+static-graph check (`"tellma".staticGraphExcludes`) proves that neither the primary nor `/search`
+reaches `/drafts` through static imports. The drafts' storage and keys stay in the primary
 (`src/state/memory/tm-draft-keys.ts`), since the session's sign-in sweep removes a previous user's
 drafts.
 
@@ -298,15 +304,15 @@ drafts.
   of the tenant; a move of the tenant's held `permissions` tag does the same, and a change of its
   languages forgets the tenant's pages. `remember(key, state, { keepStale: true })` keeps a stale
   mark a write set while the page was away.
-- **`TmDrafts`** keeps unsaved form copies in session storage under `tm.draft:<sub>:<t>:<entity>:<id>`,
-  as `{ v: 1, at, data }`: written 300 ms after the last save and at once when the page hides, refused
-  for another user's key, and counted in `dirtyCount`. A full storage moves this tab's oldest other
-  drafts into memory and retries once; failing that, the draft lives in memory
-  (`tm.drafts.quota-exceeded`).
 - **`TmTreeExpansion`** keeps a tree page's expanded ids in the session partition's `tree:<page>`,
   oldest first and at most 500, written 250 ms after the last change; each write carries only the
   changes no earlier write has in flight, and settles only its own. The boot step reads the
   session partition with the others, so a tree's first load finds them.
+- **`TmDrafts`** (in `@tellma/core/drafts`) keeps unsaved form copies in session storage under
+  `tm.draft:<sub>:<t>:<entity>:<id>`, as `{ v: 1, at, data }`: written 300 ms after the last save and
+  at once when the page hides, refused for another user's key, and counted in `dirtyCount`. A full
+  storage moves this tab's oldest other drafts into memory and retries once; failing that, the draft
+  lives in memory (`tm.drafts.quota-exceeded`).
 
 `@tellma/core/recents` holds **`TmRecents`**, which lists the routed tenant's ten most recent pages
 from the write-behind key `nav.recent`. The app loads it with `import()` after its first render.
@@ -322,7 +328,7 @@ mirrored documents' partition kinds, stored names and tags, the last sync, the u
 preference, draft and page-state keys, never a value, and whether the tab leads with the hub's
 status as it sees it. The preferences, the drafts and the page
 state report their keys to it through `ɵTM_STATE_PARTS` when they are created, so reading the
-section creates none of them, and a tab that never loaded `@tellma/core/memory` reports no drafts.
+section creates none of them, and a tab that never loaded `@tellma/core/drafts` reports no drafts.
 
 ### The leader tab
 
@@ -616,6 +622,28 @@ language, each sandbox indented under its live tenant, the badges and the reason
 opened, a search from seven memberships kept in `?q=` (Enter follows the only enabled match, Mod+K
 focuses it), the skeleton, the error state of a failed read with nothing stored, the empty state,
 and the notice of a tenant the user can no longer open after an entry they chose.
+
+The tenant shell (`:t`) puts a 40 px ink app bar in the frame and the routed page in `main`. The
+bar renders from the launch documents, so a warm launch's first frame is complete with no request:
+the wordmark (the mark below md) linking to the tenant's home; Menu and search, grouped from md,
+with the search field from lg and its `Ctrl K` keycap from xl, which call the launcher; Back and
+Forward in installed mode, from the Navigation API or, without it, the router's page ids, a chunk
+of their own that loads only once the app runs installed into the box the bar reserves; each
+distribution slot's button with its badge's count overlaid, which opens the slot's panel in a
+popover from lg and in an end drawer below; fixed 30 px boxes for the bell and the tray and
+zero-width ones for help and the assistant; the Sandbox, Read-only and Maintenance markers, each
+with its popover; and the session button, with the user's initials on the tone of their record key
+and their name and the tenant's as the width allows. While a cold launch's sync runs, the names come
+from the profile cookie and the tenant's name is a skeleton; a failed sync shows the error views'
+error state with Retry, and `TmShellMain` can put the tenant-state page in place of the route host.
+The session menu (the tenant card, My settings, the language and calendar switches with two choices
+or more, the theme, Keyboard shortcuts, About, the slots below md and Sign out), the popovers and
+the drawers are a chunk the bar loads at idle or on the first hover, focus or press of their
+buttons, and that chunk's avatar, which can show the user's photo, replaces the first frame's
+initials. The About dialog (the wordmark, the distribution's description, the versions, Reload while
+the server is newer, the copyright and the legal links) and the Shortcuts dialog (`Mod+/`: the
+general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
+in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
 
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the

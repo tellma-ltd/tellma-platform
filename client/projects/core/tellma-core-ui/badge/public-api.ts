@@ -1,7 +1,7 @@
 /**
  * Public API Surface of @tellma/core-ui/badge — `tm-badge`, a status label
  * in a colour tone, and `tm-counter`, a number shown inline or on its
- * parent's corner.
+ * parent's corner, re-exported from `@tellma/core-ui/counter`.
  *
  * @packageDocumentation
  */
@@ -11,4 +11,4 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export { TmBadge, type TmBadgeTone } from './tm-badge';
-export { TmCounter, type TmCounterPlacement, type TmCounterTone } from './tm-counter';
+export { TmCounter, type TmCounterPlacement, type TmCounterTone } from '@tellma/core-ui/counter';

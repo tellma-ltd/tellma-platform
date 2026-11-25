@@ -10,8 +10,9 @@ import { type PaintedFeedback } from './paint-probe';
 import { appStable } from './settle';
 
 // The shared batteries of the component library additions (spec 0023): one
-// entry per showcase story of its entry points (§1's thirty, and tiles-tree,
-// split out of tiles to keep tree mode off a flat list), with the states
+// entry per showcase story of its entry points (§1's thirty; tiles-tree, split
+// out of tiles to keep tree mode off a flat list; and counter, split out of
+// badge so a first frame can draw a count without tm-badge), with the states
 // §12's axe battery opens and the key §13's keydown-to-paint probe presses.
 //
 // Where spec 0023 §13's definition of done is pinned:
@@ -27,7 +28,7 @@ import { appStable } from './settle';
 //   beyond §2.2's list).
 // - Non-blocking: the search-field timing specs; pager.spec.ts ("a click
 //   while a page loads writes the page again").
-// - Stable layout: badge.spec.ts (counter 9 → 10), pager.spec.ts (1 → 6 of
+// - Stable layout: counter.spec.ts (counter 9 → 10), pager.spec.ts (1 → 6 of
 //   120), search-field.spec.ts (first keystroke), toast.spec.ts (never
 //   displaces the page), chip.spec.ts (a chip added), copy.spec.ts (copy
 //   success), tree.spec.ts (lazy spinner), tiles.spec.ts (tiles data),
@@ -86,13 +87,15 @@ export interface AdditionsStory {
 /**
  * The entry points the additions bring, by id (`@tellma/core-ui/<id>`), each
  * with its showcase story of the same id. The tiles' tree mode has its own
- * entry point, so a flat list of tiles never loads it.
+ * entry point, so a flat list of tiles never loads it, and so does the
+ * counter, so a first frame can draw a count without the badge.
  */
 export const ADDITIONS_ENTRY_POINTS: readonly string[] = [
   'icon',
   'kbd',
   'copy',
   'badge',
+  'counter',
   'avatar',
   'chip',
   'progress',
@@ -243,6 +246,13 @@ export const ADDITIONS_STORIES: readonly AdditionsStory[] = [
   {
     id: 'badge',
     entryPoints: ['badge'],
+    ready: (page) => expect(page.getByTestId('badge-error')).toBeVisible(),
+    states: [],
+    probes: { none: 'Badges are status labels: the story has no control to press a key on.' },
+  },
+  {
+    id: 'counter',
+    entryPoints: ['counter'],
     ready: (page) => expect(page.getByTestId('counter-inline')).toBeVisible(),
     states: [
       {

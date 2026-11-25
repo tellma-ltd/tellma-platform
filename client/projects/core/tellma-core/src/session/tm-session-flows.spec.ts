@@ -310,7 +310,7 @@ describe('TmSessionFlows', () => {
 
     it('answers with the drafts service once it exists', async () => {
       const rig = await setUp();
-      const { TmDrafts } = await import('@tellma/core/memory');
+      const { TmDrafts } = await import('@tellma/core/drafts');
       const service = TestBed.inject(TmDrafts);
       service.save(service.key(17, 'gl.Center', 5), { name: 'Unsaved' });
       rig.bus.receive({ type: 'drafts.query', replyTo: 'q2' });

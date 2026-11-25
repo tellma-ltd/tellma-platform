@@ -21,10 +21,12 @@ export * from './tm-grid-column';
 export * from './tm-grid-context';
 export * from './tm-grid-driver';
 export * from './tm-grid-header-action';
-export * from './tm-grid-keys';
 export * from './tm-grid-templates';
 export * from './tm-grid-state-store';
 export * from './tm-grid-types';
+// The grid's key combinations live in the contracts entry point, so a
+// keyboard help dialog lists them without loading the grid.
+export { TM_GRID_KEYS, type TmGridKeyEntry } from '@tellma/core-ui/contracts';
 
 // The shared-internals surface for the tree grid, and the editing-load seams
 // tests and the showcase hold open (golden-excluded ɵ names).

@@ -54,6 +54,12 @@ export interface TmMenuItem {
    */
   readonly detail?: string;
   /**
+   * What the accessible name reads in place of `detail`, when the visible
+   * detail is terser than the action it names: a tenant row showing
+   * "Switch" is read "Acme, Switch tenant". Ignored without a `detail`.
+   */
+  readonly detailLabel?: string;
+  /**
    * Makes the item checkable: `'checkbox'` renders `menuitemcheckbox`,
    * `'radio'` renders `menuitemradio`. Radio items belong inside a
    * {@link TmMenuGroup}, which is what scopes "one of these".

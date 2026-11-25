@@ -395,6 +395,8 @@ jobs:
           name: acme-e2e-report
           path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
           if-no-files-found: ignore
+          # The report's folder is hidden, which the action skips unless told otherwise.
+          include-hidden-files: true
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple

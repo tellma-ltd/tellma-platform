@@ -6,14 +6,13 @@
 import type { TmMembership, TmTenantState } from '@tellma/core';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
+import { type TmTenantName, tmTenantNames } from './tm-tenant-names';
+
 // The tenant picker's rows (spec 0027 §6.2), as pure functions of the
 // memberships, the active language and the last tenant: each row's names in
 // their languages, its badges and the reason its Connect is unavailable; the
 // order, live tenants first with their sandboxes beneath; and the search,
 // which keeps a matching sandbox's live tenant as a dimmed row.
-
-/** The membership fields that hold a tenant's names, by the position of their content language. */
-const NAME_SLOTS = ['name', 'name2', 'name3'] as const satisfies readonly (keyof TmMembership)[];
 
 /** The badge each lifecycle state shows; an active tenant shows none. */
 const STATE_BADGES: Readonly<Partial<Record<TmTenantState, TmTenantBadge>>> = {
@@ -28,14 +27,6 @@ export type TmTenantBadge = 'lastUsed' | 'sandbox' | 'readOnly' | 'frozen' | 'su
 
 /** Why a row's Connect is unavailable: its string key under `tm.tenantless.picker.unavailable`. */
 export type TmTenantUnavailable = 'inactive' | 'suspended' | 'provisioning';
-
-/** One of a tenant's names, with the language it is written in. */
-export interface TmTenantName {
-  /** The name. */
-  readonly text: string;
-  /** Its content language, such as `ar`; `null` when the tenant lists none for it. */
-  readonly lang: string | null;
-}
 
 /** One row of the picker. */
 export interface TmTenantRow {
@@ -69,32 +60,6 @@ export interface TmTenantSearch {
   readonly shown: readonly TmTenantShownRow[];
   /** The rows that match, in order; every row while nothing is typed. */
   readonly matches: readonly TmTenantRow[];
-}
-
-/** A language tag's language subtag, lowercase: `ar` for `ar-SA`. */
-function subtag(code: string): string {
-  return code.split('-', 1)[0].toLowerCase();
-}
-
-/**
- * A tenant's name in the active language, and its other names. The active
- * language's position among the tenant's content languages, matched by
- * language subtag, picks `name`, `name2` or `name3`; without a match, or
- * when that name is empty, the first name shows.
- *
- * @param membership - The membership.
- * @param language - The active language, such as `ar`.
- * @returns The name to show, and the other non-empty names in language order.
- */
-export function tmTenantNames(
-  membership: TmMembership,
-  language: string,
-): { readonly name: TmTenantName; readonly others: readonly TmTenantName[] } {
-  const names = NAME_SLOTS.map((slot, index) => ({ text: (membership[slot] ?? '').trim(), lang: membership.languages[index] ?? null }));
-  const wanted = subtag(language);
-  const at = membership.languages.findIndex((code) => subtag(code) === wanted);
-  const index = at >= 0 && at < names.length && names[at].text !== '' ? at : 0;
-  return { name: names[index], others: names.filter((name, other) => other !== index && name.text !== '') };
 }
 
 /**

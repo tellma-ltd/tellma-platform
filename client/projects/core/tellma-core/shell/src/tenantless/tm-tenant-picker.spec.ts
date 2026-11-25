@@ -12,7 +12,7 @@ import { TmApiError, TmClientStore, TmLaunch, TmUrls, type TmMembership } from '
 import { TmFakeSession, TmPageContextHarness, TmTenantPickerHarness, type TmTenantPickerRowHarness } from '@tellma/core-testing';
 import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
 
-import { TM_PICKER_ERROR_VIEWS } from './tm-tenant-picker';
+import { TM_SHELL_ERROR_VIEWS } from '../tm-shell-errors';
 
 import {
   tmAppRig,
@@ -206,7 +206,7 @@ describe('the tenant picker', () => {
 
   it('says the read failed, with Try again, when the error views cannot load', async () => {
     const missing = new TypeError('Failed to fetch dynamically imported module');
-    await start({ providers: [{ provide: TM_PICKER_ERROR_VIEWS, useValue: () => Promise.reject(missing) }] });
+    await start({ providers: [{ provide: TM_SHELL_ERROR_VIEWS, useValue: () => Promise.reject(missing) }] });
     rig.api.respond('/bff/user', () => {
       throw new TmApiError({ kind: 'offline' });
     });

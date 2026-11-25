@@ -4,7 +4,6 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
-  afterNextRender,
   DestroyRef,
   DOCUMENT,
   type EnvironmentProviders,
@@ -48,10 +47,10 @@ import type { TmAppConfig } from './tm-app-config';
 // fails shows the boot page `load-failed`, and the app never starts. Beside
 // them, the router wiring: the routed tenant's `lastTenantId`, focus after
 // navigation and the launch's timing; the session's cross-tab paths; after
-// first render, the entry points of the recent pages, the leader election
-// and the worker's updates; and at idle the Contracts chunk, so the first
-// API call does not wait for it, the telemetry pipeline (spec 0026 §3),
-// the load's paint metrics (§5.2) and the device-zone check (spec 0024
+// the first page's render, the entry points of the recent pages, the leader
+// election and the worker's updates; and at idle the Contracts chunk, so the
+// first API call does not wait for it, the telemetry pipeline (spec 0026
+// §3), the load's paint metrics (§5.2) and the device-zone check (spec 0024
 // §7.8). The page visits are timed from the first navigation on (spec 0026
 // §5.1), and Copy diagnostics' shortcut works from then (§8.3).
 
@@ -162,69 +161,70 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       inject(TmSessionPaths).ɵstart();
       inject(TmPageFocus).ɵstart();
       inject(TmLaunchTimer).ɵstart();
-      inject(TmPageVisits).ɵstart();
       // Copy diagnostics' shortcut, before the first page.
       if (requests instanceof TmAppRequestLog) {
         requests.ɵstart();
       }
-      // After first render: the recent pages' visit count, the leader
-      // election and the worker's updates; at idle, the Contracts chunk,
-      // which the HTTP layer keeps, the telemetry pipeline, the paint metrics
-      // and the device-zone check.
+      // After the first page's render: the recent pages' visit count, the
+      // leader election and the worker's updates; at idle, the Contracts
+      // chunk, which the HTTP layer keeps, the telemetry pipeline, the paint
+      // metrics and the device-zone check.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
-      afterNextRender(
-        () => {
-          // Recent pages count visits from the first page on (spec 0025 §13),
-          // and the election revalidates a warm launch and connects the hub
-          // (§7.2), neither of which the first frame waits for. Their entry
-          // points load now, off the first frame. A failed load, or a service
-          // that fails to start, goes without until the next launch: no
-          // visits count, or the tab neither leads nor hears hub events, and
-          // nothing else depends on either. The worker registers once the
-          // app settles (spec 0024 §5.4), and the update banner shows from
-          // then on; an update check loads the entry point itself.
-          const start = <M>(load: () => Promise<M | null>, type: (loaded: M) => Type<unknown>, source: string): void => {
-            load()
-              .then((loaded) => {
-                if (alive && loaded !== null) {
-                  injector.get(type(loaded));
-                }
-              })
-              .catch((error: unknown) => telemetry.error(error, { where: source }));
-          };
-          start(loadRecents, (recents) => recents.TmRecents, 'tm-recents');
-          start(loadLeader, (leader) => leader.ɵTmLeaderElection, 'tm-leader');
-          start(loadUpdates, (updates) => updates.TmUpdates, 'tm-updates');
-          const load = (): void => {
-            const api = alive ? injector.get(TmApi) : null;
-            if (api instanceof TmHttpApi) {
-              api.ɵprefetchContracts();
-            }
-            // The telemetry pipeline, which sends what the launch recorded.
-            if (alive && telemetry instanceof TmTelemetryFront) {
-              telemetry.start(injector);
-            }
-            // The load's paint metrics, observed with what the load buffered;
-            // a chunk that fails to load sends no metrics.
-            if (alive) {
-              void import('../observe/tm-load-metrics').then(({ tmStartLoadMetrics }) => alive && tmStartLoadMetrics(injector), () => undefined);
-            }
-            // The device-zone check's chunk, which checks now and then on
-            // each tenant entry and whenever the tab comes into view.
-            if (alive) {
-              injector.get(TmDeviceZone).ɵstart();
-            }
-          };
-          if (window?.requestIdleCallback) {
-            window.requestIdleCallback(load);
-          } else {
-            setTimeout(load);
+      // The page visits know when a navigation has ended for good and its
+      // page has rendered, which is the first page's render: not the app's
+      // frame before the router has placed a page, nor a redirect's, nor a
+      // page still loading its chunk (spec 0024 §14: no server request
+      // before it). The work below runs then, once.
+      inject(TmPageVisits).ɵstart(() => {
+        // Recent pages count visits from the first page on (spec 0025 §13),
+        // and the election revalidates a warm launch and connects the hub
+        // (§7.2), neither of which the first frame waits for. Their entry
+        // points load now, off the first frame. A failed load, or a service
+        // that fails to start, goes without until the next launch: no
+        // visits count, or the tab neither leads nor hears hub events, and
+        // nothing else depends on either. The worker registers once the
+        // app settles (spec 0024 §5.4), and the update banner shows from
+        // then on; an update check loads the entry point itself.
+        const start = <M>(load: () => Promise<M | null>, type: (loaded: M) => Type<unknown>, source: string): void => {
+          load()
+            .then((loaded) => {
+              if (alive && loaded !== null) {
+                injector.get(type(loaded));
+              }
+            })
+            .catch((error: unknown) => telemetry.error(error, { where: source }));
+        };
+        start(loadRecents, (recents) => recents.TmRecents, 'tm-recents');
+        start(loadLeader, (leader) => leader.ɵTmLeaderElection, 'tm-leader');
+        start(loadUpdates, (updates) => updates.TmUpdates, 'tm-updates');
+        const load = (): void => {
+          // An app torn down before its idle moment starts none of these.
+          if (!alive) {
+            return;
           }
-        },
-        { injector },
-      );
+          const api = injector.get(TmApi);
+          if (api instanceof TmHttpApi) {
+            api.ɵprefetchContracts();
+          }
+          // The telemetry pipeline, which sends what the launch recorded.
+          if (telemetry instanceof TmTelemetryFront) {
+            telemetry.start(injector);
+          }
+          // The load's paint metrics, observed with what the load buffered;
+          // a chunk that fails to load sends no metrics.
+          void import('../observe/tm-load-metrics').then(({ tmStartLoadMetrics }) => alive && tmStartLoadMetrics(injector), () => undefined);
+          // The device-zone check's chunk, which checks now and then on
+          // each tenant entry and whenever the tab comes into view.
+          injector.get(TmDeviceZone).ɵstart();
+        };
+        if (window?.requestIdleCallback) {
+          window.requestIdleCallback(load);
+        } else {
+          setTimeout(load);
+        }
+      });
       // Entering a tenant route records it as the last tenant, for the next warm launch at `/`.
       router.events.subscribe((event) => {
         const tenantId = event instanceof NavigationEnd ? tmRoutedTenant(event.urlAfterRedirects) : null;
