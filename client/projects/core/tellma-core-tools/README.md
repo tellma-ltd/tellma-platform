@@ -68,8 +68,20 @@ first script) and `src/app.config.ts`, which exports `appConfig`.
    emitted Core and Entities chunks and the string packs), the `index.html` rules, the manifest
    (members, PNG icon sizes, short names), the brand files and the budget notes; then it refreshes
    `generated/root/` as `serve` writes it, so no stale copy reaches the output, and runs
-   `ng build --stats-json`, with Angular's chunk optimizer off so the metafile is the output's true
-   chunk graph. A source problem stops the build before `ng build`;
+   `ng build --stats-json` with Angular's chunk optimizer on (`NG_BUILD_OPTIMIZE_CHUNKS=true`, on
+   Rollup: `NG_BUILD_CHUNKS_ROLLDOWN=false`), which bundles esbuild's chunks again from the main
+   entry so the first frame loads a few files rather than many. It then settles the optimizer's
+   output (`src/output/chunk-names.ts`): it deletes the esbuild chunks no import reaches from
+   `index.html` once no file of the output names them, checks that each chunk's imports in
+   `stats.json` are exactly the chunks its text names, and renames every chunk the app loads to
+   `<stem>-<hash>.js`, the hash eight characters of Crockford's base32 SHA-256, where Rollup's
+   names carry a base64url hash and the main entry keeps the hash esbuild gave it before Rollup
+   changed its bytes. A chunk outside an import cycle hashes its final bytes; one in a cycle (the
+   lazy chunks import the main entry) hashes the whole cycle as seen from it, so a name always
+   serves one content. Every reference follows: the chunks' import specifiers, `index.html`, the
+   source maps' `file` and `stats.json`. The new hash has the old one's length, so no byte moves and
+   the maps and the stats' byte counts stay exact. A source problem stops the build before
+   `ng build`;
 2. copies the brand files (`public/brand/<name>` over `@tellma/core`'s `brand/<name>`), writes
    `tm-boot.js` from `@tellma/core`'s template and the string packs' boot strings, and adds
    `name_localized` and `short_name_localized` to the output manifest;
@@ -112,7 +124,10 @@ platform's `size:check` holds the whole entry point to its 55 KB cap (the produc
 from the platform's 50 KB), and this line lets a distribution check the same level on its own app. A build in which no module is the primary's, no
 initial file holds its code, or a file's source map disagrees with the stats' count of its primary
 bytes (beyond 0.5% under or 1% over, plus 16 bytes) reports `budget-unmeasurable`; a file holding
-primary code without a source map fails the build. Every
+primary code without a source map fails the build. The figure is cut through the maps, which Rollup
+composes from esbuild's down to each source; the stats' count is the optimizer's estimate, each
+esbuild chunk's rendered bytes split among its modules in proportion to what esbuild gave them, so
+the band also bounds that estimate. Every other figure sums whole files. Every
 lazily loaded chunk no budget covers, a `@defer` block's or a distribution route's, prints on a
 line of its own, `lazy:<the module it starts at>`, with no level: its static imports beyond the
 initial set. A distribution sets a level in `package.json`; a raise needs a note:

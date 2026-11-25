@@ -20,6 +20,7 @@ import { tmBuiltFontUrls, tmFontFragments, tmIsFontForFragments } from '../fonts
 import { tmBootConfig, tmBuildBootScript } from '../output/boot.js';
 import { tmAddPreloads, tmReadInitialFiles, tmShellModulePreloads } from '../output/preloads.js';
 import { tmRefreshRootFiles, tmWriteRootFiles } from '../output/root-files.js';
+import { tmSettleChunks } from '../output/chunk-names.js';
 import { tmMoveSourceMaps } from '../output/source-maps.js';
 import { TmBuildGraph } from '../output/stats.js';
 import { tmOnDemandChunks, tmWorkerConfig, tmWorkerGroups, TM_WORKER_FILES } from '../output/worker-config.js';
@@ -31,8 +32,9 @@ import { tmWritePlatformAssets } from './platform-assets.js';
 // checks, in six steps.
 //
 //  1. The emit, then the source checks (config, index.html, manifest, brand
-//     files, budget notes), then `ng build --stats-json`. A source problem
-//     stops here, before the slow part.
+//     files, budget notes), then `ng build --stats-json` with Angular's
+//     chunk optimizer on, whose chunks then take names of their content. A
+//     source problem stops here, before the slow part.
 //  2. The brand files, tm-boot.js and the manifest's localized names.
 //  3. The preloads: fonts, the Core chunk and default string pack, and the
 //     /shell and /attention chunks.
@@ -123,25 +125,35 @@ async function sourceStep(
   return { metadata, slug, coreDir, brand, names, levels: budgets.levels, bootScript };
 }
 
-/** Step 1's end: the Angular build, with its chunk graph. */
+/**
+ * The environment ng build runs with. Angular's chunk optimizer bundles
+ * esbuild's chunks again with Rollup, so the first frame loads a few files
+ * rather than many, each compressed with the context of the code around it.
+ * It runs whatever the number of lazy chunks, and on Rollup rather than
+ * Rolldown, so every build's output takes the same shape, which the build
+ * then settles (output/chunk-names.ts).
+ */
+export const TM_NG_BUILD_ENV: Readonly<Record<string, string>> = Object.freeze({
+  NG_BUILD_OPTIMIZE_CHUNKS: 'true',
+  NG_BUILD_CHUNKS_ROLLDOWN: 'false',
+});
+
+/** Step 1's end: the Angular build, its chunks named by their content. */
 async function angularBuild(context: TmCommandContext, project: TmAppProject): Promise<void> {
   tmLogStep(context, `Building ${project.angularProject}`);
   const ng = join(tmRequirePackageDir(project, '@angular/cli'), 'bin', 'ng.js');
   rmSync(project.outputDir, { recursive: true, force: true });
-  // Angular's chunk optimizer merges chunks after esbuild has written the
-  // metafile, which leaves the metafile describing chunks the output does
-  // not hold and names some chunks outside the hashed-name pattern; with it
-  // off, the metafile is the output's true graph.
-  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json'], {
-    cwd: project.dir,
-    env: { NG_BUILD_OPTIMIZE_CHUNKS: 'false' },
-  });
+  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json'], { cwd: project.dir, env: TM_NG_BUILD_ENV });
   if (code !== 0) {
     throw new TmBuildFailure(`ng build exited with code ${code}.`);
   }
   if (!existsSync(join(project.browserDir, 'index.html'))) {
     throw new TmBuildFailure(`ng build wrote no ${tmRelativePosix(project.dir, join(project.browserDir, 'index.html'))}.`);
   }
+  // --- The optimizer's chunks: the unreached ones deleted, the rest named by their content ---
+  const settled = tmSettleChunks(project.browserDir, project.statsFile);
+  const removed = settled.removed.length === 0 ? '' : `; deleted ${settled.removed.length} that no import reaches (${settled.removed.join(', ')})`;
+  tmLogStep(context, `Named ${settled.renamed.size} chunks by their content${removed}`);
 }
 
 /** Step 2: the brand files, tm-boot.js and the manifest's localized names. */
