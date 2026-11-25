@@ -661,15 +661,22 @@ describe('TmZoneCheck', () => {
 
     it('records nothing when the dialog closes without an answer, as history navigation closes it, so the next check asks again', async () => {
       const rig = await setUp();
-      const done = rig.zone.check();
-      await tmSettleUntil(() => prompt() !== null);
+      // The startup check is the one that asks first, so no other check can open the dialog.
+      rig.zone.ɵstart();
+      await tmSettleUntil(() => rig.checks.mock.calls.length > 0, 'the startup check started');
+      const done = rig.checks.mock.results[0]!.value;
+      await tmSettleUntil(() => prompt() !== null, 'the startup check asks');
       // What closing on navigation does: the dialog closes under the modal's own paths.
       TestBed.inject(Dialog).closeAll();
       await done;
+      expect(rig.checks).toHaveBeenCalledOnce();
       expect(seen(rig)).toBe('Asia/Riyadh');
       expect(zoneEvents(rig).some(([name]) => name === 'zone-prompt')).toBe(false);
+      await tmSettleUntil(() => prompt() === null, 'the dialog closed');
+      // The test's own check, the second the app has run, asks again.
       void rig.zone.check();
-      await tmSettleUntil(() => prompt() !== null);
+      await tmSettleUntil(() => prompt() !== null, 'the next check asks again');
+      expect(rig.checks).toHaveBeenCalledTimes(2);
     });
   });
 });

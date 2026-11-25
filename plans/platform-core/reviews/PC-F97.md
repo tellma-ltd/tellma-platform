@@ -153,3 +153,197 @@ None from a spec. Test-only changes: the spec starts the zone check's triggers i
   claim.
 - The remaining chunk-crossing `vi.waitFor`s are in PC-126's renamed files (above). They stay
   exposed to the leaky harness until converted.
+
+## Review 1
+
+Scope: commit 04114076 only. It is test-only: four core specs and this file. No spec section is
+in scope. Spec 0024 §7.8 ("Detecting a change") is the behaviour the zone-check spec must still
+prove.
+
+### Findings
+
+**R1-1 (minor): "records nothing when the dialog closes without an answer…" still races the
+startup check, and it hangs if the startup check comes first.**
+`client/projects/core/tellma-core/src/l10n/tm-zone-check.spec.ts:662-673`.
+
+- The scenario. The test calls `rig.zone.check()` (B) right after `setUp`, without waiting for the
+  app's own startup check (A), which the idle callback starts. It does not change anything the
+  check reads, so the fix's rule left it alone. But both checks prompt here (`seen` is
+  Asia/Riyadh, the device is Europe/London, the option is off), and `check()` runs them one after
+  the other on `#tail`.
+  - **A first** (its `check()` called before B's): B queues behind A. The prompt the test sees is
+    A's, and `closeAll()` ends A with nothing recorded. B then runs, finds the same change and
+    opens a second prompt that nothing answers. `await done` (line 668) never settles, and the
+    test fails at the 5 s test timeout, not with a named wait.
+  - **A last**, the usual order (D-304's CI failure shows the startup check landing after setUp
+    and five tasks): B prompts, `closeAll()` ends it, and A then prompts. The last claim, "the next
+    check asks again" (lines 671-672), is then met by A's prompt before the test's own check has
+    run. The claim still holds, but by the startup check rather than the check the test makes.
+- How reachable is "A first"? The idle callback is queued at the first render, inside
+  `tmNavigate`. The entry trigger calls `check()` on the tick after NavigationEnd, which can fall
+  inside `RouterTestingHarness.navigateByUrl`. That needs an idle period during the navigation:
+  - In the file's first tests, the shell chunk's delayed load gives one.
+  - Later in the file, `tm-route-hosts.ts` keeps the loaded component, so navigation is fast.
+  I did not see it fail: 30 runs of the file (10 with no delay, 10 under postTask, 10 under the
+  leaky harness) and two full core runs all passed. So this is latent. But it is the same race
+  class as the pair, an explicit check racing an unawaited startup check, and D-304 shows that
+  race is real in CI with no harness at all.
+- Suggested fix: make the startup check this test's first check, so the order is fixed and the
+  last claim is the test's own:
+  ```ts
+  const rig = await setUp();
+  rig.zone.ɵstart();
+  await tmSettleUntil(() => rig.checks.mock.calls.length > 0, 'the startup check started');
+  const done = rig.checks.mock.results[0]!.value;
+  await tmSettleUntil(() => prompt() !== null);
+  TestBed.inject(Dialog).closeAll();
+  await done;
+  // …the same assertions, then the explicit check that asks again.
+  ```
+  An alternative is to assert, after `await done`, that only one check has run
+  (`rig.checks.mock.calls.length === 1`), so the last prompt is known to come from the explicit
+  check.
+
+No blocking or major findings.
+
+### What I verified
+
+**(a) Both causes, and D-304's CI signature.**
+
+- Both causes:
+  - The implementer's before-log (scratchpad `PC-F97-zc-posttask-before.log`) shows both
+    signatures under postTask: `expected [ { timeZone: 'Europe/London' } ] to deeply equal []`,
+    and `expected [ … (3) ] to have a length of 2 but got 3`.
+  - The code agrees. `#ready()` reads `seen` only after `await this.#entities.load()`, whose
+    `import('./tm-entity-model')` is a delayed site. And a `check()` made while the startup
+    check runs queues on `#tail` rather than sharing it.
+- The fix. `startup(rig)` awaits the promise of the first recorded `TmZoneCheck.check` call, which
+  is the entry trigger's. That trigger starts with `ɵstart` and runs `check()` only once
+  `ɵpartition` and the launch documents are present. So the check has read the device document
+  before the spec's `setSeen`.
+  - Nothing else then reads that change. A second `ɵstart` (the app's idle callback) is a no-op
+    through `#started`, and the entry effect re-runs only for a new partition key.
+- So D-304's CI failure has the same signature as the entry test's harness failure, and both come
+  from one mechanism: the startup check reads after the spec's change. That mechanism does not
+  depend on the harness, and the fix removes it.
+- Each test that calls `startup()` calls it before any explicit check, so the first recorded call
+  is always the startup's.
+- The 500 test keeps its claim. The startup check makes write 1 (rejected, reported once, nothing
+  recorded) and an explicit check makes write 2. "The next check tries again" is still proven.
+
+**(b) Calling ɵstart in the tests.**
+
+- `startup()` calls `TmDeviceZone.ɵstart()`. That is the method the app's idle callback calls
+  (`tm-app-init.ts:217`), and it is idempotent. So the tests that use it run the same trigger
+  code (the entry effect and the visibility listener) that the product registers.
+- The one product step they skip is tm-app-init's `requestIdleCallback(load)` → `ɵstart()`. The
+  first test, "records a first run's zone at idle after the first render", covers that step:
+  - nothing in the spec calls `ɵstart` or `check` there;
+  - its `first-run` record can only come from the app's idle start running the entry trigger's
+    "check now".
+  So spec 0024 §7.8's three triggers stay covered: idle after the first render (test 1), tenant
+  entry and visibility (the trigger tests). No coverage of the product's trigger is lost.
+- D-304's question: test 1 cannot fail with the CI signature. It changes nothing after `setUp`,
+  and it asserts the record that the startup check itself makes.
+  - Its only exposure is its 4 s deadline, if the idle callback is held back that long. The
+    implementer saw that once, for the idle-waiting variant, under the leaky harness, whose
+    MessageChannel spin keeps the main thread busy.
+  - It passed in all 30 file runs and both full runs here, under all three conditions. It is the
+    price of covering the real idle path, and it ends when the postTask harness replaces the
+    leaky one.
+
+**(c) The sweep.**
+
+- The 13 converted waits:
+  - tm-http-api: 6 waits, through `flowsRan()` over `flushUntil` under fake timers.
+  - tm-display-names: 4 waits.
+  - tm-session-tabs: 3 waits.
+  Each is a named `tmSettleUntil` or `flushUntil` condition, followed by the exact assertion the
+  old `vi.waitFor` made. None weakens a test:
+  - the conditions are `length > 0` or `!== null`, so a wrong value still fails the assertion
+    that follows;
+  - the session-tabs waits move from 3 s to the shared 4 s deadline.
+- The 20 files that still hold `vi.waitFor` match the implementer's list. I read the ones outside
+  the skip list against the 35 delayed sites: tm-updates, tm-error-presenter, tm-cache-refresher,
+  tm-create-hub, provide-tellma, tm-route-error, tm-localization, tm-locks, tm-client-store,
+  tm-fake-locks, tm-grid-header-nav and tm-blob-fetcher.
+  - None crosses a delayed `import()`. updates/src, errors/src and realtime/src have no
+    `import()` at all.
+  - tm-route-error's waits follow the spec's own loader.
+  - tm-localization's wait is the store's boot.
+  - provide-tellma's loaders are plain promises.
+- The skip list is right. `git diff --name-only origin/platform-core...origin/pc/PC-126` holds
+  entity/src/tm-value.spec.ts, errors/src/tm-error-state.spec.ts and the two specs renamed into
+  entity-editing (tm-entity-field, tm-entity-pickers). pc/PC-118's spec list holds no
+  `vi.waitFor`. The session specs and tm-tab-bus belong to PC-F86 and PC-F87. D-303 sends the
+  three chunk-crossing PC-126 files to PC-F99.
+- Merge checks: `git merge-tree` of 04114076 with origin/platform-core and with origin/pc/PC-F86
+  (368e684e) is clean.
+- Lint: eslint on the four files is clean.
+- The three `setTimeout(50)` negative waits in tm-display-names are unchanged, and the
+  implementer noted them. Under the delay they pass before a stray read could go out, but they
+  are not a regression from this change.
+
+**(d) Runs.** Each harness was applied with its own inject script and reverted with its remove
+script: 35 sites in 25 files each time. `git status` was clean after each revert. I also removed
+the one failure screenshot my leaky run wrote, by name. Logs are in the scratchpad as
+`r1-F97-*.log` and `r1-F97-*-summary.txt`.
+
+| Condition | tm-zone-check.spec ×10 | Full core |
+|---|---|---|
+| No delay | 10/10 at 28/28 | not run |
+| PC-F86's postTask harness | 10/10 at 28/28 | 2589/2589 |
+| Current leaky harness | 10/10 at 28/28 | 2588/2589 |
+
+- The one leaky failure was tm-session-flows.spec "waits for a running save, says so, and signs
+  out with no question once it ends": `expected 'Signing out…' to be 'Waiting for a save to
+  finish…'` at line 374, followed by an NG0205 unhandled rejection from the flows that outlived
+  the test.
+  - Root cause: line 374 is a 1 s `vi.waitFor` across the session flows' chunk (PC-F86 R1-1),
+    which starved under the leaky harness. pc-f2 branched at 1e7c28cc, before PC-F86.
+  - On origin/pc/PC-F86 that wait is `tmSettleUntil(…, 'the overlay says it waits for a save')`,
+    and the file has no `vi.waitFor` left. So it is PC-F86's, already fixed, and not this change.
+- The zone-check pair passed in every run.
+
+### Responses
+
+- **R1-1: fixed in fix 1, as ruled (D-309).** "records nothing when the dialog closes without an
+  answer…" now makes the startup check its first check:
+  - it calls `rig.zone.ɵstart()`, waits for the first recorded check ("the startup check started")
+    and takes `checks.mock.results[0].value` as `done`;
+  - it waits for that check's prompt, closes it with `closeAll()`, and awaits `done`;
+  - it asserts `toHaveBeenCalledOnce()`, so no other check ran, plus the existing "nothing
+    recorded" assertions;
+  - it waits for the dialog to close, makes its own `rig.zone.check()`, and waits for "the next
+    check asks again", asserting that two checks have now run.
+  "records a first run's zone at idle" stays the idle-path test (spec 0024 §7.8) and is unchanged.
+- Gate runs of tm-zone-check.spec.ts after the fix. Each harness was applied with its own inject
+  script and reverted with its remove script, 35 sites each time.
+
+  | Condition | Runs at 28/28 |
+  |---|---|
+  | No delay | 10/10 |
+  | PC-F86's postTask harness | 10/10 |
+  | Current leaky harness, first ten | 8/10 |
+  | Current leaky harness, ten more | 10/10 |
+
+  - The two leaky failures were late prompt-section tests, each timing out its named wait:
+    - "shows a zone outside the server's set inline" (unchanged by this fix): `() => prompt() !==
+      null` did not hold within 4,061 ms;
+    - the R1-1 test: "the next check asks again" did not hold within 5,666 ms.
+  - The second message proves a single step of the wait loop took at least 1.67 s, because the
+    loop checks its deadline before each step. That is the leaky harness's starvation (D-294),
+    which grows as a file's leaked channels pile up. The first message cannot tell a stall from
+    an absent prompt.
+  - To tell them apart, I ran ten more leaky runs with a temporary probe in `tmWaitUntil` that
+    puts the step count and the longest step into the deadline message. All ten passed, so the
+    probe never fired. The probe is reverted.
+  - Neither test failed in 20 leak-free runs (here and in R1's 20), in 10 more leaky runs, or in
+    R1's 10 leaky runs. I find no spec mechanism: each test's checks run in order on `#tail`, and
+    the R1-1 test now fixes which check asks.
+  - My reading: these are the starvation class D-294 and D-302 assign to the leaky harness, made
+    likelier here by load from other slots on the machine. I could not confirm the load, because
+    process listings are not allowed. They go away once the postTask harness becomes the gate.
+- Gates: eslint on the spec, `pnpm run typecheck`, `tsc -p tellma-core/tsconfig.spec.json`
+  (only the 13 existing TS6059 notices), lint:test, and `dotnet format --verify-no-changes`.
+  No .NET change. The failure screenshots my runs wrote are deleted by name.
