@@ -384,6 +384,142 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-324 (orchestrator, 2026-11-25): PC-118's CI fixes; the session button gets a fixed box
+
+- PC-118's CI fixes (8daaf1b0) root-caused all three CI failures.
+  - The additions registry had two unclassified folders. counter becomes an additions entry point with its own story and axe floor. initials joins the older folders, as a helper with no UI, after blob-fetcher.
+  - A layout shift of about 0.00017: the session overlays host was display: contents, so its children joined the app bar's flex flow when the chunk landed. It is now taken out of the flow, with an app-bar box test that fails on the old host.
+  - The flaky warm-launch order: the after-first-render work ran on the app's first frame, before the routed tenant shell existed. It now runs after the first navigation that ends for good renders, through TmPageVisits.
+- The remaining cold-entry shift (0.000829 ltr, 0.000312 rtl) comes from the session button, which is sized by its content. Cold, it shows the cookie name and a 96 px skeleton (spec 0027 section 7.4); warm, it shows the synced names.
+- Ruling: a fixed box per breakpoint, with an ellipsis, and the full names kept in the accessible name.
+  - Spec 0027's stable-layout bullet asks for "Fixed boxes".
+  - Spec 0024 asks for final-geometry skeletons and zero shift from skeleton to chrome.
+  - So a fixed button box is what both specs mean. Section 7.4's cold content is unchanged.
+  - Narrowing layout-shift.spec to main is rejected, because it loosens the test (D-011).
+- For Ahmad (non-blocking): confirm the session button's fixed width, which PC-118 will report. Spec 0027 section 7.4 could say the button's box is fixed.
+- The "." ceiling 53.68 to 53.69 (+14 B for the render-ordered start) is accepted under D-031.
+- PC-F105 is opened: the wordmark's box is not reserved, so an uncached first paint shifts.
+- Local-only intermittent failures are logged as watch rows. CI passes all of them.
+
+### D-323 (orchestrator, 2026-11-25): PC-118's integration CI is red on its own changes
+
+- CI 45653637336 on 1f177e46 failed. All three failures point at PC-118 itself; PC-F101's green run just before had none of them.
+  1. The client's PR-tier e2e additions-axe registry does not classify the new core-ui counter folder. It is deterministic.
+  2. Acme ubuntu: layout-shift's zero-shift cold entry fails in chromium and chromium-ar, with sub-pixel shifts of 0.0001 to 0.0008. Windows passes, so a skeleton element differs from the chrome on Linux.
+  3. Acme ubuntu, flaky: warm-launch saw /api/web/inbox/summary issued before the shell's first render. That is very likely the new app bar counter.
+- PC-118's local gates ran only its own e2e specs, so (1) was not caught locally.
+- PC-118 root-causes all three (D-011): no retries and no loosened assertions. It commits CI fixes and re-integrates. The flaky row is tracked by PC-118.
+- Until PC-118 lands, pc-1 stays with it, and PC-F102 waits for that slot.
+
+### D-322 (orchestrator, 2026-11-25): PC-F94 R1 rulings; gl.Center is deferred to PC-F104
+
+- PC-F94's R1 is 0/0/4: the label filter drops patched-in entries, the closure check skips action-field enums and targets, there is no deep-copy test, and one key is dead. All four are fixed in fix1, with no R2 (section 4.4).
+- gl.Center: R1's recommendation is accepted.
+  - The real-names-mean-real-fields rule is not extended to module entities now. Renaming would touch about 70 client files, the server ClientModel and the fixtures, and no gl package or gl-composing test exists yet to make the gap bite.
+  - Fix1 notes the shape in the stand-in's TSDoc and fixes the README's gl.Center example.
+  - PC-F104 is opened, deferred, to move off the real gl key when either trigger lands.
+
+### D-321 (orchestrator, 2026-11-25): PC-F94 to R1; PC-F103 opened for core's missing label strings
+
+- PC-F94's impl (8b07aa85) goes to R1.
+  - R1 also gives a recommendation on gl.Center. Its stand-in and the server's test model both keep ManagerId and Manager, which the real Tellma.Module.Gl Center lacks. The question is whether the real-names-mean-real-fields rule covers module entities too.
+  - PC-F94 used one parenthesized subshell for a gate batch. It reported this itself, and nothing else came of it. It is reminded of D-271 and not notified.
+- PC-F94 found that the platform alone emits 306 label fallbacks, because core's Strings.resx has no labels for core's own entities (Core_User, Core_Blob, Core_Job, Core_Notification and others).
+  - So every distribution's tmCheckAppConfig warns label-missing for keys it cannot fix. That explains the roughly 323 label-missing warnings in every Acme build.
+  - This is a product gap, not test noise, so PC-F103 is opened (non-blocking): declare the core labels per the specs' label rules, re-record the fixtures, and check the warning count.
+- PC-118 is integrating (1f177e46, CI 45653637336). It measures 226.86 Acme and 226.19 fixture, with no warning.
+- PC-F102's brief is ready for pc-1, the moment PC-118 lands.
+
+### D-320 (orchestrator, 2026-11-25): the first-frame set; PC-F102 re-enables the chunk optimizer within section 6
+
+- The D-318 analysis (scratchpad first-frame-analysis.md) built the full merge. Acme initialJs, step by step:
+
+  | State | Acme initialJs (KB) | Files |
+  |---|---|---|
+  | 13cbb8e5 | 217.29 | 18 |
+  | + PC-118 | 226.86 | 21 |
+  | + PC-126 with candidate C | 231.88 | 26 |
+  | + PC-154 | 234.33 | 27 |
+
+  - The fixture is at 233.61, and five fixture build tests fail on the budget warning.
+  - PC-126 is the one that crosses the line. The grid hoist is already paid by its search route.
+- Source routes, measured cumulatively:
+  - The l10n parse split is already in PC-126 (e585508d), so it saves nothing more.
+  - PC-F91: -0.55.
+  - PC-154's ɵTmSupportOffline re-export: -0.45. It goes into PC-154's fix1.
+  - PC-F92: -0.58.
+  - CDK scrolling and bidi, and _debug_node: nothing realistic. Each is one module that esbuild places whole.
+  - All of them together leave 232.75, so no source route holds the line.
+- About 10 KB is the cost of splitting the first frame into many files, because the tool runs ng build with NG_BUILD_OPTIMIZE_CHUNKS=false (D-065).
+  - With the optimizer on, the set measures 224.33 in 4 files.
+  - The tool currently crashes in that mode: leftover chunks nothing references, and merged chunk names in Rollup's base64url alphabet.
+  - D-065 turned the optimizer off because those names fail spec 0024 section 6's hashed-name rule (a - and at least eight [A-Z0-9]), and stats.json fell out of step with the output.
+- Ruling:
+  - Open PC-F102, blocking for PC-126 and PC-154. It re-enables the optimizer while keeping section 6 as written: either an option for the hash alphabet, or compliant content-hashed names that the tool assigns, with every reference rewritten. It also keeps stats.json and the graph honest, and re-measures every budget.
+  - Widening section 6's pattern is a spec change, so it is not ours to make.
+  - If PC-F102 finds no compliant way, it stops and reports. The choice then goes to Ahmad: amend section 6 to admit the optimizer's names, or move the 230 line. In that case the itemization above is the brief for him.
+  - PC-F102 takes the first slot that frees: pc-1, when PC-118 lands (D-229, blocking first).
+  - D-065's optimizer ruling is revisited on new facts. Its section 6 constraint stands.
+- Release queue after PC-118:
+  - PC-126 is blocked until PC-F102 lands (D-247), so it is skipped.
+  - PC-F88, then PC-F89.
+  - PC-154's fix1 waits for PC-118 as planned. Its integration also waits for PC-F102.
+- For Ahmad (non-blocking unless PC-F102 fails): the first frame of the full T1 shell set is 234.33 KB against 230 under today's build. The fix within the current spec is PC-F102.
+
+### D-319 (orchestrator, 2026-11-25): PC-F89 held; release queue; restart recovery
+
+- PC-F89 held at 3b3a31a5. Its fix1 is test-only: the gives-up test now proves the logout carried on, and it fails under the early-return mutation.
+- Release queue after PC-118 lands, one at a time (D-087/D-190):
+  1. PC-126, unless the D-318 analysis shows that it would cross 230 on top of PC-118. Then a saving lands first, or the line goes to Ahmad.
+  2. PC-F88.
+  3. PC-F89.
+  - A blocked item is skipped, not waited on.
+- Claude Code restarted mid-run (section 10). One agent ended earlier on an OAuth 401: PC-118, mid-merge with every conflict resolved. The rest stopped with the restart:
+  - PC-154: uncommitted fix1 work.
+  - PC-F94: no commits yet.
+  - The first-frame analysis: no output file yet.
+  - All four were resumed from their transcripts with their slot state.
+  - A token expiry is not a permission block (section 9), so it is not notified.
+
+### D-318 (orchestrator, 2026-11-25): PC-154 R1; the 230 line under PC-118, PC-126 and PC-154 together
+
+- PC-154's R1 is 1/0/5.
+- R1-1 (blocking): measured on a merge with pc/PC-118, Acme initialJs is 235.67 KB in 26 files, over the 230 line.
+  - With /support stubbed out it is 229.19.
+  - The cause is D-281's file-level hoisting, not an import edge like TM_GRID_KEYS. Once /support makes tm-grid live in Acme, the grid's lazy chunks share files that the first frame already imports. Those files come in whole:
+    - the l10n parse halves next to their format halves: tm-date-engine, tm-number-codec, tm-week-info;
+    - CDK scrolling and bidi;
+    - Angular's _debug_node;
+    - the grid's lucide glyphs.
+  - PC-118's move removed a different edge, so it does not help here.
+- Ruling: the first frame is a property of the set, not of one checkpoint. So R1-1 is handled at orchestrator level.
+  - PC-154's R1 reviewer is measuring the full set read-only: platform-core, then PC-118, then PC-126 with candidate C, then PC-154. It itemizes the first frame and measures the saving routes: the l10n parse split, PC-F91 (lucide per-icon), PC-F92 (TmKbd out of the primary), and the CDK and _debug_node hoists.
+  - Routes that get the set under 230 become blocking fix items, landing ahead of whichever of PC-126 or PC-154 would cross the line.
+  - If no realistic route does, the 230 line goes to Ahmad with the itemized first frame, as D-301 planned. It is not raised.
+  - Over the line still means blocked (D-247), and the checkpoint that would cross it waits.
+- R1-2 is accepted with no change. D-031 caps a raise at what the checkpoint adds, rounded up to the next 0.5; it does not fix the raise at that value. So "." to 54.8 (measured 54.74) and locale-ar "." to 0.55 (0.52) are honest.
+- R1-3 to R1-6 are fixed now, in a local commit:
+  - TmSupport starts at idle.
+  - Presses made before the tools land collapse to one open.
+  - The Download gets a pending guard.
+  - Two README lines are corrected.
+  - The diagnostics offline line is tested in en and ar.
+- The D-305 shell rows follow after PC-118 lands. All of fix1 then goes to R2 at xhigh (section 4.4).
+
+### D-317 (orchestrator, 2026-11-25): PC-F101 landed; PC-118 released; PC-F94 fills pc-f
+
+- PC-F101 landed at 13cbb8e5. CI 45631846535 was green on ddef354d, and the plans-only merge went on top.
+  - PC-126 is no longer blocked by it. PC-126 still integrates after PC-118 (D-314), applying D-316's candidate C.
+- PC-118 is released to integrate. Its 6-file conflict set from 8646bb53 now meets PC-F101's package.json and ARCHITECTURE.md edits.
+  - Every map in package.json keeps one key per entry.
+  - PC-118 lands first of PC-118, PC-126 and PC-154. Those that land after it re-measure the 230 line (D-214, D-315).
+- D-229 fill for pc-f:
+  - No blocking fix is open. PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready.
+  - So the next non-blocking fix in ledger order, PC-F94, takes the slot. PC-F89 is in pc-f2.
+  - PC-F94 overlaps PC-118 in core-testing's api golden and README. It keeps those edits minimal, and the second of the two to land resolves the conflict.
+- PC-F89's R1 was 0/0/1. Its fix1 makes the gives-up test prove that the logout carried on.
+  - Not opened: a sweep that revokes an authorization whose revoke kept losing. It is very unlikely, and it is logged and audited today.
+
 ### D-316 (orchestrator, 2026-11-25): PC-126's search-route saving is candidate C, applied at integration
 
 - PC-126's read-only investigation (D-313) found the over-budget edge.
