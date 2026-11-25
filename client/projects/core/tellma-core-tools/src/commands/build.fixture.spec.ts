@@ -177,7 +177,15 @@ describe('tellma-client build on the fixture app', () => {
     expect(shell!.urls.some((url) => url.includes('latin-ext'))).toBe(false);
     expect(shell!.urls.some((url) => url.endsWith('.map') || url.includes('worker'))).toBe(false);
     expect(onDemand).toMatchObject({ name: 'on-demand' });
-    expect(onDemand!.urls).toEqual(['/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/manifest.webmanifest']);
+    // Besides the icons and the manifest, the on-demand group holds the chunks only an
+    // on-demand entry point reaches (the support tools'), none of them in the shell group.
+    const [chunks, files] = [onDemand!.urls.filter((url) => url.endsWith('.js')), onDemand!.urls.filter((url) => !url.endsWith('.js'))];
+    expect(files).toEqual(['/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/manifest.webmanifest']);
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const chunk of chunks) {
+      expect(chunk).toMatch(/^\/chunk-[A-Z0-9]{8}\.js$/);
+      expect(shell!.urls).not.toContain(chunk);
+    }
   });
 
   it("derives the navigation URLs from the routing words", () => {

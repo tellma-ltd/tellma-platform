@@ -13,6 +13,7 @@ import { EnvironmentProviders } from '@angular/core';
 import { ErrorHandler } from '@angular/core';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
@@ -2207,6 +2208,20 @@ export interface TmStringTable {
 export type TmStringTree = {
     readonly [key: string]: string | TmStringTree;
 };
+
+// @public
+export class TmSupport {
+    constructor();
+    readonly canSend: Signal<boolean>;
+    copyDiagnostics(trigger?: TmDiagnosticsTrigger): void;
+    downloadDump(): void;
+    open(options?: {
+        readonly error?: TmApiError;
+    }): void;
+    registerDumpSection(name: string, read: () => TmJson, destroyRef?: DestroyRef): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmSupport, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmSupport>;
+}
 
 // @public
 export type TmSweepRule = 'session-ended' | {

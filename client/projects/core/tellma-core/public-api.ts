@@ -71,6 +71,30 @@ export {
 } from './src/requests/tm-request-log';
 export { TmAppVersion, type TmFeatureVersion } from './src/requests/tm-app-version';
 
+// Support: Report a problem, Copy diagnostics, the diagnostic file and the
+// support dump's contributed sections. The dump's builder, the Diagnostics
+// panel and the support dialog are @tellma/core/support's.
+export { TmSupport } from './src/support/tm-support';
+// What @tellma/core/support and the About dialog build on, and the loaders
+// @tellma/core-testing replaces: the snapshot the facade takes, the request
+// line the panel copies, the error class a failed section names, and the
+// offline line. Not for app code.
+export {
+  TM_SUPPORT_LOAD as ɵTM_SUPPORT_LOAD,
+  TM_SUPPORT_TOOLS_LOAD as ɵTM_SUPPORT_TOOLS_LOAD,
+  type TmPageSnapshotModule as ɵTmPageSnapshotModule,
+  type TmSupportContexts as ɵTmSupportContexts,
+  type TmSupportDumpBuild as ɵTmSupportDumpBuild,
+  type TmSupportHostChunk as ɵTmSupportHostChunk,
+  type TmSupportModule as ɵTmSupportModule,
+  type TmSupportReported as ɵTmSupportReported,
+  type TmSupportSection as ɵTmSupportSection,
+  type TmSupportSnapshot as ɵTmSupportSnapshot,
+  type TmSupportTools as ɵTmSupportTools,
+} from './src/support/tm-support';
+export { ɵTmSupportOffline } from './src/support/tm-support-offline';
+export { tmDiagnosticsLine as ɵtmDiagnosticsLine } from './src/requests/tm-diagnostics';
+
 // The page context and the page actions: the registry, page scopes, the
 // dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.
 export type {

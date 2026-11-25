@@ -16,6 +16,7 @@ import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 import { Type } from '@angular/core';
 import { WritableSignal } from '@angular/core';
@@ -79,6 +80,20 @@ export class TmDetailsPageHarness extends ComponentHarness {
     isEnabled(button: TmDetailsPageButton): Promise<boolean>;
     isProgressShown(): Promise<boolean>;
     isTitleLoading(): Promise<boolean>;
+}
+
+// @public
+export type TmDiagnosticsPanelButton = 'Copy diagnostics' | 'Download diagnostic file' | 'Report a problem';
+
+// @public
+export class TmDiagnosticsPanelHarness extends ComponentHarness {
+    getButton(label: string | TmDiagnosticsPanelButton): Promise<TmButtonHarness>;
+    getButtons(): Promise<string[]>;
+    getGrid(): Promise<TmGridHarness>;
+    getHeader(): Promise<Record<string, string>>;
+    static hostSelector: string;
+    isFlaggedOnly(): Promise<boolean>;
+    toggleFlaggedOnly(): Promise<void>;
 }
 
 // @public
@@ -318,6 +333,13 @@ export class TmPathPickerHarness extends ComponentHarness {
     readonly getTree: () => Promise<TmTreeHarness>;
     static hostSelector: string;
     search(query: string): Promise<void>;
+}
+
+// @public
+export class TmSupportOfflineHarness extends ComponentHarness {
+    getKeys(): Promise<string[]>;
+    getText(): Promise<string>;
+    static hostSelector: string;
 }
 
 // @public
