@@ -24,6 +24,63 @@ import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
+import { ViewContainerRef } from '@angular/core';
+
+// @public
+export class TmAppBar {
+    constructor();
+    protected readonly accountLabel: _angular_core.Signal<string>;
+    protected readonly historyButtons: _angular_core.Signal<Type<unknown> | null>;
+    protected readonly historyInputs: Readonly<Record<string, unknown>>;
+    protected readonly home: _angular_core.Signal<string>;
+    protected readonly homeLabel: _angular_core.Signal<string>;
+    protected readonly identity: TmShellIdentity;
+    protected readonly initials: _angular_core.Signal<string>;
+    protected readonly installed: _angular_core.Signal<boolean>;
+    protected readonly keycap: string;
+    protected readonly launcher: TmLauncher;
+    protected readonly launcherOpen: _angular_core.Signal<boolean>;
+    protected readonly markerIcons: {
+        readonly sandbox: lucide.IconNode;
+        readonly readOnly: lucide.IconNode;
+        readonly maintenance: lucide.IconNode;
+    };
+    protected markerLabel(marker: TmShellMarker): string;
+    protected readonly markers: _angular_core.Signal<readonly TmShellMarker[]>;
+    protected readonly menuIcon: lucide.IconNode;
+    protected readonly menuLabel: _angular_core.Signal<string>;
+    protected navigated(): void;
+    protected readonly overlays: TmShellOverlays;
+    protected preloadSlot(slot: TmShellSlot): void;
+    protected readonly searchIcon: lucide.IconNode;
+    protected readonly searchLabel: _angular_core.Signal<string>;
+    protected sessionKeydown(event: KeyboardEvent, button: HTMLElement): void;
+    protected slotLabel(item: TmShellSlotView): string;
+    protected readonly slots: readonly TmShellSlotView[];
+    protected toggleMarker(marker: TmShellMarker, button: HTMLElement): void;
+    protected toggleSession(button: HTMLElement): void;
+    protected toggleSlot(slot: TmShellSlot, button: HTMLElement): void;
+    protected readonly tone: _angular_core.Signal<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null>;
+    protected type(event: Event): void;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmAppBar, "tm-app-bar", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmAppBar, never>;
+}
+
+// @public
+export class TmSessionMenu {
+    close(): void;
+    controls(button: HTMLElement): string | null;
+    readonly dialog: _angular_core.OutputEmitterRef<TmShellDialog>;
+    protected readonly identity: TmShellIdentity;
+    isOpenFor(button: HTMLElement): boolean;
+    protected readonly items: _angular_core.Signal<readonly TmMenuEntry[]>;
+    protected readonly label: _angular_core.Signal<string>;
+    register(button: HTMLElement): () => void;
+    readonly slot: _angular_core.OutputEmitterRef<TmShellSlot>;
+    toggle(button: HTMLElement, initialFocus: 'first' | 'last'): void;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSessionMenu, "tm-session-menu", never, {}, { "dialog": "dialog"; "slot": "slot"; }, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSessionMenu, never>;
+}
 
 // @public
 export class TmSignedOutPage {
@@ -90,6 +147,14 @@ export class TmTenantPicker {
 // @public
 export class TmTenantShell {
     constructor();
+    protected readonly errorViewsMissing: _angular_core.Signal<boolean>;
+    protected readonly failedLabel: _angular_core.Signal<string>;
+    protected readonly failure: _angular_core.Signal<{
+        readonly error: TmApiError | null;
+    } | null>;
+    protected readonly override: _angular_core.Signal<_tellma_core.TmShellMainOverride | null>;
+    protected retry(): void;
+    protected readonly retryLabel: _angular_core.Signal<string>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTenantShell, "tm-tenant-shell", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmTenantShell, never>;
 }

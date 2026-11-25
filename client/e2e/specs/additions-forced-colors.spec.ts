@@ -183,7 +183,7 @@ test('a switch turned on fills its track with the highlight, one turned off does
 test('every counter tone keeps a visible edge, and the attention tone alone a highlight fill', async ({
   page,
 }) => {
-  await page.goto(storyUrl('badge'));
+  await page.goto(storyUrl('counter'));
   await expect(page.getByTestId('counter-attention')).toBeVisible();
   const { canvas, highlight } = await palette(page);
   await appStable(page);

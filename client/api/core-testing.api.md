@@ -336,6 +336,23 @@ export class TmPathPickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmSessionMenuHarness extends TmMenuHarness {
+    getAvatarTone(): Promise<number | null>;
+    getEmail(): Promise<string>;
+    getTenantCard(): Promise<TmSessionMenuTenantCard>;
+    getTenantCardName(): Promise<string | null>;
+    getUserName(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export interface TmSessionMenuTenantCard {
+    readonly description: string | null;
+    readonly detail: string | null;
+    readonly label: string;
+}
+
+// @public
 export class TmSupportOfflineHarness extends ComponentHarness {
     getKeys(): Promise<string[]>;
     getText(): Promise<string>;
@@ -388,6 +405,42 @@ export class TmTenantPickerRowHarness extends ComponentHarness {
 }
 
 // @public
+export class TmTenantShellHarness extends ComponentHarness {
+    back(): Promise<void>;
+    clickErrorAction(label: string): Promise<void>;
+    clickSlot(id: string): Promise<void>;
+    forward(): Promise<void>;
+    getAccountName(): Promise<string | null>;
+    getAvatarTone(): Promise<number | null>;
+    getError(): Promise<string | null>;
+    getHistoryState(): Promise<{
+        readonly back: boolean;
+        readonly forward: boolean;
+    }>;
+    getHomeHref(): Promise<string | null>;
+    getMain(): Promise<TmTenantShellMain>;
+    getMarkers(): Promise<string[]>;
+    getReservedSlots(): Promise<string[]>;
+    getSlots(): Promise<TmTenantShellSlot[]>;
+    getTenantName(): Promise<string | null>;
+    getUserName(): Promise<string>;
+    hasHistoryButtons(): Promise<boolean>;
+    static hostSelector: string;
+    isTenantNameLoading(): Promise<boolean>;
+    openMarker(label: string): Promise<TmPopoverHarness>;
+    openSessionMenu(): Promise<TmSessionMenuHarness>;
+}
+
+// @public
+export type TmTenantShellMain = 'error' | 'page' | 'replaced';
+
+// @public
+export interface TmTenantShellSlot {
+    readonly id: string;
+    readonly name: string | null;
+}
+
+// @public
 export interface TmTestEntities {
     readonly chunk: TmEntitiesChunk;
     readonly summaries: readonly TmEntitySummary[];
@@ -404,6 +457,23 @@ export function tmTestMetadata(patch?: Partial<TmClientMetadata>): TmClientMetad
 
 // @public
 export function tmTestProfile(patch?: Partial<Omit<TmProfile, 'v'>>): TmProfile;
+
+// @public
+export function tmTestShellSlot(id: string, options?: TmTestShellSlotOptions): TmShellSlot;
+
+// @public
+export interface TmTestShellSlotOptions {
+    readonly count?: Signal<number | null>;
+    readonly icon?: string;
+    readonly labelKey?: string;
+    readonly panel?: TmLazyComponent;
+}
+
+// @public
+export class TmTestShellSlotPanel {
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmTestShellSlotPanel, "tm-test-shell-slot-panel", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTestShellSlotPanel, never>;
+}
 
 // @public
 export function tmWarmTenant(store: TmClientStore, partition: Extract<TmPartition, {

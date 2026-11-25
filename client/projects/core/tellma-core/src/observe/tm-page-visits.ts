@@ -24,7 +24,9 @@ import { TmTelemetry } from './tm-telemetry';
 // page's redirect does, kept the route shown, or was redirected: its start and
 // entry pass to the next visit. One whose navigation was abandoned before it
 // rendered a route, in a guard or a resolver, is reported as left. Times are
-// `performance.now()` readings, milliseconds since the time origin.
+// `performance.now()` readings, milliseconds since the time origin. The
+// first navigation to settle, ended for good and rendered, is the first
+// page's render, and runs the startup's work that waits for it.
 
 /** One visit while it runs. */
 interface TmVisit {
@@ -73,8 +75,14 @@ export class TmPageVisits {
   /**
    * Starts following the visits. Internal: the app's startup calls it before
    * the first navigation.
+   *
+   * @param firstPage - Runs once, in the render after the first navigation
+   *   that ends for good: not one redirected or superseded, whose page has not
+   *   rendered.
    */
-  ɵstart(): void {
+  ɵstart(firstPage?: () => void): void {
+    // What runs once the first page has rendered, until it has run.
+    let pending = firstPage;
     // --- Each visit's context, chrome and data ---
     effect(
       () => {
@@ -135,8 +143,18 @@ export class TmPageVisits {
         event instanceof NavigationError
       ) {
         // Only the latest navigation settles: an earlier one's render must not let the next visit adopt the page it leaves.
+        // The first to settle is the first page's render, which the startup's work after it waits for.
         const { id } = event;
-        afterNextRender(() => id === this.#latest && this.#settled.set(true), { injector: this.#injector });
+        afterNextRender(
+          () => {
+            if (id === this.#latest) {
+              this.#settled.set(true);
+              pending?.();
+              pending = undefined;
+            }
+          },
+          { injector: this.#injector },
+        );
       }
     });
 

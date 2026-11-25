@@ -11,7 +11,6 @@ import {
   DestroyRef,
   effect,
   inject,
-  InjectionToken,
   signal,
   untracked,
   viewChild,
@@ -40,14 +39,9 @@ import { TmSearchField } from '@tellma/core-ui/search-field';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import type { TmErrorView } from '@tellma/core/errors';
 
-import {
-  type TmTenantBadge,
-  tmTenantCountBucket,
-  tmTenantNames,
-  type TmTenantRow,
-  tmTenantRows,
-  tmTenantSearch,
-} from './tm-tenant-rows';
+import { TM_SHELL_ERROR_VIEWS } from '../tm-shell-errors';
+import { tmTenantNames } from './tm-tenant-names';
+import { type TmTenantBadge, tmTenantCountBucket, type TmTenantRow, tmTenantRows, tmTenantSearch } from './tm-tenant-rows';
 import { TmTenantlessShell } from './tm-tenantless-shell';
 import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';
 
@@ -66,15 +60,6 @@ const SEARCH_FROM = 7;
 
 /** The most rows the page context lists. */
 const CONTEXT_ROWS = 200;
-
-/**
- * Loads the error views the picker's error state renders: `@tellma/core/errors`,
- * through `import()`. A test replaces it to see the picker without them.
- */
-export const TM_PICKER_ERROR_VIEWS = new InjectionToken<() => Promise<typeof import('@tellma/core/errors')>>('TM_PICKER_ERROR_VIEWS', {
-  providedIn: 'root',
-  factory: () => () => import('@tellma/core/errors'),
-});
 
 /** The tone of each badge. */
 const TONES: Readonly<Record<TmTenantBadge, TmBadgeTone>> = {
@@ -526,7 +511,7 @@ export class TmTenantPicker {
 
     // --- The error state, from the lazily loaded error views; a line of its own when they fail to load ---
     const telemetry = inject(TmTelemetry);
-    const errorViews = inject(TM_PICKER_ERROR_VIEWS);
+    const errorViews = inject(TM_SHELL_ERROR_VIEWS);
     effect((onCleanup) => {
       const slot = this.errorSlot();
       const failure = this.#failure();

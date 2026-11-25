@@ -10,7 +10,7 @@ import { tmGregorianCalendar } from '@tellma/core-ui/l10n';
 
 import { TmApiError } from '../api/tm-api-error';
 import type { TmDecimal, TmJsonObject } from '../json/tm-json';
-import { TM_T17, tmUnhandled } from '../routes/tm-app.testing.util';
+import { TM_T17, tmSettleUntil, tmUnhandled } from '../routes/tm-app.testing.util';
 import type { TmAccessSummary } from '../state/launch/tm-launch-docs';
 import { TmCacheRefresher } from '../state/sync/tm-cache-refresher';
 import golden from './display-name-golden.json';
@@ -298,7 +298,9 @@ describe('display names', () => {
 
         names.resolve('acme.Customer', [7, 8, 6]);
         names.resolve('acme.Customer', ['9' as TmDecimal, 7]);
-        await vi.waitFor(() => expect(names.label('acme.Customer', 9)()).toBe('#9'));
+        // The read's code is in the entity model's chunk, which each read loads first.
+        await tmSettleUntil(() => names.label('acme.Customer', 9)() !== null, 'the missing id is named');
+        expect(names.label('acme.Customer', 9)()).toBe('#9');
 
         const queries = api.calls().filter((call) => call.route === 'customers/query');
         expect(queries).toHaveLength(1);
@@ -329,7 +331,8 @@ describe('display names', () => {
 
         // An id the list lacks is still asked, alone.
         names.resolve('acme.Currency', [3, 9]);
-        await vi.waitFor(() => expect(names.label('acme.Currency', 9)()).toBe('#9'));
+        await tmSettleUntil(() => names.label('acme.Currency', 9)() !== null, 'the missing id is named');
+        expect(names.label('acme.Currency', 9)()).toBe('#9');
         expect(api.calls().filter((call) => call.route === 'currencies/query').map((call) => (call.body as { filters: unknown }).filters)).toEqual([['Id in (9)']]);
       });
 
@@ -349,13 +352,15 @@ describe('display names', () => {
           throw new TmApiError({ kind: 'forbidden', status: 403, code: 'forbidden' });
         });
         names.resolve('acme.Customer', [7]);
-        await vi.waitFor(() => expect(names.label('acme.Customer', 7)()).toBe('#7'));
+        await tmSettleUntil(() => names.label('acme.Customer', 7)() !== null, 'the refused id is named');
+        expect(names.label('acme.Customer', 7)()).toBe('#7');
 
         api.respond('customers/query', () => {
           throw new TmApiError({ kind: 'server', status: 500, code: 'server' });
         });
         names.resolve('acme.Customer', [8]);
-        await vi.waitFor(() => expect(api.calls().filter((call) => call.route === 'customers/query')).toHaveLength(2));
+        await tmSettleUntil(() => api.calls().filter((call) => call.route === 'customers/query').length >= 2, 'the second read is sent');
+        expect(api.calls().filter((call) => call.route === 'customers/query')).toHaveLength(2);
         await new Promise((resolve) => setTimeout(resolve, 10));
         expect(names.label('acme.Customer', 8)()).toBeNull();
       });

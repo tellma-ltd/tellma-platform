@@ -7,9 +7,10 @@
  * The tenantless shell and its two pages ship in a chunk of their own that
  * only `/tenants` and `/signed-out` load, so this entry point exports their
  * types; the route table reaches the classes through the component map. The
- * tenant shell is a stand-in for now, enough for the app to boot, route and
- * render its pages; the shell with its app bar, launcher and pins replaces
- * it.
+ * tenant shell renders the app bar in the first frame; the session menu,
+ * the markers' popovers, the slots' panels and the About and Shortcuts
+ * dialogs it opens ship in deferred chunks, so this entry point exports the
+ * session menu's type alone.
  *
  * @packageDocumentation
  */
@@ -19,7 +20,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+export { TmAppBar } from './src/app-bar/tm-app-bar';
 export { TmTenantShell } from './src/tm-tenant-shell';
+// The session menu, as a type: the class loads with the overlays' chunk.
+export type { TmSessionMenu } from './src/session/tm-session-panels';
 // The tenantless chunk's components, as types: the classes load with the chunk.
 export type { TmSignedOutPage, TmTenantlessShell, TmTenantPicker } from './src/tenantless/tm-tenantless';
 

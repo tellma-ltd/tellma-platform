@@ -3,9 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { signal, type Type } from '@angular/core';
+import { signal, type Type, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NavigationEnd, NavigationStart, Router, type Event as RouterEvent } from '@angular/router';
+import { NavigationCancel, NavigationCancellationCode, NavigationEnd, NavigationStart, Router, type Event as RouterEvent } from '@angular/router';
 import { TmFakeTelemetry } from '@tellma/core-testing';
 import { Subject } from 'rxjs';
 
@@ -19,7 +19,8 @@ import { TmTelemetry } from './tm-telemetry';
 // Page visits (spec 0026 §5.1): one `tm.page.visit` per routed page, at the
 // next navigation or at `pagehide`, with how it started, when its chrome
 // painted and when its data arrived, or that it was left first. The page's
-// data is held for a known time, so the stamps are checked against it.
+// data is held for a known time, so the stamps are checked against it. The
+// startup's work after the first page runs once, past a redirect.
 
 /** How long a held page waits for its data, in milliseconds. */
 const DATA_MS = 150;
@@ -186,7 +187,12 @@ describe('TmPageVisits', () => {
   // render is placed exactly: after the next navigation has started, as when a page navigates on
   // within the render that shows it.
   describe('with a scripted router', () => {
-    it("never lets an earlier navigation's settling adopt the page the next one keeps", () => {
+    /**
+     * Replaces the app with the visits alone, over a router whose events the test sends.
+     *
+     * @returns The router's events and the routed page context.
+     */
+    function scripted(): { events: Subject<RouterEvent>; current: WritableSignal<TmPageContext | null> } {
       TestBed.resetTestingModule();
       const events = new Subject<RouterEvent>();
       const current = signal<TmPageContext | null>(null);
@@ -198,6 +204,11 @@ describe('TmPageVisits', () => {
           { provide: TmTelemetry, useExisting: TmFakeTelemetry },
         ],
       });
+      return { events, current };
+    }
+
+    it("never lets an earlier navigation's settling adopt the page the next one keeps", () => {
+      const { events, current } = scripted();
       TestBed.inject(TmPageVisits).ɵstart();
       const page: TmPageContext = {
         kind: 'details',
@@ -225,6 +236,32 @@ describe('TmPageVisits', () => {
         .filter((item) => item.name === 'tm.page.visit')
         .map((item) => item.props['outcome']);
       expect(outcomes).toEqual(['ready', 'left']);
+    });
+
+    it("runs the first page's work once, in the render after the first navigation that ends for good", () => {
+      const { events } = scripted();
+      const firstPage = vi.fn();
+      TestBed.inject(TmPageVisits).ɵstart(firstPage);
+
+      // The app renders before the router has placed a page.
+      TestBed.tick();
+      expect(firstPage).not.toHaveBeenCalled();
+      // A redirect hands the first navigation on before its render.
+      events.next(new NavigationStart(1, '/'));
+      events.next(new NavigationCancel(1, '/', 'redirected', NavigationCancellationCode.Redirect));
+      events.next(new NavigationStart(2, '/17'));
+      TestBed.tick();
+      expect(firstPage).not.toHaveBeenCalled();
+      // The navigation it hands on to ends, and its page renders.
+      events.next(new NavigationEnd(2, '/17', '/17'));
+      expect(firstPage).not.toHaveBeenCalled();
+      TestBed.tick();
+      expect(firstPage).toHaveBeenCalledTimes(1);
+      // Later navigations run it no more.
+      events.next(new NavigationStart(3, '/17/centers'));
+      events.next(new NavigationEnd(3, '/17/centers', '/17/centers'));
+      TestBed.tick();
+      expect(firstPage).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -89,7 +89,7 @@ export function tmMemoryStoreProvider(): Provider {
  * {@link TmFakeTabBus} in place of `TmTabBus`, {@link TmFakeLocks} in place
  * of the browser's locks, a {@link TmFakeSession} in place of `TmSession`,
  * signed in and active, so the store's write guard passes until the test
- * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
+ * changes the session, and `@tellma/core/drafts`' `TmDrafts` over a session
  * storage of its own, so no draft outlives the test. A test app starts no
  * leader election, since it has no other tabs and no hub: `TmLeader` reports
  * a follower until the test sets it; a test that starts the election itself

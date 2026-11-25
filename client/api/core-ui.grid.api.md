@@ -241,7 +241,7 @@ export class TmGridHeaderEndDef {
 
 // @public
 export interface TmGridKeyEntry {
-    readonly keys: TmKeys;
+    readonly keys: string;
     readonly labelKey: string;
 }
 
