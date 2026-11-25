@@ -200,6 +200,8 @@ jobs:
           name: nightly-acme-e2e-report
           path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
           if-no-files-found: ignore
+          # The report's folder is hidden, which the action skips unless told otherwise.
+          include-hidden-files: true
 
   # The Acme browser suite on Windows (spec 0024 §14: the e2e host runs on Ubuntu and Windows):
   # every flow, nightly gates included, against LocalDB. The PR tier runs it on Linux alone.
@@ -253,15 +255,18 @@ jobs:
           dotnet dev-certs https
           if ($LASTEXITCODE -ne 0) { throw "dotnet dev-certs https failed (exit $LASTEXITCODE)." }
 
-          # The valid development certificates: those carrying ASP.NET Core's marker extension.
+          # The valid development certificates, as dotnet dev-certs makes them and Kestrel serves
+          # them: ASP.NET Core's marker extension, self-signed for localhost, with the private key
+          # beside them, and within their validity dates. Nothing else becomes a machine root.
           $marker = '1.3.6.1.4.1.311.84.1.1'
           $now = Get-Date
           $certificates = @(Get-ChildItem Cert:\CurrentUser\My | Where-Object {
             ($_.Extensions | Where-Object { $_.Oid.Value -eq $marker }) -and
+            $_.Subject -eq 'CN=localhost' -and $_.Issuer -eq $_.Subject -and $_.HasPrivateKey -and
             $_.NotBefore -le $now -and $now -lt $_.NotAfter
           })
           if ($certificates.Count -eq 0) {
-            throw 'dotnet dev-certs https left no valid development certificate in CurrentUser\My.'
+            throw 'dotnet dev-certs https left no valid self-signed localhost development certificate in CurrentUser\My.'
           }
 
           # The check the web host's own call makes: the chain builds to a trusted root. The
@@ -280,7 +285,16 @@ jobs:
           }
 
           # --- Each certificate not yet trusted goes to LocalMachine\Root, public part only ---
-          $untrusted = @($certificates | Where-Object { -not (Test-Trusted $_).Trusted })
+          # One line per certificate says which path it took, so the log shows whether the add ran.
+          $untrusted = @()
+          foreach ($certificate in $certificates) {
+            if ((Test-Trusted $certificate).Trusted) {
+              Write-Output "$($certificate.Thumbprint) already trusted."
+            } else {
+              Write-Output "Adding $($certificate.Thumbprint) to LocalMachine\Root."
+              $untrusted += $certificate
+            }
+          }
           if ($untrusted.Count -gt 0) {
             $root = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
             $root.Open('ReadWrite')
@@ -314,6 +328,8 @@ jobs:
           name: nightly-acme-e2e-windows-report
           path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
           if-no-files-found: ignore
+          # The report's folder is hidden, which the action skips unless told otherwise.
+          include-hidden-files: true
 
   # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:
