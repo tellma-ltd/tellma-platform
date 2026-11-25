@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-293 (orchestrator, 2026-11-25): PC-F83 landed; its connect-variant filter waits on Ahmad
+
+- PC-F83 landed as a fast-forward to 664d98c4 after a green CI run, 45572535841.
+- R1-2 is fixed in part. A filter by connect variant on tellma.access.connect.results needs a variant tag, and spec 0014 fixes that instrument's tags to result alone. That is a spec change, so it stays out until Ahmad rules on it.
+- For Ahmad: should tellma.access.connect.results gain a variant tag (spec 0014)?
+- D-229 fill for pc-f: no blocking fix is open, PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready, so the slot takes the next non-blocking fix, PC-F87. PC-F85 is released to integrate.
+
+### D-292 (orchestrator, 2026-11-24): PC-F83's red CI comes from an unrelated race, so PC-F83 re-integrates
+
+- CI 45567894634 on a10330ee failed in build-test (windows-latest) on one test, HubConnectTests.A_member_connects_and_is_tracked_counted_and_logged. Every other job and test passed.
+- The root cause is in the test (D-011). TellmaHub.OnDisconnectedAsync removes the connection from the tracker before it records the -1, so a test that waits on Count == 0 and then asserts the -1 at once can see the gap. PC-F83 changes only the version-tag cache and its tests, and nothing on the realtime path.
+- So I opened PC-F96 for the test, and PC-F83 merges platform-core and integrates again, following D-288's precedent. This does not retry a failure of PC-F83's own.
+- PC-150 is held at 2c7880b3 and queues after PC-F85: one held item is released at a time (D-087/D-190).
+
 ### D-291 (orchestrator, 2026-11-24): PC-118 review 1 rulings, and the first-frame headroom
 
 - R1 found 1 blocking, 1 major and 3 minor on fc8d58c6, so fix1 is followed by R2 at xhigh (§4.4).
