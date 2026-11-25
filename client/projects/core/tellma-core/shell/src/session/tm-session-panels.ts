@@ -28,6 +28,7 @@ import { type TmShellMarker, TmShellIdentity } from '../app-bar/tm-shell-identit
 import type { TmShellDialog, TmShellPanels } from '../app-bar/tm-shell-overlays';
 import { TmShellSlots } from '../app-bar/tm-shell-slots';
 import { tmTenantNames } from '../tenantless/tm-tenant-names';
+import { TM_SHELL_SUPPORT } from '../tm-shell-support';
 import { TmSessionMenu } from './tm-session-menu';
 import { TmShellLazyContent, type TmShellLazyContentData } from './tm-shell-lazy-content';
 import { tmRegisterShellOverlaysStrings } from './tm-shell-overlays-strings';
@@ -62,8 +63,12 @@ export const TM_SHELL_DIALOGS_LOAD = new InjectionToken<Readonly<Record<TmShellD
   },
 );
 
-/** Each dialog's height, which its placeholder takes so nothing moves when it arrives. */
-const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = { about: '22rem', shortcuts: '30rem' };
+/**
+ * Each dialog's height, which its placeholder takes so nothing moves when it
+ * arrives. About's is its About tab's content (22rem) and the tab strip above
+ * it: the 34 px strip, its 1 px border and the panel's 12 px.
+ */
+const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = { about: '25rem', shortcuts: '30rem' };
 
 /** A slot panel's loaded component. */
 async function slotComponent(slot: TmShellSlot): Promise<Type<unknown>> {
@@ -154,6 +159,7 @@ export class TmSessionPanels implements TmShellPanels {
   readonly #modal = inject(TmModal);
   readonly #shortcuts = inject(TmShortcuts);
   readonly #dialogs = inject(TM_SHELL_DIALOGS_LOAD);
+  readonly #support = inject(TM_SHELL_SUPPORT);
   readonly #slots = inject(TmShellSlots).items;
   readonly #wide = inject(TmBreakpoints).atLeast('lg');
   readonly #identity = inject(TmShellIdentity);
@@ -294,8 +300,9 @@ export class TmSessionPanels implements TmShellPanels {
 
   /** {@inheritDoc TmShellPanels.openDialog} */
   openDialog(dialog: TmShellDialog): void {
-    // The page's shortcuts are those registered as the dialog opens.
-    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : {};
+    // The page's shortcuts are those registered as the dialog opens; About
+    // takes the support tools, for its Diagnostics tab.
+    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : { support: this.#support };
     const title =
       dialog === 'about' ? this.#l10n.ɵtext('tm.shellOverlays.dialogs.about')() : this.#l10n.ɵtext('tm.shellOverlays.dialogs.shortcuts')();
     const data: TmShellLazyContentData = { load: this.#dialogs[dialog], inputs, height: DIALOG_HEIGHTS[dialog] };

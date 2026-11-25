@@ -638,11 +638,13 @@ and their name and the tenant's as the width allows. While a cold launch's sync 
 from the profile cookie and the tenant's name is a skeleton; a failed sync shows the error views'
 error state with Retry, and `TmShellMain` can put the tenant-state page in place of the route host.
 The session menu (the tenant card, My settings, the language and calendar switches with two choices
-or more, the theme, Keyboard shortcuts, About, the slots below md and Sign out), the popovers and
+or more, the theme, Keyboard shortcuts, About, Report a problem, the slots below md and Sign out), the popovers and
 the drawers are a chunk the bar loads at idle or on the first hover, focus or press of their
 buttons, and that chunk's avatar, which can show the user's photo, replaces the first frame's
-initials. The About dialog (the wordmark, the distribution's description, the versions, Reload while
-the server is newer, the copyright and the legal links) and the Shortcuts dialog (`Mod+/`: the
+initials. The About dialog (an About tab with the wordmark, the distribution's description, the
+versions, Reload while the server is newer, the copyright and the legal links, and a Diagnostics tab
+that loads the Diagnostics panel from `@tellma/core/support` on its first selection, or shows the
+offline line with Copy diagnostics' shortcut when that cannot load) and the Shortcuts dialog (`Mod+/`: the
 general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
 in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
 

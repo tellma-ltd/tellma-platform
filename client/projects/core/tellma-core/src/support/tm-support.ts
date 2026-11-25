@@ -123,6 +123,11 @@ export interface TmSupportHostChunk {
    * @returns A promise that settles once the download has started.
    */
   ɵtmDownloadSupport(injector: Injector, pages: TmPageSnapshotModule): Promise<void>;
+  /**
+   * The line the support dialog and the About dialog's Diagnostics tab show
+   * when the support entry point cannot load, whose `kind` input names which.
+   */
+  readonly ɵTmSupportOffline: Type<unknown>;
 }
 
 /** The options of the support entry point's dump builder. Internal. */
@@ -137,6 +142,8 @@ export interface TmSupportDumpBuild {
 export interface TmSupportModule {
   /** The support dialog's content, whose inputs are `snapshot` and `error`. */
   readonly TmSupportDialog: Type<unknown>;
+  /** The Diagnostics panel, which the About dialog's Diagnostics tab shows. */
+  readonly TmDiagnosticsPanel: Type<unknown>;
   /**
    * Builds the dump from a snapshot.
    *

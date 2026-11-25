@@ -54,6 +54,7 @@ let gate: Promise<void> | null = null;
 /** The support entry point, standing in. */
 const SUPPORT: TmSupportModule = {
   TmSupportDialog: TmTestSupportDialog,
+  TmDiagnosticsPanel: TmTestSupportDialog,
   tmBuildSupportDump: (snapshot, { includeData }) => {
     built.push({ snapshot, includeData });
     return Promise.resolve({ format: 'tellma-support-dump' });

@@ -127,6 +127,7 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
       themeSystem: 'النظام',
       themeLight: 'فاتح',
       themeDark: 'داكن',
+      reportProblem: 'الإبلاغ عن مشكلة',
       signOut: 'تسجيل الخروج',
     },
     markers: {
@@ -146,6 +147,7 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
     copy: 'نسخ الإصدار',
     server: 'الخادم',
     platform: 'المنصة',
+    diagnostics: 'التشخيص',
     unknown: '—',
     serverNewer: `يعمل الخادم بالإصدار {server}. ${imperative('أعد', 'أعيدي')} التحميل للتحديث.`,
     updating: 'جارٍ جلب التحديث…',

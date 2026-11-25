@@ -10,7 +10,9 @@ import { type AcmeLanguage, expect, test } from '../support/acme';
 // The tenant shell (spec 0027 §7, §10, §11): a warm launch of the live
 // tenant draws the whole app bar from the device with every server request
 // held, and the session menu opens from the session button, lists its rows,
-// gives focus back on Escape and opens the About dialog.
+// gives focus back on Escape and opens the About dialog, whose Diagnostics
+// tab loads the Diagnostics panel, and Report a problem opens the support
+// dialog (spec 0026 §8.4, §12.1).
 
 /** The shell's texts the flows match, in each project's language. */
 const SHELL_TEXT: Readonly<
@@ -21,6 +23,8 @@ const SHELL_TEXT: Readonly<
       readonly menu: string;
       readonly mySettings: string;
       readonly about: string;
+      readonly diagnostics: string;
+      readonly reportProblem: string;
       readonly signOut: string;
     }
   >
@@ -30,6 +34,8 @@ const SHELL_TEXT: Readonly<
     menu: 'Account',
     mySettings: 'My settings',
     about: 'About',
+    diagnostics: 'Diagnostics',
+    reportProblem: 'Report a problem',
     signOut: 'Sign out',
   },
   ar: {
@@ -37,6 +43,8 @@ const SHELL_TEXT: Readonly<
     menu: 'الحساب',
     mySettings: 'إعداداتي',
     about: 'حول',
+    diagnostics: 'التشخيص',
+    reportProblem: 'الإبلاغ عن مشكلة',
     signOut: 'تسجيل الخروج',
   },
 };
@@ -75,6 +83,7 @@ test.describe('the tenant shell', () => {
     await expect(menu).toBeVisible();
     await expect(session).toHaveAttribute('aria-expanded', 'true');
     await expect(menu.getByRole('menuitem', { name: text.mySettings })).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: text.reportProblem })).toBeVisible();
     await expect(menu.getByRole('menuitem', { name: text.signOut })).toBeVisible();
 
     await page.keyboard.press('Escape');
@@ -86,5 +95,17 @@ test.describe('the tenant shell', () => {
     const about = page.getByRole('dialog', { name: text.about });
     await expect(about).toBeVisible();
     await expect(about.locator('tm-about-dialog dl')).toBeVisible();
+
+    // The Diagnostics tab loads the panel from the support entry point.
+    await about.getByRole('tab', { name: text.diagnostics }).click();
+    await expect(about.locator('tm-diagnostics')).toBeVisible();
+  });
+
+  test('Report a problem opens the support dialog', async ({ page, lang }) => {
+    const text = SHELL_TEXT[lang];
+    await page.goto('/1');
+    await page.getByRole('button', { name: text.account }).click();
+    await page.getByRole('menu', { name: text.menu }).getByRole('menuitem', { name: text.reportProblem }).click();
+    await expect(page.getByRole('dialog', { name: text.reportProblem })).toBeVisible();
   });
 });

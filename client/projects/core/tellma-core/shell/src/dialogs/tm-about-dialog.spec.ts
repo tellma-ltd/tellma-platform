@@ -4,19 +4,60 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { Injectable } from '@angular/core';
+import { Component, Injectable, input, type Type } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { TmAppVersion, type TmDistributionInfo } from '@tellma/core';
-import { TmAlertHarness, TmCopyButtonHarness } from '@tellma/core-ui-testing';
+import { TmAppVersion, type TmDistributionInfo, TmLocalization, TmTelemetry } from '@tellma/core';
+import { TmFakeTelemetry } from '@tellma/core-testing';
+import { TmAlertHarness, TmCopyButtonHarness, TmTabGroupHarness } from '@tellma/core-ui-testing';
 
-import { TM_TEST_SUB, tmAppRig, tmSettle, type TmAppRig, type TmAppRigOptions } from '../../../src/routes/tm-app.testing.util';
+import { TM_TEST_SUB, tmAppRig, tmSettle, tmSettleUntil, type TmAppRig, type TmAppRigOptions } from '../../../src/routes/tm-app.testing.util';
+import { tmRegisterShellOverlaysStrings } from '../session/tm-shell-overlays-strings';
+import type { TmShellSupport } from '../tm-shell-support';
 import { TM_ABOUT_ERROR_VIEWS, TmAboutDialog } from './tm-about-dialog';
 
 // The About dialog in the test app: the wordmark, the distribution's own
 // description only when its server text has one, the versions, the alert
 // and Reload while the server runs a newer build and none while it runs an
 // older one, Reload's failure and Reload anyway (which tries the error views
-// again when they cannot load), and the legal lines.
+// again when they cannot load), and the legal lines; all in an About tab
+// beside a Diagnostics tab, which loads the Diagnostics panel on its first
+// selection and shows the offline line when it cannot.
+
+/** The Diagnostics panel, standing in. */
+@Component({ selector: 'tm-test-diagnostics', template: `<p class="tm-test-diagnostics">Diagnostics content</p>` })
+class TmTestDiagnostics {}
+
+/** The offline line, standing in: it shows its kind. */
+@Component({ selector: 'tm-test-offline', template: `<p class="tm-test-offline">{{ kind() }}</p>` })
+class TmTestOffline {
+  /** Which line it is. */
+  readonly kind = input('');
+}
+
+/** The support tools, standing in: each load answers from a script, and counts. */
+class TmFakeShellSupport implements TmShellSupport {
+  /** Whether the panel's chunk loads; otherwise it fails as offline. */
+  online = true;
+  /** Whether the offline line's chunk loads. */
+  offlineLoads = true;
+  /** How many times the panel was asked for. */
+  panels = 0;
+  /** How many times the offline line was asked for. */
+  lines = 0;
+
+  /** {@inheritDoc TmShellSupport.open} */
+  readonly open = (): void => undefined;
+
+  /** {@inheritDoc TmShellSupport.diagnostics} */
+  readonly diagnostics = (): Promise<Type<unknown>> => (
+    this.panels++, this.online ? Promise.resolve(TmTestDiagnostics) : Promise.reject(new TypeError('Failed to fetch dynamically imported module'))
+  );
+
+  /** {@inheritDoc TmShellSupport.offline} */
+  readonly offline = (): Promise<Type<unknown>> => (
+    this.lines++, this.offlineLoads ? Promise.resolve(TmTestOffline) : Promise.reject(new TypeError('Failed to fetch dynamically imported module'))
+  );
+}
 
 /** The error views' update service, answering each update with a scripted result. */
 @Injectable()
@@ -41,6 +82,7 @@ class TmFakeUpdates {
 describe('the About dialog', () => {
   let rig: TmAppRig;
   let fixture: ComponentFixture<TmAboutDialog>;
+  let support: TmFakeShellSupport;
 
   afterEach(() => TestBed.resetTestingModule());
 
@@ -54,10 +96,21 @@ describe('the About dialog', () => {
         ...(options.providers ?? []),
       ],
     });
+    return create();
+  }
+
+  /** Renders the dialog's content as the overlays' host opens it: their strings registered and the support tools handed in. */
+  async function create(): Promise<HTMLElement> {
+    tmRegisterShellOverlaysStrings(TestBed.inject(TmLocalization));
+    support = new TmFakeShellSupport();
     fixture = TestBed.createComponent(TmAboutDialog);
+    fixture.componentRef.setInput('support', support);
     await tmSettle();
     return fixture.nativeElement as HTMLElement;
   }
+
+  /** The tab group's harness. */
+  const tabs = (): Promise<TmTabGroupHarness> => TestbedHarnessEnvironment.loader(fixture).getHarness(TmTabGroupHarness);
 
   /** The versions' terms and values, in order. */
   const versions = (element: HTMLElement): string[][] =>
@@ -93,9 +146,7 @@ describe('the About dialog', () => {
     rig = await tmAppRig();
     const distribution = { distributionVersion: '1.0.7', links: { terms: 'https://acme.example/terms', privacy: null } } as unknown as TmDistributionInfo;
     await rig.store.put({ kind: 'user', sub: TM_TEST_SUB }, 'distribution', { tag: null, savedAt: Date.now(), data: distribution });
-    fixture = TestBed.createComponent(TmAboutDialog);
-    await tmSettle();
-    const element = fixture.nativeElement as HTMLElement;
+    const element = await create();
     expect(versions(element)[1]).toEqual(['Server', '1.0.7']);
     const links = Array.from(element.querySelectorAll('a')).map((link) => [link.textContent, link.getAttribute('href'), link.getAttribute('target')]);
     expect(links).toEqual([['Terms of service', 'https://acme.example/terms', '_blank']]);
@@ -162,5 +213,47 @@ describe('the About dialog', () => {
     await tmSettle();
     expect(versions(element)[1]).toEqual(['Server', '0.9.0']);
     expect(element.querySelector('tm-alert')).toBeNull();
+  });
+
+  it('puts its content in an About tab beside Diagnostics, which loads the Diagnostics panel on its first selection only', async () => {
+    const element = await open();
+    const group = await tabs();
+    expect(await Promise.all((await group.getTabs()).map((tab) => tab.getLabel()))).toEqual(['About', 'Diagnostics']);
+    expect(await (await group.getSelectedTab())?.getLabel()).toBe('About');
+    expect(support.panels).toBe(0);
+    await group.selectTab('Diagnostics');
+    await tmSettleUntil(() => element.querySelector('.tm-test-diagnostics') !== null, 'the panel renders');
+    await group.selectTab('About');
+    await group.selectTab('Diagnostics');
+    await tmSettle();
+    expect(support.panels).toBe(1);
+    expect(support.lines).toBe(0);
+  });
+
+  it("shows the Diagnostics tab's offline line when the panel cannot load, and tries the panel again on the next selection", async () => {
+    const element = await open();
+    support.online = false;
+    const group = await tabs();
+    await group.selectTab('Diagnostics');
+    await tmSettleUntil(() => element.querySelector('.tm-test-offline') !== null, 'the offline line renders');
+    expect(element.querySelector('.tm-test-offline')?.textContent).toBe('diagnostics');
+    const telemetry = TestBed.inject(TmTelemetry) as TmFakeTelemetry;
+    expect(telemetry.recent()).toContainEqual(expect.objectContaining({ name: 'tm.error.captured', props: expect.objectContaining({ where: 'tm.about.diagnostics' }) }));
+    // Back online: the next selection loads the panel in the line's place.
+    support.online = true;
+    await group.selectTab('About');
+    await group.selectTab('Diagnostics');
+    await tmSettleUntil(() => element.querySelector('.tm-test-diagnostics') !== null, 'the panel renders');
+    expect(element.querySelector('.tm-test-offline')).toBeNull();
+    expect([support.panels, support.lines]).toEqual([2, 1]);
+  });
+
+  it('says the Diagnostics tab could not open when neither the panel nor the offline line can load', async () => {
+    const element = await open();
+    support.online = false;
+    support.offlineLoads = false;
+    await (await tabs()).selectTab('Diagnostics');
+    await tmSettleUntil(() => element.querySelector('.tm-about-dialog__status[role="alert"]') !== null, 'the failure shows');
+    expect(element.querySelector('.tm-about-dialog__status')?.textContent?.trim()).toBe("Couldn't open this. Check your connection and try again.");
   });
 });

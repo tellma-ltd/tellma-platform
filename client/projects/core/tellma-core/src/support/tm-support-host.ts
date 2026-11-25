@@ -37,6 +37,10 @@ import { ɵTmSupportOffline, tmRegisterSupportHostStrings } from './tm-support-o
 // the dialog's final size, and then loads @tellma/core/support into it. When
 // that entry point cannot load, the dialog shows the line that names Copy
 // diagnostics' shortcut. A download goes the same way without a dialog.
+// The chunk also hands that line to the About dialog's Diagnostics tab,
+// which shows it when the entry point cannot load there (spec 0026 §8.4).
+
+export { ɵTmSupportOffline };
 
 /** What the support dialog's host receives. */
 interface TmSupportHostData {
