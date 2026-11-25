@@ -384,6 +384,33 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-295 (orchestrator, 2026-11-25): PC-F86 review 1 confirms the harness cause
+
+- R1 found 0 blocking, 0 major and 3 minor, so there is no R2 (§4.4). All five claims hold:
+  - the leaky spin stalls a page (a 2,127 ms gap in the probe);
+  - the timer form covers the same 35 sites in 25 files and reverts byte for byte;
+  - it fails the zone-check pair on every run;
+  - tmWaitUntil's real clock is correct under Vitest 4.1.9.
+  The spec changes are alignment, not the fix.
+- Corrections to D-294:
+  - The zone-check pair is intermittent under the current harness too, failing 1 of 2 full runs in R1.
+  - Its second test fails by its own mechanism, three writes. PC-F97's row says so now.
+  - PC-F97 also takes the sweep of the roughly 21 core specs that use vi.waitFor across a lazy chunk (R1-1), apart from tm-session-flows.spec, which PC-F86 fixes now.
+- R1-2: the timer form can capture a faked setTimeout when a wrapped lazy file first evaluates under fake timers. Fix1 moves the harness to scheduler.postTask with a 300 ms delay, which Vitest does not fake, and proves the case.
+- PC-F93 (tm-arrivals) closes with PC-F86: R1 confirms that its failure has the same starvation cause as the guard's.
+- The harness is swapped once PC-F86 and PC-F97 have both landed, with fix1's postTask version as the new gate harness. Until then, gates keep the current one, which is still a real 300 ms delay. A zone-check pair failure under it is PC-F97's, not the item under test's.
+
+### D-294 (orchestrator, 2026-11-25): PC-F86 blames the delay harness; switch only after R1; PC-F87's gh api denial
+
+- PC-F86 (impl 7b8cd2c8) finds that the 300 ms integration delay harness is what starves pages, not the specs. The harness is orchestrator tooling. Its spin opens a new MessageChannel on every tick and never closes it, about 10,000 per 300 ms wait. That stalls a page's main thread for 1 to 4.5 s, and starves quiet pages when 12 run at once.
+  - PC-F86 proposes a timer-form replacement, scratchpad PC-F86-inject_lazy_delay.py and PC-F86-remove_lazy_delay.py.
+  - In three full core runs under each form, the failures per run were 0/5/1 for the current harness and 0/0/0 for one channel per wait. Under the timer form, the only failure is the tm-zone-check pair, every time.
+- The harness stays as it is until R1 has verified the claim, the replacement's coverage and byte-identical revert, and the zone-check cause. On a confirmed R1, the timer form becomes the gate harness only after PC-F97 lands, because the timer form would otherwise turn the zone-check pair red on every integration.
+- PC-F97 is opened for the zone-check pair, which counts turns past a lazy import. If R1 confirms that PC-F93 (tm-arrivals) has the same cause, PC-F93 closes with PC-F86.
+- PC-F85's integration keeps the harness in force now, which is still a real 300 ms delay and so still a valid gate. Its comment "faked timers leave it alone" is wrong, because Vitest 4's vi.useFakeTimers() fakes performance.now as well. The comment lives in the harness, not in the product, so it is fixed when the harness is swapped.
+- PC-F87 stopped on a denied command that read the CI log through gh api. This run forbids gh api, so the denial is correct. It is not a permission block to notify (as in D-288). The allowlist is not widened, and nobody fetches the log on PC-F87's behalf. The ledger row already holds the failure text, and PC-F87 carries on without the log.
+- PC-F86's implementer ran one rm with a glob on its own ignored probe screenshot. Nothing else was affected; the rule against it is restated in later briefs.
+
 ### D-293 (orchestrator, 2026-11-25): PC-F83 landed; its connect-variant filter waits on Ahmad
 
 - PC-F83 landed as a fast-forward to 664d98c4 after a green CI run, 45572535841.
