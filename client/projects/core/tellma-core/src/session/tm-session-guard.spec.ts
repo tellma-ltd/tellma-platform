@@ -7,6 +7,7 @@ import { TestBed } from '@angular/core/testing';
 import type { ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { tmSettleUntil } from '../routes/tm-app.testing.util';
 import { tmProfileCookies } from './tm-profile.testing.util';
 import { TmSession } from './tm-session';
 import { tmSessionGuard } from './tm-session-guard';
@@ -41,14 +42,19 @@ describe('tmSessionGuard', () => {
     expect((TestBed.inject(TmTelemetry) as TmRecordingTelemetry).events).toEqual([
       { name: 'tm.session.expired', props: { source: 'cookie' } },
     ]);
-    // The session's flows run the rest of the path.
-    await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
+    // The session's flows, a chunk of their own, run the rest of the path once it loads.
+    const flows = TestBed.inject(TmRecordingSessionFlows);
+    await tmSettleUntil(() => flows.calls.length > 0, 'the flows ran a path');
+    expect(flows.calls).toEqual(['expired']);
   });
 
   it('denies another user and runs the changed-user path', async () => {
     host.cookieJar = tmProfileCookies('7c1e');
     expect(guard()).toBe(false);
-    await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
+    // The flows run the path once their chunk loads.
+    const flows = TestBed.inject(TmRecordingSessionFlows);
+    await tmSettleUntil(() => flows.calls.length > 0, 'the flows ran a path');
+    expect(flows.calls).toEqual(['changedUser']);
     expect(TestBed.inject(TmSession).state()).toBe('active');
   });
 });

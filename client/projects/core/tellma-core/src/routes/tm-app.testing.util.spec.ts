@@ -44,7 +44,8 @@ describe('the waits on state', () => {
   });
 
   it('keeps the deadline in real time under faked timers, never moving them, and names a described condition', PAST_THE_DEADLINE, async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    // Every timer faked, the page's clock (performance.now) among them.
+    vi.useFakeTimers();
     const now = Date.now();
     await expect(tmWaitUntil(() => false, () => vi.advanceTimersByTimeAsync(0), 'the upload to be sent')).rejects.toThrow(
       /did not hold within \d+ ms: the upload to be sent$/,

@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmTelemetry } from '../observe/tm-telemetry';
+import { tmSettleUntil } from '../routes/tm-app.testing.util';
 import { TM_LOGIN_MARK_KEY, type TmLoginMark } from './tm-login-mark';
 import { tmParseProfileCookie } from './tm-profile';
 import { tmProfileCookies, tmProfileCookieValue } from './tm-profile.testing.util';
@@ -218,6 +219,9 @@ describe('TmSession', () => {
 });
 
 describe('TmSessionPaths', () => {
+  // The flows are a chunk of their own, so each spec waits on what the paths
+  // hand them, which lands only once the chunk has loaded.
+
   /** Configures the paths over a faked browser, with the flows recorded, or failing to load. */
   function setUpPaths(failing = false): {
     host: TmFakeSessionHost;
@@ -259,7 +263,8 @@ describe('TmSessionPaths', () => {
     expect(TestBed.inject(TmSession).state()).toBe('expired');
     expect(telemetry.events).toEqual([{ name: 'tm.session.expired', props: { source: '401' } }]);
     expect(telemetry.flushes).toEqual([1]);
-    await vi.waitFor(() => expect(flows.calls).toEqual(['expired']));
+    await tmSettleUntil(() => flows.calls.length > 0, 'the flows ran a path');
+    expect(flows.calls).toEqual(['expired']);
   });
 
   it('runs nothing for a 401 to a request sent under a session the cookie no longer names', async () => {
@@ -278,12 +283,11 @@ describe('TmSessionPaths', () => {
     bus.receive({ type: 'prefs.changed', keys: ['nav.pinnedBarVisible'] } as never);
     bus.receive({ type: 'drafts.query', replyTo: 'q1' });
     bus.receive({ type: 'session.signed-out', sub: FARAH });
-    await vi.waitFor(() =>
-      expect(flows.calls).toEqual([
-        'received {"type":"drafts.query","replyTo":"q1"}',
-        `received {"type":"session.signed-out","sub":"${FARAH}"}`,
-      ]),
-    );
+    await tmSettleUntil(() => flows.calls.length >= 2, 'the flows received two messages');
+    expect(flows.calls).toEqual([
+      'received {"type":"drafts.query","replyTo":"q1"}',
+      `received {"type":"session.signed-out","sub":"${FARAH}"}`,
+    ]);
   });
 
   it('hands a started session, a changed user, a sign-out and a session ended elsewhere to the flows', async () => {
@@ -292,18 +296,21 @@ describe('TmSessionPaths', () => {
     paths.changedUser();
     paths.ɵsignedOutElsewhere();
     await TestBed.inject(TmSession).signOut();
-    await vi.waitFor(() => expect(flows.calls).toEqual([`started "${FARAH}"`, 'changedUser', 'signedOutElsewhere', 'signOut']));
+    await tmSettleUntil(() => flows.calls.length >= 4, 'the flows ran four paths');
+    expect(flows.calls).toEqual([`started "${FARAH}"`, 'changedUser', 'signedOutElsewhere', 'signOut']);
   });
 
   it("falls back to the boot script's own paths when the flows cannot load, and reports it", async () => {
     const { paths, host, telemetry } = setUpPaths(true);
     const reported = vi.spyOn(telemetry, 'error');
     paths.expired('401');
-    await vi.waitFor(() => expect(host.reloads).toBe(1));
+    await tmSettleUntil(() => host.reloads > 0, 'the fallback reloaded the page');
+    expect(host.reloads).toBe(1);
     expect(host.cookieWrites).toEqual(['tellma.profile=; Max-Age=0; Path=/; Secure']);
     expect(reported).toHaveBeenCalledWith(expect.any(Error), { where: 'tm-session' });
     paths.changedUser();
-    await vi.waitFor(() => expect(host.replaced).toEqual(['/']));
+    await tmSettleUntil(() => host.replaced.length > 0, 'the fallback restarted the app');
+    expect(host.replaced).toEqual(['/']);
     await expect(paths.ɵsignOut()).rejects.toThrow('The chunk did not load.');
   });
 });
