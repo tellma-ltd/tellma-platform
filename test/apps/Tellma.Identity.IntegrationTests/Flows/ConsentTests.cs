@@ -345,9 +345,15 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>Establishes an SSO session through the first-party client, which stays implicit.</summary>
-        internal static async Task SignInAsync(StandaloneFactory factory, OidcFlowClient flow, string email)
+        /// <param name="factory">The host.</param>
+        /// <param name="flow">The browser the session is established in.</param>
+        /// <param name="email">The user, created active.</param>
+        /// <param name="backchannelLogoutUri">The distribution's back-channel logout endpoint, when it has one.</param>
+        internal static async Task SignInAsync(
+            StandaloneFactory factory, OidcFlowClient flow, string email, Uri? backchannelLogoutUri = null)
         {
-            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
+            DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(
+                factory, backchannelLogoutUri: backchannelLogoutUri);
             await TestData.CreateActiveUserAsync(factory, email);
 
             (_, string challenge) = OidcFlowClient.CreatePkcePair();

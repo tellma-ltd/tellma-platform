@@ -114,4 +114,95 @@ false success. Mutation runs, with the two new tests:
 
 ### Findings
 
+Scope checked: the PC-F89 row (CHECKPOINTS.md, LEDGER.md), D-279 R2-3(a), spec 0003 §7.3 and §15,
+PLAN.md §6-§7, and the diff of 6cc0fad8. WATCHLIST.md has no section for spec 0003.
+
+Verified, with no finding:
+
+- **The detach is needed, and it is sufficient under OpenIddict 7.5.0.** I decompiled the 7.5.0
+  packages myself.
+  - `OpenIddictEntityFrameworkCoreAuthorizationStore.FindByIdAsync` returns a tracked entity from
+    `ChangeTracker.Entries<TAuthorization>()` without querying.
+  - `UpdateAsync` does `Attach`, a new `ConcurrencyToken`, `Update` and `SaveChangesAsync`. On
+    `DbUpdateConcurrencyException` it only sets the entry `Unchanged` before it throws
+    `ConcurrencyException`.
+  - `OpenIddictAuthorizationManager.TryRevokeAsync` returns `true` at once for a `revoked` status.
+    It returns `false` on `ConcurrencyException` (Debug 6165) and on any non-fatal exception
+    (Warning 6166), and it does not restore the status.
+  - The manager's scoped entity cache (`OpenIddictAuthorizationCache`) is not a second source of the
+    stale copy. `Manager.UpdateAsync` calls `Cache.RemoveAsync` before `Store.UpdateAsync`, which
+    cancels the id's expiration signal, so the re-read misses the cache and reaches the store.
+  - The one path that skips that eviction is a `ValidationException` raised before it. That path
+    cannot be reached here, because the status is non-empty and the type is unchanged.
+- **Nothing else tracked is disturbed.** EF Core 10.0.11's `NavigationFixer.StateChanged` runs fixup
+  only when an entry leaves `Detached`, or goes from `Added` or `Deleted` to `Detached`. So
+  `Unchanged` or `Modified` → `Detached` touches no other entry.
+  - The included `Application` stays tracked and `Unchanged`. Its `Authorizations` collection and
+    the relationship snapshot both keep the detached instance, so `DetectChanges` sees no
+    navigation change.
+  - The two new tests show this in practice: the re-read and later saves on the same context
+    neither raise an identity conflict nor re-attach the stale instance.
+  - The service's `TellmaIdentityDbContext` is the store's context: both are scoped, and the service
+    is `AddScoped`, with OpenIddict on `UseDbContext<TellmaIdentityDbContext>()`.
+- **The audit save cannot re-write the stale copy.** `SqlAuditLogger` saves on the same context.
+  The detach comes before both the failure audit and the next attempt, so the refused entity is no
+  longer tracked when that save runs.
+- **Bound, levels and templates are correct.**
+  - The bound is 3: a failure is audited on attempt 3 only, and attempts 1 and 2 log `LostRevoke`
+    at Information.
+  - `GaveUpRevoke` logs at Warning and names the authorization, client and session.
+  - Neither template cites a spec or PC id.
+- **Audit row is correct.** It reuses `TokenRevoked` with outcome `failure`, as the revocation
+  endpoint does (`AuditTokenResponseHandler.cs:249-261`). It carries subject, client and sid,
+  which matches §15's sub, client_id and correlation id, and it has `DetailsJson`
+  `{authorizationId, attempts}`. No code reads `TokenRevoked` details, so the new success-row
+  details break nothing.
+- **Saboteur equivalence holds.** With `EveryUpdate` and `overtakes = int.MaxValue`, every save
+  that has a modified authorization is counted and overtaken, as before. With `@resource` NULL,
+  `Properties` is unchanged. The new `Assert.Equal(1, rows)` is only stricter. The race is staged
+  deterministically from the interceptor's own connection, with no sleeps.
+- **The lost-once test is discriminating.** Its `[17, 18]` assertion shows that the second write
+  was made over the winner's write. The refresh assertion is meaningful because a single-session
+  logout does not bump the security stamp.
+- **Tests rerun.** I built `Tellma.Identity.IntegrationTests` ("Build succeeded", 0 warnings) and
+  ran it filtered to `ConcurrentGrantTests|BackchannelLogoutTests` with
+  `Category=Integration&Category!=Nightly&Live!=true`: 15 passed, 0 failed. The pc/PC-F89 CI run
+  (45632923032) was skipped, as it is before integration.
+
+R1-1 (minor): the gives-up test's "the logout went on" assertion does not show that the logout
+continued past the revoke it gave up on.
+
+- Where: `test/apps/Tellma.Identity.IntegrationTests/Flows/ConcurrentGrantTests.cs:425-429`
+  (`A_logout_whose_revoke_keeps_losing_logs_and_audits_the_authorization_it_left_valid`).
+- Why the assertion proves nothing: `NotifyAsync` revokes registrations in the order
+  `SqlSessionRegistry.ReadRegistrationsAsync` returns them, and that query has no `ORDER BY`. With
+  the `(Sid, ClientId)` key, `acme` normally comes back before `tellma-cli`, so the `acme`
+  authorization is revoked before the CLI's revoke fails.
+- Failure scenario: a regression that ends `NotifyAsync` after a gave-up revoke would still pass
+  this test. For example, a `return` or `break` out of the revoke loop would skip the remaining
+  revokes and every back-channel delivery.
+- Suggested fix: assert something that runs only after every revoke. Seed the distribution with a
+  `backchannelLogoutUri` (`TestData` already takes one, and `BackchannelLogoutTests` has the
+  receiving harness), then assert its `BackchannelLogoutSent` audit row or the receiver's hit.
+  Deliveries start only after the whole revoke loop, so this holds whatever the registration
+  order. If you would rather not, reword the comment so it claims only that the other client's
+  revoke was unaffected.
+
 ### Responses
+
+- **R1-1: fixed in fix1 (the test, not the comment).**
+  - `ConsentTests.SignInAsync` takes an optional `backchannelLogoutUri`, passed to
+    `TestData.ProvisionDistributionAsync`. Other callers are unchanged (the default is none).
+  - The gives-up test seeds `acme` with `https://acme.app.tellma.com/backchannel-logout`. After the
+    logout it asserts one logout token at the recording handler, and one `BackchannelLogoutSent`
+    `success` row for `acme` under the same sid. Deliveries start only after the whole revoke
+    loop, so this holds whatever order the registrations come in.
+  - The `acme` revoke assertion stays. Its comment now claims only that the other client's revoke
+    was unaffected.
+  - A new helper `AuditsAsync(factory, action, clientId)` backs both this assertion and
+    `RevocationAuditsAsync`.
+  - Mutation: `RevokeAsync` returns `false` on giving up, and `NotifyAsync` returns on `false`.
+    The build succeeded and the test failed at `Assert.Single(factory.BackchannelLogouts.LogoutTokens)`
+    (the collection was empty). Under that mutation the `acme` revoke row was still written, which
+    confirms the finding. The code was restored with `git checkout` and the restored build re-run.
+  - Gates for fix1 are listed in the commit message.

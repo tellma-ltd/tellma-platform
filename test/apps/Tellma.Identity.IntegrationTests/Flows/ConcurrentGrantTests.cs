@@ -397,7 +397,11 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 _ = services.AddSingleton<Serilog.Core.ILogEventSink>(logs);
             });
             using OidcFlowClient flow = factory.CreateFlowClient();
-            await ConsentTests.SignInAsync(factory, flow, "gaveup@example.com");
+
+            // The distribution the user signs in through takes back-channel logouts, so the
+            // logout has a delivery to make after its revokes.
+            await ConsentTests.SignInAsync(
+                factory, flow, "gaveup@example.com", new Uri(Origin + "/backchannel-logout"));
             await RedeemAsync(flow, await AuthorizeForCodeAsync(flow, Tenant17, DefaultScope));
             string authorizationId = Assert.Single(await AuthorizationIdsAsync(factory));
 
@@ -422,11 +426,19 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.False(string.IsNullOrEmpty(failed.Sid), "The failure names no session.");
             AssertRevocationDetails(failed, authorizationId, attempts: 3);
 
-            // The logout went on: the distribution's authorization, registered under the same
-            // session, was revoked.
+            // The distribution's authorization, registered under the same session, was revoked
+            // all the same.
             AuditEvent distribution = Assert.Single(await RevocationAuditsAsync(factory, "acme"));
             Assert.Equal("success", distribution.Outcome);
             Assert.Equal(failed.Sid, distribution.Sid);
+
+            // The logout went on past the revoke it gave up on: deliveries start only once every
+            // revoke has run, whatever order the registrations come in, and the distribution
+            // received its logout token and the delivery was audited.
+            Assert.Single(factory.BackchannelLogouts.LogoutTokens);
+            AuditEvent delivered = Assert.Single(await AuditsAsync(factory, "BackchannelLogoutSent", "acme"));
+            Assert.Equal("success", delivered.Outcome);
+            Assert.Equal(failed.Sid, delivered.Sid);
 
             // And it is logged as a warning naming the authorization.
             Assert.Single(
@@ -629,13 +641,19 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>The audit rows of every revocation recorded so far for a client.</summary>
-        private static async Task<List<AuditEvent>> RevocationAuditsAsync(StandaloneFactory factory, string clientId)
+        private static Task<List<AuditEvent>> RevocationAuditsAsync(StandaloneFactory factory, string clientId)
+        {
+            return AuditsAsync(factory, "TokenRevoked", clientId);
+        }
+
+        /// <summary>The audit rows of an action recorded so far for a client.</summary>
+        private static async Task<List<AuditEvent>> AuditsAsync(StandaloneFactory factory, string action, string clientId)
         {
             using IServiceScope scope = factory.Services.CreateScope();
             TellmaIdentityDbContext db = scope.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
             return await db.Set<AuditEvent>()
                 .AsNoTracking()
-                .Where(row => row.Action == "TokenRevoked" && row.ClientId == clientId)
+                .Where(row => row.Action == action && row.ClientId == clientId)
                 .ToListAsync(TestContext.Current.CancellationToken);
         }
 
