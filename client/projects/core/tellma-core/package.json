@@ -46,12 +46,13 @@
       "./column-filter": 4,
       "./config-check": 4.5,
       "./details": 10.5,
+      "./drafts": 1.5,
       "./entity": 25,
       "./error-paths": 1,
       "./errors": 6,
       "./expression-editor": 8,
       "./leader": 4.1,
-      "./memory": 2.6,
+      "./memory": 1.68,
       "./page-snapshot": 1,
       "./path-picker": 5,
       "./private": 0.5,
@@ -80,7 +81,8 @@
       "./realtime": "Born at 15.78 KB measured on the linked measure, the ceiling being that measurement rounded up to the next 0.5 KB, under spec 0025 §1's 18 KB with the library: tmCreateHub over @microsoft/signalr 10.0.11, which is bundled in (about 14 KB of it: the hub connection, the JSON protocol and the three transports the library falls back through), and TmHub, the reconnect loop with its schedule, jitter, nudges, offline wait, terminal verdicts, attempt deadline and bounded stop, with TmHubHttpClient's user check, refusal capture and aborts, and the logger into telemetry. Loaded with import() by ./leader once a tab leads, so no follower tab and no first frame carries it; the static-graph check keeps it out of the primary, the shell, the attention entry point and the leader.",
       "./page-snapshot": "Born at 0.76 KB measured on the linked measure, the ceiling being that measurement rounded up to the next 0.5 KB: tmSerializePageContext, which reads a page context once into plain JSON, with the masks it applies without page data (the search query's text and filters, a report's parameters, a details title replaced by its entity's label). Spec 0026 §1 places it in the primary; nothing on the first frame reads it, so it is a lazy entry point that the support dump and a future assistant load with import(), and the primary and the shell never reach it statically.",
       "./errors": "Born at 5.52 KB measured on the linked measure, the ceiling being that measurement rounded up to the next 0.5 KB: TmErrorPresenter (describe with the error table, the forbidden reasons' labels with the raw pair, the read-only and frozen tenant's name; present with the step-up question, the tenant-gone sweep and picker, the tenant-state page, the 5xx and 400 dialogs one at a time with Reload's download flow, and the overlay page context), the tm-error-state view, their English strings and their five icons. Spec 0024 §1 places the presenter in the primary; nothing on the first frame presents an error, so it is a lazy entry point that the error views, the cache refresher and pages load with import(). Raised in place to 5.89 against the same 6 when the error views took over Reload's download flow from the primary: TmErrorUpdates (a plain reload when no service worker controls the page, otherwise ./updates loaded and asked to download first), Reload's three strings, the route's client-outdated state rendered into the slot the primary gives, and the inline state's hand-off of a Reload clicked before it rendered. Measured 5.99 against the same 6 once tm-error-state took its optional primary link, the way out a details page's failed read shows (\"Customers\").",
-      "./memory": "Born at 2.54 KB measured, with 0.06 of headroom: TmPageState, TmDrafts and TmTreeExpansion with their spec 0025 §10-§12 behaviour, moved out of the primary after review, against spec 0025 §1, which places them there. Their weight in the primary was about 1.7 KB; here the names they import from the primary stay unminified, and each injectable carries its own factory. Lazy: the page hosts that remember state, keep drafts or expand trees load it with them.",
+      "./drafts": "Born at 1.38 KB measured on the linked measure (1,417 B), the ceiling being that measurement rounded up to the next 0.5 KB: TmDrafts with spec 0025 §11's behaviour (the key of the signed-in user's draft, the save debounced 300 ms and flushed when the page hides, the refusal of another user's key, clear and clearAll, dirtyCount, the quota's eviction of this tab's oldest other drafts with the memory fallback and its telemetry event, and the keys it reports to the support dump and the session's paths), moved out of ./memory, where it had been since that entry point was born. Spec 0025 §1 places it in the primary. An app's bundler places the code its routes use from one entry point in chunks that every route importing that entry point loads, so in ./memory it rode the search route, which reads only tmPageStateKey there. The two entry points measure 3.01 together against ./memory's 2.55 before, since each imports its names from the primary unminified and carries its own module wrapper. Lazy: the details page, the stock pages and the report studio load it with them.",
+      "./memory": "Born at 2.54 KB measured, with 0.06 of headroom: TmPageState, TmDrafts and TmTreeExpansion with their spec 0025 §10-§12 behaviour, moved out of the primary after review, against spec 0025 §1, which places them there. Their weight in the primary was about 1.7 KB; here the names they import from the primary stay unminified, and each injectable carries its own factory. Lowered from 2.6 to 1.68 when TmDrafts moved to ./drafts: measured 2.55 before (2,606 B) and 1.62 after (1,662 B), keeping 0.06 of headroom. An app's bundler places the code its routes use from one entry point in chunks that every route importing that entry point loads, so a search host that imported tmPageStateKey alone loaded the details page's drafts with it. What remains is the search page's state and its tree's expansion, which the details page's state shares. Lazy: the page hosts that remember state or expand trees load it with them.",
       "./updates": "Born at 2.17 KB measured on the linked measure, the ceiling being that measurement rounded up to the next 0.5 KB: TmUpdates (the check's outcome read from the worker's events, update and reload, the visibility and 6-hour checks, the worker's version events) with the worker registration through the 'tellma' Trusted Types policy and the update banner's source. Spec 0024 §1 places TmUpdates in the primary; the app loads it after its first render, and the outdated-client check loads it on first use. @angular/service-worker stays external. Measured 2.18 against the same 2.5 once TmUpdates checks once its worker is registered, so a version announced before the service started still shows.",
       "./private": "Kept at 0.5 when the gate moved to the linked production measure (0.02 linked against 0.02 on the published bundle). The figures that follow are on the published-bundle measure. Empty at birth: the slot for shared wiring between this package's own entry points.",
       "_": "Ceilings are ratchets. Any raise belongs here with its reason; a raise with no note is a bug."
@@ -98,11 +100,12 @@
       "./shell": { "tm-tenantless": 8.5 }
     },
     "staticGraphExcludes": {
-      ".": ["./shell", "./memory", "./recents", "./search-normalize", "./error-paths", "./leader", "./realtime", "./entity", "./page-snapshot", "./updates", "./errors", "./expression-editor", "./path-picker", "@tellma/core-ui/menu", "@tellma/core-ui/image", "./search", "./details"],
+      ".": ["./shell", "./memory", "./drafts", "./recents", "./search-normalize", "./error-paths", "./leader", "./realtime", "./entity", "./page-snapshot", "./updates", "./errors", "./expression-editor", "./path-picker", "@tellma/core-ui/menu", "@tellma/core-ui/image", "./search", "./details"],
       "./shell": ["./recents", "./search-normalize", "./error-paths", "./page-snapshot", "./realtime"],
       "./attention": ["./search-normalize", "./error-paths", "./page-snapshot", "./realtime"],
       "./entity": ["./column-filter", "./expression-editor", "./path-picker"],
-      "./leader": ["./realtime"]
+      "./leader": ["./realtime"],
+      "./search": ["./drafts"]
     },
     "treeShakes": {
       ".": {

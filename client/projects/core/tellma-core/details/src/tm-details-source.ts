@@ -14,7 +14,7 @@ import {
   type TmSecurableRef,
   TmUrls,
 } from '@tellma/core';
-import { TmDrafts } from '@tellma/core/memory';
+import { TmDrafts } from '@tellma/core/drafts';
 
 // The details page's source (spec 0031 §3.1): where the host reads and writes
 // the record, so entity pages and settings pages share one lifecycle. The

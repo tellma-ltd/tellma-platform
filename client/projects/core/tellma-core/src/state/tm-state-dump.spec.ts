@@ -14,14 +14,15 @@ import { TmPreferences } from './prefs/tm-preferences';
 import { TM_STATE_PARTS, TmStateDump } from './tm-state-dump';
 
 // The state's dump section, in a whole test app warm in tenant 17 and on its
-// own. The tab's memory is another entry point's, which a page loads with
-// import().
+// own. The tab's memory and its drafts are other entry points', which a page
+// loads with import().
 
 describe('TmStateDump', () => {
   it('lists names and tags, never values', async () => {
     const rig = await tmAppRig();
     await tmNavigate('/17/centers');
-    const { TmDrafts, TmPageState, tmPageStateKey } = await import('@tellma/core/memory');
+    const { TmDrafts } = await import('@tellma/core/drafts');
+    const { TmPageState, tmPageStateKey } = await import('@tellma/core/memory');
     await rig.store.put({ kind: 'device' }, 'zone', { tag: null, savedAt: 1, data: { auto: true } });
     rig.api.respond('users/me/preferences/set', () => new Promise(() => undefined));
     TestBed.inject(TmPreferences).set(tmPreferenceKey('nav.pinnedBarVisible', 'curated', true), false);

@@ -70,21 +70,27 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   './path-picker': { load: 'lazy', imports: ['./entity'] },
   './sharing': { load: 'lazy', imports: [] },
   // The page hosts load the tab's memory with them: the search page's state
-  // and tree expansion, the details page's drafts and state, the stock
-  // pages' and the report studio's drafts, a report's state. The home page,
-  // in `/dashboards`, lists the recent pages.
+  // and tree expansion, the details page's state, a report's state. The
+  // hosts that edit records load the drafts: the details page, the stock
+  // pages and the report studio. The home page, in `/dashboards`, lists the
+  // recent pages.
   './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
-  './details': { load: 'lazy', imports: ['./entity', './memory'] },
-  './admin': { load: 'lazy', imports: ['./memory', './expression-editor', './path-picker'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts'] },
+  './admin': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
   './attention-pages': { load: 'lazy', imports: [] },
   './reports': { load: 'lazy', imports: ['./memory', './expression-editor'] },
-  './report-studio': { load: 'lazy', imports: ['./memory', './expression-editor', './path-picker'] },
+  './report-studio': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
   './dashboards': { load: 'lazy', imports: ['./recents'] },
   './config-check': { load: 'lazy', imports: [] },
-  // Spec 0025's tab memory, recent pages and leader election, which spec 0025
-  // §1 places in the primary; they load with the page hosts and after first
-  // render instead.
+  // Spec 0025's tab memory, drafts, recent pages and leader election, which
+  // spec 0025 §1 places in the primary; they load with the page hosts and
+  // after first render instead. The drafts are an entry point apart from the
+  // rest of the memory, because an app's bundler places the code its routes
+  // use from one entry point in chunks that every route importing that entry
+  // point loads: one entry point would put the details page's drafts on the
+  // search route.
   './memory': { load: 'lazy', imports: [] },
+  './drafts': { load: 'lazy', imports: [] },
   './recents': { load: 'lazy', imports: [] },
   './leader': { load: 'lazy', imports: [] },
   // Spec 0026's page-context snapshot, which spec 0026 §1 places in the
