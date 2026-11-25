@@ -41,7 +41,7 @@ import { TmMenuTrigger } from './tm-menu-trigger';
       ></svg>
     </ng-template>
 
-    <tm-menu #menu [items]="items()" aria-label="Rich" (itemSelected)="selections.push($event)">
+    <tm-menu #menu [items]="items()" [panelClass]="panelClass()" aria-label="Rich" (itemSelected)="selections.push($event)">
       @if (header() !== null) {
         <ng-template tmMenuHeader>
           <span class="header-text">{{ header() }}</span>
@@ -64,6 +64,7 @@ class RichHost {
   readonly items = signal<readonly TmMenuEntry[]>([]);
   readonly header = signal<string | null>(null);
   readonly interactiveHeader = signal(false);
+  readonly panelClass = signal<string | undefined>(undefined);
 
   /** A do-nothing action that records its id. */
   act(id: string): () => void {
@@ -224,6 +225,27 @@ describe('tm-menu entry kinds', () => {
       expect(row('Plain').hasAttribute('aria-label')).toBe(false);
       // The spelled-out name keeps a new-tab link's note.
       expect(row('Docs').getAttribute('aria-label')).toBe('Docs, PDF (opens in a new tab)');
+    });
+
+    it('names a row by its detailLabel in place of its detail, which still shows', async () => {
+      const { fixture } = await setup((host) => [
+        { id: 't', label: 'Acme', detail: 'Switch', detailLabel: 'Switch tenant', action: host.act('t') },
+      ]);
+      const menu = await open(fixture);
+
+      const [item] = await menu.getItems();
+      expect(await item.getDetail()).toBe('Switch');
+      expect(row('Acme').getAttribute('aria-label')).toBe('Acme, Switch tenant');
+    });
+
+    it("adds panelClass to the menu's panel, beside its own classes", async () => {
+      const { fixture, host } = await setup((h) => [{ id: 'a', label: 'Archive', action: h.act('a') }]);
+      host.panelClass.set('my-menu');
+      await settle(fixture);
+      await open(fixture);
+
+      expect(panel()?.classList.contains('my-menu')).toBe(true);
+      expect(panel()?.classList.contains('tm-menu__panel')).toBe(true);
     });
 
     it('sets lang on a row whose label is in another language', async () => {

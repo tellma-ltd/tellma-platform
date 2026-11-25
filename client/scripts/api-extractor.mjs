@@ -182,9 +182,15 @@ mkdirSync(tempFolder, { recursive: true });
 
 let failed = false;
 
+// Every rollup is patched before any is analyzed: an entry point that
+// re-exports a sibling's class (`./badge` re-exports `./counter`'s
+// TmCounter) reads that sibling's d.ts, whose generated statics must already
+// carry their note, whatever the two entry points' order.
 for (const entryPoint of ENTRY_POINTS) {
   prepareDts(join(clientDir, entryPoint.dts), entryPoint.publicApi);
+}
 
+for (const entryPoint of ENTRY_POINTS) {
   const config = ExtractorConfig.prepare({
     configObjectFullPath: undefined,
     packageJsonFullPath: join(clientDir, 'package.json'),

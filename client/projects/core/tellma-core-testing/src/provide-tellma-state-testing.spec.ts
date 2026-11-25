@@ -17,8 +17,8 @@ import {
   ɵTM_LEADER_LOAD,
   ɵTM_ZONE_CHECK_LOAD,
 } from '@tellma/core';
+import { TmDrafts } from '@tellma/core/drafts';
 import { ɵTM_HUB_FACTORY } from '@tellma/core/leader';
-import { TmDrafts } from '@tellma/core/memory';
 
 import { provideTellmaStateTesting } from './provide-tellma-state-testing';
 import { provideTellmaTesting } from './provide-tellma-testing';

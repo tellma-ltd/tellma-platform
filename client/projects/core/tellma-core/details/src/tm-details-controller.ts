@@ -39,7 +39,7 @@ import {
   TmServerText,
   TmUrls,
 } from '@tellma/core';
-import { TmDrafts } from '@tellma/core/memory';
+import { TmDrafts } from '@tellma/core/drafts';
 
 import type { TmDetailsMode, TmDetailsStatus } from './tm-details-context';
 import { tmDetailsCloneStrip, tmDetailsCreateModel } from './tm-details-model';

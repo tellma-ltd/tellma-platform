@@ -29,8 +29,8 @@ import {
   type TmControlSize,
   ɵtmControlSize,
 } from '@tellma/core-ui';
-import { TmCounter } from '@tellma/core-ui/badge';
 import { TmChip, TmChipSet } from '@tellma/core-ui/chip';
+import { TmCounter } from '@tellma/core-ui/counter';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 
 import { TmEntityPicker } from './tm-entity-picker';

@@ -20,8 +20,8 @@ lands, and under load the test server can take far longer than any fixed count o
 specs wait with `tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
 vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`.
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
-error naming the condition, and stops waiting there. A fixed settle (`tmSettle()`) stays right for
-work that loads no chunk.
+error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
+such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk.
 
 ### Tags
 

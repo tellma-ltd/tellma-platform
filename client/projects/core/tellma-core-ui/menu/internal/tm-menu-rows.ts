@@ -345,7 +345,8 @@ export class ɵTmMenuRows {
     if (!detail && !newTab) {
       return null;
     }
-    const name = detail ? `${vm.label()}, ${detail}` : vm.label();
+    // An item may read its detail more fully than it shows it.
+    const name = detail ? `${vm.label()}, ${vm.item?.detailLabel ?? detail}` : vm.label();
     return newTab ? `${name} ${this.opensInNewTab()}` : name;
   }
 
