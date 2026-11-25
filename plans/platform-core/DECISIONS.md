@@ -384,6 +384,35 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-313 (orchestrator, 2026-11-25): PC-F101 leaves the search route 0.08 KB over; PC-126 owns the rest
+
+- PC-F101's impl (c9f8ab8e) moves TmDrafts into a new lazy entry point, @tellma/core/drafts.
+  - On a measure-only merge with pc/PC-126, the search route falls from 111.21 to 110.08 KB, against spec 0024 section 12's 110.
+  - The 2.62 KB shared chunk is gone. The progress bar stays, in its own 1.47 KB chunk, because the search page renders it.
+  - What is still over is shared-chunk splitting since the details work landed: badge/form-field, and a 0.15 KB grid-contracts chunk. None of it is ./memory code.
+- PC-F101 has done its scope, so it goes to R1 as it is. It is not held hostage to the last 80 bytes.
+- The 110 is a spec budget, so it is not raised (D-031 covers our ceilings, not spec budgets). Over means blocked (D-247).
+  - PC-126 owns the search route, so it finds the saving.
+  - It investigates now, read-only, on a scratch merge of platform-core, pc/PC-F101 and its branch, without committing. It applies the saving at its integration, after PC-F101 lands.
+  - If it finds no spec-neutral saving, PC-126 is blocked and the 110 budget goes to Ahmad.
+- For Ahmad (non-blocking):
+  - the new public entry point @tellma/core/drafts (D-310);
+  - spec 0025 section 1 places TmDrafts in the primary entry point, while the code now has it in ./drafts, as with ./memory before.
+- PC-F101 dropped the progress bar from the shared chunk but kept TmTreeExpansion in ./memory. Its only user is the search page (spec 0030 section 16.2), so the brief's condition for moving it is not met.
+
+### D-312 (orchestrator, 2026-11-25): PC-F87 landed; PC-F101 fills pc-f; PC-F97 integrates under postTask
+
+- PC-F87 landed at 906d6306. CI 45610510060 was green on d661993c, and the plans-only merge went on top.
+- D-229 fill for pc-f: PC-F101 is the only open blocking fix (D-310), so it takes the slot.
+  - PC-129 (T1) still waits for PC-126 (D-289).
+  - Its search-route proof uses a local read-only merge with pc/PC-126, which is never pushed.
+- PC-F97 is released first, per D-311.
+- PC-F97's integrate gate runs under the postTask harness (the PC-F86 scripts), not the leaky one.
+  - The leaky harness's starvation is root-caused (D-294, D-302). PC-F97's own fix1 showed it fails prompt waits that pass 20/20 without the leak.
+  - So the leaky harness cannot judge this checkpoint, which is the one that unblocks the switch (D-295).
+  - Every other checkpoint keeps the current harness until PC-F97 lands.
+- Released after PC-F97's land push: PC-118, then PC-F88 (D-311).
+
 ### D-311 (orchestrator, 2026-11-25): PC-118 held at 224.00; the release order after PC-F87
 
 - PC-118's fix2 (1660f36a) drops the unfillable seam (D-305) and fixes R2-2 to R2-6.
