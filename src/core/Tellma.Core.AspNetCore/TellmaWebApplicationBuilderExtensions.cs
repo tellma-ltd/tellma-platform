@@ -126,6 +126,8 @@ namespace Tellma.Core.AspNetCore
             // the service for a body gets the platform's; the customizer stamps what the framework's
             // own writer answers (the in-process identity server's) with the code and the trace id.
             _ = services.AddSingleton<HostMetrics>();
+            _ = services.AddSingleton<ClientTelemetryMetrics>();
+            _ = services.AddSingleton<ClientTelemetryWriter>();
             _ = services.AddExceptionHandler<TellmaProblemExceptionHandler>();
             services.Insert(0, ServiceDescriptor.Singleton<IProblemDetailsWriter, TellmaProblemDetailsWriter>());
             _ = services.AddProblemDetails(static options => options.CustomizeProblemDetails = static context =>
