@@ -14,7 +14,9 @@
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
 export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
+export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
+export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';

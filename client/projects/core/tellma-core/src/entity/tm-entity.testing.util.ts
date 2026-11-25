@@ -6,6 +6,7 @@
 import { provideLocationMocks } from '@angular/common/testing';
 import { ApplicationInitStatus, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { RouterTestingHarness } from '@angular/router/testing';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
@@ -164,6 +165,8 @@ export interface TmEntityRig {
   readonly store: TmClientStore;
   /** Tenant 17's launch documents as stored. */
   readonly docs: TmLaunchDocs;
+  /** The router harness the app is rendered in, routed at `/17`; a test navigates it further, since a test makes one harness. */
+  readonly router: RouterTestingHarness;
   /**
    * Stores new launch documents for tenant 17, as a sync does, and settles.
    *
@@ -263,7 +266,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
   api.respond('client/sync', { tenant: docs.tenant, tags: docs.me.tags, settings: docs.settings, me: docs.me, staleEntities: [] });
   api.respond('/bff/user', { tenants: [] });
   api.respond('/api/distribution-info', {});
-  await tmNavigate('/17');
+  const router = await tmNavigate('/17');
   await TestBed.inject(TmLocalization).ɵready();
   const entities = TestBed.inject(TmEntities);
   if (options.load !== false) {
@@ -278,6 +281,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
     telemetry: TestBed.inject(TmFakeTelemetry),
     store,
     docs,
+    router,
     move: async (moved, entityTags) => {
       await tmWarmTenant(store, TM_T17, moved, { ...(entityTags && { entityTags }) });
       await tmSettle();

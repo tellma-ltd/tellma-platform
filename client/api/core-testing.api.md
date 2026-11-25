@@ -6,13 +6,18 @@
 
 import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
+import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
+import { FieldTree } from '@angular/forms/signals';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Injector } from '@angular/core';
 import { Observable } from 'rxjs';
+import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
 import { TestKey } from '@angular/cdk/testing';
+import { Type } from '@angular/core';
+import { WritableSignal } from '@angular/core';
 
 // @public
 export function provideTellmaStateTesting(): EnvironmentProviders;
@@ -50,6 +55,29 @@ export class TmColumnFilterHarness extends ComponentHarness {
     isApplyEnabled(): Promise<boolean>;
     pressEnter(): Promise<void>;
     selectOperator(label: string): Promise<void>;
+}
+
+// @public
+export type TmDetailsPageButton = 'actions' | 'cancel' | 'create' | 'edit' | 'refresh' | 'save';
+
+// @public
+export class TmDetailsPageHarness extends ComponentHarness {
+    click(button: TmDetailsPageButton): Promise<void>;
+    getBadges(): Promise<string[]>;
+    getButton(button: TmDetailsPageButton): Promise<TmButtonHarness | null>;
+    getCrumb(): Promise<string | null>;
+    getCrumbHref(): Promise<string | null>;
+    getDisabledReason(button: TmDetailsPageButton): Promise<string | null>;
+    getErrorLink(): Promise<TmButtonHarness | null>;
+    getErrorState(): Promise<TmEmptyStateHarness | null>;
+    getMode(): Promise<'edit' | 'view'>;
+    getStatus(): Promise<string>;
+    getTitle(): Promise<string>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isEnabled(button: TmDetailsPageButton): Promise<boolean>;
+    isProgressShown(): Promise<boolean>;
+    isTitleLoading(): Promise<boolean>;
 }
 
 // @public
@@ -110,6 +138,32 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 
 // @public
 export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
+
+// @public
+export interface TmFakeDetails<T> extends TmDetailsContext<T> {
+    readonly busy: WritableSignal<boolean>;
+    readonly calls: Signal<readonly TmFakeDetailsCall[]>;
+    readonly error: WritableSignal<TmApiError | null>;
+    land(record: TmDetailsRecord<T>): void;
+    readonly providers: Provider[];
+    readonly status: WritableSignal<TmDetailsStatus>;
+}
+
+// @public
+export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>): TmFakeDetails<T>;
+
+// @public
+export type TmFakeDetailsCall = 'cancel' | 'edit' | 'refresh' | 'save' | 'update';
+
+// @public
+export interface TmFakeDetailsOptions<T> {
+    readonly can?: Partial<Readonly<Record<'activate' | 'create' | 'delete' | 'edit', boolean>>>;
+    readonly descriptor?: TmEntityDescriptor;
+    readonly entity: string;
+    readonly id?: TmId | null;
+    readonly mode?: TmDetailsMode;
+    readonly record?: TmDetailsRecord<T>;
+}
 
 // @public
 export class TmFakeHub {

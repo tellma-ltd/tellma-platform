@@ -14,6 +14,7 @@ own.
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`, `tmQxParameters`), the tree builder (`tmQx`), the canonical printer (`tmQxPrint`) and the editor's insertion (`tmQxInsert`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); and the record's context a layout reads with `injectTmDetails()` | lazy, with the first details route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
@@ -982,6 +983,50 @@ const outcome = await inject(TmEntityActions).dialog('acme.Customer', 'set-credi
   giving the next entity, and returns the field, the PascalCase path and the entity, or the
   deepest field reached when a segment does not resolve.
 
+### The details page
+
+`@tellma/core/details` holds the page every entity record opens in. The route host loads it with
+the first details route and renders `TmDetailsHost` with the entity, the route's id (or none on
+`new`) and `?clone=`; the host loads the entity's declared `details` layout and renders it in the
+page's band, under a header the host owns: the crumb back to the entity's search page, the
+record's display name (the entity's singular while it loads, "New {entity}" in create mode), the
+Active or Inactive badge of an activatable entity, Edit, New, Refresh and the actions menu, and
+Save and Cancel in edit mode. Edit and New are disabled with `TmPermissions.disabledReason` when the
+user lacks Save, and Edit is disabled again by the record's own refusals in the `permissions` extra.
+
+```ts
+tmEntity('acme.Customer', { details: () => import('./customers/customer-details') });
+
+// customer-details.ts: the body alone; the host owns the record, its modes and its header.
+export default class CustomerDetails {
+  protected readonly details = injectTmDetails<Customer>();
+  // details.entity(), details.model(), details.form, details.mode(), details.can.edit() …
+}
+```
+
+- **The read.** One read per record key and refresh, `{segment}/get` with `include` naming every
+  extra the entity declares. While a read is out and a record is already held (a refresh, a step
+  to another record, a return to a stale one), the held record stays on screen under a progress
+  bar, the band is `aria-busy` and Edit is disabled; `refresh({ quiet: true })` reads with neither.
+  With nothing held the layout renders over an empty record, busy. A read that fails replaces the
+  body with `tm-error-state`, whose way out to the entity's search page is named by its plural.
+- **The record.** One Signal Forms form over the working copy, per record. Edit sends nothing: it
+  keeps the server copy as the base, makes it the working copy and focuses the first registered
+  field. A write through the form or `update(recipe)` copies the objects on its path, so the
+  record is dirty exactly when the working copy is another object than the base. Cancel asks
+  "Discard changes?" when dirty, then puts the base back and sends nothing.
+- **A new record.** `new` starts in create mode from the entity's defaults (every child
+  collection empty, every non-nullable flag the client writes `false`, then the declaration's
+  `defaults()`), sending nothing; Cancel leaves the page, Back when the app opened another page
+  before it, else to the search page. `new?clone={id}` reads that record and starts from its
+  copy, stripped of its key, the members the server writes and its blobs, its child rows numbered
+  as new rows, then passed through the declaration's `clone(copy, source)`.
+- **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
+  over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
+- **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
+  mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
+  state over a fake host, with `providers` to give the layout.
+
 ### Strings of a lazy entry point
 
 Strings that only a lazily loaded entry point reads ship with it, never in the primary's English
@@ -1000,7 +1045,7 @@ registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `Tm
 `TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
-the same seam. `@tellma/core/attention`
+the same seam. `@tellma/core/details` registers `tm.details` when its first page is created. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
 `tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.

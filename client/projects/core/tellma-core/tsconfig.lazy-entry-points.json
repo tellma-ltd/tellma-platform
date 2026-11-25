@@ -13,6 +13,7 @@
     "recents/public-api.ts",
     "leader/public-api.ts",
     "updates/public-api.ts",
-    "errors/public-api.ts"
+    "errors/public-api.ts",
+    "details/public-api.ts"
   ]
 }
