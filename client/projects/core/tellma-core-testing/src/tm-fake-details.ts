@@ -221,10 +221,11 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
   const host = new TmFakeDetailsHost<T>();
   const created = mode === 'create';
   const model = (created ? ɵtmDetailsCreateModel(descriptor) : {}) as T;
+  // An edit starts in view mode, so the record lands as the server copy, then enters edit as the host does.
   const record = new ɵTmDetailsRecordState<T>({
     key: `${descriptor.name}|${id ?? 'new'}|`,
     id,
-    mode,
+    mode: created ? 'create' : 'view',
     model,
     landed: created,
     entities: inject(TmEntities),
@@ -243,7 +244,9 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
     host.status.set('ready');
   }
   if (mode === 'edit') {
+    // The base is the server copy itself, so the edit is clean until a write.
     record.base.set(untracked(record.entity) ?? null);
+    record.mode.set('edit');
   }
 
   // --- The context: the record's members, with the host's state writable ---

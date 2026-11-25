@@ -109,6 +109,17 @@ export interface TmDetailsTitle {
 const LAYOUT_FAILED = (): TmApiError => new TmApiError({ kind: 'offline', code: 'layout-not-loaded' });
 
 /**
+ * A read's failure as the API error the page describes: itself, or a server
+ * error carrying its message when something other than the API threw.
+ *
+ * @param error - The failure.
+ * @returns The API error.
+ */
+function apiErrorOf(error: Error | undefined): TmApiError {
+  return error instanceof TmApiError ? error : new TmApiError({ kind: 'server', message: error?.message });
+}
+
+/**
  * The details page's state and commands. Internal: the routed host or a
  * source page provides it and sets it up; the frame renders it.
  */
@@ -185,6 +196,18 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   /** The read result the record last took, so a result lands once. */
   #adopted: TmReadResult<T> | null = null;
 
+  /** A read failure an edit already answered: the strip showed it, so it never replaces the record afterwards. */
+  readonly #superseded = signal<unknown>(undefined);
+
+  /** Whether the latest read failed and nothing has answered the failure yet. */
+  readonly #readFailed = computed(() => this.#read.status() === 'error' && this.#read.error() !== this.#superseded());
+
+  /** A refresh that failed under an edit, and the record it failed for. */
+  readonly #refreshFailure = signal<{ readonly error: TmApiError; readonly record: TmDetailsRecordState<T> } | null>(null);
+
+  /** Whether the page is gone, so the steps after an await stop there. */
+  #destroyed = false;
+
   /** The layout's component, once loaded. */
   readonly #layout = signal<Type<unknown> | null>(null);
 
@@ -213,9 +236,13 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (this.#layoutFailure() !== null) {
       return 'error';
     }
+    if (this.#readFailed()) {
+      // A failed read under the edit of a landed record keeps the edit; any other shows the error state.
+      return record !== null && record.landed() && record.mode() !== 'view' ? 'ready' : 'error';
+    }
     if (read === 'error') {
-      // A failed read under an edit keeps the edit: only a read in view mode shows the error state.
-      return record !== null && record.mode() !== 'view' ? 'ready' : 'error';
+      // A failure the edit answered: the record stays on screen.
+      return record !== null && record.landed() && record.key === this.#routed().key ? 'ready' : 'loading';
     }
     if (read === 'loading' || read === 'reloading') {
       return 'loading';
@@ -232,8 +259,14 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (failure !== null) {
       return failure;
     }
-    const error = this.#read.error();
-    return error instanceof TmApiError ? error : new TmApiError({ kind: 'server', message: error?.message });
+    return apiErrorOf(this.#read.error());
+  });
+
+  /** A refresh that failed while the record is edited, which the status strip shows; `null` otherwise. */
+  readonly refreshFailure: Signal<TmApiError | null> = computed(() => {
+    const failure = this.#refreshFailure();
+    const record = this.#record();
+    return failure !== null && failure.record === record && record.mode() !== 'view' && this.#read.status() === 'error' ? failure.error : null;
   });
 
   /** Whether a read runs. */
@@ -334,16 +367,16 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     // --- The record on screen follows the routed one ---
     // A read over a landed record in view mode holds it until the new one
     // lands; with nothing to hold, the routed record starts at once, empty
-    // until its read lands. A failed read in view mode leaves no record: the
-    // error state shows instead.
+    // until its read lands. A failed read leaves no record, unless it failed
+    // under the edit of a landed one: the error state shows instead.
     effect(() => {
       const routed = this.#routed();
       const read = this.#read.status();
-      const failed = this.#layoutFailure() !== null;
+      const failed = this.#layoutFailure() !== null || this.#readFailed();
       untracked(() => {
         const current = this.#record();
-        if (read === 'error' || failed) {
-          if (current !== null && current.mode() === 'view') {
+        if (failed) {
+          if (current !== null && (current.mode() === 'view' || !current.landed())) {
             this.#replace(null);
           }
           return;
@@ -369,6 +402,20 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       untracked(() => this.#land(result));
     });
 
+    // --- A refresh that fails under an edit keeps the edit and shows in the status strip ---
+    effect(() => {
+      const failed = this.#readFailed();
+      untracked(() => {
+        const record = this.#record();
+        if (!failed || record === null || !record.landed() || record.mode() === 'view') {
+          return;
+        }
+        const error = this.#read.error();
+        this.#superseded.set(error);
+        this.#refreshFailure.set({ error: apiErrorOf(error), record });
+      });
+    });
+
     // --- A tenant that is gone or unavailable leaves the page ---
     effect(() => {
       const error = this.error();
@@ -384,6 +431,7 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     });
 
     inject(DestroyRef).onDestroy(() => {
+      this.#destroyed = true;
       this.#layoutRun++;
       this.#record()?.dispose();
     });
@@ -436,8 +484,8 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (record.dirty() && !(await this.#discard())) {
       return false;
     }
-    // A record replaced while the question was open has nothing left to cancel.
-    if (this.#record() !== record) {
+    // A page left, or a record replaced, while the question was open has nothing left to cancel.
+    if (this.#destroyed || this.#record() !== record) {
       return true;
     }
     this.#clearDraft(record);
@@ -462,7 +510,7 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
    */
   async save(): Promise<boolean> {
     const record = this.#record();
-    if (record === null || record.mode() === 'view' || this.#busy()) {
+    if (record === null || record.mode() === 'view' || !record.landed() || this.#busy()) {
       return false;
     }
     if (record.mode() === 'edit' && !record.dirty()) {
@@ -474,9 +522,18 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     const mode = record.mode();
     this.#busy.set(true);
     try {
-      const saved = await record.source.write({ model: record.model(), base: record.base(), concurrency: 'Check', confirmations: [] });
+      const saved = await record.source.write({
+        model: record.model(),
+        base: mode === 'create' ? null : record.base(),
+        concurrency: 'Check',
+        confirmations: [],
+      });
       this.#remember(record.source.entity, saved);
       this.#clearDraft(record);
+      // A page left while the write ran shows nothing of it.
+      if (this.#destroyed) {
+        return true;
+      }
       if (mode === 'create' && this.routed) {
         // The new record's own page shows it; Back skips the create page.
         const descriptor = untracked(this.descriptor);
@@ -497,7 +554,9 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       }
       throw error;
     } finally {
-      this.#busy.set(false);
+      if (!this.#destroyed) {
+        this.#busy.set(false);
+      }
     }
   }
 
@@ -581,6 +640,10 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       this.#replace(record);
     }
     if (routed.cloneSource !== null) {
+      // The copy starts the new record once: a later read of the source never replaces its edits.
+      if (record.landed()) {
+        return;
+      }
       const descriptor = untracked(this.descriptor);
       const copy = tmDetailsCloneStrip(result.record.entity as TmJsonObject, descriptor, (entity) => this.#entities.get(entity));
       record.start(copy as T);

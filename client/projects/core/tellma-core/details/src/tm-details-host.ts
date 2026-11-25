@@ -15,7 +15,7 @@ import {
   type Signal,
   untracked,
 } from '@angular/core';
-import { type TmEntityDescriptor, TmEntities, type TmId, type TmJsonObject, type TmLazyComponent } from '@tellma/core';
+import { TmApiError, type TmEntityDescriptor, TmEntities, type TmId, type TmJsonObject, type TmLazyComponent } from '@tellma/core';
 
 import { TmDetailsController } from './tm-details-controller';
 import { TmDetailsFrame } from './tm-details-frame';
@@ -81,16 +81,29 @@ export class TmDetailsHost {
     const entities = inject(TmEntities);
     const descriptor = computed(() => entities.get(this.entity()));
     const keyType = computed(() => descriptor().key.type);
-    const id = computed(() => tmDetailsRouteId(this.id(), keyType()));
-    const cloneId = computed(() => (this.id() === undefined ? tmDetailsRouteId(this.clone(), keyType()) : null));
+    // An id the route matched that no record of the key's type can have, such
+    // as an int key's past the safe integers, stays as its text (a digit
+    // string, which is a decimal's own form): it shows the not-found state,
+    // never create mode.
+    const routeId = (text: string | undefined): TmId | null =>
+      text === undefined ? null : (tmDetailsRouteId(text, keyType()) ?? (text as TmId));
+    const unreadable = (text: string | undefined): boolean => text !== undefined && tmDetailsRouteId(text, keyType()) === null;
+    const id = computed(() => routeId(this.id()));
+    const cloneId = computed(() => (this.id() === undefined ? routeId(this.clone()) : null));
 
     // --- One source per entity, whose id follows the route; the copied record's has a fixed id ---
-    const sourceOf = (of: TmEntityDescriptor, recordId: Signal<TmId | null>): TmDetailsSource<TmJsonObject> =>
-      untracked(() => runInInjectionContext(injector, () => tmEntitySource<TmJsonObject>(of, recordId)));
-    const source = computed(() => sourceOf(descriptor(), id));
+    // The sources follow the entity's name, not its descriptor, which a change
+    // of the tenant's shape replaces: a new source would read the record again.
+    const sourceOf = (name: string, recordId: Signal<TmId | null>, missing: boolean): TmDetailsSource<TmJsonObject> =>
+      untracked(() => {
+        const of = runInInjectionContext(injector, () => tmEntitySource<TmJsonObject>(entities.get(name), recordId));
+        return missing ? { ...of, read: () => Promise.reject(new TmApiError({ kind: 'not-found' })) } : of;
+      });
+    const source = computed(() => sourceOf(this.entity(), id, unreadable(this.id())));
     const cloneSource = computed(() => {
       const copied = cloneId();
-      return copied === null ? null : sourceOf(descriptor(), computed(() => copied));
+      const missing = unreadable(this.clone());
+      return copied === null ? null : sourceOf(this.entity(), computed(() => copied), missing);
     });
 
     inject<TmDetailsController<TmJsonObject>>(TmDetailsController).ɵsetup({

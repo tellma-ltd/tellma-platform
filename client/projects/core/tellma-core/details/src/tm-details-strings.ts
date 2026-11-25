@@ -23,6 +23,8 @@ export const TM_DETAILS_STRINGS_EN = {
   loading: 'Loading',
   editing: 'Editing {name}',
   saved: 'Saved',
+  refreshFailed: "This record couldn't be refreshed. Your changes are kept.",
+  retry: 'Try again',
   discard: {
     title: 'Discard changes?',
     message: 'Your changes to this record will be lost.',

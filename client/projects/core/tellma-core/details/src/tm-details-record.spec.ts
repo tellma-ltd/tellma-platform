@@ -100,6 +100,17 @@ describe("a details record's state", () => {
     expect([record.can.edit(), record.can.delete(), record.can.activate(), record.can.create()]).toEqual([false, false, true, true]);
   });
 
+  it('starts an edit-mode fake over the server copy, clean, with the copy as its base and working copy', () => {
+    const record = TestBed.runInInjectionContext(() =>
+      tmFakeDetails<TmTestCustomer>({ entity: 'acme.Customer', mode: 'edit', record: { entity: CUSTOMER } }),
+    );
+
+    expect([record.mode(), record.status(), record.entity(), record.model(), record.dirty()]).toEqual(['edit', 'ready', CUSTOMER, CUSTOMER, false]);
+    expect(record.model()).toBe(CUSTOMER);
+    record.form.name().value.set('Al Noor');
+    expect(record.dirty()).toBe(true);
+  });
+
   it('starts a new record from the create defaults, clean, with its base the start', () => {
     const record = TestBed.runInInjectionContext(() => tmFakeDetails<TmTestCustomer>({ entity: 'acme.Customer', mode: 'create' }));
 

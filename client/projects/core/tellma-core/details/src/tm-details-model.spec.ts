@@ -138,6 +138,33 @@ describe('the details model rules', () => {
     });
   });
 
+  describe('the clone strip, through a grandchild collection', () => {
+    it("strips a child's own collection the same way, numbering every row in reading order", () => {
+      const customerDescriptor = rig.entities.get('acme.Customer');
+      const [contacts] = customerDescriptor.children;
+      const contact = rig.entities.get(contacts!.entity);
+      // The recorded model has no grandchild, so the contact gains a collection of the role's permission rows.
+      const [permissions] = rig.entities.get('core.Role').children;
+      const notes = { ...permissions!, json: 'notes', parentKey: 'ContactId' };
+      const withNotes = Object.create(contact, { children: { value: [notes] } }) as TmEntityDescriptor;
+      const resolve = (name: string): TmEntityDescriptor => (name === contact.name ? withNotes : rig.entities.get(name));
+      const source: TmJsonObject = {
+        ...customer(),
+        contacts: [
+          { id: 11, customerId: 5, name: 'Huda', notes: [{ id: 21, contactId: 11, text: 'Calls in the morning' }] },
+          { id: 12, customerId: 5, name: 'Omar', notes: [{ id: 22, contactId: 12, text: 'Prefers email' }, { id: 23, contactId: 12, text: 'Arabic' }] },
+        ],
+      };
+
+      const copy = tmDetailsCloneStrip(source, customerDescriptor, resolve);
+
+      expect(copy['contacts']).toEqual([
+        { id: -1, name: 'Huda', notes: [{ id: -2, text: 'Calls in the morning' }] },
+        { id: -3, name: 'Omar', notes: [{ id: -4, text: 'Prefers email' }, { id: -5, text: 'Arabic' }] },
+      ]);
+    });
+  });
+
   describe("the route's id", () => {
     it('reads a positive integer, and nothing else', () => {
       expect(tmDetailsRouteId('5', 'int')).toBe(5);

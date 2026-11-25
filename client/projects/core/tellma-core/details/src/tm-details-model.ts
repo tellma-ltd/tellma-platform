@@ -63,14 +63,20 @@ export function tmDetailsCloneStrip(
   let next = 0;
 
   // --- 2 to 4. The members a new record cannot carry, then each child row's ---
-  const strip = (row: Record<string, TmJson>, entity: TmEntityDescriptor): void => {
-    delete row[jsonOf(entity, entity.key.property)];
+  // A child row takes its fresh id before its own children do, so the ids
+  // run in reading order down the whole tree.
+  const strip = (row: Record<string, TmJson>, entity: TmEntityDescriptor, id?: number): void => {
+    const key = jsonOf(entity, entity.key.property);
+    delete row[key];
     for (const property of entity.properties) {
       if (SERVER_WRITTEN.has(property.ownership)) {
         delete row[property.json];
       } else if (property.blob !== undefined && property.json in row) {
         row[property.json] = null;
       }
+    }
+    if (id !== undefined) {
+      row[key] = id;
     }
     for (const child of entity.children) {
       const rows = row[child.json];
@@ -82,9 +88,8 @@ export function tmDetailsCloneStrip(
       for (const item of rows) {
         if (item !== null && typeof item === 'object' && !Array.isArray(item)) {
           const childRow = item as Record<string, TmJson>;
-          strip(childRow, target);
           delete childRow[parentKey];
-          childRow[jsonOf(target, target.key.property)] = --next;
+          strip(childRow, target, --next);
         }
       }
     }

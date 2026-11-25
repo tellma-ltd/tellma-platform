@@ -145,7 +145,7 @@ let nextFrame = 0;
               class="tm-details__save"
               type="button"
               variant="primary"
-              [disabled]="controller.busy() && !running().has(ids().save)"
+              [disabled]="!saveEnabled() && !running().has(ids().save)"
               [pending]="running().has(ids().save)"
               (click)="invoke(ids().save)"
             >
@@ -197,7 +197,13 @@ let nextFrame = 0;
     <!-- Row 3: the band, under the progress bar and the status strip, which overlay its top edge. -->
     <div class="tm-details__body">
       <tm-progress-bar class="tm-details__bar" [active]="controller.holding()" [label]="text('loading')" />
-      <div class="tm-details__strip"></div>
+      <div class="tm-details__strip">
+        @if (controller.refreshFailure()) {
+          <!-- A refresh that failed under the edit: the edit stays, and the strip says so. -->
+          <p class="tm-details__notice" role="alert">{{ text('refreshFailed') }}</p>
+          <button tmButton class="tm-details__retry" type="button" variant="ghost" size="sm" (click)="controller.refresh()">{{ text('retry') }}</button>
+        }
+      </div>
       <section class="tm-details__band" [attr.aria-labelledby]="titleId" [attr.aria-busy]="controller.loud() ? 'true' : null">
         @if (controller.status() === 'error') {
           <!-- The read's error state, with its way out to the list. -->
@@ -278,6 +284,16 @@ let nextFrame = 0;
 
     .tm-details__strip:empty {
       display: none;
+    }
+
+    .tm-details__notice {
+      flex: 1 1 auto;
+      margin: 0;
+      padding-inline: var(--page-header-padding-x);
+      overflow: hidden;
+      color: var(--text-default);
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .tm-details__band {
@@ -398,6 +414,9 @@ export class TmDetailsFrame implements OnInit {
     () => this.#viewing() && this.controller.status() === 'ready' && (this.controller.record()?.can.edit() ?? false),
   );
 
+  /** Whether Save may run now: in edit or create mode, over a record that has landed, with no write in flight. */
+  protected readonly saveEnabled = computed(() => !this.#viewing() && !this.controller.busy() && (this.controller.record()?.landed() ?? false));
+
   /** Whether New may run now. */
   protected readonly createEnabled = computed(() => this.#viewing() && this.controller.source().can.create());
 
@@ -505,7 +524,7 @@ export class TmDetailsFrame implements OnInit {
         group: 'primary',
         order: 10,
         shortcut: 'Mod+S',
-        enabled: computed(() => editing() && !controller.busy()),
+        enabled: this.saveEnabled,
         invoke: async () => ((await controller.save()) ? { outcome: 'done' } : { outcome: 'cancelled' }),
       });
       register({

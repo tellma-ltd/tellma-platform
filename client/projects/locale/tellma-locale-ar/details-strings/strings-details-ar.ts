@@ -14,7 +14,7 @@ import type { TmStringTree } from '@tellma/core';
 /**
  * The Arabic of the details page, under `tm`: the toolbar's buttons, the
  * Active, Inactive and Unsaved changes badges, the status lines, the
- * Discard changes question, and Edit's reason for a record outside the
+ * Discard changes question, the notice of a refresh that failed under an edit, and Edit's reason for a record outside the
  * user's permission. The same shape as its English.
  */
 export const TM_DETAILS_STRINGS_AR: TmStringTree = {
@@ -31,6 +31,8 @@ export const TM_DETAILS_STRINGS_AR: TmStringTree = {
     loading: 'جارٍ التحميل',
     editing: 'تعديل {name}',
     saved: 'تم الحفظ',
+    refreshFailed: 'تعذّر تحديث هذا السجل. تغييراتك محفوظة.',
+    retry: 'إعادة المحاولة',
     discard: {
       title: 'تجاهل التغييرات؟',
       message: 'ستُفقد تغييراتك على هذا السجل.',

@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { type Page } from '@playwright/test';
-import { signInAs } from '@tellma/core-testing/e2e';
+import { signInAs, tmIsServerPath } from '@tellma/core-testing/e2e';
 
 import { expect, headings, recordHeadings, test } from '../support/acme';
 
@@ -119,9 +119,10 @@ test.describe('cold deep link', () => {
       await expect(edit).toBeDisabled();
       return;
     }
+    // Every request for data counts, whatever its route: the round trip sends none.
     const calls: string[] = [];
     page.on('request', (request) => {
-      if (request.url().includes('/1/api/web/customers/')) {
+      if (tmIsServerPath(new URL(request.url()).pathname)) {
         calls.push(request.url());
       }
     });

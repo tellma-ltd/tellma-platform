@@ -11,7 +11,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
-import { TmApiError, type TmJsonObject } from '@tellma/core';
+import { TmApiError, type TmJsonObject, TmPageActions } from '@tellma/core';
 import { TmDetailsPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
 import { TmConfirmHarness } from '@tellma/core-ui-testing';
 
@@ -23,8 +23,9 @@ import { injectTmDetails } from './tm-details-context';
 // that registers one field: the load, view → edit → cancel with no request,
 // the Discard changes question, the held record under the bar on a refresh,
 // a step and a stale return, the empty record while nothing is held, the
-// quiet refresh, the permission reasons, the read failure's way out, and
-// create and clone.
+// quiet refresh, the permission reasons, the read failure's way out, a
+// failed refresh in view and edit mode, a layout that fails to load, an id
+// no record can have, create and clone, and a page left while Save runs.
 
 /** A layout over the record: a name input it registers as its first field, and the server copy's name. */
 @Component({
@@ -93,6 +94,24 @@ function customer(id: number): TmJsonObject {
   };
 }
 
+/**
+ * A customer as `customers/save` returns it, renamed.
+ *
+ * @param id - The customer's id.
+ * @param name - The saved name.
+ * @returns The result.
+ */
+function saved(id: number, name: string): TmJsonObject {
+  const result = customer(id);
+  const [entity] = result['entities'] as TmJsonObject[];
+  return { ...result, entities: [{ ...entity, name }] };
+}
+
+/** An offline failure, as the API client raises it. */
+function offline(): never {
+  throw new TmApiError({ kind: 'offline' });
+}
+
 /** The grant of a customer permission. */
 function grant(action: string): { readonly resource: string; readonly action: string; readonly hasFilter: boolean } {
   return { resource: 'acme.Customer', action, hasFilter: false };
@@ -157,6 +176,30 @@ describe('the details host', () => {
     const page = await open(`/17/customers/${id}`);
     await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the customer lands');
     return page;
+  }
+
+  /**
+   * Waits for the band's error state.
+   *
+   * @param what - What the wait is for, named in its failure.
+   */
+  async function errorState(what: string): Promise<void> {
+    await tmSettleUntil(() => document.querySelector('tm-error-state') !== null, what);
+  }
+
+  /**
+   * The error state's button of a label.
+   *
+   * @param label - The button's label.
+   * @returns The button.
+   */
+  function errorButton(label: string): HTMLButtonElement {
+    return [...document.querySelectorAll<HTMLButtonElement>('tm-error-state button')].find((button) => button.textContent?.trim() === label)!;
+  }
+
+  /** What the status strip's notice says, or `null` while it shows none. */
+  function notice(): string | null {
+    return document.querySelector('.tm-details__notice')?.textContent?.trim() ?? null;
   }
 
   /** The latest layout instance. */
@@ -420,5 +463,135 @@ describe('the details host', () => {
     expect([details.mode(), details.id(), details.dirty()]).toEqual(['create', null, false]);
     // The form tracks each child row by a symbol of its own, which the wire never carries.
     expect(JSON.parse(JSON.stringify(details.model()))).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
+  });
+
+  it('keeps Save disabled while the copied record loads', async () => {
+    await start();
+    hold = true;
+
+    await manualChangeDetection(async () => {
+      const page = await open('/17/customers/new?clone=5');
+      await tmSettleUntil(() => pending.length === 1, 'the copy reads');
+      expect(await page.getMode()).toBe('edit');
+      expect(await page.isEnabled('save')).toBe(false);
+
+      pending[0]!.resolve(5);
+      await tmSettleUntil(() => latest()?.details.model()['name'] !== undefined, 'the copy lands');
+      expect(await page.isEnabled('save')).toBe(true);
+    });
+  });
+
+  it('shows the error state with its way out when the copied record is missing, never an empty new record', async () => {
+    await start();
+    rig.api.respond('customers/get', () => {
+      throw new TmApiError({ kind: 'not-found', status: 404, code: 'not-found' });
+    });
+    const page = await open('/17/customers/new?clone=9');
+    await errorState('the error state renders');
+
+    expect(await (await page.getErrorLink())!.getText()).toBe('Customers');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+    expect(customerCalls().map((call) => call.route)).toEqual(['customers/get']);
+  });
+
+  it('shows the not-found state, never a new record, at an id no record of the key can have', async () => {
+    await start();
+    const page = await open('/17/customers/99999999999999999');
+    await errorState('the error state renders');
+
+    expect(await (await page.getErrorLink())!.getText()).toBe('Customers');
+    expect(await page.getTitle()).toBe('Customer');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+    expect(customerCalls()).toEqual([]);
+  });
+
+  it('replaces the record with the error state when a refresh fails in view mode, and brings it back on Try again', async () => {
+    await start();
+    const page = await openCustomer(5);
+    rig.api.respond('customers/get', offline);
+
+    await page.click('refresh');
+    await errorState('the error state renders');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+
+    rig.api.respond('customers/get', () => customer(5));
+    errorButton('Try again').click();
+    await tmSettleUntil(
+      () => document.querySelector('tm-test-details-layout') !== null && latest()?.details.status() === 'ready',
+      'the record lands again',
+    );
+    expect(await page.getErrorState()).toBeNull();
+    expect(await page.getTitle()).toBe(nameOf(5));
+  });
+
+  it('keeps the edit when a refresh fails in edit mode, says so in the strip, and shows the saved record after Save', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    latest()!.details.update((model) => ({ ...model, name: 'Renamed' }));
+    rig.api.respond('customers/get', offline);
+
+    latest()!.details.refresh();
+    await tmSettleUntil(() => notice() !== null, 'the strip shows the failure');
+    expect(notice()).toBe("This record couldn't be refreshed. Your changes are kept.");
+    expect(await page.getErrorState()).toBeNull();
+    expect([await page.getMode(), latest()!.details.model()['name'], latest()!.details.status()]).toEqual(['edit', 'Renamed', 'ready']);
+
+    rig.api.respond('customers/save', () => saved(5, 'Renamed'));
+    await page.click('save');
+    await tmSettleUntil(() => latest()?.details.mode() === 'view', 'the save lands');
+    expect(await page.getErrorState()).toBeNull();
+    expect(notice()).toBeNull();
+    expect(document.querySelector('.tm-test-layout__value')?.textContent).toBe('Renamed');
+  });
+
+  it('keeps the server copy after Cancel when a refresh failed in edit mode', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    rig.api.respond('customers/get', offline);
+    latest()!.details.refresh();
+    await tmSettleUntil(() => notice() !== null, 'the strip shows the failure');
+
+    await page.click('cancel');
+    await tmSettle();
+    expect(await page.getMode()).toBe('view');
+    expect(await page.getErrorState()).toBeNull();
+    expect(notice()).toBeNull();
+    expect(document.querySelector('.tm-test-layout__value')?.textContent).toBe('Customer 5');
+  });
+
+  it('shows the offline state when the layout fails to load, and loads it on Try again', async () => {
+    await start();
+    tmLoadTestPage.mockImplementation(() => Promise.reject(new Error('The chunk failed to load.')));
+    const page = await open('/17/customers/5');
+    await errorState('the error state renders');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+    expect(await page.getErrorLink()).toBeNull();
+
+    tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestDetailsLayout));
+    errorButton('Try again').click();
+    await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
+    expect(await page.getErrorState()).toBeNull();
+    expect(await page.getTitle()).toBe(nameOf(5));
+  });
+
+  it('ends Save cleanly when the page is left while the write runs', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    latest()!.details.update((model) => ({ ...model, name: 'Renamed' }));
+    let answer!: (result: TmJsonObject) => void;
+    rig.api.respond('customers/save', () => new Promise<TmJsonObject>((resolve) => (answer = resolve)));
+
+    await manualChangeDetection(async () => {
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+      await router.navigateByUrl('/17');
+      await tmSettleUntil(() => document.querySelector('tm-details-host') === null, 'the page is left');
+      answer(saved(5, 'Renamed'));
+      expect(await invoked).toEqual({ outcome: 'done' });
+    });
+    expect(TestBed.inject(Router).url).toBe('/17');
   });
 });
