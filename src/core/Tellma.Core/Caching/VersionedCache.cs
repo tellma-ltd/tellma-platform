@@ -429,7 +429,9 @@ namespace Tellma.Core.Caching
             }
 
             // --- The new entry, swapped in one step: a remove then a set would leave a window in which
-            // a concurrent reader finds no entry and loads again. The runtime counts the replaced
+            // a concurrent reader finds no entry and loads again. Only the runtime's expiration scan
+            // or compaction, removing the replaced entry in the instant of the swap, can still show a
+            // reader no entry, which costs one load, never a wrong answer. The runtime counts the replaced
             // entry's size out before it checks the limit, and drops that entry when it refuses the
             // new one, which is then metered as a capacity eviction ---
             MemoryCacheEntryOptions options = new() { Size = size };

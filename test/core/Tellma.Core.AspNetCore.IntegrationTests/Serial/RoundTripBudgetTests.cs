@@ -29,9 +29,11 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
     ///     the measurement carrying its own operation tag, so no request's measurement is ever left
     ///     behind to be taken for a later one's. Every entity action shares one tag, so those are told
     ///     apart by the route; the case runs alone, so no other caller's unit of work lands among the
-    ///     measurements. An operation above its budget is reported with what was recorded while it
-    ///     ran that costs a round trip on a warm path: a cache lookup that missed, a connection that
-    ///     was not warm, and a round trip re-run after a failure.
+    ///     measurements. An operation above its budget is reported with what the host recorded while
+    ///     it ran that costs a round trip on a warm path: a cache lookup that missed, a connection
+    ///     that was not warm, a round trip re-run after a failure, and a batch discarded because a
+    ///     tag it read moved. Those instruments are process-wide, so the report also carries what a
+    ///     background job recorded meanwhile: it is a lead, not an attribution.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -54,7 +56,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
             using MetricCollector<long> lookups = new(meters, CacheTelemetryNames.MeterName, CacheTelemetryNames.Requests);
             using MetricCollector<long> connects = new(meters, AccessTelemetryNames.MeterName, AccessTelemetryNames.ConnectResults);
             using MetricCollector<long> retries = new(meters, DataTelemetryNames.MeterName, DataTelemetryNames.Retries);
-            Budget budget = new(trips, new Causes(lookups, connects, retries), admin);
+            using MetricCollector<long> stale = new(meters, CacheTelemetryNames.MeterName, CacheTelemetryNames.Stale);
+            Budget budget = new(trips, new Causes(lookups, connects, retries, stale), admin);
 
             // --- Centers. A save names its parent and carries its natural key, so even a create
             // validates in a round of its own; a delete runs the stack's own delete validation ---
@@ -174,12 +177,15 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
 
         /// <summary>
         ///     The collectors of what costs a warm operation a round trip of its own: the cache lookups,
-        ///     the connect results and the re-runs.
+        ///     the connect results, the re-runs after a failure and the batches that found a tag they
+        ///     read moved. Each collects the whole host's measurements, a background job's included;
+        ///     none of these instruments names the request it was recorded for.
         /// </summary>
         /// <param name="Lookups">The cache lookups, by kind and outcome.</param>
         /// <param name="Connects">The connect results.</param>
         /// <param name="Retries">The round trips re-run after a failure.</param>
-        private sealed record Causes(MetricCollector<long> Lookups, MetricCollector<long> Connects, MetricCollector<long> Retries)
+        /// <param name="Stale">The batches that found a tag they read moved, by phase; a read discarded this way is re-run.</param>
+        private sealed record Causes(MetricCollector<long> Lookups, MetricCollector<long> Connects, MetricCollector<long> Retries, MetricCollector<long> Stale)
         {
             /// <summary>The outcome of a cache lookup that a stored entry answered.</summary>
             private const string Hit = "hit";
@@ -190,11 +196,13 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
                 Lookups.Clear();
                 Connects.Clear();
                 Retries.Clear();
+                Stale.Clear();
             }
 
             /// <summary>
             ///     What was recorded since the last <see cref="Clear" /> that costs a round trip on a
-            ///     warm path: every lookup but a hit, every connection but a warm one, and every re-run.
+            ///     warm path: every lookup but a hit, every connection but a warm one, every re-run after
+            ///     a failure, and every batch that found a tag it read moved.
             /// </summary>
             /// <returns>The measurements, comma-separated; empty when none was recorded.</returns>
             public string Describe()
@@ -207,7 +215,9 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
                     .Select(static measured => $"connect {measured.Tags.GetValueOrDefault(AccessTelemetryNames.ResultTag)}");
                 IEnumerable<string> retries = Retries.GetMeasurementSnapshot()
                     .Select(static measured => $"re-run {measured.Tags.GetValueOrDefault(DataTelemetryNames.ClassTag)} {measured.Tags.GetValueOrDefault(DataTelemetryNames.ErrorTag)}");
-                return string.Join(", ", lookups.Concat(connects).Concat(retries));
+                IEnumerable<string> stale = Stale.GetMeasurementSnapshot()
+                    .Select(static measured => $"re-run {CacheTelemetryNames.StalePhaseTag}={measured.Tags.GetValueOrDefault(CacheTelemetryNames.StalePhaseTag)}");
+                return string.Join(", ", lookups.Concat(connects).Concat(retries).Concat(stale));
             }
         }
 
@@ -271,7 +281,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Serial
                     string recorded = causes.Describe();
                     _ = Over.Append(
                         CultureInfo.InvariantCulture,
-                        $"{route} ({operation}): {taken} round trips, budget {allowed}; recorded meanwhile: {(recorded.Length == 0 ? "nothing" : recorded)}").Append('\n');
+                        $"{route} ({operation}): {taken} round trips, budget {allowed}; recorded process-wide meanwhile (background jobs included): {(recorded.Length == 0 ? "nothing" : recorded)}").Append('\n');
                 }
 
                 return answer;

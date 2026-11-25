@@ -65,10 +65,14 @@ All probes were throwaway tests, deleted before the commit.
   output. Other +1 paths were ruled out from the code: a guard failure needs a moved `permissions`
   tag (no writer of roles, permissions, settings or the administrator's memberships runs at that
   point); a cold connect needs the connect cache to drop the subject (50,000 entries, no expiry);
-  a re-run needs a transient failure of a read under read-committed snapshot.
-- So that a recurrence names its cause, `RoundTripBudgetTests` now reports, beside each operation
-  above its budget, what was recorded while it ran that costs a warm path a round trip: every
-  cache lookup but a hit, every connect result but `warm`, and every re-run.
+  a transient re-run needs a transient failure of a read under read-committed snapshot; a read
+  re-run (the batch discarded because a re-run dependency moved, then recomposed) needs a tag bump,
+  and no job the invite schedules bumps one.
+- So that a recurrence leaves a lead, `RoundTripBudgetTests` now reports, beside each operation
+  above its budget, what the host recorded while it ran that costs a warm path a round trip: every
+  cache lookup but a hit, every connect result but `warm`, every transient re-run, and every
+  `tellma.versiontags.stale` event by phase (a `read-rerun` is a read re-run). The instruments are
+  process-wide, so a background job's measurements land in the same line.
 
 ### The fix
 
@@ -114,8 +118,10 @@ eviction, which they still are.
   the same shape. I found none in src/ (`ConnectCache`, `QueryDiscoveries` and the session store
   set directly or remove only to drop).
 - The CI-to-cause link is inferred (see Reproduction). If the budget test fails again, its
-  message now says what was recorded during the over-budget operation; a settings lookup `stale` or
-  `miss` there points back here, anything else is a different cause.
+  message lists what the whole host recorded during the over-budget operation, background jobs
+  included. A settings lookup `stale` or `miss` there is a lead back to this window, not a
+  diagnosis: a job's own lookup reads the same. A `re-run stale.phase=read-rerun` points at a moved
+  re-run dependency instead.
 
 ### What reviewers should examine hardest
 
@@ -126,3 +132,149 @@ eviction, which they still are.
   size-2 cache holding two entries left the key absent).
 - The eviction-reason mapping in `VersionedCache.Evicted` after the switch from `Removed` to
   `Replaced` (`Set_meters_the_entry_it_replaces_as_replaced_or_aged_and_remove_as_removed`).
+
+## Review 1
+
+Scope: commit 07b96828 only, against the LEDGER row PC-F83. There is no CHECKPOINTS entry. Spec
+0013 §3 (the snapshot stores, `VersionedCache`, §11's `cache.reason` set) and 0018 §8.1 (the
+`users/preferences/get` budget of 1) are in scope.
+
+Verified locally on 07b96828:
+
+- `dotnet build` of Tellma.Core.Tests and of Tellma.Core.AspNetCore.IntegrationTests: Build
+  succeeded, 0 warnings.
+- Tellma.Core.Tests, filtered to `VersionedCacheTests` and `VersionTagStateTests`: 46 of 46 passed,
+  5 runs out of 5.
+- Tellma.Core.AspNetCore.IntegrationTests `RoundTripBudgetTests`: 1 of 1 passed (25 s).
+- The pc/PC-F83 push's CI run (45545277480) was skipped, so there is no CI evidence yet.
+
+What holds, checked item by item:
+
+- **The runtime claims.** I decompiled `MemoryCache` from Microsoft.Extensions.Caching.Memory
+  10.0.11, the pinned version, with ilspycmd. `SetEntry` marks the prior entry
+  `SetExpired(Replaced)`. `UpdateCacheSizeExceedsCapacity(entry, priorEntry, …)` tests
+  `size + entry.Size - priorEntry.Size` against the limit and CASes that value in, so a same-size
+  replacement at the limit lands. On a capacity refusal, `coherentState.RemoveEntry(priorEntry)`
+  drops the prior entry, subtracts its size once and invokes its callbacks. On success,
+  `TryUpdate` swaps the entry, and the size is already net of the prior entry. A scratch
+  file-based program against the same package agreed:
+  - With remove-then-set, 193,633 of 247,445 concurrent reads were absent. With a single `Set`,
+    0 of 67,339 were.
+  - A same-size replacement at the limit lands.
+  - A refused larger replacement leaves the key absent, with count 1 and size 1. Its evictions
+    are `big:Capacity` and `a:Replaced`.
+- **A reader during the swap.** `PostProcessTryGetValue` serves an entry that is expired with
+  `EvictionReason.Replaced`. So a reader that finds the prior entry after `SetExpired` and before
+  `TryUpdate` still gets the older value rather than a miss. The swap really is gap-free, apart
+  from R1-3.
+- **Metering after the switch (judge item b).** Both callback paths read the displacement the
+  same way:
+  - A swapped-out entry calls back with `Replaced`, now mapped to its `Displacement`, so `age`
+    stays `age` and `replaced` stays `replaced`.
+  - The capacity-refusal path meters the prior entry under its displacement and the new entry as
+    `capacity`. The old code gave the same pair (`Removed` plus displacement, then `capacity`).
+  - `InvokeCallbacks` exchanges the callback list to null, so no entry is metered twice. That
+    holds even when two concurrent `Store`s of one key both name the same prior entry.
+  - An entry refused by the runtime's own `TryAdd` race still meters `replaced`, because its
+    `Displacement` is null, as before.
+  - `Remove` still meters `removed`. 0013 §11's closed reason set is unchanged.
+  - Size accounting is correct on every non-racing path (but see R1-3).
+- **The mechanism against CI 45334915665 (judge item a).** I read the run with
+  `gh run view --log-failed`. Only `users/preferences/get` is over budget (2 against 1), and every
+  other row is at its budget. No app log is in the output, so the cause cannot be confirmed from
+  the run, as the implementer says. The mechanism is sound:
+  - `DataExecutor.ReplaceSnapshots` (DataExecutor.cs:275-334) replaces the tenant snapshot after
+    every batch, the invite's background jobs included.
+  - An empty snapshot makes the settings lookup `stale`, which costs one load inside the
+    request's unit of work.
+  - I found no job that bumps a tenant tag (no `Bump`/`AffectedUsers` use under the outbox,
+    notification or job code). So last-writer-wins with older tags cannot explain it at that
+    point.
+  - `ConnectCache`, `AccessEvaluator.Invalidate` and `UserConnector` remove only to drop, never
+    remove-then-set.
+
+  One other +1 path is not in the implementer's ruled-out list: a read re-run on a moved re-run
+  dependency. Nothing I found moves such a tag at that point, so it is unlikely to be the CI
+  cause, but the diagnostics do not name it (R1-1).
+- **The regression tests (judge item c).** Each test fails on the old shape, which the scratch
+  program reproduces at about 78% absent reads. None should flake on the new code:
+  - The only residual window is R1-3's expiration scan. A fresh `MemoryCache` sets its last-scan
+    time at construction and scans at most once per minute, so no scan runs during these
+    millisecond-long tests.
+  - Each test class builds its own service provider, so the 20,000 queued eviction callbacks
+    cannot reach a later test's collector.
+- **The budget.** It stays at 1, as 0018 §8.1 gives it.
+- **AGENTS.md and PLAN.md §7.1.** XML docs and inline section comments are present. No spec
+  reference appears in a doc, a message or a test name.
+
+### Findings
+
+**Blocking:** none.
+
+**Major:** none.
+
+**Minor:**
+
+- **R1-1 (minor). The cause report misses stale-tag read re-runs.**
+  `test/core/Tellma.Core.AspNetCore.IntegrationTests/Serial/RoundTripBudgetTests.cs:53-57,
+  182-213`.
+  - *Failure scenario.* `Causes` claims "every re-run", but it collects only `tellma.data.retries`.
+    That instrument counts only the executor's transient re-runs (DataExecutor.cs:591-594).
+    Another path also costs a warm read one extra round trip: the read is discarded because a
+    re-run dependency moved (DataExecutor.cs:216-223, `StaleContextException`) and then recomposed
+    (GuardedBatchRunner.cs:118-133). That path is metered only on `tellma.versiontags.stale` with
+    `stale.phase = read-rerun` (VersionTagMetrics.cs:164-167), which the test does not collect.
+    So if the budget test fails that way, the message shows "nothing" or a bare `… lookup stale`
+    from the recompose's reload. The implementer's guidance (lines 116-118 of this file) then
+    sends the reader back to the snapshot window, which is the wrong cause.
+  - *Suggested fix.* Add a fourth collector on `CacheTelemetryNames.Stale` and report each
+    measurement as `re-run stale.phase=<phase>`. Name the read re-run in the "ruled out" list too.
+- **R1-2 (minor). The cause report also counts other callers' measurements.**
+  `RoundTripBudgetTests.cs:54-56, 263-274`.
+  - *Failure scenario.* The three collectors are process-wide, and `tellma.cache.requests` has no
+    operation tag. Everything the host records between `causes.Clear()` and `Describe()` is
+    therefore reported against the operation. That includes the lookups and connects of the
+    invite's background jobs, which the implementer names as the likely concurrent batches, and
+    the window lasts up to `Patience` (10 s) while `AwaitAsync` polls. A job's own
+    `settings lookup miss` would read as the request's. That is the attribution this file's Open
+    risks tells a future reader to trust.
+  - *Suggested fix.* Label the line "recorded process-wide meanwhile (background jobs included)".
+    Filter connect results to the request's variant (`variant = subject`), so a job's connect is
+    not counted. Reword the Open-risks guidance to treat a settings `stale`/`miss` as a lead, not
+    a diagnosis.
+- **R1-3 (minor). "Never absent" holds except in a rare race with the runtime's scan.**
+  `src/core/Tellma.Core/Caching/VersionTagSnapshots.cs:24-27, 56-59, 85-87, 113-114`;
+  `src/core/Tellma.Core/Caching/VersionedCache.cs:431-434`.
+  - *Failure scenario.* `SetEntry` marks the prior entry expired before `TryUpdate`. Two runtime
+    passes remove any entry whose `CheckExpired` is true, and that includes a prior entry
+    mid-swap:
+    - `ScanForExpiredItems`, at most once per `ExpirationScanFrequency` (default 1 min).
+    - `Compact`, which a full `VersionedCache` kind triggers on every refused add.
+
+    If either pass hits that sub-microsecond window, a reader sees the key absent until the
+    runtime's fallback `TryAdd` lands. The size is also subtracted twice: once by the CAS and
+    once by `RemoveEntry`. So the estimated size and the gauge drift low by the prior entry's
+    size per occurrence. The effect is negligible: one extra load, never a wrong answer. Still,
+    the docs and comments state "never", and the next investigator of a +1 will trust them.
+  - *Suggested fix.* Qualify the sentences, for example "outside a rare race with the runtime's
+    expiration scan or compaction, which costs one load". No code change is needed.
+
+### Responses
+
+- **R1-1: fixed.** `RoundTripBudgetTests` collects `tellma.versiontags.stale` as a fourth cause
+  and reports each event as `re-run stale.phase=<phase>`, so a read re-run on a moved re-run
+  dependency is named. The Implementer notes now list the read re-run among the ruled-out +1 paths,
+  with the reason (no job the invite schedules bumps a tag).
+- **R1-2: fixed in part.** The over-budget line now reads "recorded process-wide meanwhile
+  (background jobs included)", and the class and `Causes` docs say the instruments are host-wide and
+  name no request. The Open-risks guidance now treats a settings `stale`/`miss` as a lead, not a
+  diagnosis. Not done: filtering connect results to the request's variant. `tellma.access.connect.results`
+  carries only `result` (spec 0014's metrics table fixes its tag set to `result`); `variant` is on
+  the prologue-duration histogram alone, which records warm and cold prologues alike, so it cannot
+  stand in. Filtering would need a `variant` tag on the product instrument, a spec change outside
+  this checkpoint; the connect entries stay, under the process-wide label.
+- **R1-3: fixed.** The class remarks and inline comments in VersionTagSnapshots.cs (both stores)
+  and VersionedCache.cs `Store` now say a reader does not see the entry absent outside a rare race
+  with the runtime's expiration scan or compaction, which costs one load, never a wrong answer. No
+  code change. The regression tests keep asserting zero absent reads: a fresh `MemoryCache` scans
+  at most once a minute and none of these caches compacts during the tests, as the review notes.
