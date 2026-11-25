@@ -384,6 +384,24 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-323 (orchestrator, 2026-11-25): PC-118's integration CI is red on its own changes
+
+- CI 45653637336 on 1f177e46 failed. All three failures point at PC-118 itself; PC-F101's green run just before had none of them.
+  1. The client's PR-tier e2e additions-axe registry does not classify the new core-ui counter folder. It is deterministic.
+  2. Acme ubuntu: layout-shift's zero-shift cold entry fails in chromium and chromium-ar, with sub-pixel shifts of 0.0001 to 0.0008. Windows passes, so a skeleton element differs from the chrome on Linux.
+  3. Acme ubuntu, flaky: warm-launch saw /api/web/inbox/summary issued before the shell's first render. That is very likely the new app bar counter.
+- PC-118's local gates ran only its own e2e specs, so (1) was not caught locally.
+- PC-118 root-causes all three (D-011): no retries and no loosened assertions. It commits CI fixes and re-integrates. The flaky row is tracked by PC-118.
+- Until PC-118 lands, pc-1 stays with it, and PC-F102 waits for that slot.
+
+### D-322 (orchestrator, 2026-11-25): PC-F94 R1 rulings; gl.Center is deferred to PC-F104
+
+- PC-F94's R1 is 0/0/4: the label filter drops patched-in entries, the closure check skips action-field enums and targets, there is no deep-copy test, and one key is dead. All four are fixed in fix1, with no R2 (section 4.4).
+- gl.Center: R1's recommendation is accepted.
+  - The real-names-mean-real-fields rule is not extended to module entities now. Renaming would touch about 70 client files, the server ClientModel and the fixtures, and no gl package or gl-composing test exists yet to make the gap bite.
+  - Fix1 notes the shape in the stand-in's TSDoc and fixes the README's gl.Center example.
+  - PC-F104 is opened, deferred, to move off the real gl key when either trigger lands.
+
 ### D-321 (orchestrator, 2026-11-25): PC-F94 to R1; PC-F103 opened for core's missing label strings
 
 - PC-F94's impl (8b07aa85) goes to R1.
