@@ -35,4 +35,23 @@ describe('TmFakeLocks', () => {
     expect(log).toEqual(['other', 'second']);
     expect(locks.held()).toEqual([]);
   });
+
+  it('runs a try only while no request of its name is unsettled', async () => {
+    const locks = TestBed.inject(TmFakeLocks);
+    const name = 'tm:acme:test-user:zone-prompt';
+    let finish!: () => void;
+    const first = locks.run(name, () => new Promise<void>((resolve) => (finish = resolve)));
+    const log: string[] = [];
+    await expect(locks.tryRun(name, () => Promise.resolve(void log.push('tried')))).resolves.toBe(false);
+    finish();
+    await first;
+    let done!: () => void;
+    const tried = locks.tryRun(name, () => new Promise<void>((resolve) => (done = resolve)));
+    await vi.waitFor(() => expect(locks.held()).toEqual([name]));
+    await expect(locks.tryRun(name, () => Promise.resolve(void log.push('again')))).resolves.toBe(false);
+    done();
+    await expect(tried).resolves.toBe(true);
+    expect(log).toEqual([]);
+    expect(locks.held()).toEqual([]);
+  });
 });

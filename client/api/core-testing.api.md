@@ -245,6 +245,7 @@ export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSu
 export class TmFakeLocks extends TmLocks {
     readonly held: Signal<readonly string[]>;
     run<T>(name: string, work: () => Promise<T>): Promise<T>;
+    tryRun(name: string, work: () => Promise<void>): Promise<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeLocks, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeLocks>;
 }

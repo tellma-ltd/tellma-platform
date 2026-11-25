@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DOCUMENT, inject, InjectionToken, Injector, type Type, type ViewContainerRef } from '@angular/core';
+import { DOCUMENT, inject, InjectionToken, Injector, type Signal, type Type, type ViewContainerRef } from '@angular/core';
 
 import type { TmApiError } from './tm-api-error';
 
@@ -125,6 +125,10 @@ export interface TmErrorsModule {
   /** The error presenter. */
   readonly TmErrorPresenter: Type<{
     present(error: TmApiError, context: { kind: 'read'; tenantId: number }): Promise<void>;
+    describe(
+      error: TmApiError,
+      context: { kind: 'save'; tenantId?: number },
+    ): { readonly title: Signal<string>; readonly message: Signal<string>; readonly items: Signal<readonly string[]> };
   }>;
   /** Renders the client-outdated view's inline state into a slot; its Reload gets the new version first. */
   readonly ɵtmClientOutdatedState: (slot: ViewContainerRef) => { ɵact(action: 'reload'): Promise<void> };
@@ -132,8 +136,8 @@ export interface TmErrorsModule {
 
 /**
  * Loads the error views' entry point. Internal: the loader of the cache
- * refresher's tenant refusals and of the route's Reload, which a test
- * replaces. The specifier is cast so that the package build does not report
+ * refresher's tenant refusals, of the route's Reload and of the zone
+ * prompt's inline failure, which a test replaces. The specifier is cast so that the package build does not report
  * the import back as a cycle.
  */
 export const TM_ERRORS_LOAD = new InjectionToken<() => Promise<TmErrorsModule>>('TM_ERRORS_LOAD', {

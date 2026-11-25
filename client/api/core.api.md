@@ -635,6 +635,15 @@ export interface TmDetailsSnapshot {
 }
 
 // @public
+export class TmDeviceZone {
+    readonly auto: Signal<boolean>;
+    check(): Promise<void>;
+    setAuto(on: boolean, source: 'prompt' | 'settings'): Promise<void>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDeviceZone, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmDeviceZone>;
+}
+
+// @public
 export type TmDiagnosticsTrigger = 'button' | 'dialog' | 'shortcut';
 
 // @public
@@ -2455,6 +2464,18 @@ export interface TmWriteOptions {
     readonly confirmations?: readonly string[];
     readonly long?: boolean;
     readonly tenantId?: number;
+}
+
+// @public
+export interface TmZoneDoc {
+    readonly users: Readonly<Record<string, TmZoneUser>>;
+}
+
+// @public
+export interface TmZoneUser {
+    readonly at: number;
+    readonly auto: boolean;
+    readonly seen: Readonly<Record<string, string>>;
 }
 
 ```

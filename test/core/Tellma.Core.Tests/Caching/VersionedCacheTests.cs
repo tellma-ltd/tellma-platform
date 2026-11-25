@@ -16,10 +16,14 @@ namespace Tellma.Core.Tests.Caching
     /// <summary>
     ///     The versioned cache base: hits by tag and nothing else, one load per key under concurrent
     ///     callers, failed and cancelled loads forgotten, values stored under the load's own tag or not
-    ///     at all, bounds and eviction reasons, tenant-first keys, and every cache instrument.
+    ///     at all, replacements a concurrent reader never sees as a missing entry, bounds and eviction
+    ///     reasons, tenant-first keys, and every cache instrument.
     /// </summary>
     public sealed class VersionedCacheTests : IDisposable
     {
+        /// <summary>How many times the concurrent-replacement case replaces one entry while it is read.</summary>
+        private const int ReplacementsUnderRead = 20000;
+
         /// <summary>How long any wait of these tests may take before the test fails instead of hanging.</summary>
         private static readonly TimeSpan Bound = TimeSpan.FromSeconds(10);
 
@@ -332,6 +336,35 @@ namespace Tellma.Core.Tests.Caching
             Assert.Equal(["age", "removed", "replaced"], [.. evictions.GetMeasurementSnapshot().Select(static measurement => (string)measurement.Tags[CacheTelemetryNames.ReasonTag]!).Order(StringComparer.Ordinal)]);
             Assert.All(evictions.GetMeasurementSnapshot(), static measurement => Assert.Equal(CacheKinds.Preferences, measurement.Tags[CacheTelemetryNames.KindTag]));
             Assert.Null(cache.Peek(Key, Second));
+        }
+
+        [Fact]
+        public async Task A_reader_never_misses_an_entry_while_another_caller_replaces_it_under_the_same_tag()
+        {
+            using TestCache cache = Cache();
+            Box stored = new("stored");
+            cache.Set(Key, stored, First);
+
+            // --- One caller replaces the entry over and over, as each load of a busy key stores it ---
+            var replacing = Task.Run(
+                () =>
+                {
+                    for (int replaced = 0; replaced < ReplacementsUnderRead; replaced++)
+                    {
+                        cache.Set(Key, stored, First);
+                    }
+                },
+                Token);
+
+            // --- Another reads it under that tag the whole time: a replacement never leaves the key without an entry ---
+            int misses = 0;
+            while (!replacing.IsCompleted)
+            {
+                misses += cache.Peek(Key, First) is null ? 1 : 0;
+            }
+
+            await replacing;
+            Assert.Equal(0, misses);
         }
 
         [Fact]
