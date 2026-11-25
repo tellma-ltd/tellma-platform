@@ -384,6 +384,31 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-318 (orchestrator, 2026-11-25): PC-154 R1; the 230 line under PC-118, PC-126 and PC-154 together
+
+- PC-154's R1 is 1/0/5.
+- R1-1 (blocking): measured on a merge with pc/PC-118, Acme initialJs is 235.67 KB in 26 files, over the 230 line.
+  - With /support stubbed out it is 229.19.
+  - The cause is D-281's file-level hoisting, not an import edge like TM_GRID_KEYS. Once /support makes tm-grid live in Acme, the grid's lazy chunks share files that the first frame already imports. Those files come in whole:
+    - the l10n parse halves next to their format halves: tm-date-engine, tm-number-codec, tm-week-info;
+    - CDK scrolling and bidi;
+    - Angular's _debug_node;
+    - the grid's lucide glyphs.
+  - PC-118's move removed a different edge, so it does not help here.
+- Ruling: the first frame is a property of the set, not of one checkpoint. So R1-1 is handled at orchestrator level.
+  - PC-154's R1 reviewer is measuring the full set read-only: platform-core, then PC-118, then PC-126 with candidate C, then PC-154. It itemizes the first frame and measures the saving routes: the l10n parse split, PC-F91 (lucide per-icon), PC-F92 (TmKbd out of the primary), and the CDK and _debug_node hoists.
+  - Routes that get the set under 230 become blocking fix items, landing ahead of whichever of PC-126 or PC-154 would cross the line.
+  - If no realistic route does, the 230 line goes to Ahmad with the itemized first frame, as D-301 planned. It is not raised.
+  - Over the line still means blocked (D-247), and the checkpoint that would cross it waits.
+- R1-2 is accepted with no change. D-031 caps a raise at what the checkpoint adds, rounded up to the next 0.5; it does not fix the raise at that value. So "." to 54.8 (measured 54.74) and locale-ar "." to 0.55 (0.52) are honest.
+- R1-3 to R1-6 are fixed now, in a local commit:
+  - TmSupport starts at idle.
+  - Presses made before the tools land collapse to one open.
+  - The Download gets a pending guard.
+  - Two README lines are corrected.
+  - The diagnostics offline line is tested in en and ar.
+- The D-305 shell rows follow after PC-118 lands. All of fix1 then goes to R2 at xhigh (section 4.4).
+
 ### D-317 (orchestrator, 2026-11-25): PC-F101 landed; PC-118 released; PC-F94 fills pc-f
 
 - PC-F101 landed at 13cbb8e5. CI 45631846535 was green on ddef354d, and the plans-only merge went on top.
