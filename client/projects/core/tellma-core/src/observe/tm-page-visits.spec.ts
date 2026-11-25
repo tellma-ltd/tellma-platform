@@ -70,7 +70,6 @@ describe('TmPageVisits', () => {
 
   it("starts the document's first visit at the time origin, and reports it at the next navigation", async () => {
     const before = performance.now();
-    holdNextPage();
     const harness = await tmNavigate('/17/centers');
     await shown();
     expect(visits()).toEqual([]);
@@ -79,9 +78,9 @@ describe('TmPageVisits', () => {
     const [first] = visits();
     expect(first).toEqual({ entry: 'load', outcome: 'ready', ms: expect.any(Number), chromeMs: expect.any(Number), visitS: expect.any(Number) });
     // From the time origin, not from the first navigation: the spec's own setup came first.
-    expect(first['ms']).toBeGreaterThanOrEqual(before + DATA_MS);
+    // The stamps against a held page's data are the next spec's.
+    expect(first['ms']).toBeGreaterThanOrEqual(before);
     expect(first['chromeMs']).toBeGreaterThanOrEqual(before);
-    expect(first['chromeMs']).toBeLessThan(first['ms'] as number);
   });
 
   it("stamps a navigation's chrome before its data, its data when it arrives, and its length at pagehide", async () => {
