@@ -12,7 +12,7 @@ import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
 import { TM_DISPLAY_NAME_GOLDEN as golden } from '../../src/entity/tm-display-name-golden.testing.util';
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { TM_T17, tmSettle } from '../../src/routes/tm-app.testing.util';
+import { TM_T17, tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import pasteGolden from './paste-leaf-golden.json';
 import { ɵtmPasteGroups, ɵtmPasteLeaf, ɵtmPasteMatch, ɵtmResolveLabels, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
 import { TmEntityPickers } from './tm-entity-pickers';
@@ -642,10 +642,6 @@ describe('TmEntityPickers', () => {
       let flying = 0;
       let most = 0;
       let release = false;
-      // The fourth held query, awaited as it arrives: the paste's chunk loads
-      // first, so a wait on real time would race the load.
-      let fourth!: () => void;
-      const four = new Promise<void>((resolve) => (fourth = resolve));
       rig.api.respond('customers/query', (call: TmFakeApiCall) => {
         flying++;
         most = Math.max(most, flying);
@@ -658,9 +654,6 @@ describe('TmEntityPickers', () => {
             answer();
           } else {
             held.push(answer);
-            if (held.length === 4) {
-              fourth();
-            }
           }
         });
       });
@@ -668,7 +661,9 @@ describe('TmEntityPickers', () => {
         table.map((row) => row.code),
         { locale: 'en', signal: new AbortController().signal },
       );
-      await four;
+      // The paste's chunk loads first, which no number of turns bounds: wait on
+      // the held queries themselves, failing by name past the wait's deadline.
+      await tmSettleUntil(() => held.length >= 4, 'four queries held');
       // Turns enough for a fifth query to start, were the pool to let it.
       await tmSettle();
       expect(held).toHaveLength(4);

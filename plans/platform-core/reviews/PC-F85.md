@@ -103,3 +103,110 @@ Alone, without the delay, the test takes 616–756 ms (6,350 ms before).
   that no spec using it depends on the server's column-specific filtering.
 - No e2e covers this. Grid paste e2e uses the real clipboard, which fails on local Windows
   (PROCESS.md §11).
+
+## Review 1
+
+Reviewed commit 620d0d2b on the pc-f2 slot. Summary: 0 blocking, 0 major, 1 minor.
+
+What I checked and found sound:
+
+- **Root cause.** I agree with it. PC-126's `test-core-full` log is a plain full core run (no
+  injection). There the test failed at 19,232 ms of 15,000. So the timeout is not caused by the
+  injection, and D-278's lead does not apply here. The paste imports its chunk once per paste, and
+  every read goes through the fake `TmApi`, so it never reaches a per-call `import()`.
+- **(a) Exactness of `ɵtmPasteGroups`.** It holds, and I found no counterexample. The product
+  calls it with one leaf function, `ɵtmPasteLeaf`, and one test, `length <= room && literals <= 512`.
+  - Take a run `texts[start..start+s]`. Each of its sets (strings, numbers, ids, lefts, rights) is a
+    subset of the same set for the run of size s+1.
+  - Every term is added once its set is non-empty, and none is ever removed.
+  - So both the text length and the literal count are non-decreasing in s, and `fits` is true for
+    every size up to some point, then false for every size after it.
+  - Labels that map to the same literal (`042` and `42`) or the same half only keep a set the same
+    size. They never shrink it.
+  - The search keeps two facts true: `fit` fits, and `over` does not fit (or is `left + 1`). Each
+    probe lies strictly between them. While doubling, `fit < left` holds, because `fit == left`
+    means `over - fit == 1`. The search stops at `over == fit + 1`.
+  - Probes never pass `left`, and a run of one is never tested, as in the old loop.
+  - The greedy groups are also the fewest possible contiguous groups, so the TSDoc's "as few as"
+    is true.
+  - The re-reads in halves after a full page take subsets of a group that already fit, so they
+    fit too.
+- **(b) Behaviour.** It is unchanged.
+  - The groups are the same and come in the same order. The reads still go out from the same
+    synchronous `Promise.all`.
+  - The in-place `push` is correct: every insertion finishes before the first `decide`, and the
+    array never leaves the map.
+- **(c) The four-in-flight test.** It still proves the limit of four.
+  - With a pool of five, all five `settle` calls start in the same synchronous `map`. The fifth
+    query arrives right after the fourth and is held, and `tmSettle()` gives it five macrotask
+    turns to show up. Then `expect(held).toHaveLength(4)` fails.
+  - `most` is taken before the release. After the release, answers settle synchronously, so the
+    count cannot rise again.
+  - `servePaste` returns a superset of what the server would return for these flat ASCII tables:
+    - any list against any top-level column, ignoring case;
+    - an integer literal against `String(number)`;
+    - the split term's left and right items as separate items.
+
+    So it never drops a row the server would return. No spec that uses it depends on filtering
+    by column. Those shapes are pinned by the leaf tests and the paste-leaf golden.
+- **(d) The ceiling raise is honest under D-031.** I measured both sides myself:
+  - `pnpm run build` then `size:check`: the chunk is 1.52 of 2, ok.
+  - Re-bundling the built chunk with the old grouping, the old copy and without the new export:
+    1.453 KB, so +0.07 KB.
+
+  I looked for savings that would avoid the raise, by re-bundling variants of the built chunk:
+  - dropping the test-only `ɵtmPasteGroups` export: 1.512;
+  - a one-line `?.push(...) ?? set(...)` collection: 1.511;
+  - both together: 1.502.
+
+  None gets under 1.5 unless the export goes and the search is changed too. Plain bisection
+  capped at `LITERALS` reaches 1.492, but it is not exact: for a plan with no text column,
+  labels such as `1`, `01` and `001` share one literal, so a group can hold more than 512
+  labels. The raise is therefore the honest measure.
+- **(e) Note only.** The MessageChannel harness does spin the CPU. Each wrapped call posts
+  messages back to back for the whole 300 ms, so the page's main thread stays busy. Concurrent
+  waits add to each other, and other specs' timers and renders compete with them. Timeouts seen
+  only in a full delayed run (PC-F86's guard spec at 4,769 ms, PC-F93) may be partly this load
+  rather than delay. A wait on the real `setTimeout` taken before fakes install (as
+  `tm-app.testing.util` keeps it in `realSetTimeout`) would give the same delay without the spin.
+- **Tests I ran:**
+  - `ng test core --include …/tm-entity-pickers.spec.ts`: 66/66.
+  - The full core run (`ng test core`) twice under the real 300 ms delay (PC-F85-delay.py's
+    form, the two core-tools ESLint rule files left out): 2454/2454 both times, with nothing
+    failing or slow on the paste specs. The delay is reverted and the tree is clean.
+  - The implementer's list of tests run matches PLAN.md §7.1 item 4.
+
+### Findings
+
+**R1-1 (minor): the four-in-flight test now waits for its fourth query with no deadline.**
+
+- Where: `client/projects/core/tellma-core/entity/src/tm-entity-pickers.spec.ts:645-671`.
+- What happens: `await four` resolves only when the fourth held query arrives. Suppose a change
+  lowers the pool below four, or a paste sends fewer than four reads. The test then hangs until
+  the runner's 15 s timeout, which reports "Test timed out" with no condition. The paste is
+  still pending with its held queries when the next test starts.
+- Why it matters: the project's helper for this exact case is `tmSettleUntil`. Its TSDoc
+  describes this situation: a load through a lazy chunk that no number of turns bounds. It
+  fails after `TM_WAIT_DEADLINE_MS` (4 s, more than ten times the 300 ms delayed chunk load),
+  and the error names the condition.
+- Suggested fix: replace `fourth`/`four` and `await four` with
+  `await tmSettleUntil(() => held.length >= 4, 'four queries held')`. Keep the following
+  `tmSettle()` and `expect(held).toHaveLength(4)`, so a pool of five still fails.
+
+### Responses
+
+**R1-1: fixed in the "PC-F85: review 1 fixes" commit.**
+
+- The `fourth`/`four` promise is gone. The test now runs
+  `await tmSettleUntil(() => held.length >= 4, 'four queries held')`. The wait's deadline is
+  `TM_WAIT_DEADLINE_MS` (4 s), and its error names the condition.
+- The `tmSettle()` and `expect(held).toHaveLength(4)` that follow are kept, so a pool of five
+  still fails.
+- Mutation check: I set `READS = 3`, ran the test, then restored 4. The test failed at 4,401 ms
+  with "The condition did not hold within 4001 ms: four queries held", not with the runner's
+  15 s timeout.
+- `tm-entity-pickers.spec` alone: 66/66, with the test at 773 ms.
+- One full `ng test core` under the real 300 ms delay: 2454/2454, with the test at 2,123 ms.
+  The harness was `PC-F85-delay.py` with the two core-tools ESLint rule files left out, and it
+  was reverted afterwards; the tree is clean.
+- eslint and `tsc -p projects/core/tellma-core/tsconfig.json` pass on the spec.
