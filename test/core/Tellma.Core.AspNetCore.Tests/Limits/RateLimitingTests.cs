@@ -218,6 +218,7 @@ namespace Tellma.Core.AspNetCore.Tests.Limits
             Assert.Equal([TellmaRatePolicies.Anonymous], Policies(endpoints, "/api/distribution-info"));
             Assert.Equal([TellmaRatePolicies.Anonymous], Policies(endpoints, "/health/live"));
             Assert.Equal([TellmaRatePolicies.Anonymous], Policies(endpoints, "/health/ready"));
+            Assert.Equal([TellmaRatePolicies.Telemetry], Policies(endpoints, "/api/client-telemetry"));
         }
 
         /// <summary>The policy names an endpoint's metadata carries, in order.</summary>

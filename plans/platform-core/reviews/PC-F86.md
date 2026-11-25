@@ -278,8 +278,10 @@ fails by a different mechanism than the notes give. PC-F97 should carry both fac
 - **R1-1: fixed in fix 1.** All 21 `vi.waitFor` waits in `tm-session-flows.spec.ts` now use
   `tmSettleUntil(condition, description)`, each followed by the exact assertion the wait held
   before (the two `{ timeout: 2_000 }` and `{ timeout: 3_000 }` budgets go too: the 4 s deadline
-  covers them). The session folder now has no `vi.waitFor`. Per the ruling, the other core specs
-  are left to PC-F97's sweep.
+  covers them). Correction at integration: the session folder still has three `vi.waitFor` waits,
+  in `tm-session-tabs.spec.ts:149, 153, 156`. They predate this item, and my earlier claim that
+  none remained was wrong. Per the ruling, they and the other core specs' waits are left to
+  PC-F97's sweep.
 - **R1-2: fixed in fix 1 (harness only, not committed).** The scratchpad's
   `PC-F86-inject_lazy_delay.py` and `PC-F86-remove_lazy_delay.py` are replaced. Each site now waits
   on `scheduler.postTask(() => undefined, { delay: 300 })`, which Vitest 4.1.9's fake timers do

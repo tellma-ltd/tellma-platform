@@ -197,28 +197,44 @@ export function ɵtmPasteLeaf(plan: ɵTmFindablePlan, texts: readonly string[]):
 /**
  * The labels in groups whose leaf fits: within the room its length has
  * beside the other leaves, and within the literals the server's ceilings
- * allow one filter.
+ * allow one filter. Each group is the longest run of the labels left whose
+ * leaf fits, so the groups are as few as taking the labels one at a time
+ * would make them. Internal: the paste resolver groups its labels with it,
+ * and its tests.
  *
  * @param plan - What the rule reads of the entity.
  * @param texts - The distinct labels, without bidi controls and trimmed, each fitting a leaf alone.
  * @param room - The longest the leaf may be.
  * @returns The groups, in the labels' order.
  */
-function groupsOf(plan: ɵTmFindablePlan, texts: readonly string[], room: number): string[][] {
+export function ɵtmPasteGroups(plan: ɵTmFindablePlan, texts: readonly string[], room: number): string[][] {
+  const fits = (start: number, size: number): boolean => {
+    const leaf = ɵtmPasteLeaf(plan, texts.slice(start, start + size));
+    return leaf.text.length <= room && leaf.literals <= LITERALS;
+  };
   const groups: string[][] = [];
-  let group: string[] = [];
-  for (const text of texts) {
-    if (group.length > 0) {
-      const leaf = ɵtmPasteLeaf(plan, [...group, text]);
-      if (leaf.text.length > room || leaf.literals > LITERALS) {
-        groups.push(group);
-        group = [];
+  for (let start = 0; start < texts.length; ) {
+    const left = texts.length - start;
+    // --- The longest run that fits, found by doubling its size and then halving the gap ---
+    // A leaf only grows as labels join it: each list is a set that gains
+    // items, and a term appears once its list has any. So the sizes that fit
+    // are all those below the first that does not, and a search finds that
+    // one in a few leaves where trying each size would write one per label,
+    // each as long as the group. A label fits a leaf alone, so a run holds
+    // at least one; `over` is the least size known not to fit, past the
+    // labels left until one is found, and the size doubles until then.
+    let fit = 1;
+    let over = left + 1;
+    while (over - fit > 1) {
+      const size = over > left ? Math.min(fit * 2, left) : (fit + over) >>> 1;
+      if (fits(start, size)) {
+        fit = size;
+      } else {
+        over = size;
       }
     }
-    group.push(text);
-  }
-  if (group.length > 0) {
-    groups.push(group);
+    groups.push(texts.slice(start, start + fit));
+    start += fit;
   }
   return groups;
 }
@@ -289,7 +305,13 @@ export async function ɵtmResolveLabels(
     if (text === '') {
       resolutions.set(label, { error: 'notFound' });
     } else {
-      texts.set(text, [...(texts.get(text) ?? []), label]);
+      // Added to in place: a column pasting one name in every row adds it once per row.
+      const same = texts.get(text);
+      if (same === undefined) {
+        texts.set(text, [label]);
+      } else {
+        same.push(label);
+      }
     }
   }
   const decide = (text: string, resolution: TmLabelResolution<TmId>): void => {
@@ -344,6 +366,6 @@ export async function ɵtmResolveLabels(
     const half = Math.ceil(open.length / 2);
     await Promise.all([open.slice(0, half), open.slice(half)].filter((part) => part.length > 0).map(settle));
   };
-  await Promise.all(groupsOf(plan, sendable, room).map(settle));
+  await Promise.all(ɵtmPasteGroups(plan, sendable, room).map(settle));
   return resolutions;
 }

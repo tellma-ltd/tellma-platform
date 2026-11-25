@@ -422,14 +422,18 @@ namespace Tellma.Core.Caching
                 throw new InvalidOperationException($"The '{Kind}' cache sized a value at {size}; every value takes at least one unit.");
             }
 
-            // --- The replaced entry first: removed, then the new one added, so the size check sees only the new one ---
+            // --- The replaced entry is marked with the reason it is metered under ---
             if (Find(key) is Entry replaced)
             {
                 replaced.Displacement = displacement;
-                _cache.Remove(key);
             }
 
-            // --- The new entry; one the runtime refuses for want of room is metered as a capacity eviction ---
+            // --- The new entry, swapped in one step: a remove then a set would leave a window in which
+            // a concurrent reader finds no entry and loads again. Only the runtime's expiration scan
+            // or compaction, removing the replaced entry in the instant of the swap, can still show a
+            // reader no entry, which costs one load, never a wrong answer. The runtime counts the replaced
+            // entry's size out before it checks the limit, and drops that entry when it refuses the
+            // new one, which is then metered as a capacity eviction ---
             MemoryCacheEntryOptions options = new() { Size = size };
             options.PostEvictionCallbacks.Add(new PostEvictionCallbackRegistration { EvictionCallback = OnEvicted, State = this });
             _ = _cache.Set(key, new Entry(tag, value), options);
@@ -444,7 +448,7 @@ namespace Tellma.Core.Caching
             {
                 EvictionReason.Capacity => CapacityReason,
                 EvictionReason.Removed => (value as Entry)?.Displacement ?? RemovedReason,
-                EvictionReason.Replaced => ReplacedReason,
+                EvictionReason.Replaced => (value as Entry)?.Displacement ?? ReplacedReason,
 
                 // No entry expires: the tag is the only invalidation channel.
                 EvictionReason.None or EvictionReason.Expired or EvictionReason.TokenExpired => null,

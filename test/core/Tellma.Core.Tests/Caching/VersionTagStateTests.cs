@@ -17,11 +17,14 @@ namespace Tellma.Core.Tests.Caching
 {
     /// <summary>
     ///     The process's view of the tags and what follows from it: the tenant and user snapshot stores
-    ///     (empty, replaced, bounded), the mismatch policies and the re-run dependencies they discard,
+    ///     (empty, replaced, never absent to a concurrent reader, bounded), the mismatch policies and the re-run dependencies they discard,
     ///     the wire forms clients key by, and the instruments with their once-per-name warning.
     /// </summary>
     public sealed class VersionTagStateTests : IDisposable
     {
+        /// <summary>How many times the concurrent-replacement cases replace one snapshot while it is read.</summary>
+        private const int ReplacementsUnderRead = 20000;
+
         private static readonly VersionTag First = new(new Guid("00000001-0000-0000-0000-000000000000"));
 
         private static readonly VersionTag Second = new(new Guid("00000002-0000-0000-0000-000000000000"));
@@ -69,7 +72,7 @@ namespace Tellma.Core.Tests.Caching
             snapshots.Replace(Snapshot(1, First));
             snapshots.Replace(Snapshot(2, First));
 
-            // Replacing at capacity frees the old entry first, so the new one always lands.
+            // Replacing at capacity counts the old entry's size out, so the new one always lands.
             VersionTagSnapshot replaced = Snapshot(1, Second);
             snapshots.Replace(replaced);
             Assert.Same(replaced, snapshots.Current(1));
@@ -78,6 +81,64 @@ namespace Tellma.Core.Tests.Caching
             snapshots.Replace(Snapshot(3, Second));
             VersionTagSnapshot third = snapshots.Current(3);
             Assert.True(third.Tags.Count == 0 || third[VersionTagNames.Settings] == Second);
+        }
+
+        [Fact]
+        public async Task A_reader_never_sees_a_tenant_as_never_read_while_another_batch_replaces_its_snapshot()
+        {
+            using VersionTagSnapshots snapshots = new(Options());
+            VersionTagSnapshot current = Snapshot(1, First);
+            snapshots.Replace(current);
+
+            // --- One caller replaces the snapshot over and over, as every batch's prelude does ---
+            var replacing = Task.Run(
+                () =>
+                {
+                    for (int replaced = 0; replaced < ReplacementsUnderRead; replaced++)
+                    {
+                        snapshots.Replace(current);
+                    }
+                },
+                TestContext.Current.CancellationToken);
+
+            // --- Another reads it the whole time: an empty snapshot would make every cache of the tenant load ---
+            int empty = 0;
+            while (!replacing.IsCompleted)
+            {
+                empty += snapshots.Current(1).Tags.Count == 0 ? 1 : 0;
+            }
+
+            await replacing;
+            Assert.Equal(0, empty);
+        }
+
+        [Fact]
+        public async Task A_reader_never_sees_a_user_as_absent_while_another_batch_replaces_their_snapshot()
+        {
+            using UserVersionTagSnapshots snapshots = new(Options());
+            UserVersionTagSnapshot current = new(1, 7, First, First, DateTimeOffset.UnixEpoch);
+            snapshots.Replace(current);
+
+            // --- One caller replaces the snapshot over and over, as every batch carrying the user's prologue does ---
+            var replacing = Task.Run(
+                () =>
+                {
+                    for (int replaced = 0; replaced < ReplacementsUnderRead; replaced++)
+                    {
+                        snapshots.Replace(current);
+                    }
+                },
+                TestContext.Current.CancellationToken);
+
+            // --- Another reads it the whole time: an absent user would read their cached set and profile as stale ---
+            int absent = 0;
+            while (!replacing.IsCompleted)
+            {
+                absent += snapshots.Current(1, 7) is null ? 1 : 0;
+            }
+
+            await replacing;
+            Assert.Equal(0, absent);
         }
 
         [Fact]
