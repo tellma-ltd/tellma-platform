@@ -10,6 +10,7 @@ import type { RouterTestingHarness } from '@angular/router/testing';
 import { type TmLaunchDocs, TmApiError, TmShellMain, tmFeature } from '@tellma/core';
 import { TmFakeSession, TmTenantShellHarness, tmTestShellSlot, tmWarmTenant } from '@tellma/core-testing';
 import { tmAvatarTone } from '@tellma/core-ui/initials';
+import { page } from 'vitest/browser';
 
 import {
   TM_COLD_SYNC,
@@ -30,13 +31,14 @@ import { TmLauncher } from './launcher/tm-launcher';
 import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 
 // The tenant shell in a whole test app, through its harness: each of its
-// states (warm, a cold sync pending, failed, client-outdated, a tenant that
-// is gone or unavailable, a replaced main), the app bar's names, avatar
-// tone, markers with their popovers, slots, reserved boxes, session button
-// keys and installed-mode history (through the Navigation API or the
-// router, a replace keeping Forward), Mod+/, the overlays' chunk landing
-// with nothing in the bar moving, presses made before it lands, the chunk
-// failing to load, and a tenant switch,
+// states (warm, a cold sync pending with the session button's box kept
+// through the synced names, failed, client-outdated, a tenant that is gone
+// or unavailable, a replaced main), the app bar's names, avatar tone,
+// markers with their popovers, slots, reserved boxes, session button keys
+// and installed-mode history (through the Navigation API or the router, a
+// replace keeping Forward), Mod+/, the overlays' chunk landing with nothing
+// in the bar moving, presses made before it lands, the chunk failing to
+// load, and a tenant switch,
 // which closes the shell's overlays and clears the launcher's text. The
 // overlays and the history buttons live in lazily loaded chunks, so each
 // wait is on the state it produces.
@@ -187,6 +189,64 @@ describe('the tenant shell', () => {
       expect(await shell.getTenantName()).toBe('Acme');
       expect(await shell.getUserName()).toBe('Farah');
     });
+
+    // The widths at which the session button shows names: the tenant's
+    // alone (md to lg) and the user's with the tenant's (from xl).
+    for (const width of [1000, 1440]) {
+      for (const dir of ['ltr', 'rtl'] as const) {
+        it(`keeps the session button's box from the cold names to the synced ones (${width} px, ${dir})`, async () => {
+          const viewport = [window.innerWidth, window.innerHeight] as const;
+          await page.viewport(width, 900);
+          // The tokens the button's geometry reads, at the default theme's
+          // values: the test app loads no theme, and an unsized avatar would
+          // take its initials' width.
+          const root = document.documentElement.style;
+          const tokens = { '--avatar-size-sm': '24px', '--space-1': '4px', '--space-2': '8px' };
+          for (const [name, value] of Object.entries(tokens)) {
+            root.setProperty(name, value);
+          }
+          try {
+            await start({ cold: true });
+            let answer: (value: unknown) => void = () => undefined;
+            rig.api.respond('client/sync', () => new Promise((resolve) => (answer = resolve)));
+            await open();
+            // The bar's own direction, which the language's would set on the document.
+            document.querySelector('tm-app-bar')!.setAttribute('dir', dir);
+            await tmSettle();
+            const button = document.querySelector<HTMLElement>('.tm-app-bar__session')!;
+            const box = (): number[] => {
+              const { x, y, width, height } = button.getBoundingClientRect();
+              return [x, y, width, height];
+            };
+            // Where each element inside the button starts: its inline-start
+            // edge and its top, which a layout shift is measured by.
+            const edge = (element: Element): number[] => {
+              const { left, right, top } = element.getBoundingClientRect();
+              return [dir === 'rtl' ? right : left, top];
+            };
+            // The cold names: the profile's user name and the tenant's skeleton.
+            expect(button.querySelector('.tm-app-bar__tenant-skeleton')).not.toBeNull();
+            const cold = box();
+            const inside = [...button.querySelectorAll('*')].map((element) => ({ element, edge: edge(element) }));
+            answer(TM_COLD_SYNC);
+            await tmSettleUntil(() => button.querySelector('.tm-app-bar__tenant') !== null, 'the tenant name renders');
+            await tmSettle();
+            expect(box()).toEqual(cold);
+            // What the sync kept, the face and the user's name among them, starts where it did.
+            const kept = inside.filter(({ element }) => element.isConnected);
+            expect(kept.map(({ element }) => element.className)).toContain('tm-app-bar__user');
+            for (const { element, edge: before } of kept) {
+              expect(edge(element), element.className).toEqual(before);
+            }
+          } finally {
+            for (const name of Object.keys(tokens)) {
+              root.removeProperty(name);
+            }
+            await page.viewport(...viewport);
+          }
+        });
+      }
+    }
 
     it('shows the error state of a failed sync with Retry, which runs the sync again', async () => {
       await start({ cold: true });

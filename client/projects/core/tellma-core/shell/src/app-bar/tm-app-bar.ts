@@ -216,10 +216,16 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       }
       <span class="tm-app-bar__names" aria-hidden="true">
         <span class="tm-app-bar__user" dir="auto">{{ identity.userName() }}</span>
-        <span class="tm-app-bar__dot">·</span>
+        <!--
+          The dot and the tenant's name, or the cold launch's skeleton: the
+          sync replaces the pair whole, so the dot, which follows the user's
+          name, is never moved from the cold name's end to the synced one's.
+        -->
         @if (identity.tenantName(); as tenant) {
+          <span class="tm-app-bar__dot">·</span>
           <span class="tm-app-bar__tenant" dir="auto">{{ tenant }}</span>
         } @else {
+          <span class="tm-app-bar__dot">·</span>
           <tm-skeleton class="tm-app-bar__tenant-skeleton" width="96px" />
         }
       </span>
@@ -440,7 +446,12 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       background: var(--badge-accent-bg);
     }
 
-    /* The session button: at most 260 px; the tenant's name truncates last. */
+    /*
+     * The session button: a fixed box wherever it shows names (below), so a
+     * cold launch's names, the cookie's user name and the tenant's skeleton,
+     * give way to the synced ones with nothing moving; the tenant's name
+     * truncates last.
+     */
     .tm-app-bar__session {
       display: inline-flex;
       flex: 0 1 auto;
@@ -470,8 +481,13 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       user-select: none;
     }
 
+    /*
+     * The names fill the button's height, so a cold line holding only the
+     * tenant's skeleton bar (below xl) starts where the synced text line does.
+     */
     .tm-app-bar__names {
       display: flex;
+      align-self: stretch;
       align-items: center;
       gap: var(--space-1);
       min-inline-size: 0;
@@ -496,6 +512,24 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
 
     .tm-app-bar__tenant-skeleton {
       flex: none;
+    }
+
+    /*
+     * The session button's fixed box: from md, the avatar and the tenant's
+     * name, with room for the cold launch's 96 px skeleton (139 px with the
+     * avatar and the insets); from xl, the user's name, the dot and the
+     * tenant's name, where the skeleton leaves the user's name about 40 px.
+     */
+    @media (width >= 768px) {
+      .tm-app-bar__session {
+        inline-size: 160px;
+      }
+    }
+
+    @media (width >= 1200px) {
+      .tm-app-bar__session {
+        inline-size: 200px;
+      }
     }
 
     /* Below xl: the tenant's name alone beside the avatar. */
