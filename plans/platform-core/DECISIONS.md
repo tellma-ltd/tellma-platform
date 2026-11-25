@@ -384,6 +384,13 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-284 (Ahmad, 2026-11-24): PC-124's platform-core push
+
+- PC-124's agent was denied `git push origin HEAD:platform-core` from pc-4 twice by the auto mode classifier ("[Destructive or Unwanted Actions]"), even after Ahmad's approval was relayed to it.
+- Ahmad approved this one push in chat ("Approve the push").
+- The agent had merged the plans/-only snapshot cbcb1bfb as 8b4f2dff. I checked the slot was clean at 8b4f2dff and that it fast-forwarded origin/platform-core (still cbcb1bfb), then ran the push and pushed pc/PC-124 myself, as in D-264.
+- The approval covers this push only. It sets no rule for other pushes. If a later land push is blocked, I notify Ahmad again.
+
 ### D-283 (orchestrator, 2026-11-24): PC-F84 review 1 rulings
 
 - R1 found 0 blocking, 0 major and 2 minor on a7cff53c. The review confirmed three things:
