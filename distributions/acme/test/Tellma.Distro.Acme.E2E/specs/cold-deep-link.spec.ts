@@ -119,10 +119,14 @@ test.describe('cold deep link', () => {
       await expect(edit).toBeDisabled();
       return;
     }
-    // Every request for data counts, whatever its route: the round trip sends none.
+    // Every request for data counts, whatever its route: the round trip sends
+    // none. The launch documents' sync is left out: the cache refresher runs
+    // it on its own schedule (a response header, the leader, a poll), not for
+    // the page.
     const calls: string[] = [];
     page.on('request', (request) => {
-      if (tmIsServerPath(new URL(request.url()).pathname)) {
+      const path = new URL(request.url()).pathname;
+      if (tmIsServerPath(path) && !path.endsWith('/client/sync')) {
         calls.push(request.url());
       }
     });
