@@ -34,11 +34,6 @@ const CORE = { distribution: { slug: 'acme' } } as unknown as TmClientMetadata;
 const STORE_CHANGED: TmBusMessage = { type: 'store.changed', partition: 'u:0b4f/', names: ['tenants@1'] };
 const SESSION_STARTED: TmBusMessage = { type: 'session.started', sub: FARAH };
 
-/** Waits a little: only where nothing can be in flight, since no channel is open yet. */
-function pause(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 50));
-}
-
 /** One real task, the step of every wait: the channels deliver between tasks. */
 function task(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve));
@@ -259,7 +254,9 @@ describe('TmTabBus', () => {
     const { bus } = setUp({ loaded: false });
     bus.post(STORE_CHANGED);
     bus.post(SESSION_STARTED);
-    await pause();
+    // Drained, not waited out: nothing the page posted so far reached either channel.
+    await device.drain();
+    await user.drain();
     expect([device.heard, user.heard]).toEqual([[], []]);
     TestBed.inject(TmClientMetadataStore).set(CORE);
     await bus.ɵopened;

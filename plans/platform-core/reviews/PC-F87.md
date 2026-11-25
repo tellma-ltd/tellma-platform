@@ -83,22 +83,47 @@ Test-only. `client/projects/core/tellma-core/src/state/bus/tm-tab-bus.spec.ts`:
   - The bfcache test asserts `user.heard` exactly instead of `toContainEqual`.
   - "closes its channels when the app ends" now drains the device channel too, before asserting it
     heard nothing. Before, it relied on the user channel's drain.
-- `pause()` stays where nothing can be in flight (no channel is open before the Core chunk loads).
+- (Review 1 fixes) `pause()` is gone. "holds the posts made before the Core chunk loads" drains both
+  channels before it asserts that neither heard anything, so that absence is proven as well.
 - With the browser process loaded as in the Load probe (6000 posts, mark at about 1.8 s), the new
   spec passed all of its assertions, including the failing test, through a temporary copy that was
   deleted afterwards.
 
 ### Deviations
 
-None. The specs are untouched. ARCHITECTURE.md is unaffected: test-only change.
+The specs are untouched, and ARCHITECTURE.md is unaffected: this is a test-only change. One
+deviation, from the ledger row rather than a spec (recorded in Review 1 fixes):
+
+- The row asks that `drain()` "wait on delivery itself, not wall time", and says that raising the
+  waitFor budget alone is not a fix. The wait cannot be free of wall time. What it waits for is
+  delivery latency in the browser process, and no condition inside the page can stand in for that
+  delivery, so any wait on it must be bounded.
+  - The bound is now the repo's shared deadline (`TM_WAIT_DEADLINE_MS`, 4 s, below the 5 s test
+    timeout) rather than a budget local to the spec.
+  - What goes beyond a raise:
+    - the long-lived listeners, opened and proven live before the bus posts anything;
+    - the numbered marks, so that each drain waits for its own;
+    - an exact drain in place of every former `vi.waitFor` and of the one remaining wall-time
+      pause;
+    - the final check (the condition is tested before the deadline at every step, which
+      `vi.waitFor` does not do);
+    - the named error, which reports the channel and the mark.
 
 ### Tests run
 
-- `ng test core --include=…/tm-tab-bus.spec.ts`: 10/10, three consecutive runs (plus the probe runs
-  above).
+Corrected in Review 1 fixes; this list now matches the commit messages.
+
+- `ng test core --include=…/tm-tab-bus.spec.ts`: 10/10, three consecutive runs at commit 1 and
+  three again after the fixes. The probe runs above come on top of these.
 - `eslint` on the file: clean.
-- Not run: the full client gates and CI. The change touches no production source, API golden or
-  bundle.
+- Client gates of the touched package: `lint`, `typecheck`, `lint:test`, `tokens:check`, all exit 0.
+  `tokens:check` was not re-run for the fixes, which touch no token.
+- `dotnet build Tellma.slnx`: Build succeeded, 0 warnings, 0 errors. `dotnet format Tellma.slnx
+  --verify-no-changes`: clean.
+- Left out of PLAN.md §7.1 item 4: `build`, `api:check`, `docs:build` and `size:check`. Only a spec
+  file changed, and none of them builds or reads a spec (the package build, its API report, its docs
+  and its bundle exclude `*.spec.ts`). No e2e spec was run: the change is confined to a unit spec, which no e2e exercises.
+- CI: none yet. It runs at integration.
 
 ### Open risks
 
@@ -121,3 +146,132 @@ None. The specs are untouched. ARCHITECTURE.md is unaffected: test-only change.
   from `heard`, and the bus rejects them as non-envelopes.
 - Whether choosing `tmWaitUntil` over `tmSettleUntil` is acceptable under CONTRIBUTING.md's rule.
   The rule names both.
+
+## Review 1
+
+Reviewed at 7bf78094. Re-run by the reviewer:
+
+- `ng test core --include=…/tm-tab-bus.spec.ts`, three consecutive runs: 10/10 each.
+- The same, once under the 300 ms lazy-import delay (`inject_lazy_delay.py`, 35 sites in 25 files,
+  MessageChannel ticks until `performance.now() + 300`): 10/10. Reverted with `git checkout`; the
+  tree is clean.
+- `eslint` on the file: clean. `tsc -p projects/core/tellma-core/tsconfig.json` (specs included):
+  clean.
+- Load reproduction, with temporary copies of the old (7bf78094^) and new spec, deleted afterwards
+  together with their failure screenshots:
+  - In-page load: 6000 posts of 512 KB on an unrelated channel, made just before the failing
+    test's drain. The old spec failed "closes its channels when the app ends" at 1006 ms with
+    the CI signature, `expected [] to include 'mark'`. The new spec passed every assertion of
+    that test after a 2679 ms wait.
+  - Cross-page load, closer to CI: a second spec file in its own runner page, in the same
+    Chromium, posting 512 KB messages for 15 s. The old spec failed 3 of 10 tests: the
+    user-change test, the bfcache test, and the app-ends test with the CI signature. The new
+    spec passed 10/10 under the same load.
+  - Under a heavier in-page load (with an in-page receiver deserializing every 512 KB post), the
+    new spec also failed, at 4697 ms, with the named error ("the channel tm:acme:0b4f delivered
+    drain mark 39"). This is the open risk the notes state, and the error now names what it
+    waited for.
+
+Verdicts on the orchestrator's points:
+
+- (a) Cause. Confirmed. Delivery latency through a busy browser process reproduces the CI failure
+  with the page responsive (the old `vi.waitFor` gave up on time at 1006 ms), and also with the
+  load in another page. No registration race was needed to reproduce it. `vi.waitFor` rejects at
+  its timeout. `tmWaitUntil` checks the condition after every step before it checks the deadline,
+  so it does make a final check (`tm-app.testing.util.ts:327-335`).
+- (b) Cross-talk. Confirmed. @vitest/browser-playwright 4.1.9's `createContext(sessionId)` calls
+  `browser.newContext()` per session, unless `persistentContext` is set. Neither the Angular
+  unit-test builder nor the workspace sets it. The builder defaults `isolate: false`. Only this
+  spec opens real `tm:acme*` channels directly. A real `TmBroadcastTabBus` elsewhere is destroyed
+  by the TestBed reset. `OtherTab.closeAll()` runs in `afterEach`, also after a failure part-way
+  through `beforeEach`. Deleting the current element while iterating a `Set` is safe.
+- (c) `tmWaitUntil` with a real-task step instead of `tmSettleUntil`. Correct, and not a deviation.
+  `TestBedImpl.tick()` does `this.inject(ApplicationRef)`, which would build a fresh testing module
+  after "closes its channels when the app ends" resets it. CONTRIBUTING.md's rule covers waits
+  across work that may load a chunk with `import()`. No wait in this spec crosses one: the bus,
+  metadata store and session code it drives contain no `import()`, and the delay-harness run
+  passed. `tmWaitUntil` with a real-task step is the primitive that `tmSettleUntil` itself builds
+  on, with the same deadline and a named error.
+- (d) The tightened assertions are right and not brittle.
+  - Bfcache: before the bus's post, nothing reaches the user channel's `OtherTab` end. The tab's
+    own posts never reach its own end, device-channel traffic is on another name, and drain marks
+    are filtered. So `toEqual([…])` is exact.
+  - App ends: the bus's post after `destroyed` is dropped. `device.drain()` now flushes anything
+    the page posted on the device channel, so `device.heard` being `[]` is now a proven absence.
+    Before, the test only relied on the user channel's drain.
+- The drain's flush claim holds at every call site, including the ones where the bus made the
+  earlier posts (probe E). The bus's ends ignore marks, which are not envelopes. `heard` filters
+  them. `open()`'s first drain cannot leak into an assertion.
+
+### Findings
+
+0 blocking, 0 major, 3 minor.
+
+**R1-1 (minor): one negative check still treats a quiet channel as proof that nothing was sent.**
+`client/projects/core/tellma-core/src/state/bus/tm-tab-bus.spec.ts:262-263`. In "holds the posts
+made before the Core chunk loads", the test runs `await pause(); expect([device.heard,
+user.heard]).toEqual([[], []])`. That is a 50 ms wall-time wait before a negative assertion. The
+spec's new header comment says the spec "never concludes from a quiet channel that nothing was
+sent". `pause()`'s doc assumes the very thing under test, that no channel is open yet.
+
+Failure scenario: a regression makes the bus post before it holds the posts, for example by
+opening the channels from an earlier source of the slug, and still delivers the queued posts once.
+Under the browser-process load reproduced above, the early delivery takes longer than 50 ms. The
+check sees `[]`, and the later exact assertions still see one message each, so the test passes.
+
+Fix: replace `await pause()` with `await device.drain(); await user.drain();`. A drain flushes
+everything this page posted on the channel, the bus's posts included. The check then proves the
+absence, and `pause()` can be removed.
+
+**R1-2 (minor): the record of tests run contradicts itself.** The commit message's "Tests:" line
+lists "client lint, typecheck, lint:test, tokens:check; dotnet build and format". The review
+file's "Tests run" (`plans/platform-core/reviews/PC-F87.md:95-101`) lists only the unit runner and
+`eslint` on the file, and says "Not run: the full client gates". PLAN.md §7.1 item 4 has reviewers
+check that list, and one of the two is wrong.
+
+The reviewer's own `eslint` and `tsc` runs are clean, so nothing is broken. But the record can't be
+relied on. It also leaves out build, api:check, docs:build and size:check, for which "spec-only:
+not affected" is the reason.
+
+Fix: make "Tests run" match what actually ran, and name the item-4 gates that were left out and
+why.
+
+**R1-3 (minor): what cures the flake is the deadline, and the record does not say so against
+the ledger row.** The LEDGER row asks that `drain()` "wait on delivery itself, not wall time" and
+says "Raising the waitFor budget alone is not a fix". The old drain already waited on delivery,
+through a fresh listener hearing the mark. With the registration race refuted, the long-lived
+witness is hardening, not the cure. What turns the reproduced failure green is the move from 1 s
+to the shared 4 s deadline (`TM_WAIT_DEADLINE_MS`), with a final check and a named error. The
+reviewer's heavier load shows this: the new spec fails at 4.7 s.
+
+That choice is right. With cause (c), any wait has to be bounded, and 4 s is the repo's bound below
+the 5 s test timeout. But it is the outcome the row warned against, and the commit says
+"Deviations: none".
+
+Fix: add a sentence to the notes (or a Deviations line), saying that the row's "not wall time"
+cannot hold for latency in the browser process. The wait stays bounded by the shared deadline
+rather than a budget local to the spec. The long-lived witness, the exact drains at every former
+`vi.waitFor`, and the named error are what go beyond the raise.
+
+### Responses
+
+- **R1-1: fixed in fix 1.** "holds the posts made before the Core chunk loads" now runs
+  `await device.drain(); await user.drain();` before its negative assertion, in place of the 50 ms
+  `pause()`. Each drain flushes everything the page posted on its channel, the bus's posts
+  included, so the empty `heard` lists prove that nothing was sent. `pause()` had no other user and
+  is removed, so no wall-time wait is left in the spec.
+- **R1-2: fixed in fix 1.** "Tests run" in the Implementer notes now lists what actually ran, and
+  matches the commit messages: the unit runner three times at each commit; `eslint` on the file;
+  `lint`, `typecheck`, `lint:test` and `tokens:check`; and `dotnet build` and `format`. It also
+  names the item-4 gates left out (`build`, `api:check`, `docs:build`, `size:check`) and why: only
+  a spec file changed, and none of them builds or reads a spec.
+- **R1-3: fixed in fix 1.** Recorded as a deviation from the ledger row, in the Implementer notes'
+  "Deviations" and in the fix commit's Deviations. The wait is on delivery latency in the browser
+  process, and no in-page condition can replace that delivery, so the wait stays bounded by wall
+  time. That bound is now the shared deadline (4 s) instead of a budget local to the spec. What
+  goes beyond a raise:
+  - the long-lived listeners, proven live before the bus posts;
+  - the numbered marks;
+  - an exact drain at every former `vi.waitFor`, and at the former pause;
+  - the final check;
+  - the named error.
