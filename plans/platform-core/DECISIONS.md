@@ -384,6 +384,47 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-305 (orchestrator, 2026-11-25): PC-118 review 2 rulings; the support seam is dropped and handed to PC-154
+
+- R2 found 0 blocking, 1 major and 5 minor. Every fix1 figure reproduces from clean builds: ./shell 8.65 of 9 and Acme initialJs 229.18. Fix2 is PC-118's third and last implementer round (§4.4); a hold follows.
+- R2-1 (major): ɵTM_SHELL_SUPPORT cannot be provided by anyone.
+  - /support loads only on demand, the primary may not import ./shell, and a distribution provider would contradict specs 0027 §2 and 0026 §12.1.
+  - Its labels would come from strings that are not loaded yet, and it has no place for spec 0026 §8.4's offline line.
+  - I took the reviewer's second option. Fix2 drops the seam, the Report a problem row and its life-buoy glyph, and About's Diagnostics tabs, and the tm-about-dialog raise from 3 to 3.5 goes with them.
+  - PC-154 adds both pieces itself, with an internal providedIn 'root' token pointed at the primary's TmSupport. This replaces D-291's carry, and frees a little of the first frame.
+- R1-2 is confirmed: five first-frame modules import the lucide index (platform-icons, tm-app-bar, tm-banner-bar, tm-toast-host, tm-page-header). The session-menu glyphs, about 0.5 to 0.6 KB gzip, move only with PC-F91.
+- R2-2 to R2-6 are fixed in fix2:
+  - Forward stays enabled after a replace navigation;
+  - presses before the overlays chunk loads collapse to the final state;
+  - Reload anyway catches its failure;
+  - TM_GRID_KEYS moves to @tellma/core-ui/contracts, so the Shortcuts dialog no longer pulls the grid's code in a packaged distribution;
+  - a test for the md-up case.
+- Corrections for Ahmad:
+  - D-301's API item for ɵTM_SHELL_SUPPORT is withdrawn, since the seam is dropped. TM_GRID_KEYS's new home in ./contracts is an API change; the grid still re-exports it.
+  - Spec 0027 §10.1 says slot rows show "below sm" where §7.1 means below md. The code follows §7.1, and §10.1's cell needs correcting.
+
+### D-304 (orchestrator, 2026-11-25): the zone-check race is seen in CI without a harness; PC-F86 re-integrates
+
+- CI 45595768600 on 368e684e (pc/PC-F86) failed in the client job on one test, the tm-zone-check entry test: [{ timeZone: 'Europe/London' }] against []. CI runs no delay harness, so the race is real without one.
+- PC-F86 does not touch the zone-check spec or its product code. The cause is PC-F97's (D-294, D-303), and PC-F97's R1 is told to confirm that the fix removes this exact signature.
+- So PC-F86 re-integrates, following D-288 and D-292. This is not a retry of a failure of its own.
+- The pair can turn any client integration red until PC-F97 lands. PC-F97 therefore goes next in the release queue after PC-F86, ahead of PC-F87, since D-087/D-190 set one release at a time but no order.
+
+### D-303 (orchestrator, 2026-11-25): PC-F97 goes to R1; the entity specs wait for PC-126
+
+- PC-F97 (impl 04114076) reproduced both zone-check causes under the postTask harness and fixed them in the spec, which now calls ɵstart itself in the tests that wait for the startup check. Its full core runs: 2589/2589 twice under postTask; 2588/2589 twice under the current harness, with starvation-class failures only (D-294). The zone-check pair never failed.
+- R1 is asked to judge whether calling ɵstart directly still proves what spec 0024's zone check requires, or whether coverage of the product's idle trigger is lost.
+- The chunk-crossing waits in tm-entity-field.spec, tm-entity-pickers.spec and tm-value.spec are skipped, because pc/PC-126 renames or changes those files. They go to PC-F99, which starts after PC-126 lands.
+- tm-blob-fetcher (core-ui) is left as it is: core-ui has no tmSettleUntil, and the spec loads its chunk statically.
+
+### D-302 (orchestrator, 2026-11-25): PC-F86 integrates under the current harness; another starvation sighting
+
+- PC-F86 integrated as 368e684e. Its full core run under the current, leaky gate harness passed 2588 of 2589.
+- The one failure was TmErrorHandler "marks an unhandled rejection global", a wait that did not hold within 5,573 ms. It is the starvation class that PC-F86 diagnosed: it passes alone 6/6, it failed the same way in an earlier leaky run, and it never failed in ten leak-free runs.
+  - So it does not block PC-F86. It is one more reason for the swap, and it is not opened as a new fix.
+  - The swap still waits on PC-F97 (D-295), because PC-F97 must first make the zone-check pair pass under the new harness.
+- tm-session-tabs.spec.ts:149, 153 and 156 still use vi.waitFor across a lazy chunk. They predate PC-F86, which corrected its own R1-1 response, so they join PC-F97's sweep.
+
 ### D-301 (orchestrator, 2026-11-25): PC-118 fix1 goes to R2; the first-frame figures for the landing order
 
 - Fix1 (4779d5c7) fixes R1-1, R1-3, R1-4 and R1-5, and fixes R1-2 in part. R2 runs at xhigh on fc8d58c6..4779d5c7, since R1 had a blocking finding (§4.4).
