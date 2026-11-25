@@ -384,6 +384,36 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-308 (orchestrator, 2026-11-25): PC-F86 landed; PC-F87 released; PC-154 fills pc-2
+
+- PC-F86 landed at a943c82b: CI 45601581404 was green on 5bfc162a, followed by a plans-only merge. PC-F93 closes with it.
+- The swap to the postTask harness now waits only on PC-F97 (D-295).
+- Release: PC-F97 is not held yet, so the queue releases PC-F87 now rather than stand idle. D-304's order holds once PC-F97 is held: it goes next after PC-F87.
+- D-229 fill for pc-2: no blocking fix is open, and PC-129 (T1) waits for PC-126. PC-154 (T2) became ready when PC-150 landed, so it goes ahead of the non-blocking fixes.
+  - Its D-305 carry adds rows in PC-118's files, the session menu and About.
+  - So PC-154 builds /support first, and adds those rows only after PC-118 lands, by merging platform-core into its branch.
+  - If it runs out of other work first, it stops as blocked on PC-118 rather than reimplement the shell.
+
+### D-307 (orchestrator, 2026-11-25): PC-F88 review 1; prove the trust step did something
+
+- R1 found 0 blocking, 2 major and 2 minor. R1-2 is the confirmed root cause of the skeleton-frame gap, outside the diff, and belongs to PC-F100. That leaves one major in PC-F88 itself, so there is no R2 (§4.4).
+- R1-1: three Acme report uploads skip the hidden .artifacts folder: two in nightly-tier.yml and one in ci.yml, which predates PC-F88. All three get include-hidden-files: true.
+- R1-3: CI shows the step passed, but not that it added anything. dotnet dev-certs said a certificate was already present, and the step logs nothing.
+  - Fix1 logs, for each certificate, whether it was added or already trusted, and dispatches the nightly once more on pc/PC-F88 to read those lines.
+  - If the image already trusted the certificate, the step stays as a safeguard. The review notes then say so, and say what had made the Windows leg red before.
+- R1-4: the selection is tightened to CN=localhost, self-issued, with a private key.
+- PC-F100's row gains R1-2's refinements: a unit test that tmShellRoute is synchronous after preload, and warming the tenant shell when the picker renders, because Playwright clicks within milliseconds of its hover.
+
+### D-306 (orchestrator, 2026-11-25): PC-F88's nightly proof; the skeleton-frame gap; report uploads
+
+- PC-F88 (impl d07d94e2) proved its trust step in a manual nightly dispatch on its branch, 45596696902 (D-300). All seven jobs ran, the trust step was green, and every Windows sign-in worked.
+- That run is the first time either Acme nightly leg has run. Both are red on one gate only: route-feedback.spec.ts:99, "the route skeleton in the click's frame" (@perf), on chromium and chromium-ar.
+  - The cause is a product gap (D-011). TmUrls.preload never loads the tenant shell, so the first tenant entry from the picker paints its skeleton in frame 2 or 3.
+  - Opened as PC-F100, a non-blocking fix that starts after PC-118 lands, because PC-118 owns the tenant shell. Until then, the Acme nightly legs stay red on that gate. The nightly is not an integration gate.
+- The Acme report uploads find nothing, because the .artifacts folder is hidden and upload-artifact skips hidden files by default. This is runner-only, so it folds into PC-F88's fix1 (include-hidden-files: true on the Acme report uploads in nightly-tier.yml and ci.yml).
+- Cold launch LCP measured about 9 s on both OSes against the 4 s budget. By design it is a warning annotation, not a failure, so it goes on the watch list. PC-F100's preload fix may move it, and it is re-read after PC-F100.
+- From now on, nightly triage filters gh run list --workflow nightly-tier.yml with --branch platform-core, because pc dispatches appear in the list too.
+
 ### D-305 (orchestrator, 2026-11-25): PC-118 review 2 rulings; the support seam is dropped and handed to PC-154
 
 - R2 found 0 blocking, 1 major and 5 minor. Every fix1 figure reproduces from clean builds: ./shell 8.65 of 9 and Acme initialJs 229.18. Fix2 is PC-118's third and last implementer round (§4.4); a hold follows.
