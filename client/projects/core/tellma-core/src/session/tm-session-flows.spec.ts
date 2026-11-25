@@ -153,6 +153,9 @@ function endedDialog(): HTMLElement | null {
 }
 
 describe('TmSessionFlows', () => {
+  // A path goes through chunks loaded on demand (the flows, the dialogs), so
+  // each spec waits on the state the path produces, by a named condition.
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -165,7 +168,7 @@ describe('TmSessionFlows', () => {
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.paths.expired('401');
       expect(rig.paths.state()).toBe('expired');
-      await vi.waitFor(() => expect(rig.bus.types()).toContain('session.expired'));
+      await tmSettleUntil(() => rig.bus.types().includes('session.expired'), 'the other tabs were told of the expiry');
       expect(sessionSweeps(sweep)).toEqual([['session-ended']]);
       expect(rig.store.doc(TM_T17, 'settings')()).toBeUndefined();
       expect(rig.host.cookieWrites).toEqual([TM_PROFILE_COOKIE_DELETE]);
@@ -178,14 +181,14 @@ describe('TmSessionFlows', () => {
     it('shows the session-ended alert dialog, focused on Sign in, which only Sign in leaves', async () => {
       const rig = await setUp();
       rig.paths.expired('cookie');
-      await vi.waitFor(() => expect(endedDialog()).not.toBeNull());
+      await tmSettleUntil(() => endedDialog() !== null, 'the session-ended dialog opened');
       const dialog = endedDialog()!;
       expect(dialog.getAttribute('aria-label') ?? dialog.querySelector('h2')?.textContent).toContain('Your session ended');
       expect(document.getElementById(dialog.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
         'Sign in to continue. Your work is kept.',
       );
       const button = dialog.querySelector<HTMLButtonElement>('button')!;
-      await vi.waitFor(() => expect(document.activeElement).toBe(button));
+      await tmSettleUntil(() => document.activeElement === button, 'Sign in has the focus');
       expect(button.textContent?.trim()).toBe('Sign in');
       // Escape does nothing, and there is no close button.
       button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -193,7 +196,8 @@ describe('TmSessionFlows', () => {
       expect(endedDialog()).not.toBeNull();
       expect(dialog.querySelectorAll('button')).toHaveLength(1);
       button.click();
-      await vi.waitFor(() => expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{}]));
+      await tmSettleUntil(() => TestBed.inject(TmFakeSession).signIns().length > 0, 'a sign-in started');
+      expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{}]);
     });
 
     it('keeps the session-ended dialog open when the user goes Back', async () => {
@@ -201,7 +205,7 @@ describe('TmSessionFlows', () => {
       await rig.router.navigateByUrl('/17/centers?page=2');
       await tmSettle();
       rig.paths.expired('cookie');
-      await vi.waitFor(() => expect(endedDialog()).not.toBeNull());
+      await tmSettleUntil(() => endedDialog() !== null, 'the session-ended dialog opened');
       TestBed.inject(Location).back();
       await tmSettle();
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -221,7 +225,8 @@ describe('TmSessionFlows', () => {
         rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
         vi.spyOn(rig.store, 'sweep').mockImplementation(sweep);
         rig.paths.expired('cookie');
-        await vi.waitFor(() => expect(rig.host.cookieWrites).toHaveLength(1), { timeout: 2_000 });
+        await tmSettleUntil(() => rig.host.cookieWrites.length > 0, 'the profile cookie was deleted');
+        expect(rig.host.cookieWrites).toHaveLength(1);
         expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: 17 });
         TestBed.resetTestingModule();
       }
@@ -233,10 +238,12 @@ describe('TmSessionFlows', () => {
       const mark = { at: Date.now() - 30_000, expired: false, returnUrl: '/17', auto: false, sub: null, hash: '' };
       const rig = await setUp({ boot: { mark, showPage, profile: null, cold: false, auto: null } });
       rig.paths.expired('401');
-      await vi.waitFor(() => expect(showPage).toHaveBeenCalledWith('sign-in-failed', expect.any(Function)));
+      await tmSettleUntil(() => showPage.mock.calls.length > 0, 'the boot page showed');
+      expect(showPage).toHaveBeenCalledWith('sign-in-failed', expect.any(Function));
       expect(endedDialog()).toBeNull();
       retry?.();
-      await vi.waitFor(() => expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{}]));
+      await tmSettleUntil(() => TestBed.inject(TmFakeSession).signIns().length > 0, 'a sign-in started');
+      expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{}]);
       expect(rig.host.cookieWrites).toEqual([TM_PROFILE_COOKIE_DELETE]);
     });
 
@@ -245,7 +252,7 @@ describe('TmSessionFlows', () => {
       draft(rig, '17:gl.Center:5');
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.bus.receive({ type: 'session.expired', sub: TM_TEST_SUB });
-      await vi.waitFor(() => expect(endedDialog()).not.toBeNull());
+      await tmSettleUntil(() => endedDialog() !== null, 'the session-ended dialog opened');
       expect(rig.paths.state()).toBe('expired');
       expect([sessionSweeps(sweep), rig.host.cookieWrites, drafts(rig)]).toEqual([[], [], 1]);
     });
@@ -256,9 +263,10 @@ describe('TmSessionFlows', () => {
       await new Promise((resolve) => setTimeout(resolve));
       expect(rig.host.reloads).toBe(0);
       rig.bus.receive({ type: 'session.expired', sub: TM_TEST_SUB });
-      await vi.waitFor(() => expect(rig.paths.state()).toBe('expired'));
+      await tmSettleUntil(() => rig.paths.state() === 'expired', 'the session expired');
       rig.bus.receive({ type: 'session.started', sub: TM_TEST_SUB });
-      await vi.waitFor(() => expect(rig.host.reloads).toBe(1));
+      await tmSettleUntil(() => rig.host.reloads > 0, 'the tab reloaded');
+      expect(rig.host.reloads).toBe(1);
     });
   });
 
@@ -282,7 +290,8 @@ describe('TmSessionFlows', () => {
       await new Promise((resolve) => setTimeout(resolve));
       expect(rig.host.replaced).toEqual([]);
       rig.bus.receive({ type: 'session.started', sub: 'new-user' });
-      await vi.waitFor(() => expect(rig.host.replaced).toEqual(['/']));
+      await tmSettleUntil(() => rig.host.replaced.length > 0, 'the app restarted');
+      expect(rig.host.replaced).toEqual(['/']);
     });
   });
 
@@ -295,7 +304,8 @@ describe('TmSessionFlows', () => {
       rig.api.respond('centers/save', () => new Promise(() => undefined));
       void rig.api.write('centers/save', {});
       rig.bus.receive({ type: 'drafts.query', replyTo: 'q1' });
-      await vi.waitFor(() => expect(rig.bus.session()).toEqual([{ type: 'drafts.reply', replyTo: 'q1', dirty: 2, busy: true }]));
+      await tmSettleUntil(() => rig.bus.session().length > 0, 'the drafts query was answered');
+      expect(rig.bus.session()).toEqual([{ type: 'drafts.reply', replyTo: 'q1', dirty: 2, busy: true }]);
     });
 
     it('answers with the drafts service once it exists', async () => {
@@ -304,9 +314,8 @@ describe('TmSessionFlows', () => {
       const service = TestBed.inject(TmDrafts);
       service.save(service.key(17, 'gl.Center', 5), { name: 'Unsaved' });
       rig.bus.receive({ type: 'drafts.query', replyTo: 'q2' });
-      await vi.waitFor(() =>
-        expect(rig.bus.session()).toEqual([{ type: 'drafts.reply', replyTo: 'q2', dirty: service.dirtyCount(), busy: false }]),
-      );
+      await tmSettleUntil(() => rig.bus.session().length > 0, 'the drafts query was answered');
+      expect(rig.bus.session()).toEqual([{ type: 'drafts.reply', replyTo: 'q2', dirty: service.dirtyCount(), busy: false }]);
       expect(service.dirtyCount()).toBeGreaterThan(0);
     });
   });
@@ -321,7 +330,8 @@ describe('TmSessionFlows', () => {
       const sweep = vi.spyOn(rig.store, 'sweep');
       let settled = false;
       void rig.paths.ɵsignOut().finally(() => (settled = true));
-      await vi.waitFor(() => expect(rig.host.assigned).toEqual(['https://id.example/connect/endsession?id_token_hint=x']));
+      await tmSettleUntil(() => rig.host.assigned.length > 0, 'the tab left for the sign-out');
+      expect(rig.host.assigned).toEqual(['https://id.example/connect/endsession?id_token_hint=x']);
       expect(settled).toBe(false);
       expect(rig.confirm.asked).toEqual([]);
       // The overlay shows at once, labelled "Signing out…".
@@ -358,7 +368,8 @@ describe('TmSessionFlows', () => {
       rig.confirm.answer = true;
       rig.api.respond('/bff/logout', {});
       void rig.paths.ɵsignOut();
-      await vi.waitFor(() => expect(rig.host.assigned).toEqual(['/signed-out']), { timeout: 3_000 });
+      await tmSettleUntil(() => rig.host.assigned.length > 0, 'the tab left for the signed-out page');
+      expect(rig.host.assigned).toEqual(['/signed-out']);
       expect(rig.confirm.asked).toHaveLength(2);
       expect(drafts(rig)).toBe(0);
     });
@@ -371,9 +382,10 @@ describe('TmSessionFlows', () => {
       const overlay = vi.spyOn(TestBed.inject(TmBusyOverlay), 'run');
       void rig.paths.ɵsignOut();
       const label = (): string => (overlay.mock.calls[0]?.[1]?.label as () => string)();
-      await vi.waitFor(() => expect(label()).toBe('Waiting for a save to finish…'));
+      await tmSettleUntil(() => overlay.mock.calls.length > 0 && label() === 'Waiting for a save to finish…', 'the overlay says it waits for a save');
       other.busy = false;
-      await vi.waitFor(() => expect(rig.host.assigned).toEqual(['/signed-out']), { timeout: 3_000 });
+      await tmSettleUntil(() => rig.host.assigned.length > 0, 'the tab left for the signed-out page');
+      expect(rig.host.assigned).toEqual(['/signed-out']);
       expect(rig.confirm.asked).toEqual([]);
       expect(rig.bus.types().filter((type) => type === 'drafts.query').length).toBeGreaterThan(1);
     });
@@ -453,7 +465,8 @@ describe('TmSessionFlows', () => {
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.bus.receive({ type: 'session.signing-out', sub: TM_TEST_SUB });
       rig.bus.receive({ type: 'session.signed-out', sub: TM_TEST_SUB });
-      await vi.waitFor(() => expect(rig.host.replaced).toEqual(['/signed-out']));
+      await tmSettleUntil(() => rig.host.replaced.length > 0, 'the tab left for the signed-out page');
+      expect(rig.host.replaced).toEqual(['/signed-out']);
       expect(drafts(rig)).toBe(0);
       expect(sessionSweeps(sweep)).toEqual([]);
       expect(rig.host.cookieWrites).toEqual([TM_PROFILE_COOKIE_DELETE]);
@@ -465,7 +478,8 @@ describe('TmSessionFlows', () => {
       rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.paths.ɵsignedOutElsewhere();
-      await vi.waitFor(() => expect(rig.host.replaced).toEqual(['/signed-out']));
+      await tmSettleUntil(() => rig.host.replaced.length > 0, 'the tab left for the signed-out page');
+      expect(rig.host.replaced).toEqual(['/signed-out']);
       expect(sessionSweeps(sweep)).toEqual([['session-ended']]);
       expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: null });
       expect(rig.bus.session()).toEqual([{ type: 'session.signed-out', sub: TM_TEST_SUB }]);
@@ -486,7 +500,8 @@ describe('TmSessionFlows', () => {
       const rig = await setUp();
       TestBed.inject(TmFakeSession).setCheck('changed');
       document.dispatchEvent(new Event('visibilitychange'));
-      await vi.waitFor(() => expect(rig.host.replaced).toEqual(['/']));
+      await tmSettleUntil(() => rig.host.replaced.length > 0, 'the app restarted');
+      expect(rig.host.replaced).toEqual(['/']);
       expect(rig.bus.session()).toEqual([{ type: 'session.changed', sub: TM_TEST_SUB }]);
     });
 

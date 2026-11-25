@@ -92,6 +92,23 @@ namespace Tellma.Core.Abstractions.Tests.Api
                 Constants(typeof(McpTelemetryNames)));
         }
 
+        [Fact]
+        public void The_client_telemetry_names_are_pinned()
+        {
+            Assert.Equal(
+                new Dictionary<string, string>
+                {
+                    [nameof(ClientTelemetryNames.MeterName)] = "Tellma.Core.AspNetCore",
+                    [nameof(ClientTelemetryNames.LoggerCategory)] = "Tellma.ClientTelemetry",
+                    [nameof(ClientTelemetryNames.Errors)] = "tellma.client.errors",
+                    [nameof(ClientTelemetryNames.SlowRequests)] = "tellma.client.requests.slow",
+                    [nameof(ClientTelemetryNames.SourceTag)] = "source",
+                    [nameof(ClientTelemetryNames.KindTag)] = "kind",
+                    [nameof(ClientTelemetryNames.OutcomeTag)] = "outcome",
+                },
+                Constants(typeof(ClientTelemetryNames)));
+        }
+
         /// <summary>Every public string constant a type declares, by name.</summary>
         /// <param name="type">The type.</param>
         /// <returns>The constants.</returns>

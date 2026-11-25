@@ -48,6 +48,7 @@ namespace Tellma.Core.Abstractions.Api
     [JsonSerializable(typeof(StartImportRequest))]
     [JsonSerializable(typeof(QueryexDiscoverRequest))]
     [JsonSerializable(typeof(ClientSyncRequest))]
+    [JsonSerializable(typeof(ClientTelemetryBatch))]
 
     // --- Result records ---
     [JsonSerializable(typeof(AffectedResult))]
