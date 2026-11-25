@@ -30,11 +30,14 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   `@tellma/locale-ar/platform-strings` entry point, with the shell's part, the
   shell frame's, the tenantless shell's, the tenant picker's and the
   signed-out page's strings, in `shell-strings/strings-shell-ar.ts`, the
-  `@tellma/locale-ar/shell-strings` entry point, and the details page's part,
+  `@tellma/locale-ar/shell-strings` entry point, the details page's part,
   its header's buttons and badges, status lines and discard question, in
   `details-strings/strings-details-ar.ts`, the
-  `@tellma/locale-ar/details-strings` entry point), which `tmArabic()` merges
-  and hands the platform. `tmArabic()` loads the four entry points at once on
+  `@tellma/locale-ar/details-strings` entry point, and the Queryex tools' part,
+  the expression editor's and the path picker's strings, in
+  `queryex-strings/strings-queryex-ar.ts`, the
+  `@tellma/locale-ar/queryex-strings` entry point), which `tmArabic()` merges
+  and hands the platform. `tmArabic()` loads the five entry points at once on
   the first switch to Arabic, so an app's other languages never download
   them, and an app on the component library alone never downloads the
   platform's tables.
@@ -71,11 +74,13 @@ Copy this package's structure:
    `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
    the `shell` and `tenantless` scopes the shell frame and the tenantless pages
    register in English; `details-strings/strings-details-xx.ts` — the `details`
-   scope the details page registers in English.
+   scope the details page registers in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
+   and `pathPicker` scopes the expression editor and the path picker register in
+   English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and its tables, loaded
    together with `import()` from the `platform-strings`, `shell-strings`,
-   `details-strings` and `strings` entry points;
+   `details-strings`, `queryex-strings` and `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the

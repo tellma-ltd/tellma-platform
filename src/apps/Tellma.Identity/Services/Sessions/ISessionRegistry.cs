@@ -28,24 +28,48 @@ namespace Tellma.Identity.Services.Sessions
         /// <returns>A task that completes when the row is stored.</returns>
         Task UpsertSessionAsync(string sid, string userId, string? userAgent, string? ipAddress, CancellationToken cancellationToken);
 
-        /// <summary>Records that a client obtained tokens under a session (fan-out target list).</summary>
+        /// <summary>
+        ///     Records that a client obtained tokens under a session (fan-out target list), and the
+        ///     authorization backing them. A client keeps one registration per session and every
+        ///     authorization its grants used there, none replacing another, so a logout can revoke
+        ///     them all. Grants of one session may register the same client at once, as two tabs
+        ///     signing in do: each succeeds, and both authorizations are kept. A session that has
+        ///     ended registers nothing, so a grant that loses to a logout is refused rather than
+        ///     left with an authorization no logout will revoke.
+        /// </summary>
         /// <param name="sid">The session identifier.</param>
         /// <param name="clientId">The client that obtained tokens.</param>
         /// <param name="authorizationId">The OpenIddict authorization backing the grant.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>A task that completes when the registration is stored.</returns>
-        Task RegisterClientAsync(string sid, string clientId, string? authorizationId, CancellationToken cancellationToken);
+        /// <returns>
+        ///     True when the registration is stored; false when the session has ended or is gone,
+        ///     and nothing was recorded.
+        /// </returns>
+        Task<bool> RegisterClientAsync(string sid, string clientId, string? authorizationId, CancellationToken cancellationToken);
 
-        /// <summary>Marks a session terminated and returns its registered clients for fan-out.</summary>
+        /// <summary>
+        ///     Marks a session terminated and returns its registered clients for fan-out. The
+        ///     registrations are read after the session is marked, so none committed meanwhile is
+        ///     missed.
+        /// </summary>
         /// <param name="sid">The session identifier.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>The clients registered under the session (empty when none or unknown).</returns>
+        /// <returns>
+        ///     The clients registered under the session, each with every authorization its grants
+        ///     used there (empty when none, unknown or already terminated).
+        /// </returns>
         Task<IReadOnlyList<IdentitySessionClient>> TerminateAsync(string sid, CancellationToken cancellationToken);
 
-        /// <summary>Terminates every active session of a user ("sign out everywhere").</summary>
+        /// <summary>
+        ///     Terminates every active session of a user ("sign out everywhere"). The registrations
+        ///     are read after the sessions are marked, so none committed meanwhile is missed.
+        /// </summary>
         /// <param name="userId">The user.</param>
         /// <param name="cancellationToken">Aborts the operation.</param>
-        /// <returns>All client registrations across the terminated sessions, with their sids.</returns>
+        /// <returns>
+        ///     All client registrations across the terminated sessions, with their sids and every
+        ///     authorization their grants used.
+        /// </returns>
         Task<IReadOnlyList<IdentitySessionClient>> TerminateAllAsync(string userId, CancellationToken cancellationToken);
 
         /// <summary>Lists a user's active (non-terminated) sessions for the self-service page.</summary>

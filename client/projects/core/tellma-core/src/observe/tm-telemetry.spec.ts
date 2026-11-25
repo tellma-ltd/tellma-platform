@@ -8,7 +8,8 @@ import { TestBed } from '@angular/core/testing';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import type { TmFakeApiCall } from '@tellma/core-testing';
 
-import { tmAppRig, type TmAppRig, tmNavigate, tmSettleUntil, tmUnhandled } from '../routes/tm-app.testing.util';
+import { TmRequestLog } from '../requests/tm-request-log';
+import { tmAppRig, type TmAppRig, tmNavigate, tmSettle, tmSettleUntil, tmUnhandled } from '../routes/tm-app.testing.util';
 import { TmTelemetry, TmTelemetryFront, type TmTelemetryItem } from './tm-telemetry';
 import type { TmTelemetryBatch, TmTelemetryWireItem } from './tm-telemetry-pipeline';
 
@@ -227,6 +228,25 @@ describe('TmTelemetry', () => {
 
       expect(sends()).toHaveLength(before + 1);
       await tmSettleUntil(() => sentNames().includes('acme.report.run'), 'the item was sent');
+    });
+
+    it("measures each change of the request log, so a request the log's ring has since dropped still joins its route's summary", async () => {
+      await started();
+      const log = TestBed.inject(TmRequestLog);
+      /** Begins and ends one request through the app's request log. */
+      const request = (index: number, route: string): void =>
+        log.begin({ traceId: index.toString(16).padStart(32, '0'), route, tenantId: 17, method: 'POST', background: false }).end({ outcome: 'ok', status: 200 });
+      request(1, 'centers/query?top=25');
+      // The log changed, so the startup's wiring measures it at the next render.
+      await tmSettle();
+      // A hundred later requests push the first out of the ring before the flush reads the log.
+      for (let index = 2; index <= 101; index++) {
+        request(index, 'agents/query');
+      }
+      front.flush();
+
+      const summary = front.recent().find((item) => item.name === 'tm.api.requests' && item.props['api'] === 'centers/query');
+      expect(summary).toMatchObject({ tenantId: 17, props: { api: 'centers/query', count: 1, ok: 1 } });
     });
 
     // An unload fires both events, in an order that depends on the browser and the unload.

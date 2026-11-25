@@ -251,6 +251,10 @@ jobs:
         run: bash eng/playwright-browsers/install-browsers.sh chromium -- client/node_modules/.bin/playwright
       - run: pnpm run lint
       - run: pnpm run typecheck
+      # Core's sources once more, against the entity declarations the platform alone emits: the
+      # plain typecheck sees core's entity rows as open JSON objects, a distribution's build as
+      # their closed wire interfaces. The server's unit suite keeps the declarations current.
+      - run: pnpm run typecheck:emitted
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
@@ -296,6 +300,7 @@ jobs:
         run: pnpm --dir client exec playwright install chromium
       - run: pnpm run lint
       - run: pnpm run typecheck
+      - run: pnpm run typecheck:emitted
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build

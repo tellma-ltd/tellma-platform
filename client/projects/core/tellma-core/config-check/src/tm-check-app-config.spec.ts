@@ -514,7 +514,7 @@ describe('tmCheckAppConfig', () => {
     });
 
     it('reports operation-missing and entity-not-routable', () => {
-      const blob = check(config([gl, { ...acme, entities: [...(acme.entities ?? []), tmEntity('core.Blob', { details: lazy, columns: ['Name'], section: 'sales' })] }]));
+      const blob = check(config([gl, { ...acme, entities: [...(acme.entities ?? []), tmEntity('core.Blob', { details: lazy, columns: ['Id'], section: 'sales' })] }]));
       expect(blob.map((problem) => problem.message)).toEqual([
         "'entity:core.Blob' sets 'details', which needs the 'details' operation the entity lacks.",
         "'entity:core.Blob' sets 'columns', which needs the 'query' operation the entity lacks.",

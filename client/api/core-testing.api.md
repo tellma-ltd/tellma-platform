@@ -12,6 +12,7 @@ import { FieldTree } from '@angular/forms/signals';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Injector } from '@angular/core';
+import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
@@ -104,6 +105,35 @@ export class TmEntityMultiFieldHarness extends ComponentHarness {
 }
 
 // @public
+export interface TmExpressionEditorChip {
+    readonly text: string;
+    readonly warning: boolean;
+}
+
+// @public
+export class TmExpressionEditorHarness extends ComponentHarness {
+    canRetry(): Promise<boolean>;
+    getAnnouncement(): Promise<string>;
+    getAriaLabel(): Promise<string | null>;
+    getChips(): Promise<TmExpressionEditorChip[]>;
+    getDescribedByIds(): Promise<string[]>;
+    getMoreText(): Promise<string | null>;
+    getProblems(): Promise<string[]>;
+    getSelection(): Promise<[number, number]>;
+    getStatusText(): Promise<string>;
+    getValue(): Promise<string>;
+    static hostSelector: string;
+    isFocused(): Promise<boolean>;
+    isInvalid(): Promise<boolean>;
+    pickProblem(index: number): Promise<void>;
+    press(key: TestKey, modifiers?: ModifierKeys): Promise<void>;
+    pressF8(backward?: boolean): Promise<void>;
+    retry(): Promise<void>;
+    setValue(text: string): Promise<void>;
+    type(text: string): Promise<void>;
+}
+
+// @public
 export class TmFakeApi extends TmApi {
     readonly calls: Signal<readonly TmFakeApiCall[]>;
     download(route: string, body: unknown, options: TmDownloadOptions): Promise<TmDownload>;
@@ -164,6 +194,22 @@ export interface TmFakeDetailsOptions<T> {
     readonly mode?: TmDetailsMode;
     readonly record?: TmDetailsRecord<T>;
 }
+
+// @public
+export class TmFakeDiscover {
+    constructor();
+    fail(kind: TmApiErrorKind | null): void;
+    get heldCount(): number;
+    hold(): void;
+    release(): void;
+    readonly requests: Signal<readonly TmQueryexDiscoverRequest[]>;
+    respond(answer: TmFakeDiscoverAnswer): void;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeDiscover, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeDiscover>;
+}
+
+// @public
+export type TmFakeDiscoverAnswer = TmQueryexDiscoverResult | ((request: TmQueryexDiscoverRequest) => Promise<TmQueryexDiscoverResult> | TmQueryexDiscoverResult);
 
 // @public
 export class TmFakeHub {
@@ -256,6 +302,21 @@ export class TmPageContextHarness {
     top(includeData?: boolean): TmPageContextSnapshot | null;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmPageContextHarness, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmPageContextHarness>;
+}
+
+// @public
+export class TmPathPickerHarness extends ComponentHarness {
+    getKeys(): Promise<string[]>;
+    getKind(key: string): Promise<string | null>;
+    getLabels(): Promise<string[]>;
+    getNode(key: string): Promise<TmTreeNodeHarness>;
+    getNodes(filter?: TmTreeNodeHarnessFilters): Promise<TmTreeNodeHarness[]>;
+    getPill(key: string): Promise<string | null>;
+    readonly getSearchField: () => Promise<TmSearchFieldHarness>;
+    getStatusText(): Promise<string>;
+    readonly getTree: () => Promise<TmTreeHarness>;
+    static hostSelector: string;
+    search(query: string): Promise<void>;
 }
 
 // @public

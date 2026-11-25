@@ -56,26 +56,27 @@ namespace Tellma.Identity.Services.BackchannelLogout
             string subject, IReadOnlyList<IdentitySessionClient> clients, CancellationToken cancellationToken)
         {
             // Revoke the backing authorizations first: renewal stops even if a delivery fails.
+            // Every authorization the client's grants used under the session is revoked, not only
+            // the latest: grants asking for different scopes, or two first grants made at once,
+            // each back their own refresh tokens.
             foreach (IdentitySessionClient registration in clients)
             {
-                if (registration.AuthorizationId is null)
+                foreach (string authorizationId in UsedAuthorizationIds(registration))
                 {
-                    continue;
-                }
-
-                object? authorization = await authorizationManager.FindByIdAsync(registration.AuthorizationId, cancellationToken);
-                if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
-                {
-                    await auditLogger.LogAsync(
-                        new AuditEventEntry
-                        {
-                            Action = AuditActions.TokenRevoked,
-                            Subject = subject,
-                            ClientId = registration.ClientId,
-                            Sid = registration.Sid,
-                            Outcome = "success",
-                        },
-                        cancellationToken);
+                    object? authorization = await authorizationManager.FindByIdAsync(authorizationId, cancellationToken);
+                    if (authorization is not null && await authorizationManager.TryRevokeAsync(authorization, cancellationToken))
+                    {
+                        await auditLogger.LogAsync(
+                            new AuditEventEntry
+                            {
+                                Action = AuditActions.TokenRevoked,
+                                Subject = subject,
+                                ClientId = registration.ClientId,
+                                Sid = registration.Sid,
+                                Outcome = "success",
+                            },
+                            cancellationToken);
+                    }
                 }
             }
 
@@ -87,6 +88,21 @@ namespace Tellma.Identity.Services.BackchannelLogout
             {
                 await DeliverAsync(subject, registration, cancellationToken);
             }
+        }
+
+        /// <summary>
+        ///     Every authorization a registration records, each once: the rows, and the latest one
+        ///     in the registration's own column. The column alone holds the authorization of a
+        ///     registration that the previous engine release made, which wrote no rows.
+        /// </summary>
+        /// <param name="registration">The client's registration under a session.</param>
+        /// <returns>The distinct authorization ids.</returns>
+        private static IEnumerable<string> UsedAuthorizationIds(IdentitySessionClient registration)
+        {
+            IEnumerable<string> rows = registration.Authorizations.Select(static used => used.AuthorizationId);
+            return registration.AuthorizationId is { } latest
+                ? rows.Prepend(latest).Distinct(StringComparer.Ordinal)
+                : rows.Distinct(StringComparer.Ordinal);
         }
 
         /// <summary>Delivers one logout token; failures are audited, never thrown.</summary>
