@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-315 (orchestrator, 2026-11-25): PC-154 goes to R1 before its shell rows; the first frame
+
+- PC-154's impl (ce6f1973, on 8646bb53) delivers /support but not the D-305 shell rows, because PC-118 has not landed.
+  - Waiting would leave pc-2 idle for several hours: PC-F101, then PC-118, integrate first.
+  - So R1 reviews what is built now. The shell rows come in fix1, after PC-118 lands and PC-154 merges platform-core.
+  - That makes fix1 large, so R2 runs at xhigh on it (section 4.4).
+- First frame: Acme initialJs is 226.61 on the branch, against 217.29.
+  - The implementer measured +2.35 of that from the primary's own pieces.
+  - It puts +6.97 down to /support bringing tm-grid into Acme for the first time, with first-frame code hoisted (the date engine, the number codec, CDK, Angular debug-node) and the initial files going from 18 to 23.
+  - This has the same shape as the grid reach PC-118 removed by moving TM_GRID_KEYS to contracts (D-311).
+  - R1 finds the import edge, and may measure on a read-only merge with pc/PC-118 whether that move removes it.
+- The 230 line is not raised. Whichever of PC-118, PC-126 and PC-154 lands later re-measures (D-214), and over the line means blocked (D-247).
+- R1 checks the ceiling raises against D-031. The "." raise to 54.8 on a measured 54.74 is not an honest round-up to the next 0.5.
+
 ### D-314 (orchestrator, 2026-11-25): PC-F97 landed; the harness switches; PC-F101 goes ahead of PC-118
 
 - PC-F97 landed at e4d30847. CI 45622441151 was green on a292f8a7, and the plans-only merge went on top.
