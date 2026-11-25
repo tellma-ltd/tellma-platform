@@ -9,6 +9,7 @@ import {
   TmEntities,
   TmLocalization,
   TmPermissions,
+  type TmColumnPlan,
   type TmDisplayNameParts,
   type TmId,
   type TmJson,
@@ -23,7 +24,6 @@ import type { TmGridColumn } from '@tellma/core-ui/grid';
 import { TmEntityPickers, ɵtmLabelParts } from './tm-entity-pickers';
 import { ɵtmParseExact } from './tm-exact-number';
 import { TmFormats } from './tm-formats';
-import type { TmColumnPlan } from './tm-select-plan';
 
 // A grid column from a select plan's column (spec 0029 §12.2's last column):
 // the grid type, alignment, width, display and parse each type takes, so a

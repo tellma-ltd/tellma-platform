@@ -6,6 +6,7 @@
 import { provideLocationMocks } from '@angular/common/testing';
 import { ApplicationInitStatus, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { RouterTestingHarness } from '@angular/router/testing';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
@@ -30,7 +31,7 @@ import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenant
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
-import { tmEntity, type TmEntityActionDeclaration, type TmPickerDeclaration } from './tm-entity-declaration';
+import { tmEntity, type TmEntityActionDeclaration, type TmEntityDeclarationInput, type TmPickerDeclaration } from './tm-entity-declaration';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -146,6 +147,8 @@ export interface TmEntityRigOptions {
   readonly pickers?: Partial<Readonly<Record<'acme.Customer' | 'gl.Center' | 'acme.Currency', TmPickerDeclaration<string>>>>;
   /** The actions `acme.Customer` declares; `set-credit-limit` as a button when omitted. */
   readonly actions?: readonly TmEntityActionDeclaration<'acme.Customer'>[];
+  /** What else `acme.Customer` declares, such as its search page's columns, order and page actions; nothing when omitted. */
+  readonly customer?: Partial<TmEntityDeclarationInput<'acme.Customer'>>;
   /** The tenant's calendars, the first its default, such as `['uq', 'gc']`; `['gc']` when omitted. */
   readonly calendars?: readonly string[];
   /** The app's own calendars beside the platform's, such as a test calendar; none when omitted. */
@@ -166,6 +169,8 @@ export interface TmEntityRig {
   readonly telemetry: TmFakeTelemetry;
   /** The client store. */
   readonly store: TmClientStore;
+  /** The router harness the app renders in, routed to tenant 17's home; a spec navigates it to a page. */
+  readonly router: RouterTestingHarness;
   /** Tenant 17's launch documents as stored. */
   readonly docs: TmLaunchDocs;
   /**
@@ -240,6 +245,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
             key: 'acme',
             entities: [
               tmEntity('acme.Customer', {
+                ...options.customer,
                 details: tmLoadTestPage,
                 actions: options.actions ?? [{ name: 'set-credit-limit', button: true }],
                 ...(pickers['acme.Customer'] && { picker: pickers['acme.Customer'] as never }),
@@ -268,7 +274,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
   api.respond('client/sync', { tenant: docs.tenant, tags: docs.me.tags, settings: docs.settings, me: docs.me, staleEntities: [] });
   api.respond('/bff/user', { tenants: [] });
   api.respond('/api/distribution-info', {});
-  await tmNavigate('/17');
+  const router = await tmNavigate('/17');
   await TestBed.inject(TmLocalization).ɵready();
   const entities = TestBed.inject(TmEntities);
   if (options.load !== false) {
@@ -282,6 +288,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
     api,
     telemetry: TestBed.inject(TmFakeTelemetry),
     store,
+    router,
     docs,
     move: async (moved, entityTags) => {
       await tmWarmTenant(store, TM_T17, moved, { ...(entityTags && { entityTags }) });

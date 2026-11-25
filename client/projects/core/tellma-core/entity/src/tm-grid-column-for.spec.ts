@@ -6,14 +6,14 @@
 import { Component, computed, Injector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { form } from '@angular/forms/signals';
-import { TmEntities, TmLocalization, type TmColumnInput, type TmPlanRow } from '@tellma/core';
+import { TmEntities, TmLocalization, type TmColumnInput, type TmPlanRow, type TmSelectPlan } from '@tellma/core';
 import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
 import { TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { tmGridColumnFor, type TmGridColumnOptions } from './tm-grid-column-for';
-import { tmSelectPlan, type TmSelectPlan } from './tm-select-plan';
+import { tmSelectPlan } from './tm-select-plan';
 
 // The grid columns of a plan's columns: each type's grid type, alignment
 // and width, the exact display and parse of decimals and longs, enum

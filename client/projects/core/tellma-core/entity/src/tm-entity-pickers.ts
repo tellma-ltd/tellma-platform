@@ -15,6 +15,7 @@ import {
   TmTelemetry,
   tmRowsToObjects,
   type TmCachedEntitySet,
+  type TmColumnPlan,
   type TmDisplayNameParts,
   type TmEntityDescriptor,
   type TmId,
@@ -32,7 +33,7 @@ import { tmSearchNormalize } from '@tellma/core/search-normalize';
 import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
 import { TmFormats } from './tm-formats';
 import { TmLazyPickerPage, ɵtmRegisterPickerStrings, type TmEntityPickerContext } from './tm-lazy-picker-page';
-import { tmSelectPlan, ɵtmDisplayNameOrder, type TmColumnPlan } from './tm-select-plan';
+import { tmSelectPlan, ɵtmDisplayNameOrder } from './tm-select-plan';
 
 // The generic entity picker binding (spec 0029 §14): one binding, built from
 // the target's descriptor, turns the component library's entity picker into

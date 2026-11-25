@@ -178,9 +178,13 @@ export class TmLaunchTimer {
       }
     }
   `,
+  // The host fills `main`, so a page that scrolls inside itself, such as
+  // the search page's grid, can take the rest of its height; a taller page
+  // overflows it, and `main` scrolls as before.
   styles: `
     :host {
       display: block;
+      block-size: 100%;
     }
   `,
   host: { '[attr.aria-busy]': "state().view === 'loading' ? 'true' : null" },

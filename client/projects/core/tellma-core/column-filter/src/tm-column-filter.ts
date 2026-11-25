@@ -15,7 +15,7 @@ import {
   type OutputEmitterRef,
   type Signal,
 } from '@angular/core';
-import { TmDecimals, TmEntities, TmLocalization, type TmDecimal, type TmId } from '@tellma/core';
+import { TmDecimals, TmEntities, TmLocalization, type TmColumnPlan, type TmDecimal, type TmId } from '@tellma/core';
 import {
   tmFilterLeaf,
   tmFormatFilter,
@@ -25,7 +25,6 @@ import {
   ɵTM_FILTER_OPS,
   ɵTM_FILTER_STRINGS_EN,
   ɵtmParseExact,
-  type TmColumnPlan,
   type TmFilterOp,
   type TmFilterSpec,
 } from '@tellma/core/entity';

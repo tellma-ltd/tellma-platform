@@ -14,6 +14,7 @@ import {
   TmPermissions,
   TmUrls,
   type TmBlobKindPolicy,
+  type TmColumnPlan,
   type TmDisplayNameParts,
   type TmId,
   type TmJson,
@@ -29,7 +30,7 @@ import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage } from '@tellma/core-ui/image';
 
 import { TmFormats, type TmValueStyle } from './tm-formats';
-import { ɵtmPlanBlobPath, type TmColumnPlan } from './tm-select-plan';
+import { ɵtmPlanBlobPath } from './tm-select-plan';
 
 // A typed value in view mode (spec 0029 §12.2's text column): the text
 // `TmFormats` gives, and the markup some types take beyond text. An id

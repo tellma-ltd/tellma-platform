@@ -13,6 +13,7 @@ import { Injector } from '@angular/core';
 import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Signal } from '@angular/core';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 
 // @public
@@ -263,6 +264,32 @@ export class TmPathPickerHarness extends ComponentHarness {
     readonly getTree: () => Promise<TmTreeHarness>;
     static hostSelector: string;
     search(query: string): Promise<void>;
+}
+
+// @public
+export interface TmSearchPageCreate {
+    readonly disabledReason: string | null;
+    readonly href: string | null;
+    readonly label: string;
+}
+
+// @public
+export class TmSearchPageHarness extends ComponentHarness {
+    clickStateAction(label: string): Promise<void>;
+    getCreate(): Promise<TmSearchPageCreate | null>;
+    getGrid(): Promise<TmGridHarness | null>;
+    getPager(): Promise<TmPagerHarness>;
+    getState(): Promise<TmEmptyStateHarness | null>;
+    getStateActions(): Promise<string[]>;
+    getStateHeading(): Promise<string | null>;
+    getStateToken(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasColumnsButton(): Promise<boolean>;
+    hasMore(): Promise<boolean>;
+    static hostSelector: string;
+    isFirstLoad(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    refresh(): Promise<void>;
 }
 
 // @public

@@ -132,12 +132,21 @@ export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display
 export { TmDisplayName } from './src/entity/tm-display-name';
 export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
 export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
+export type {
+  TmColumnKind,
+  TmColumnPlan,
+  TmColumnSource,
+  TmDroppedKey,
+  TmDroppedReason,
+  TmFilterKind,
+  TmSelectPlan,
+} from './src/entity/tm-select-plan-types';
 
 // What a details page keeps between visits: its drafts and its snapshots (types only).
 export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
 
 // What a search page keeps between visits and in the user's column preference (types only).
-export type { TmColumnPreference, TmSearchSnapshot } from './src/search/tm-search-types';
+export type { TmColumnPreference, TmSearchContext, TmSearchSnapshot } from './src/search/tm-search-types';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';

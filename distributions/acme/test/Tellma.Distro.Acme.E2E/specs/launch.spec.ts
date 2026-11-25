@@ -121,10 +121,10 @@ test.describe('launch', () => {
   }) => {
     await tmSignInToIdentityAs(page.context(), cast.user);
 
-    await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
 
     await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
-    await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
   });
 
   test('a search page keeps its filter fragment across the sign-in after an in-app expiry', async ({
@@ -133,13 +133,13 @@ test.describe('launch', () => {
     cast,
   }) => {
     await signInAs(page, cast.user);
-    await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
     await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
 
     await expireInApp(page);
     await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
 
-    await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
     await expect(sessionEndedDialog(page)).toHaveCount(0);
     expect((await tmBootFacts(page)).state).toBe('run');
   });

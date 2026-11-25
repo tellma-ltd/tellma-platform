@@ -1,0 +1,96 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The search page: the header over the results region, which takes the
+   rest of the page's height, so the grid scrolls its rows and never the
+   page. */
+
+:host {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+/* ---- the results region ---- */
+
+.tm-search-host__region {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-block-size: 0;
+}
+
+/* The progress bar lies over the grid's top edge, so a re-read moves nothing. */
+.tm-search-host__progress {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 5;
+}
+
+.tm-search-host__grid {
+  flex: 1 1 auto;
+  min-block-size: 0;
+}
+
+/* ---- cells and headers ---- */
+
+.tm-search-host__link {
+  overflow: hidden;
+  color: var(--text-link);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-search-host__link:hover {
+  text-decoration: underline;
+}
+
+/* A user's expression heads its column as left-to-right code after the ƒ glyph. */
+.tm-search-host__expression {
+  display: inline-flex;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tm-search-host__expression bdi {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+/* ---- the first load and the states ---- */
+
+/* The skeleton covers the grid's overlay opaquely, row by row from its top. */
+.tm-search-host__skeleton {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--field-bg);
+}
+
+.tm-search-host__skeleton-row {
+  display: flex;
+  align-items: center;
+  block-size: var(--grid-row-height);
+  border-block-end: var(--border-width) solid var(--border-subtle);
+}
+
+.tm-search-host__skeleton-cell {
+  flex: none;
+  padding-inline: var(--space-2);
+}
+
+.tm-search-host__state {
+  inline-size: 100%;
+  padding-inline: var(--space-4);
+}

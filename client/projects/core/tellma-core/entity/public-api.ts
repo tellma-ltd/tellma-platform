@@ -19,18 +19,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Select plans.
-export {
-  tmSelectPlan,
-  type TmColumnKind,
-  type TmColumnPlan,
-  type TmColumnSource,
-  type TmDroppedKey,
-  type TmDroppedReason,
-  type TmFilterKind,
-  type TmSelectPlan,
-  type TmSelectPlanOptions,
-} from './src/tm-select-plan';
+// Select plans; their shapes are the primary's types.
+export { tmSelectPlan, type TmSelectPlanOptions } from './src/tm-select-plan';
 
 // Typed values: formats, view and edit.
 export { TmFormats, type TmValueStyle } from './src/tm-formats';

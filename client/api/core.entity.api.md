@@ -53,26 +53,6 @@ export type TmBlobFileCheck = 'ok' | 'size' | 'type';
 export function tmCheckBlobFile(policy: TmBlobKindPolicy, file: File): TmBlobFileCheck;
 
 // @public
-export type TmColumnKind = 'expression' | 'file' | 'image' | 'navigation' | 'text' | 'value';
-
-// @public
-export interface TmColumnPlan {
-    readonly descriptor: TmValueDescriptor | null;
-    readonly filter: TmFilterKind | null;
-    readonly input: TmColumnInput<string>;
-    readonly key: string;
-    readonly kind: TmColumnKind;
-    readonly label: Signal<string>;
-    orderBy(direction: 'asc' | 'desc'): string | null;
-    readonly resolution: TmPathResolution | null;
-    readonly type: TmDataType | null;
-    value(row: TmPlanRow): unknown;
-}
-
-// @public
-export type TmColumnSource = 'declaration' | 'preference' | 'url';
-
-// @public
 export interface TmConfirmationAttempt {
     readonly confirmations: readonly string[];
     readonly skip: readonly TmId[];
@@ -99,15 +79,6 @@ export function tmDescribeFilter(column: TmColumnPlan, spec: TmFilterSpec, optio
 export interface TmDescribeFilterOptions {
     readonly injector?: Injector;
 }
-
-// @public
-export interface TmDroppedKey {
-    readonly key: string;
-    readonly reason: TmDroppedReason;
-}
-
-// @public
-export type TmDroppedReason = 'unknown' | 'unreachable';
 
 // @public
 export interface TmEntitiesResult<T = TmJsonObject> {
@@ -258,9 +229,6 @@ export class TmFilterDescriptionText {
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmFilterDescriptionText, "tm-filter-description", never, { "description": { "alias": "description"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmFilterDescriptionText, never>;
 }
-
-// @public
-export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' | 'number' | 'text';
 
 // @public
 export function tmFilterLeaf(column: TmColumnPlan, spec: TmFilterSpec, context: {
@@ -428,14 +396,6 @@ export interface TmQxToken {
 
 // @public
 export type TmQxTokenKind = 'error' | 'identifier' | 'keyword' | 'number' | 'parameter' | 'punctuator' | 'string';
-
-// @public
-export interface TmSelectPlan {
-    readonly columns: readonly TmColumnPlan[];
-    readonly dropped: readonly TmDroppedKey[];
-    rows(set: TmQueryRowSet): readonly TmPlanRow[];
-    readonly select: string;
-}
 
 // @public
 export function tmSelectPlan(root: TmEntityDescriptor, keys: readonly TmColumnInput<string>[], extra?: readonly string[], options?: TmSelectPlanOptions): TmSelectPlan;
