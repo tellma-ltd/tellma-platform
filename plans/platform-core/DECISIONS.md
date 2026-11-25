@@ -384,6 +384,52 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-316 (orchestrator, 2026-11-25): PC-126's search-route saving is candidate C, applied at integration
+
+- PC-126's read-only investigation (D-313) found the over-budget edge.
+  - The pager's page-size tm-select imports @tellma/core-ui/form-field in two places: tm-select-base injects TmFormField optionally, only to test for an enclosing field; tm-select provides TM_FORM_FIELD_CONTROL.
+  - Under D-281's mechanism, either import pulls the whole form-field chunk (3.93 KB) into the search route.
+- Ruling: candidate C.
+  - The token definitions move to @tellma/core-ui/private as ɵTM_FORM_FIELD_CONTROL, plus a new ɵTM_FORM_FIELD_HOST that tm-form-field provides.
+  - form-field re-exports the control token under its public name, so the public name, token identity and every other control are unchanged.
+  - tm-select-base injects the host seam instead of TmFormField.
+  - Measured on a merge of platform-core, pc/PC-F101 and PC-126: the search route is 107.43 of 110, initialJs 222.79, unchanged. The core-ui primary stays at 9.20 of 9.21, private goes from 1.55 to 1.62 of 1.69, and form-field from 3.55 to 3.59 of 3.74.
+  - Option A puts the tokens in the core-ui primary beside TM_CELL_EDITOR_HOST. That would put the primary at 9.23, over its 9.21 ceiling, so it would need a raise. C needs none, and private is the ɵ seam home.
+  - Spec 0029 only requires that controls provide the token, so C is spec-neutral.
+- PC-126's three implementer rounds are spent (section 4.4), so C goes in at its integration, from the scratchpad diff PC-126-D313-candC.diff.
+  - The integrate gates and CI cover it, together with the select, form-field and control suites.
+  - For the api golden, prefer the types-only contentChild<TmFormFieldControl> edit if it keeps core-ui.form-field.api.md unchanged; otherwise approve the one-line type print change.
+- Release order is unchanged (D-314): PC-F101, then PC-118, then PC-126, then PC-F88.
+
+### D-315 (orchestrator, 2026-11-25): PC-154 goes to R1 before its shell rows; the first frame
+
+- PC-154's impl (ce6f1973, on 8646bb53) delivers /support but not the D-305 shell rows, because PC-118 has not landed.
+  - Waiting would leave pc-2 idle for several hours: PC-F101, then PC-118, integrate first.
+  - So R1 reviews what is built now. The shell rows come in fix1, after PC-118 lands and PC-154 merges platform-core.
+  - That makes fix1 large, so R2 runs at xhigh on it (section 4.4).
+- First frame: Acme initialJs is 226.61 on the branch, against 217.29.
+  - The implementer measured +2.35 of that from the primary's own pieces.
+  - It puts +6.97 down to /support bringing tm-grid into Acme for the first time, with first-frame code hoisted (the date engine, the number codec, CDK, Angular debug-node) and the initial files going from 18 to 23.
+  - This has the same shape as the grid reach PC-118 removed by moving TM_GRID_KEYS to contracts (D-311).
+  - R1 finds the import edge, and may measure on a read-only merge with pc/PC-118 whether that move removes it.
+- The 230 line is not raised. Whichever of PC-118, PC-126 and PC-154 lands later re-measures (D-214), and over the line means blocked (D-247).
+- R1 checks the ceiling raises against D-031. The "." raise to 54.8 on a measured 54.74 is not an honest round-up to the next 0.5.
+
+### D-314 (orchestrator, 2026-11-25): PC-F97 landed; the harness switches; PC-F101 goes ahead of PC-118
+
+- PC-F97 landed at e4d30847. CI 45622441151 was green on a292f8a7, and the plans-only merge went on top.
+- The gates' delay harness now switches to the PC-F86 postTask scripts for every checkpoint (D-295). The leaky scratchpad harness is retired.
+- The flaky rows tracked by PC-F83, PC-F85, PC-F86, PC-F87, PC-F93 and PC-F97 are marked fixed, with their landing shas.
+- Release order: PC-F101 goes first, ahead of PC-118. This amends D-311, which predates PC-F101 being held.
+  - PC-F101 is a blocking fix, and D-229 puts blocking fixes before T1.
+  - PC-F101 held at 7d6b2f20. R1 was 0/0/2, with notes-only fixes.
+  - Then PC-118. Then PC-126, once PC-F101 has landed and its search-route saving is in hand (D-313). Then PC-F88. One at a time (D-087/D-190).
+  - PC-126's integration must merge its "./search" staticGraphExcludes array with PC-F101's ["./drafts"] into one key. JSON keeps only the last duplicate key, silently (PC-F101 R1-2).
+- D-229 fill for pc-f2:
+  - The only open blocking fix, PC-F101, is held.
+  - PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready.
+  - So the next non-blocking fix in ledger order, PC-F89, takes the slot. PC-F90 is gated on a release; PC-F91, PC-F92 and PC-F100 wait for PC-118; PC-F99 waits for PC-126.
+
 ### D-313 (orchestrator, 2026-11-25): PC-F101 leaves the search route 0.08 KB over; PC-126 owns the rest
 
 - PC-F101's impl (c9f8ab8e) moves TmDrafts into a new lazy entry point, @tellma/core/drafts.
