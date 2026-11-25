@@ -384,6 +384,19 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-312 (orchestrator, 2026-11-25): PC-F87 landed; PC-F101 fills pc-f; PC-F97 integrates under postTask
+
+- PC-F87 landed at 906d6306. CI 45610510060 was green on d661993c, and the plans-only merge went on top.
+- D-229 fill for pc-f: PC-F101 is the only open blocking fix (D-310), so it takes the slot.
+  - PC-129 (T1) still waits for PC-126 (D-289).
+  - Its search-route proof uses a local read-only merge with pc/PC-126, which is never pushed.
+- PC-F97 is released first, per D-311.
+- PC-F97's integrate gate runs under the postTask harness (the PC-F86 scripts), not the leaky one.
+  - The leaky harness's starvation is root-caused (D-294, D-302). PC-F97's own fix1 showed it fails prompt waits that pass 20/20 without the leak.
+  - So the leaky harness cannot judge this checkpoint, which is the one that unblocks the switch (D-295).
+  - Every other checkpoint keeps the current harness until PC-F97 lands.
+- Released after PC-F97's land push: PC-118, then PC-F88 (D-311).
+
 ### D-311 (orchestrator, 2026-11-25): PC-118 held at 224.00; the release order after PC-F87
 
 - PC-118's fix2 (1660f36a) drops the unfillable seam (D-305) and fixes R2-2 to R2-6.
