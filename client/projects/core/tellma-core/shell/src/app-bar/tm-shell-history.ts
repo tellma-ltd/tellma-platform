@@ -88,15 +88,20 @@ class TmInstalledHistory {
     }
 
     // --- Without it: the router's page ids ---
-    // A push raises the highest id to the new entry's; a history move keeps it.
+    // A push, the one navigation that raises the id, makes the new entry the
+    // highest and drops the entries beyond it. A replace keeps the entry's
+    // id (and so the entries beyond it, which Forward still reaches until
+    // the next push); a history move keeps the highest.
     let highest = pageId(this.#location.getState());
+    let last = highest;
     let popped = false;
     const subscription = inject(Router).events.subscribe((event) => {
       if (event instanceof NavigationStart) {
         popped = event.navigationTrigger === 'popstate';
       } else if (event instanceof NavigationEnd) {
         const current = pageId(this.#location.getState());
-        highest = popped ? Math.max(highest, current) : current;
+        highest = popped ? Math.max(highest, current) : current > last ? current : highest;
+        last = current;
         this.#canGoBack.set(current > 0);
         this.#canGoForward.set(current < highest);
       }

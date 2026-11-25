@@ -199,7 +199,7 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       [attr.aria-label]="accountLabel()"
       (pointerenter)="overlays.preload()"
       (focus)="overlays.preload()"
-      (click)="toggleSession(session, 'first')"
+      (click)="toggleSession(session)"
       (keydown)="sessionKeydown($event, session)"
     >
       @if (overlays.avatar(); as avatar) {
@@ -767,17 +767,17 @@ export class TmAppBar {
 
   /** Opens or closes a slot's panel. */
   protected toggleSlot(slot: TmShellSlot, button: HTMLElement): void {
-    this.overlays.run((panels) => panels.toggleSlot(slot, button));
+    this.overlays.press(button, (panels) => panels.toggleSlot(slot, button));
   }
 
   /** Opens or closes a marker's popover. */
   protected toggleMarker(marker: TmShellMarker, button: HTMLElement): void {
-    this.overlays.run((panels) => panels.toggleMarker(marker, button));
+    this.overlays.press(button, (panels) => panels.toggleMarker(marker, button));
   }
 
-  /** Opens or closes the session menu, with focus on its first or last row. */
-  protected toggleSession(button: HTMLElement, initialFocus: 'first' | 'last'): void {
-    this.overlays.run((panels) => panels.toggleSession(button, initialFocus));
+  /** Opens or closes the session menu, with focus on its first row. */
+  protected toggleSession(button: HTMLElement): void {
+    this.overlays.press(button, (panels) => panels.toggleSession(button, 'first'));
   }
 
   /**
@@ -794,7 +794,8 @@ export class TmAppBar {
     // The arrow would otherwise scroll the page behind the menu.
     event.preventDefault();
     if (!this.overlays.isOpenFor(button)) {
-      this.toggleSession(button, event.key === 'ArrowDown' ? 'first' : 'last');
+      const initialFocus = event.key === 'ArrowDown' ? 'first' : 'last';
+      this.overlays.press(button, (panels) => panels.toggleSession(button, initialFocus), true);
     }
   }
 

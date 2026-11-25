@@ -57,7 +57,7 @@ export class TmAppBar {
     protected slotLabel(item: TmShellSlotView): string;
     protected readonly slots: readonly TmShellSlotView[];
     protected toggleMarker(marker: TmShellMarker, button: HTMLElement): void;
-    protected toggleSession(button: HTMLElement, initialFocus: 'first' | 'last'): void;
+    protected toggleSession(button: HTMLElement): void;
     protected toggleSlot(slot: TmShellSlot, button: HTMLElement): void;
     protected readonly tone: _angular_core.Signal<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | null>;
     protected type(event: Event): void;

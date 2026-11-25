@@ -6,7 +6,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { TmLocalization, type TmShortcut } from '@tellma/core';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
-import { TM_GRID_KEYS } from '@tellma/core-ui/grid';
+import { TM_GRID_KEYS } from '@tellma/core-ui/contracts';
 import { type TmKeys, TmKbd } from '@tellma/core-ui/kbd';
 import { TmSearchField } from '@tellma/core-ui/search-field';
 

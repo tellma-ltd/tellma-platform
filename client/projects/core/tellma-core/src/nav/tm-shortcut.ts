@@ -250,11 +250,11 @@ function isPageKey(id: string, parts: TmKeyParts): boolean {
 
 /**
  * The modified combinations a focused grid handles, as `TM_GRID_KEYS` in
- * `@tellma/core-ui/grid` lists them, less `Mod+Enter`.
+ * `@tellma/core-ui/contracts` lists them, less `Mod+Enter`.
  *
- * The copy keeps the grid's whole binding table off the app's first frame:
- * importing `TM_GRID_KEYS` would bring the table with its intents. A unit
- * test holds the copy equal to the grid's list, so the two cannot drift.
+ * The copy keeps the grid's whole key table off the app's first frame,
+ * where only these combinations are needed. A unit test holds the copy
+ * equal to the grid's list, so the two cannot drift.
  *
  * `Mod+Enter` stays a page key: the grid takes it only while it opens rows,
  * and then it prevents the event, which the registry never handles.

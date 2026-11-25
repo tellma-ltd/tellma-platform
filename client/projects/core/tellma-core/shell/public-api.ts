@@ -30,6 +30,3 @@ export type { TmSignedOutPage, TmTenantlessShell, TmTenantPicker } from './src/t
 // The components the primary entry point loads by name, the shells above
 // among them; not for app code.
 export { TM_SHELL as ɵTM_SHELL } from './src/tm-shell-components';
-// The seam the support entry point fills: the session menu's Report a
-// problem row and the About dialog's Diagnostics tab; not for app code.
-export { TM_SHELL_SUPPORT as ɵTM_SHELL_SUPPORT, type TmShellSupport as ɵTmShellSupport } from './src/tm-shell-support';

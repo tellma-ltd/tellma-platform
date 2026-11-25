@@ -24,13 +24,11 @@ import {
   type TmAppRig,
   type TmAppRigOptions,
 } from '../../../src/routes/tm-app.testing.util';
-import { TM_SHELL_SUPPORT, type TmShellSupport } from '../tm-shell-support';
 
 // The session menu through its harness, opened from the tenant shell's
 // session button: its header and avatar tone, the tenant card, the rows and
 // the conditions that show them (two languages, two calendars, the slots
-// below md, Report a problem with the support seam), and what each row
-// does.
+// below md and none from md up), and what each row does.
 
 /** Every width class in ascending order. */
 const ORDER: readonly TmBreakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
@@ -113,25 +111,6 @@ describe('the session menu', () => {
     expect(TestBed.inject(TmTheme).setting()).toBe('light');
   });
 
-  it('adds Report a problem after About while the support seam is provided, which opens its form, and gives About its Diagnostics tab', async () => {
-    let reports = 0;
-    const support: TmShellSupport = {
-      reportLabel: signal('Report a problem'),
-      reportProblem: () => reports++,
-      diagnosticsLabel: signal('Diagnostics'),
-      diagnostics: () => Promise.reject(new Error('unused')),
-    };
-    const menu = await open({ providers: [{ provide: TM_SHELL_SUPPORT, useValue: support }] });
-    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Sign out']);
-    await menu.clickItem('Report a problem');
-    await tmSettleUntil(() => document.querySelector('.tm-menu__panel.tm-session-menu') === null, 'the menu closes');
-    expect(reports).toBe(1);
-    // The overlays' host hands About the same seam.
-    const shell = await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmTenantShellHarness);
-    await (await shell.openSessionMenu()).clickItem('About');
-    await tmSettleUntil(() => document.querySelector('tm-modal-shell tm-about-dialog tm-tab-group') !== null, "About's tabs render");
-  });
-
   it("adds the markers to the tenant card's second line", async () => {
     const menu = await open({ docs: { ...TM_T17_DOCS, tenant: { ...TM_T17_DOCS.tenant, category: 'Sandbox', liveTenantId: 2, state: 'Frozen' } } });
     expect((await menu.getTenantCard()).description).toBe('Tenant 17 · Sandbox · Under maintenance');
@@ -168,6 +147,15 @@ describe('the session menu', () => {
     const drawer = await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmModalHarness);
     expect([await drawer.getTitle(), await drawer.getPlacement()]).toEqual(['Approvals', 'end']);
   });
+
+  // From md up the app bar shows the slots, so the menu repeats none of them.
+  for (const widest of ['md', 'lg'] as const) {
+    it(`lists no slot rows at ${widest}, where the app bar shows the slots`, async () => {
+      const feature = tmFeature({ ...tmRouteTestFeature(), appBar: [tmTestShellSlot('acme-approvals', { labelKey: 'Acme_Approvals', count: signal(4) })] });
+      const menu = await open({ features: [feature], strings: { en: { Acme_Approvals: 'Approvals' } } }, widest);
+      expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Sign out']);
+    });
+  }
 
   it('switches tenants from the tenant card', async () => {
     const menu = await open();

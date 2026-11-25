@@ -6,7 +6,7 @@
 import { TM_UI_STRINGS_EN } from '@tellma/core-ui';
 import { tmKeysMatch } from '@tellma/core-ui/kbd';
 
-import { TM_GRID_KEYS } from '../tm-grid-keys';
+import { TM_GRID_KEYS } from '@tellma/core-ui/contracts';
 import {
   TM_GRID_KEY_BINDINGS,
   tmResolveGridKey,

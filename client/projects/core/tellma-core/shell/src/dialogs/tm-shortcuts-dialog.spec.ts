@@ -7,7 +7,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { TmLocalization, type TmShortcut } from '@tellma/core';
 import { TmSearchFieldHarness } from '@tellma/core-ui-testing';
-import { TM_GRID_KEYS } from '@tellma/core-ui/grid';
+import { TM_GRID_KEYS } from '@tellma/core-ui/contracts';
 
 import { tmAppRig, tmSettle } from '../../../src/routes/tm-app.testing.util';
 import { tmRegisterShellOverlaysStrings } from '../session/tm-shell-overlays-strings';

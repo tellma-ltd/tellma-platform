@@ -15,8 +15,10 @@ import type { TmShellMarker } from './tm-shell-identity';
 // first idle after the shell renders, and on the first hover or focus of any
 // of its buttons, so it is in memory by the time a click asks for it and the
 // overlay opens in the click's frame; a click that beats it opens the overlay
-// as soon as it lands. The buttons keep their ARIA live from the overlays'
-// own state once the chunk is in.
+// as soon as it lands. Presses that beat it collapse to their net effect
+// rather than queue as toggles: two presses of one button cancel out, and a
+// press of another button replaces what waits. The buttons keep their ARIA
+// live from the overlays' own state once the chunk is in.
 
 /** A dialog the shell opens. */
 export type TmShellDialog = 'about' | 'shortcuts';
@@ -101,6 +103,7 @@ export class TmShellOverlays {
   readonly #avatar = signal<Type<unknown> | null>(null);
   #host: ViewContainerRef | null = null;
   #loading: Promise<TmShellPanels | null> | null = null;
+  #pending: { readonly button: HTMLElement; readonly action: (panels: TmShellPanels) => void } | null = null;
   #ended = false;
 
   /** The session button's loaded avatar component, or `null` until the chunk is in. */
@@ -165,8 +168,37 @@ export class TmShellOverlays {
     void this.#panelsReady().then((loaded) => loaded && action(loaded));
   }
 
-  /** Closes every open overlay; nothing is open before the chunk is in. */
+  /**
+   * Runs a button's press on the overlays: at once when their chunk is in,
+   * else once it lands, as the net effect of every press made meanwhile.
+   * Before the chunk nothing shows, so a second toggle of the same button
+   * cancels the first; an opening press, or a press of another button,
+   * replaces what waits.
+   *
+   * @param button - The pressed button.
+   * @param action - What the press does with the overlays.
+   * @param opens - Whether the press only opens (the session button's arrows), so a pending press of that button does not cancel it.
+   */
+  press(button: HTMLElement, action: (panels: TmShellPanels) => void, opens = false): void {
+    const panels = this.#panels();
+    if (panels !== null) {
+      action(panels);
+      return;
+    }
+    this.#pending = !opens && this.#pending?.button === button ? null : { button, action };
+    // Every press waits on the same load; the first to resume runs what is left and clears it.
+    void this.#panelsReady().then((loaded) => {
+      const pending = this.#pending;
+      this.#pending = null;
+      if (loaded !== null && pending !== null) {
+        pending.action(loaded);
+      }
+    });
+  }
+
+  /** Closes every open overlay, and drops a press that waits for the chunk. */
   closeAll(): void {
+    this.#pending = null;
     this.#panels()?.closeAll();
   }
 

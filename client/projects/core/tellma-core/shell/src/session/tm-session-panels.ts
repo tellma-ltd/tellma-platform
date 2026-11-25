@@ -28,7 +28,6 @@ import { type TmShellMarker, TmShellIdentity } from '../app-bar/tm-shell-identit
 import type { TmShellDialog, TmShellPanels } from '../app-bar/tm-shell-overlays';
 import { TmShellSlots } from '../app-bar/tm-shell-slots';
 import { tmTenantNames } from '../tenantless/tm-tenant-names';
-import { TM_SHELL_SUPPORT } from '../tm-shell-support';
 import { TmSessionMenu } from './tm-session-menu';
 import { TmShellLazyContent, type TmShellLazyContentData } from './tm-shell-lazy-content';
 import { tmRegisterShellOverlaysStrings } from './tm-shell-overlays-strings';
@@ -151,7 +150,6 @@ export class TmSessionPanels implements TmShellPanels {
   readonly #modal = inject(TmModal);
   readonly #shortcuts = inject(TmShortcuts);
   readonly #dialogs = inject(TM_SHELL_DIALOGS_LOAD);
-  readonly #support = inject(TM_SHELL_SUPPORT, { optional: true });
   readonly #slots = inject(TmShellSlots).items;
   readonly #wide = inject(TmBreakpoints).atLeast('lg');
   readonly #identity = inject(TmShellIdentity);
@@ -292,9 +290,8 @@ export class TmSessionPanels implements TmShellPanels {
 
   /** {@inheritDoc TmShellPanels.openDialog} */
   openDialog(dialog: TmShellDialog): void {
-    // The page's shortcuts are those registered as the dialog opens; About
-    // takes the support seam, when an app provides it.
-    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : { support: this.#support };
+    // The page's shortcuts are those registered as the dialog opens.
+    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : {};
     const title =
       dialog === 'about' ? this.#l10n.ɵtext('tm.shellOverlays.dialogs.about')() : this.#l10n.ɵtext('tm.shellOverlays.dialogs.shortcuts')();
     const data: TmShellLazyContentData = { load: this.#dialogs[dialog], inputs, height: DIALOG_HEIGHTS[dialog] };

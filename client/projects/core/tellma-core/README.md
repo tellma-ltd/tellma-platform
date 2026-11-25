@@ -636,10 +636,7 @@ buttons, and that chunk's avatar, which can show the user's photo, replaces the 
 initials. The About dialog (the wordmark, the distribution's description, the versions, Reload while
 the server is newer, the copyright and the legal links) and the Shortcuts dialog (`Mod+/`: the
 general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
-in their final geometry. `/support` fills the shell's support seam (`ɵTM_SHELL_SUPPORT`): with it,
-the session menu adds Report a problem after About, and About becomes the first of two tabs beside
-Diagnostics, whose content the seam loads on the tab's first selection; without it neither shows. A
-tenant switch creates a new shell and clears the launcher's text.
+in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
 
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the

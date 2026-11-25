@@ -34,7 +34,8 @@ import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 // is gone or unavailable, a replaced main), the app bar's names, avatar
 // tone, markers with their popovers, slots, reserved boxes, session button
 // keys and installed-mode history (through the Navigation API or the
-// router), Mod+/, the overlays' chunk failing to load, and a tenant switch,
+// router, a replace keeping Forward), Mod+/, presses made before the
+// overlays' chunk lands, the chunk failing to load, and a tenant switch,
 // which closes the shell's overlays and clears the launcher's text. The
 // overlays and the history buttons live in lazily loaded chunks, so each
 // wait is on the state it produces.
@@ -348,6 +349,37 @@ describe('the tenant shell', () => {
       expect(document.activeElement?.textContent).toContain('Sign out');
     });
 
+    it("lets two presses made before the overlays' chunk lands cancel out", async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await start({ providers: [{ provide: TM_SHELL_PANELS_LOAD, useValue: () => gate.then(() => import('./session/tm-session-panels')) }] });
+      await open();
+      const button = document.querySelector<HTMLButtonElement>('.tm-app-bar__session')!;
+      button.click();
+      button.click();
+      release();
+      await tmSettleUntil(() => button.querySelector('tm-session-avatar') !== null, 'the chunk lands');
+      await tmSettle();
+      expect(document.querySelector('.tm-menu__panel.tm-session-menu')).toBeNull();
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it("opens the menu once the overlays' chunk lands after three presses, two of which cancel out", async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await start({ providers: [{ provide: TM_SHELL_PANELS_LOAD, useValue: () => gate.then(() => import('./session/tm-session-panels')) }] });
+      await open();
+      const button = document.querySelector<HTMLButtonElement>('.tm-app-bar__session')!;
+      button.click();
+      button.click();
+      button.click();
+      release();
+      await tmSettleUntil(() => document.querySelector('.tm-menu__panel.tm-session-menu') !== null, 'the menu opens');
+      await tmSettle();
+      expect(document.querySelector('.tm-menu__panel.tm-session-menu')).not.toBeNull();
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+    });
+
     it("opens the menu on the gesture after the overlays' chunk failed to load", async () => {
       let failing = true;
       const missing = new TypeError('Failed to fetch dynamically imported module');
@@ -404,6 +436,26 @@ describe('the tenant shell', () => {
       expect(await shell.getHistoryState()).toEqual({ back: true, forward: false });
       const sources = rig.telemetry.recent().filter((item) => item.name === 'tm.shell.navigated').map((item) => item.props);
       expect(sources).toEqual([{ source: 'back' }, { source: 'forward' }]);
+    });
+
+    it('keeps Forward after a replace until the next push, through the router without the Navigation API', async () => {
+      await start({ providers: [{ provide: TM_HISTORY_HOST, useValue: { installed: installed(), standalone: false, navigation: null } }] });
+      const shell = await open();
+      rig.router.setUpLocationChangeListener();
+      await router.navigateByUrl('/17/centers');
+      await tmSettle();
+      await shell.back();
+      await tmSettleUntil(() => rig.router.url === '/17', 'Back lands');
+      expect((await shell.getHistoryState()).forward).toBe(true);
+      // A replace (a query change, say) keeps the entry beyond it.
+      await rig.router.navigate(['/17'], { queryParams: { q: 'a' }, replaceUrl: true });
+      await tmSettle();
+      expect(rig.router.url).toBe('/17?q=a');
+      expect((await shell.getHistoryState()).forward).toBe(true);
+      // The next push drops it.
+      await router.navigateByUrl('/17/centers');
+      await tmSettle();
+      expect(await shell.getHistoryState()).toEqual({ back: true, forward: false });
     });
 
     it("follows the Navigation API's answers and moves through it", async () => {
