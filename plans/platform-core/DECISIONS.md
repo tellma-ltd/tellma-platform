@@ -384,6 +384,22 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-290 (orchestrator, 2026-11-24): PC-126 review 1 rulings
+
+- R1 found 1 blocking, 1 major and 8 minor across d27c719a and the D-289 split 9afed7d5, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): the search route's real closure is 123.26 KB in 7 files, not 97.8, against 110.
+  - The 97.8 figure left out the menu, image/avatar and badge/form-field chunks, which Acme's index.html only prefetches.
+  - Ruling: a route's measure counts every chunk the route loads beyond the initial (modulepreload) set; prefetch is not the initial set. fix1 defers TmMenu in the search host and TmImage/TmAvatar in tm-value, which the reviewer puts at about 107.6.
+  - At integration, the size tool's route figure (PC-127's D-285 measure) must agree with the hand measure, prefetched chunks included.
+- R1-2 (major): Acme initialJs rose about 8.9 KB to 224.72, close to the 230 warn line.
+  - About 3.2 KB is avoidable: the core-ui parse halves of the date engine and number codec, and the date helpers that go with them. fix1 moves them out of the first frame, with CDK scrolling, bidi and tm-display-name if only search code reaches them.
+  - Angular's _debug_node, resource and rxjs-interop pieces are accepted. Lucide stays with PC-F91.
+  - fix1 measures a baseline on fd97c5f4 and attributes the whole rise.
+- The Acme launch e2e "a cold launch of a user with two live tenants lands on the picker" hangs on the launch skeleton under 6 workers. Its cause is not established. fix1 runs it on a clean fd97c5f4 build: a failure there opens a fix item; otherwise PC-126 root-causes it.
+- R1-3 to R1-9 are fixed in fix1. The launch.spec fragment change (q to a filter payload, per spec 0024 §9.5) is recorded as a deviation.
+- Carries: R1-6's snapshot-select comparison (from D-275) goes to PC-132, which owns page state; §5.2's 500 ms no-key rule goes to PC-128, the search field.
+- For Ahmad (R1-10): specs 0029 §12.1 and 0031 still name tmGridColumnFor's `editable` option, which the D-289 split moved to tmEditableGridColumnFor in /entity-editing. Spec 0030 §1's parts table places TmSearchContext in /search.
+
 ### D-289 (orchestrator, 2026-11-24): split /entity along its read/edit line
 
 - PC-126's search route measured a real closure of 150.8 KB against spec 0024 §12's 110 KB. The chunks were the grid, host and entity view (79), the entity edit stack (18), the forms, pickers, select and date-picker (46), and the modal (6.5).
