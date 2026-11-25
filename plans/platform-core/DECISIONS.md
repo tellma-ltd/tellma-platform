@@ -384,6 +384,23 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-324 (orchestrator, 2026-11-25): PC-118's CI fixes; the session button gets a fixed box
+
+- PC-118's CI fixes (8daaf1b0) root-caused all three CI failures.
+  - The additions registry had two unclassified folders. counter becomes an additions entry point with its own story and axe floor. initials joins the older folders, as a helper with no UI, after blob-fetcher.
+  - A layout shift of about 0.00017: the session overlays host was display: contents, so its children joined the app bar's flex flow when the chunk landed. It is now taken out of the flow, with an app-bar box test that fails on the old host.
+  - The flaky warm-launch order: the after-first-render work ran on the app's first frame, before the routed tenant shell existed. It now runs after the first navigation that ends for good renders, through TmPageVisits.
+- The remaining cold-entry shift (0.000829 ltr, 0.000312 rtl) comes from the session button, which is sized by its content. Cold, it shows the cookie name and a 96 px skeleton (spec 0027 section 7.4); warm, it shows the synced names.
+- Ruling: a fixed box per breakpoint, with an ellipsis, and the full names kept in the accessible name.
+  - Spec 0027's stable-layout bullet asks for "Fixed boxes".
+  - Spec 0024 asks for final-geometry skeletons and zero shift from skeleton to chrome.
+  - So a fixed button box is what both specs mean. Section 7.4's cold content is unchanged.
+  - Narrowing layout-shift.spec to main is rejected, because it loosens the test (D-011).
+- For Ahmad (non-blocking): confirm the session button's fixed width, which PC-118 will report. Spec 0027 section 7.4 could say the button's box is fixed.
+- The "." ceiling 53.68 to 53.69 (+14 B for the render-ordered start) is accepted under D-031.
+- PC-F105 is opened: the wordmark's box is not reserved, so an uncached first paint shifts.
+- Local-only intermittent failures are logged as watch rows. CI passes all of them.
+
 ### D-323 (orchestrator, 2026-11-25): PC-118's integration CI is red on its own changes
 
 - CI 45653637336 on 1f177e46 failed. All three failures point at PC-118 itself; PC-F101's green run just before had none of them.
