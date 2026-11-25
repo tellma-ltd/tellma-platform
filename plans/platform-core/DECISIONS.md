@@ -384,6 +384,33 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-297 (orchestrator, 2026-11-25): PC-F85 landed; PC-150 released; PC-F97 fills pc-f2 ahead of PC-F88
+
+- PC-F85 landed at 1e7c28cc: CI 45581618968 was green on 6c0c2e06, followed by a plans-only merge. PC-150 is released to integrate. PC-F86, held, follows it (D-087/D-190).
+- D-229 fill for pc-f2: no blocking fix is open, PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready, so the slot takes a non-blocking fix.
+- PC-F97 goes ahead of PC-F88 to PC-F96 for two reasons:
+  - It gates the harness switch (D-295).
+  - The zone-check pair is intermittently red under the current gate harness, so it can fail any client integration.
+- The sweep leaves out the spec files that other items own, or that pc/PC-118 and pc/PC-126 change, so that held branches meet no conflicts.
+- PC-F91 and PC-F92 (lucide and kbd first-frame weight) wait for PC-118 to land, because PC-118's fix1 moves the session-menu glyphs to per-icon imports in the same area.
+
+### D-296 (orchestrator, 2026-11-25): PC-126 fix1 goes to R2; the launch e2e failure is pre-existing
+
+- Fix1 (e585508d) reports R1-1 to R1-9 fixed, with 21 deviations. The search route measures 109.55 of 110 KB with prefetches counted (D-290). R2 runs at xhigh on 9afed7d5..e585508d, since R1 had a blocking finding (§4.4).
+- R2 is asked to check:
+  - the route measure by hand;
+  - the deferred pieces' behaviour;
+  - each ceiling change against D-031, counting raises in history;
+  - the first-frame attribution (initialJs 222.40 against 215.81), which PC-118 shares under the 230 line (D-291);
+  - the new entry points and staticGraphExcludes (D-281);
+  - the one core load timeout (D-011);
+  - whether the larger shell prefetch (96 files, 2,272 KB, against 62 files, 1,724 KB) is a regression.
+- The launch e2e "two live tenants lands on the picker" also fails on fd97c5f4, 1 of 3 runs, so it is pre-existing. Opened as PC-F98. PC-126's larger prefetch makes it fail 3 of 3, which R2 judges.
+- I removed the scratch base checkout PC-126 left, pc-126-base (26,107 files, already deregistered by git, a long-path removal failure), as with pc-f82-base. Its LocalDB databases with the suffix pc126base remain; they hold only test data.
+- For Ahmad:
+  - Two new public entry points: @tellma/core-ui/l10n-input, which takes the parse names out of ./l10n, and @tellma/core-ui/multi-select, which takes TmMultiSelect out of ./select. TM_CHECKBOX_CELL_DISPLAY also moves to ./contracts, re-exported from ./checkbox.
+  - Spec 0005 §2.2 and spec 0010 §B.4 still place these names in ./l10n and ./select, and need amending.
+
 ### D-295 (orchestrator, 2026-11-25): PC-F86 review 1 confirms the harness cause
 
 - R1 found 0 blocking, 0 major and 3 minor, so there is no R2 (§4.4). All five claims hold:
