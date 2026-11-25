@@ -384,6 +384,26 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-291 (orchestrator, 2026-11-24): PC-118 review 1 rulings, and the first-frame headroom
+
+- R1 found 1 blocking, 1 major and 3 minor on fc8d58c6, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): tm-route-host.spec's failed-cold-entry focus test fails on every run. The new tenant shell drops the outlet on a non-API sync failure.
+  - The test keeps its host case, using a sync promise that never settles.
+  - A new test covers the shell's failed line.
+- R1-2 (major): two barrel-hoisting first-frame leaks (D-281's mechanism), together about 1.5 KB of Acme initialJs.
+  - TmBadge comes in through TmCounter's import from @tellma/core-ui/badge. Fix: a new @tellma/core-ui/counter entry point, which ./badge re-exports, and badge added to ./shell's staticGraphExcludes.
+  - Six session-menu glyphs come in through the lucide index. Fix: per-icon imports inside the overlays chunk.
+- TmInstalledHistory (about 0.9 KB) moves to a lazy chunk, since spec 0027 does not need it in the first frame.
+- The ./shell ceiling's third raise (1.28, then 1.35, 2.35, 9.35) falls under D-031's re-split clause.
+  - R1's module itemization, together with these moves, is that re-split: every remaining eager piece is first-frame per spec 0027.
+  - The ceiling is re-based on the measure after the moves. Spec 0027 §1 plans 16 KB for the shell.
+- First-frame headroom: Acme initialJs is about 229.7 of 230 on PC-118's branch. PC-126 adds its own first-frame bytes on another base.
+  - Under D-214, whichever lands second re-measures.
+  - If that measure crosses 230, that item finds honest savings first. If none are left, I flag the 230 line to Ahmad, with the itemization, rather than raising it.
+- R1-3 to R1-5 are fixed in fix1: the accessible name's dangling comma, a seam for Report a problem and the Diagnostics tab (carried to PC-154), and the missing tests.
+- Not done now: a per-scope lazy Arabic seam could take about 1.08 KB of overlay and dialog Arabic off Arabic users' boot path. It needs a locale-pack mechanism that does not exist yet, because tmArabic() loads every part at once. The ./shell-strings first raise from 1 to 2 is honest meanwhile.
+- For Ahmad: three public API additions, the @tellma/core-ui/initials entry point, TmMenu.panelClass and TmMenuItem.detailLabel, plus the @tellma/core-ui/counter entry point coming in fix1.
+
 ### D-290 (orchestrator, 2026-11-24): PC-126 review 1 rulings
 
 - R1 found 1 blocking, 1 major and 8 minor across d27c719a and the D-289 split 9afed7d5, so fix1 is followed by R2 at xhigh (§4.4).
