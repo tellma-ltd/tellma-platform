@@ -33,18 +33,22 @@ export class TmErrorPresenter {
 // @public
 export class TmErrorState {
     protected act(action: TmErrorAction): Promise<void>;
-    protected readonly actions: _angular_core.Signal<TmErrorAction[]>;
+    protected readonly actions: Signal<TmErrorAction[]>;
     protected readonly failures: _angular_core.WritableSignal<number>;
     protected label(action: TmErrorAction): string;
-    protected readonly message: _angular_core.Signal<string>;
+    readonly link: _angular_core.InputSignal<{
+        readonly label: Signal<string>;
+        readonly url: string;
+    } | null>;
+    protected readonly message: Signal<string>;
     protected readonly pending: _angular_core.WritableSignal<boolean>;
     protected reloadAnyway(): void;
-    protected readonly reloadAnywayLabel: _angular_core.Signal<string>;
+    protected readonly reloadAnywayLabel: Signal<string>;
     readonly retry: _angular_core.OutputEmitterRef<void>;
     readonly size: _angular_core.InputSignal<"page" | "panel">;
-    protected readonly updating: _angular_core.Signal<string>;
+    protected readonly updating: Signal<string>;
     readonly view: _angular_core.InputSignal<TmErrorView>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmErrorState, "tm-error-state", never, { "view": { "alias": "view"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "retry": "retry"; }, never, never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmErrorState, "tm-error-state", never, { "view": { "alias": "view"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "link": { "alias": "link"; "required": false; "isSignal": true; }; }, { "retry": "retry"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmErrorState, never>;
 }
 

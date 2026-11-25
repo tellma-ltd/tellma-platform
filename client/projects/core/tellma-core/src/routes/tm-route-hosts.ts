@@ -9,7 +9,8 @@ import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 
 // The components the route table loads from other entry points: the shells,
 // and the hosts of the page families (spec 0024 §9.2, §4.4). Until each
-// family's entry point lands, its host is the shell's placeholder page.
+// family's entry point lands, its host is the shell's placeholder page; the
+// details family's is @tellma/core/details (spec 0031 §1).
 
 /**
  * The components the primary entry point loads from `@tellma/core/shell`,
@@ -80,6 +81,22 @@ export function tmShellRoute(name: keyof TmShellComponents): () => Type<unknown>
 /** The page every family without an entry point of its own renders for now. */
 const placeholder = tmShellComponent('TmPagePlaceholder');
 
+/** The details entry point's module, as far as the primary reads it. */
+interface TmDetailsModule {
+  /** The routed details host. */
+  readonly TmDetailsHost: Type<unknown>;
+}
+
+/**
+ * Loads the details host from `@tellma/core/details`, whose specifier is
+ * cast for the reason {@link tmShellComponent} gives: the details entry
+ * point imports this one.
+ *
+ * @returns The host's component.
+ */
+const details: TmLazyComponent = () =>
+  (import('@tellma/core/details' as string) as Promise<TmDetailsModule>).then((module) => module.TmDetailsHost);
+
 /** The host of each route family whose component the route data does not name. */
 export const TM_ROUTE_HOSTS = {
   /** The tenant home's host, which picks the `home` hatch or the default home. */
@@ -87,7 +104,7 @@ export const TM_ROUTE_HOSTS = {
   /** The search host, which hosts an entity's `search` hatch. */
   search: placeholder,
   /** The details host, which hosts an entity's `details` page, for create and view. */
-  details: placeholder,
+  details,
   /** The coded report host. */
   report: placeholder,
   /** The settings page. */

@@ -63,6 +63,40 @@ function behavesAsLocks(configure: () => void): void {
     await expect(third).resolves.toBe('c');
   });
 
+  it('runs a try at once when the name is free, and nothing while another request holds or awaits it', async () => {
+    configure();
+    const locks = TestBed.inject(TmLocks);
+    const log: string[] = [];
+    const name = `tm:spec:${crypto.randomUUID()}:zone-prompt`;
+    const a = step(log, 'a');
+    const first = locks.run(name, a.work);
+    const queued = locks.run(name, () => Promise.resolve(log.push('queued')));
+    await vi.waitFor(() => expect(log).toEqual(['a']));
+    await expect(locks.tryRun(name, () => Promise.resolve(void log.push('tried')))).resolves.toBe(false);
+
+    a.finish();
+    await first;
+    await queued;
+    await pause();
+    const b = step(log, 'b');
+    const tried = locks.tryRun(name, () => b.work().then(() => undefined));
+    await vi.waitFor(() => expect(log).toEqual(['a', 'queued', 'b']));
+    // While the try holds the name, a second try runs nothing.
+    await expect(locks.tryRun(name, () => Promise.resolve(void log.push('again')))).resolves.toBe(false);
+    b.finish();
+    await expect(tried).resolves.toBe(true);
+    expect(log).toEqual(['a', 'queued', 'b']);
+  });
+
+  it("rejects a try with its work's failure, and frees the name", async () => {
+    configure();
+    const locks = TestBed.inject(TmLocks);
+    const name = `tm:spec:${crypto.randomUUID()}:zone-prompt`;
+    await expect(locks.tryRun(name, () => Promise.reject(new Error('The work failed.')))).rejects.toThrow('The work failed.');
+    await pause();
+    await expect(locks.tryRun(name, () => Promise.resolve())).resolves.toBe(true);
+  });
+
   it('runs requests of different names side by side', async () => {
     configure();
     const locks = TestBed.inject(TmLocks);
@@ -96,6 +130,22 @@ describe('TmLocks', () => {
       expect(log).toEqual([]);
       release();
       await ours;
+      expect(log).toEqual(['ours']);
+    });
+
+    it("runs no try while another holder has the browser's lock", async () => {
+      const locks = TestBed.inject(TmLocks);
+      const name = `tm:spec:${crypto.randomUUID()}:zone-prompt`;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      // Another tab's holder, as the browser sees it.
+      void navigator.locks.request(name, () => held);
+      await pause();
+      const log: string[] = [];
+      await expect(locks.tryRun(name, () => Promise.resolve(void log.push('ours')))).resolves.toBe(false);
+      release();
+      await pause();
+      await expect(locks.tryRun(name, () => Promise.resolve(void log.push('ours')))).resolves.toBe(true);
       expect(log).toEqual(['ours']);
     });
   });

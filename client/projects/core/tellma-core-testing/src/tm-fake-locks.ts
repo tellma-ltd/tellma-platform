@@ -26,6 +26,8 @@ import { ɵTmLocks } from '@tellma/core';
 export class TmFakeLocks extends ɵTmLocks {
   /** The last request of each name. */
   readonly #tails = new Map<string, Promise<unknown>>();
+  /** How many requests of each name are unsettled, while any is. */
+  readonly #pending = new Map<string, number>();
   readonly #held = signal<readonly string[]>([]);
 
   /** The names of the locks held now, in the order they were granted. */
@@ -39,12 +41,20 @@ export class TmFakeLocks extends ɵTmLocks {
    * @returns What the work settles with.
    */
   override run<T>(name: string, work: () => Promise<T>): Promise<T> {
+    // The request counts as unsettled from now until its work settles, however it settles.
+    this.#pending.set(name, (this.#pending.get(name) ?? 0) + 1);
     const granted = async (): Promise<T> => {
       this.#held.update((held) => [...held, name]);
       try {
         return await work();
       } finally {
         this.#held.update((held) => held.filter((other) => other !== name));
+        const left = (this.#pending.get(name) ?? 1) - 1;
+        if (left === 0) {
+          this.#pending.delete(name);
+        } else {
+          this.#pending.set(name, left);
+        }
       }
     };
     const done = (this.#tails.get(name) ?? Promise.resolve()).then(granted, granted);
@@ -53,5 +63,22 @@ export class TmFakeLocks extends ɵTmLocks {
       done.catch(() => undefined),
     );
     return done;
+  }
+
+  /**
+   * Runs work holding the named lock if no request of it is unsettled, as
+   * the browser grants an `ifAvailable` request; otherwise runs nothing.
+   *
+   * @param name - The lock's name.
+   * @param work - The work.
+   * @returns Whether the work ran: `true` once it settled, `false` at once
+   *   when the lock was taken; it rejects with what the work rejects with.
+   */
+  override async tryRun(name: string, work: () => Promise<void>): Promise<boolean> {
+    if (this.#pending.has(name)) {
+      return false;
+    }
+    await this.run(name, work);
+    return true;
   }
 }

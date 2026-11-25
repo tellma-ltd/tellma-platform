@@ -179,8 +179,10 @@ export class TmLaunchTimer {
     }
   `,
   styles: `
+    /* The page fills the shell's main, so a page whose body scrolls on its own can size it. */
     :host {
       display: block;
+      block-size: 100%;
     }
   `,
   host: { '[attr.aria-busy]': "state().view === 'loading' ? 'true' : null" },

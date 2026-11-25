@@ -384,6 +384,71 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-293 (orchestrator, 2026-11-25): PC-F83 landed; its connect-variant filter waits on Ahmad
+
+- PC-F83 landed as a fast-forward to 664d98c4 after a green CI run, 45572535841.
+- R1-2 is fixed in part. A filter by connect variant on tellma.access.connect.results needs a variant tag, and spec 0014 fixes that instrument's tags to result alone. That is a spec change, so it stays out until Ahmad rules on it.
+- For Ahmad: should tellma.access.connect.results gain a variant tag (spec 0014)?
+- D-229 fill for pc-f: no blocking fix is open, PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready, so the slot takes the next non-blocking fix, PC-F87. PC-F85 is released to integrate.
+
+### D-292 (orchestrator, 2026-11-24): PC-F83's red CI comes from an unrelated race, so PC-F83 re-integrates
+
+- CI 45567894634 on a10330ee failed in build-test (windows-latest) on one test, HubConnectTests.A_member_connects_and_is_tracked_counted_and_logged. Every other job and test passed.
+- The root cause is in the test (D-011). TellmaHub.OnDisconnectedAsync removes the connection from the tracker before it records the -1, so a test that waits on Count == 0 and then asserts the -1 at once can see the gap. PC-F83 changes only the version-tag cache and its tests, and nothing on the realtime path.
+- So I opened PC-F96 for the test, and PC-F83 merges platform-core and integrates again, following D-288's precedent. This does not retry a failure of PC-F83's own.
+- PC-150 is held at 2c7880b3 and queues after PC-F85: one held item is released at a time (D-087/D-190).
+
+### D-291 (orchestrator, 2026-11-24): PC-118 review 1 rulings, and the first-frame headroom
+
+- R1 found 1 blocking, 1 major and 3 minor on fc8d58c6, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): tm-route-host.spec's failed-cold-entry focus test fails on every run. The new tenant shell drops the outlet on a non-API sync failure.
+  - The test keeps its host case, using a sync promise that never settles.
+  - A new test covers the shell's failed line.
+- R1-2 (major): two barrel-hoisting first-frame leaks (D-281's mechanism), together about 1.5 KB of Acme initialJs.
+  - TmBadge comes in through TmCounter's import from @tellma/core-ui/badge. Fix: a new @tellma/core-ui/counter entry point, which ./badge re-exports, and badge added to ./shell's staticGraphExcludes.
+  - Six session-menu glyphs come in through the lucide index. Fix: per-icon imports inside the overlays chunk.
+- TmInstalledHistory (about 0.9 KB) moves to a lazy chunk, since spec 0027 does not need it in the first frame.
+- The ./shell ceiling's third raise (1.28, then 1.35, 2.35, 9.35) falls under D-031's re-split clause.
+  - R1's module itemization, together with these moves, is that re-split: every remaining eager piece is first-frame per spec 0027.
+  - The ceiling is re-based on the measure after the moves. Spec 0027 §1 plans 16 KB for the shell.
+- First-frame headroom: Acme initialJs is about 229.7 of 230 on PC-118's branch. PC-126 adds its own first-frame bytes on another base.
+  - Under D-214, whichever lands second re-measures.
+  - If that measure crosses 230, that item finds honest savings first. If none are left, I flag the 230 line to Ahmad, with the itemization, rather than raising it.
+- R1-3 to R1-5 are fixed in fix1: the accessible name's dangling comma, a seam for Report a problem and the Diagnostics tab (carried to PC-154), and the missing tests.
+- Not done now: a per-scope lazy Arabic seam could take about 1.08 KB of overlay and dialog Arabic off Arabic users' boot path. It needs a locale-pack mechanism that does not exist yet, because tmArabic() loads every part at once. The ./shell-strings first raise from 1 to 2 is honest meanwhile.
+- For Ahmad: three public API additions, the @tellma/core-ui/initials entry point, TmMenu.panelClass and TmMenuItem.detailLabel, plus the @tellma/core-ui/counter entry point coming in fix1.
+
+### D-290 (orchestrator, 2026-11-24): PC-126 review 1 rulings
+
+- R1 found 1 blocking, 1 major and 8 minor across d27c719a and the D-289 split 9afed7d5, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): the search route's real closure is 123.26 KB in 7 files, not 97.8, against 110.
+  - The 97.8 figure left out the menu, image/avatar and badge/form-field chunks, which Acme's index.html only prefetches.
+  - Ruling: a route's measure counts every chunk the route loads beyond the initial (modulepreload) set; prefetch is not the initial set. fix1 defers TmMenu in the search host and TmImage/TmAvatar in tm-value, which the reviewer puts at about 107.6.
+  - At integration, the size tool's route figure (PC-127's D-285 measure) must agree with the hand measure, prefetched chunks included.
+- R1-2 (major): Acme initialJs rose about 8.9 KB to 224.72, close to the 230 warn line.
+  - About 3.2 KB is avoidable: the core-ui parse halves of the date engine and number codec, and the date helpers that go with them. fix1 moves them out of the first frame, with CDK scrolling, bidi and tm-display-name if only search code reaches them.
+  - Angular's _debug_node, resource and rxjs-interop pieces are accepted. Lucide stays with PC-F91.
+  - fix1 measures a baseline on fd97c5f4 and attributes the whole rise.
+- The Acme launch e2e "a cold launch of a user with two live tenants lands on the picker" hangs on the launch skeleton under 6 workers. Its cause is not established. fix1 runs it on a clean fd97c5f4 build: a failure there opens a fix item; otherwise PC-126 root-causes it.
+- R1-3 to R1-9 are fixed in fix1. The launch.spec fragment change (q to a filter payload, per spec 0024 §9.5) is recorded as a deviation.
+- Carries: R1-6's snapshot-select comparison (from D-275) goes to PC-132, which owns page state; §5.2's 500 ms no-key rule goes to PC-128, the search field.
+- For Ahmad (R1-10): specs 0029 §12.1 and 0031 still name tmGridColumnFor's `editable` option, which the D-289 split moved to tmEditableGridColumnFor in /entity-editing. Spec 0030 §1's parts table places TmSearchContext in /search.
+
+### D-289 (orchestrator, 2026-11-24): split /entity along its read/edit line
+
+- PC-126's search route measured a real closure of 150.8 KB against spec 0024 §12's 110 KB. The chunks were the grid, host and entity view (79), the entity edit stack (18), the forms, pickers, select and date-picker (46), and the modal (6.5).
+- The cause, reproduced with plain esbuild, is code splitting over the /entity barrel. /entity's own import() chunks (the action dialog and the rest) keep its edit stack live, and the barrel spreads that stack into every importer's static chunks.
+- With leaf imports the route comes to 104.5 KB, which is not legitimate across entry points. This is the same cause behind PC-127's 107 KB details route with a TmValue layout (D-287).
+- Ruling: the route budgets stand (110 search, 80 details).
+  - /entity splits along its read/edit line, as @tellma/core-ui/grid and /grid-editing already do. /entity keeps the view side: select plans, value formats, typed value components, blob checks, and the actions' front with its confirmation loop.
+  - A new entry point holds the edit stack: the entity picker binding, the entity fields, and everything that reaches the core-ui editors or @angular/forms.
+  - /entity's lazily loaded dialogs import it only by import().
+  - A staticGraphExcludes guard keeps /entity, /search and /details off it.
+  - D-285's "do not split /entity" is superseded. It rested on the over-count, and the closure measured from the host's import() is still over budget.
+- PC-126 does the split on its branch, because it is blocked on it and holds the measurements. PC-129 starts only after PC-126 lands, so that tm-field builds on the split, and D-287's lazy edit controls follow from it.
+- ./search measured 17.76 KB against spec 0030 §1's 16. After the split PC-126 re-measures and looks for honest savings. If it is still over, the ceiling is the honest measure (D-031), and it is flagged to Ahmad.
+- For Ahmad: ARCHITECTURE.md's @tellma/core row lists the entity picker binding and the entity fields under /entity. The new edit entry point moves them out, so one of the two needs bringing in line. Spec 0030 §1's 16 KB for ./search may need revisiting, and PC-126 will report the figure.
+
 ### D-288 (orchestrator, 2026-11-24): PC-F82's Windows build stall
 
 - CI 45524650837 on PC-F82's integrate commit 907f5290 went red because build-test (windows-latest) was cancelled at the 30 min job limit.
