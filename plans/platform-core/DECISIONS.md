@@ -384,6 +384,36 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-299 (orchestrator, 2026-11-25): PC-126 review 2 rulings; the ./grid re-split; first-frame order
+
+- R2 found 0 blocking, 1 major and 6 minor. The 110 KB route (109.55) and the 222.40 first frame reproduce from clean builds. Fix2 is PC-126's third and last implementer round (§4.4); a hold follows.
+- R2-1 (major): the launch e2e "two live tenants" test regressed from 1 in 3 failing to every run.
+  - The cause is ngsw's inline initializeFully on localhost, which waits for the shell prefetch. The larger prefetch is by design (spec 0024 §5.3, 804.78 of 1,536 KB).
+  - The test fix lands in PC-126's fix2, because it must land with or before this integration. PC-F98 closes with it.
+- R2-2 to R2-6 are fixed in fix2:
+  - the menu chunk failure path;
+  - a parallel entity-editing import, which is the cause of the one core timeout;
+  - stale columns in offline rows;
+  - a page past the end loads the last page with rows;
+  - a test for the More menu.
+- Ceilings (D-031):
+  - ./grid has risen three times by value since PC-F44's re-split (41.23, 41.37, 41.5), the way D-291 counted ./shell. So a re-split is due: fix2 itemizes ./grid's eager modules, moves out what a first grid frame does not use, and re-bases.
+  - ./column-filter must stay within 4 KB; it is 1 byte over.
+  - The ./entity note must name the savings sought.
+- First frame: PC-126 measures about 225 after the merge and PC-118 about 229.7, so whichever lands second will likely cross 230.
+  - Under D-291, the second to land re-measures and seeks honest savings first. R2 finds only lucide left, which PC-F91 owns. PC-F91 waits for PC-118 (D-297).
+  - I will decide the landing order, and whether the 230 line goes to Ahmad, once PC-118's fix1 and PC-126's fix2 report their initialJs.
+- For Ahmad:
+  - spec 0010 §B.7's glyph table joins the misalignments in PC-126's deviation 21;
+  - spec 0030 §14 says nothing about a page past the end. PC-126 loads the last page that has rows, like the 413 fallback.
+
+### D-298 (orchestrator, 2026-11-25): PC-F87 review 1; a longer deadline is right for browser-process latency
+
+- R1 found 0 blocking, 0 major and 3 minor, so there is no R2 (§4.4). It reproduced the CI signature with the old spec under in-page and cross-page browser-process load; the new spec passes under both. It ruled out cross-talk: each session gets its own browser context, and isolate is false within a session.
+- tmWaitUntil is not a deviation. client CONTRIBUTING.md's tmSettleUntil rule covers waits across import(), and no wait in this spec crosses one. TestBed.tick() would also build a fresh testing module after the spec's TestBed reset.
+- The fix rests on moving from vi.waitFor's 1 s to the shared 4 s deadline. The ledger row warned that a raise alone is not a fix. Here it is right, because delivery waits on Chromium's browser process and no in-page condition can stand in for it. The fix adds more than the raise: long-lived listeners, numbered marks, a final check and a named error. Fix1 records it as a deviation with that reason.
+- Open risk, accepted: a browser-process delay over 4 s still fails, now with an error that names the channel and the mark. R1 reached 4.7 s only under a deliberately heavy synthetic load.
+
 ### D-297 (orchestrator, 2026-11-25): PC-F85 landed; PC-150 released; PC-F97 fills pc-f2 ahead of PC-F88
 
 - PC-F85 landed at 1e7c28cc: CI 45581618968 was green on 6c0c2e06, followed by a plans-only merge. PC-150 is released to integrate. PC-F86, held, follows it (D-087/D-190).
