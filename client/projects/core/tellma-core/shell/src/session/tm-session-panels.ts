@@ -84,7 +84,11 @@ async function slotComponent(slot: TmShellSlot): Promise<Type<unknown>> {
   // markup, so their widths need unencapsulated rules; every selector is
   // scoped by a tm-session-panels class.
   encapsulation: ViewEncapsulation.None,
-  host: { style: 'display: contents' },
+  // Out of the bar's flow: the host and its children render nothing in place
+  // (the menu and the popovers open in the overlay container), so they must
+  // take no flex item's gap when the chunk lands, which would push the
+  // session button aside after the first frame.
+  host: { style: 'position: absolute' },
   template: `
     <!-- The session menu; its rows ask for the dialogs and the slots' drawers. -->
     <tm-session-menu (dialog)="openDialog($event)" (slot)="toggleSlot($event, null)" />

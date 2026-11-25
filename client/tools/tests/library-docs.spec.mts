@@ -84,15 +84,6 @@ const REACHED_THROUGH: Readonly<Record<string, string>> = {
 };
 
 /**
- * The additions entry points shown in another entry point's showcase story:
- * the counter, split out of the badges so a first frame can draw a count
- * without tm-badge, keeps its place in the badges and counters story.
- */
-const STORY_OF: Readonly<Record<string, string>> = {
-  counter: 'badge',
-};
-
-/**
  * The generated library docs, checked from the consumer's side: every entry
  * point of the additions is in components.json and llms.txt, names its
  * harnesses, and has a showcase story; and no examples file anywhere in the
@@ -176,8 +167,7 @@ describe('the library docs', () => {
       'utf8',
     );
     for (const id of Object.keys(ADDITIONS)) {
-      const story = STORY_OF[id] ?? id;
-      expect(stories, `the showcase has the ${story} story`).toContain(`id: '${story}'`);
+      expect(stories, `the showcase has the ${id} story`).toContain(`id: '${id}'`);
     }
   });
 

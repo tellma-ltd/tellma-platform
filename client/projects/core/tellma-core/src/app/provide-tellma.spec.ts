@@ -4,8 +4,18 @@
 // LICENSE file in the root directory of this source tree.
 
 import { provideLocationMocks } from '@angular/common/testing';
-import { type ApplicationConfig, ApplicationInitStatus, Injectable, type Provider, provideZonelessChangeDetection } from '@angular/core';
+import {
+  type ApplicationConfig,
+  ApplicationInitStatus,
+  Component,
+  inject,
+  Injectable,
+  type Provider,
+  provideZonelessChangeDetection,
+  type Type,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
@@ -64,6 +74,10 @@ class TmCountedElection {
     electionsCreated++;
   }
 }
+
+/** A page with nothing on it, for a navigation that must end on one. */
+@Component({ template: '' })
+class TmBlankPage {}
 
 /** A stand-in for the recent pages' service that fails to start. */
 @Injectable({ providedIn: 'root' })
@@ -171,6 +185,13 @@ describe('the startup sequence', () => {
     return TestBed.inject(ApplicationInitStatus).donePromise;
   }
 
+  /** Ends the app's first navigation on a blank page, as the first page's arrival does. */
+  async function firstPage(): Promise<void> {
+    const router = TestBed.inject(Router);
+    router.resetConfig([{ path: '**', component: TmBlankPage }]);
+    await router.navigateByUrl('/first');
+  }
+
   it.each(['core', 'strings'])('shows the boot page load-failed when the %s load rejects', async (chunk) => {
     const boot = bootResult();
     const failure = (): Promise<never> => Promise.reject(new TypeError('Failed to fetch'));
@@ -204,6 +225,7 @@ describe('the startup sequence', () => {
     await start(loaders, [{ provide: TM_RECENTS_LOAD, useValue: load }]);
     expect(load).not.toHaveBeenCalled();
 
+    await firstPage();
     TestBed.tick();
     await vi.waitFor(() => expect(recentsCreated).toBe(1));
     expect(load).toHaveBeenCalledTimes(1);
@@ -214,6 +236,7 @@ describe('the startup sequence', () => {
     let loaded!: (module: TmRecentsModule) => void;
     const load = vi.fn(() => new Promise<TmRecentsModule>((resolve) => (loaded = resolve)));
     await start(loaders, [{ provide: TM_RECENTS_LOAD, useValue: load }]);
+    await firstPage();
     TestBed.tick();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     const telemetry = TestBed.inject(TmFakeTelemetry);
@@ -230,6 +253,7 @@ describe('the startup sequence', () => {
     ['a recent pages service that fails to start', () => Promise.resolve<TmRecentsModule>({ TmRecents: TmFailingRecents })],
   ])('reports %s as an error, and starts all the same', async (_, load) => {
     await start(loaders, [{ provide: TM_RECENTS_LOAD, useValue: load }]);
+    await firstPage();
     TestBed.tick();
     const telemetry = TestBed.inject(TmFakeTelemetry);
     await vi.waitFor(() =>
@@ -251,6 +275,7 @@ describe('the startup sequence', () => {
     await start(loaders, [{ provide: TM_LEADER_LOAD, useValue: load }]);
     expect(load).not.toHaveBeenCalled();
 
+    await firstPage();
     TestBed.tick();
     await vi.waitFor(() => expect(electionsCreated).toBe(1));
     expect(load).toHaveBeenCalledTimes(1);
@@ -259,6 +284,7 @@ describe('the startup sequence', () => {
   it('reports a failed load of the leader election as an error, and starts all the same', async () => {
     const load = (): Promise<never> => Promise.reject(new TypeError('Failed to fetch dynamically imported module'));
     await start(loaders, [{ provide: TM_LEADER_LOAD, useValue: load }]);
+    await firstPage();
     TestBed.tick();
     const telemetry = TestBed.inject(TmFakeTelemetry);
     await vi.waitFor(() =>
@@ -279,7 +305,47 @@ describe('the startup sequence', () => {
     await start({ ...loaders, contracts }, [{ provide: TmApi, useExisting: TmHttpApi }]);
     expect(contracts).not.toHaveBeenCalled();
 
+    await firstPage();
     TestBed.tick();
+    await vi.waitFor(() => expect(contracts).toHaveBeenCalledTimes(1));
+  });
+
+  it("waits for the first page's render, past a redirect and a page chunk still loading, before the work after the first render", async () => {
+    electionsCreated = 0;
+    recentsCreated = 0;
+    const leader = vi.fn(() => Promise.resolve<TmLeaderModule>({ ɵTmLeaderElection: TmCountedElection }));
+    const recents = vi.fn(() => Promise.resolve<TmRecentsModule>({ TmRecents: TmCountedRecents }));
+    const contracts = vi.fn(loaders.contracts);
+    await start({ ...loaders, contracts }, [
+      { provide: TM_LEADER_LOAD, useValue: leader },
+      { provide: TM_RECENTS_LOAD, useValue: recents },
+      { provide: TmApi, useExisting: TmHttpApi },
+    ]);
+    // The first navigation is redirected by a guard, then waits for its page's chunk.
+    let land: ((page: Type<unknown>) => void) | undefined;
+    const router = TestBed.inject(Router);
+    router.resetConfig([
+      { path: 'start', canActivate: [() => inject(Router).parseUrl('/page')], component: TmBlankPage },
+      { path: 'page', loadComponent: () => new Promise<Type<unknown>>((resolve) => (land = resolve)) },
+    ]);
+    const navigation = router.navigateByUrl('/start');
+    await vi.waitFor(() => expect(land).toBeDefined());
+
+    // The app's frames while the outlet is empty start nothing.
+    TestBed.tick();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    TestBed.tick();
+    expect(leader).not.toHaveBeenCalled();
+    expect(recents).not.toHaveBeenCalled();
+    expect(contracts).not.toHaveBeenCalled();
+
+    // The page lands, and the render after it starts the work.
+    land!(TmBlankPage);
+    await navigation;
+    expect(leader).not.toHaveBeenCalled();
+    TestBed.tick();
+    await vi.waitFor(() => expect(electionsCreated).toBe(1));
+    expect(recentsCreated).toBe(1);
     await vi.waitFor(() => expect(contracts).toHaveBeenCalledTimes(1));
   });
 });

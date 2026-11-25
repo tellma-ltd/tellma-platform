@@ -34,8 +34,9 @@ import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 // is gone or unavailable, a replaced main), the app bar's names, avatar
 // tone, markers with their popovers, slots, reserved boxes, session button
 // keys and installed-mode history (through the Navigation API or the
-// router, a replace keeping Forward), Mod+/, presses made before the
-// overlays' chunk lands, the chunk failing to load, and a tenant switch,
+// router, a replace keeping Forward), Mod+/, the overlays' chunk landing
+// with nothing in the bar moving, presses made before it lands, the chunk
+// failing to load, and a tenant switch,
 // which closes the shell's overlays and clears the launcher's text. The
 // overlays and the history buttons live in lazily loaded chunks, so each
 // wait is on the state it produces.
@@ -347,6 +348,35 @@ describe('the tenant shell', () => {
       press({ key: 'ArrowUp' }, button);
       await tmSettleUntil(() => document.activeElement?.closest('.tm-session-menu') != null, 'the menu takes focus');
       expect(document.activeElement?.textContent).toContain('Sign out');
+    });
+
+    it("moves nothing in the app bar when the overlays' chunk lands", async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      await start({ providers: [{ provide: TM_SHELL_PANELS_LOAD, useValue: () => gate.then(() => import('./session/tm-session-panels')) }] });
+      await open();
+      const button = document.querySelector<HTMLButtonElement>('.tm-app-bar__session')!;
+      // Every box the bar lays out, and the session button's face, which the
+      // chunk's avatar replaces; the chunk's own host lays out nothing.
+      const boxes = (): string[] =>
+        [...document.querySelectorAll('tm-app-bar > *, .tm-app-bar__face, tm-session-avatar tm-avatar')]
+          .filter((element) => !element.matches('tm-session-panels') && element.getClientRects().length > 0)
+          .map((element) => {
+            const { x, y, width, height } = element.getBoundingClientRect();
+            const name = element.matches('.tm-app-bar__face, tm-avatar') ? 'face' : element.className;
+            return `${name} ${x} ${y} ${width} ${height}`;
+          });
+      // The wordmark's box follows its image, which loads in its own time,
+      // not with the chunk: the boxes are taken once it has loaded or failed.
+      await document
+        .querySelector<HTMLImageElement>('.tm-app-bar__wordmark img')
+        ?.decode()
+        .catch(() => undefined);
+      const before = boxes();
+      release();
+      await tmSettleUntil(() => button.querySelector('tm-session-avatar') !== null, 'the chunk lands');
+      await tmSettle();
+      expect(boxes()).toEqual(before);
     });
 
     it("lets two presses made before the overlays' chunk lands cancel out", async () => {
