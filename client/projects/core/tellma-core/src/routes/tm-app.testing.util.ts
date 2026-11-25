@@ -314,10 +314,17 @@ export async function tmSettle(): Promise<void> {
 export const TM_WAIT_DEADLINE_MS = 4_000;
 
 /**
+ * The page's own clock, taken before a spec fakes the timers: a bare
+ * `vi.useFakeTimers()` fakes `performance.now()` too, which would stop a
+ * deadline measured with it.
+ */
+const realNow = performance.now.bind(performance);
+
+/**
  * Runs a step at a time until a condition holds, for at most
  * {@link TM_WAIT_DEADLINE_MS} of real time. The deadline is measured with
- * `performance.now()`, which faked timers leave alone, so it holds under
- * `vi.useFakeTimers()` too.
+ * the page's own `performance.now()`, taken before any spec fakes the
+ * timers, so it holds under `vi.useFakeTimers()` too, whatever it fakes.
  *
  * @param condition - The state the spec waits for.
  * @param step - One turn of the wait, such as a real task and a render, or a zero advance of faked timers.
@@ -325,9 +332,9 @@ export const TM_WAIT_DEADLINE_MS = 4_000;
  * @throws Error naming the condition when it has not held by the deadline; the wait stops there.
  */
 export async function tmWaitUntil(condition: () => boolean, step: () => Promise<unknown>, description = String(condition)): Promise<void> {
-  const started = performance.now();
+  const started = realNow();
   while (!condition()) {
-    const waited = performance.now() - started;
+    const waited = realNow() - started;
     if (waited > TM_WAIT_DEADLINE_MS) {
       throw new Error(`The condition did not hold within ${Math.round(waited)} ms: ${description}`);
     }

@@ -6,8 +6,10 @@
 import { DOCUMENT, inject, Injectable } from '@angular/core';
 
 // The browser's exclusive locks (Web Locks), behind one class, so the testing
-// package replaces them with in-memory ones. A request is queued, never
-// `ifAvailable`, so no wake-up is lost (spec 0025 §5.3). A page without Web
+// package replaces them with in-memory ones. A sync request is queued, never
+// `ifAvailable`, so no wake-up is lost (spec 0025 §5.3); a one-tab-only
+// prompt, as the device-zone prompt's (spec 0024 §7.8), takes its lock only
+// if no tab holds it, and otherwise gives way to that tab. A page without Web
 // Locks, such as one served over plain HTTP from another machine, queues
 // within the tab instead: it then shares no lock with its other tabs, which
 // costs at most a duplicate sync, never a wrong document.
@@ -26,6 +28,17 @@ export abstract class TmLocks {
    * @returns What the work settles with.
    */
   abstract run<T>(name: string, work: () => Promise<T>): Promise<T>;
+
+  /**
+   * Runs work holding the named lock if no one holds or awaits it now, and
+   * otherwise runs nothing.
+   *
+   * @param name - The lock's name, such as `tm:acme:0b4f:zone-prompt`.
+   * @param work - The work; it starts at once when the lock is free, and keeps the lock until it settles.
+   * @returns Whether the work ran: `true` once it settled, `false` at once
+   *   when the lock was taken; it rejects with what the work rejects with.
+   */
+  abstract tryRun(name: string, work: () => Promise<void>): Promise<boolean>;
 }
 
 /** The browser's Web Locks, or a queue within the tab where the page has none. */
@@ -45,5 +58,15 @@ class TmWebLocks extends TmLocks {
     this.#tails.set(name, tail);
     void tail.then(() => this.#tails.get(name) === tail && this.#tails.delete(name));
     return done;
+  }
+
+  /** Runs work holding the named lock if it is free now. */
+  override tryRun(name: string, work: () => Promise<void>): Promise<boolean> {
+    if (this.#locks) {
+      // The browser grants `null` when another holder, in any tab, has the lock.
+      return this.#locks.request(name, { ifAvailable: true }, (lock) => (lock === null ? false : work().then(() => true)));
+    }
+    // Within the tab, the lock is free when no request of the name is unsettled.
+    return this.#tails.has(name) ? Promise.resolve(false) : this.run(name, work).then(() => true);
   }
 }

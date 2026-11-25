@@ -8,19 +8,6 @@ import * as i0 from '@angular/core';
 import { Signal } from '@angular/core';
 
 // @public
-export class TmDrafts {
-    constructor();
-    clear(key: string): void;
-    clearAll(sub: string): void;
-    readonly dirtyCount: Signal<number>;
-    key(tenantId: number, entity: string, id: 'new' | TmId): string;
-    load(key: string): TmJson | undefined;
-    save(key: string, value: TmJson): void;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmDrafts, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmDrafts>;
-}
-
-// @public
 export class TmPageState {
     constructor();
     forget(key: TmPageStateKey): void;

@@ -9,7 +9,7 @@ import { TmConfirm, type TmConfirmYesNoOptions } from '@tellma/core-ui/confirm';
 
 import { TmApi } from '../api/tm-api';
 import { TM_NOW } from '../app/tm-now';
-import { tmAppRig, tmNavigate, tmSettle, TM_TEST_SUB } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_TEST_SUB } from '../routes/tm-app.testing.util';
 import type { TmBusMessage } from '../state/bus/tm-bus-messages';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../state/bus/tm-tab-bus.testing.util';
@@ -145,15 +145,19 @@ describe('Sign-out across tabs', () => {
     expect([confirm.asked, acting.writes]).toEqual([[], []]);
     busy.writesInFlight.set(0);
 
-    // The dirty tab's draft reaches the one question.
-    await vi.waitFor(() => expect(confirm.asked).toHaveLength(1), { timeout: 3_000 });
+    // The dirty tab's draft reaches the one question, at the waiting sign-out's next ask.
+    await tmSettleUntil(() => confirm.asked.length > 0, 'the sign-out asked about the draft');
+    expect(confirm.asked).toHaveLength(1);
     expect(confirm.asked[0]).toMatchObject({ title: 'Sign out and discard unsaved changes?', message: 'You have unsaved changes in 1 tab.' });
 
     // Every tab ends at the signed-out page, its session storage cleared.
-    await vi.waitFor(() => expect(acting.host.assigned).toEqual(['/signed-out']), { timeout: 3_000 });
+    await tmSettleUntil(() => acting.host.assigned.length > 0, 'the acting tab left for the signed-out page');
+    expect(acting.host.assigned).toEqual(['/signed-out']);
     expect(acting.writes).toEqual(['/bff/logout']);
     for (const tab of [busy, dirty]) {
-      await vi.waitFor(() => expect(tab.host.replaced).toEqual(['/signed-out']));
+      // Each tab's own flows, a chunk the tab loads on the announcement, take it there.
+      await tmSettleUntil(() => tab.host.replaced.length > 0, 'the other tab left for the signed-out page');
+      expect(tab.host.replaced).toEqual(['/signed-out']);
       expect(tab.paths.state()).toBe('signing-out');
     }
     expect([acting, busy, dirty].map((tab) => tmStorageKeys(tab.storage, TM_DRAFT_KEY_PREFIX).length)).toEqual([0, 0, 0]);

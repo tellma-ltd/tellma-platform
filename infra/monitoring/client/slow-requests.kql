@@ -1,0 +1,8 @@
+// The SPA's requests that reached 3 s, reported through the client telemetry relay.
+// Backs the "the web client is slow" alert: the browser's view of a request includes the network
+// and the queueing the server's own durations miss. One that ended, failed, was cancelled by a user
+// who gave up, or was still pending when the tab was hidden counts alike: each kept someone waiting.
+customMetrics
+| where name == "tellma.client.requests.slow"
+| summarize slow = sum(valueSum) by bin(timestamp, 15m)
+| where slow > 50

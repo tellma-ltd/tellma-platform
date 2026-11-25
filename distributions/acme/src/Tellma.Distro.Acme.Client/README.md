@@ -7,7 +7,8 @@ and one theme delta. Everything else, from the routes to the service worker, the
 | Path | Holds |
 |---|---|
 | `src/app.config.ts` | `appConfig`: one `provideTellma` call with the emitted metadata, the languages (`tmEnglish()`, the default, then `tmArabic()`) and the features, Acme's last |
-| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`); it declares nothing yet |
+| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`): `acme.Customer`'s details page so far |
+| `src/app/customers/customer-details.ts` | The customer details layout, the body of `/{t}/customers/{id}`: the code, name, type and credit limit, labelled from the descriptors and shown as the record holds them; the host owns the record's lifecycle, modes, header and errors |
 | `src/main.ts` | The entry point: `bootstrapTellma(appConfig)`, which starts the framework's root component in `<tm-app>` |
 | `src/index.html` | `<base href="/">`, the manifest, the colour-scheme meta and `tm-boot.js` as the first script |
 | `src/styles.css` | The platform's stylesheets and Arabic's fonts, by import, then Acme's one theme delta, `--color-primary` in `@layer tm.theme` |

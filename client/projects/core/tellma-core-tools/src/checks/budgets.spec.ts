@@ -95,12 +95,25 @@ describe('the budget figures', () => {
   it('measure the initial set, each route beyond it, the shell group and the coded reports', () => {
     dir = mkdtempSync(join(tmpdir(), 'tm-budgets-'));
     // Incompressible content, so each figure is about its raw size.
-    const files: Record<string, number> = { 'main-A.js': 4000, 'shared-B.js': 2000, 'search-C.js': 3000, 'entity-D.js': 1000, 'echarts-E.js': 5000, 'styles-F.css': 600, 'tm-boot.js': 900 };
+    const files: Record<string, number> = {
+      'main-A.js': 4000,
+      'shared-B.js': 2000,
+      'search-C.js': 3000,
+      'entity-D.js': 1000,
+      'echarts-E.js': 5000,
+      'styles-F.css': 600,
+      'details-G.js': 1500,
+      'tm-boot.js': 900,
+    };
     for (const [name, size] of Object.entries(files)) {
       writeFileSync(join(dir, name), randomBytes(size));
     }
     const graph = new TmBuildGraph([
-      { path: 'main-A.js', inputs: ['src/main.ts'], imports: [{ path: 'shared-B.js', kind: 'static' }, { path: 'search-C.js', kind: 'dynamic' }] },
+      {
+        path: 'main-A.js',
+        inputs: ['src/main.ts'],
+        imports: [{ path: 'shared-B.js', kind: 'static' }, { path: 'search-C.js', kind: 'dynamic' }, { path: 'details-G.js', kind: 'dynamic' }],
+      },
       { path: 'shared-B.js', inputs: ['node_modules/@angular/core/fesm2022/core.mjs'], imports: [] },
       {
         path: 'search-C.js',
@@ -109,6 +122,7 @@ describe('the budget figures', () => {
       },
       { path: 'entity-D.js', inputs: ['../tellma-core/entity/src/x.ts'], imports: [] },
       { path: 'echarts-E.js', inputs: ['node_modules/.pnpm/echarts@6.0.0/node_modules/echarts/lib/echarts.js'], imports: [] },
+      { path: 'details-G.js', inputs: ['node_modules/@tellma/core/fesm2022/tellma-core-details.mjs'], imports: [{ path: 'entity-D.js', kind: 'static' }] },
     ]);
     const figures = tmMeasureBudgets({
       browserDir: dir,
@@ -130,7 +144,7 @@ describe('the budget figures', () => {
     near('initialJs', 6000, 2);
     near('initialCss', 600, 1);
     near('searchRoute', 4000, 2);
-    near('detailsRoute', 1000, 1);
+    near('detailsRoute', 2500, 2);
     near('echartsEngine', 5000, 1);
     near('workerShell', 6000, 2);
     // No module of the @tellma/core primary is in this build: that is a fault, never a zero.
@@ -183,6 +197,75 @@ describe('the budget figures', () => {
     const { levels } = tmReadBudgetLevels(undefined, 1, 'acme');
     expect(tmBudgetProblems(lazy, levels, 'acme')).toEqual([]);
     expect(tmFormatBudgetReport(lazy, levels)).toMatch(/^lazy:src\/editor\.ts +\d+\.\d\d +\d+\.\d\d +- +- +1$/m);
+  });
+
+  it("measure a route as its host's chunk and the layouts on it, leaving what the platform loads on use to lines of their own", () => {
+    dir = mkdtempSync(join(tmpdir(), 'tm-budgets-'));
+    const core = '../../client/projects/core/tellma-core';
+    // A workspace build: the details host, a layout importing the entity
+    // entry point for its view, and the entity entry point's action dialog,
+    // which reaches the heavy editors only through import(); the editors use
+    // the details context, as a field in a dialog does.
+    const files: Record<string, number> = {
+      'main-A.js': 1000,
+      'details-B.js': 2000,
+      'layout-C.js': 1500,
+      'entity-D.js': 3000,
+      'dialog-E.js': 2500,
+      'editors-F.js': 40000,
+      'tm-boot.js': 900,
+    };
+    for (const [name, size] of Object.entries(files)) {
+      writeFileSync(join(dir, name), randomBytes(size));
+    }
+    const graph = new TmBuildGraph([
+      {
+        path: 'main-A.js',
+        inputs: ['src/main.ts'],
+        imports: [{ path: 'details-B.js', kind: 'dynamic' }, { path: 'layout-C.js', kind: 'dynamic' }],
+        entryPoint: 'src/main.ts',
+      },
+      { path: 'details-B.js', inputs: [`${core}/details/src/tm-details-host.ts`], imports: [{ path: 'entity-D.js', kind: 'static' }], entryPoint: `${core}/details/public-api.ts` },
+      {
+        path: 'layout-C.js',
+        inputs: ['src/app/customers/customer-details.ts'],
+        imports: [{ path: 'details-B.js', kind: 'static' }, { path: 'entity-D.js', kind: 'static' }],
+        entryPoint: 'src/app/customers/customer-details.ts',
+      },
+      { path: 'entity-D.js', inputs: [`${core}/entity/src/tm-value.ts`], imports: [{ path: 'dialog-E.js', kind: 'dynamic' }], entryPoint: `${core}/entity/public-api.ts` },
+      {
+        path: 'dialog-E.js',
+        inputs: [`${core}/entity/src/tm-action-dialog.ts`],
+        imports: [{ path: 'editors-F.js', kind: 'static' }],
+        entryPoint: `${core}/entity/src/tm-action-dialog.ts`,
+      },
+      { path: 'editors-F.js', inputs: [`${core}/entity/src/tm-value-editor.ts`, `${core}/details/src/tm-details-context.ts`], imports: [] },
+    ]);
+    const figures = tmMeasureBudgets({
+      browserDir: dir,
+      sourceMapsDir: join(dir, 'maps'),
+      graph,
+      initialJs: graph.staticClosure(['main-A.js']),
+      initialCss: [],
+      shell: [],
+      codedReports: undefined,
+    });
+    const byName = new Map(figures.map((figure) => [figure.name, figure]));
+
+    // The host, the layout and the entity view: about 6.5 KB, never the editors' 40.
+    const details = byName.get('detailsRoute')!;
+    expect(details.files).toBe(3);
+    expect(details.gzip).toBeGreaterThanOrEqual(6500);
+    expect(details.gzip).toBeLessThan(6500 + 180);
+    // No search host is in the build, and the details layout is not a search layout.
+    expect(byName.get('searchRoute')!.files).toBe(0);
+    // The dialog loads on use, with the editors: a line of its own.
+    const dialog = byName.get(`${TM_LAZY_BUDGET_PREFIX}${core}/entity/src/tm-action-dialog.ts`)!;
+    expect(dialog.files).toBe(2);
+    expect(dialog.gzip).toBeGreaterThanOrEqual(42500);
+    expect(figures.filter((figure) => figure.name.startsWith(TM_LAZY_BUDGET_PREFIX)).map((figure) => figure.name)).toEqual([
+      `${TM_LAZY_BUDGET_PREFIX}${core}/entity/src/tm-action-dialog.ts`,
+    ]);
   });
 
   describe("the @tellma/core primary's figure", () => {

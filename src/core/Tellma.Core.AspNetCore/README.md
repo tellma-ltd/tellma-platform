@@ -127,6 +127,7 @@ Maps the tenantless platform routes and returns the tenant route groups:
 | `POST /bff/logout` | `Tellma.Web`; the sign-out, `global` or `local` |
 | `GET /bff/user` | `Tellma.Web`; the user and the tenants the membership hints list |
 | `POST /bff/backchannel-logout` | anonymous; the identity server's logout tokens |
+| `POST /api/client-telemetry` | `Tellma.Web`; the SPA's telemetry relay (see [The client telemetry relay](#the-client-telemetry-relay)) |
 | `/id/...` | the engine's own, in in-proc mode; an engine endpoint that states no authorization is anonymous, and an anonymous one authenticates the engine's sign-in cookie, never the platform's session |
 | `POST /api/webhooks/{key}` | anonymous; the webhook receivers, when the Azure web defaults compose them |
 | `/{tenantId}/hub`, `POST /{tenantId}/hub/negotiate` | the realtime hub on the `Hub` group, a member's read; unless `Tellma:Realtime:Enabled` is false |
@@ -205,6 +206,49 @@ name travels as `filename*=UTF-8''…`. A stored primary whose length is not its
 `500 internal` rather than serving corrupt bytes. `tellma.blobs.downloads` counts each answer by
 kind (a declared one) and outcome (`served` when the response starts as `200` or `206`,
 `not_modified`, `not_found`) on the `Tellma.Core` meter; a `416` or `412` is not counted.
+
+### The client telemetry relay
+
+`POST /api/client-telemetry` takes one browser tab's batch of telemetry items
+(`ClientTelemetryBatch`: `version`, `tabId`, `tenantId`, `sentAt`, at most 100 `items`) and writes
+them into the host's logs and two counters, so the SPA needs no telemetry SDK of its own. It
+requires a session (`Tellma.Web`) and passes the CSRF control like any cookie write, serves the
+SPA alone (a `Tellma-Client` naming any other configured client is `403 csrf-rejected`, counted and
+logged as the CSRF control's `header` rule), takes
+`tellma-telemetry` alone (60 batches a minute per user), reads at most 32 KB
+(`413 limit-exceeded`), opens no tenant scope and touches no database, is never traced, and never
+renews the session. It answers `204` whenever the batch parses, however many items it dropped; with
+`Tellma:ClientTelemetry:Enabled` false it answers `204` at once, unread.
+
+| Check | On failure |
+|---|---|
+| `version` equal to the `Tellma-Client` header's version; `tabId` of 8 to 40 letters, digits, `_` and `-`; `tenantId` null or positive; a `sentAt`; at most 100 items | `400 bad-request`, the batch refused whole; a body that is not a batch's JSON is `400 bad-request` with `reason` `malformed-json` |
+| an item's `kind` (`event`, `timing`, `error`), its name (`<scope>.<area>.<event>`, lowercase, at most 64 characters; every error `tm.error.captured`) and its `at` (between a day before `sentAt` and a minute after) | the item dropped; one Information record, `Client telemetry dropped {Count} items`, counts them by reason (`DroppedKind`, `DroppedName`, `DroppedTime`) |
+| a `traceId` of 32 lowercase hex digits, not all zeros | the member ignored, the item kept |
+| at most 16 properties, camelCase keys of at most 32 characters, each a number, a boolean or a text of at most 128 characters (`message` 256, `stack` 4,096) | the property dropped; the item's record counts them in `DroppedProperties` |
+
+A `message` or `stack` is masked again as the SPA masks it (URLs to `<url>`, then e-mail addresses
+to `<email>`), without backtracking, so a crafted text costs linear time. Each kept item is one
+record under the `Tellma.ClientTelemetry` category: an event or a timing is an Information record
+whose message template is `{microsoft.custom_event.name}`, an Application Insights custom event; an
+error is a Warning, `Client error {ErrorClass} on {ClientRoute}`, whose two values are the
+error's `errorClass` and `route` only when each is at most 64 letters, digits and `_.:/@+-` (else
+`(other)`, or `(none)` when absent), so no client text breaks a log line or carries a terminal
+escape. Its logger scope carries the
+session's `Subject`, the `UserAgent`, `ClientVersion`, `ClientOutdated` (the version is not the
+distribution's), `ClientTabId`, `ClientTenantId` (the client's claim, for filtering alone),
+`tellma.deployment.id`, `ClientAt` (the item's time moved by the batch's skew, the server's clock
+less `sentAt`), the item's properties with `route`, `pageKind` and `sampleRate` as `ClientRoute`,
+`ClientPageKind` and `SampleRate`, and an error's extras as `ErrorSource`, `ErrorKind`,
+`ErrorCode`, `Status`, `Fingerprint`, `Stack`, `Message` and `RecentTraceIds`. An item with a trace
+id is written while an activity parented to that trace is current, so its record carries the
+request's trace id; the activity belongs to no registered source and is never exported.
+
+`tellma.client.errors` (`source`: `api`, `render`, `global`; `kind`: the client's API error kinds,
+or `none`) and `tellma.client.requests.slow` (`outcome`: `ok`, `error`, `cancelled`, `pending`)
+count the accepted errors and `tm.api.slow` items on the `Tellma.Core.AspNetCore` meter; a value
+outside a tag's set counts as `other`, so no client string becomes a tag. The alerts over them are
+`infra/monitoring/client/`'s.
 
 ### Limits
 

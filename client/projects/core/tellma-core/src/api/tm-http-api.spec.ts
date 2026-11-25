@@ -149,10 +149,25 @@ const flush = async (): Promise<void> => {
  * goes on only once the chunk's first fetch lands, which no number of turns
  * bounds; fake time never moves. The wait fails after a real deadline,
  * naming the condition.
+ *
+ * @param condition - The state the spec waits for.
+ * @param description - What the condition waits for, in the error; the condition's source when omitted.
  */
-const flushUntil = async (condition: () => boolean): Promise<void> => {
+const flushUntil = async (condition: () => boolean, description?: string): Promise<void> => {
   await flush();
-  await tmWaitUntil(condition, () => vi.advanceTimersByTimeAsync(0));
+  await tmWaitUntil(condition, () => vi.advanceTimersByTimeAsync(0), description);
+};
+
+/**
+ * Waits for the session's flows to run a path: they are a chunk of their
+ * own, which the session's paths load on first use.
+ *
+ * @returns The calls the flows recorded.
+ */
+const flowsRan = async (): Promise<readonly string[]> => {
+  const flows = TestBed.inject(TmRecordingSessionFlows);
+  await flushUntil(() => flows.calls.length > 0, 'the session flows ran a path');
+  return flows.calls;
 };
 
 /** A promise's outcome, as it settles. */
@@ -418,7 +433,7 @@ describe('TmHttpApi', () => {
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       expect(rig.paths.state()).toBe('expired');
       // The session's flows run the rest of the expiry path.
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
+      expect(await flowsRan()).toEqual(['expired']);
     });
 
     it('runs the changed-user path and rejects cancelled, unsent, under another user', async () => {
@@ -428,7 +443,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(0);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
+      expect(await flowsRan()).toEqual(['changedUser']);
     });
 
     it("runs again on the response: another user's answer is discarded", async () => {
@@ -440,7 +455,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(read.error).toMatchObject({ kind: 'cancelled' });
       expect(read.value).toBeUndefined();
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
+      expect(await flowsRan()).toEqual(['changedUser']);
     });
 
     it("observes nothing of another user's answer", async () => {
@@ -477,7 +492,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(write.error).toMatchObject({ kind: 'unauthenticated' });
       // The session's flows run the rest of the expiry path.
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
+      expect(await flowsRan()).toEqual(['expired']);
     });
 
     it.each(['/api/distribution-info', '/health/ready', '/.well-known/openid-configuration'])('skips the anonymous route %s', async (route) => {
@@ -499,7 +514,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(read.error).toMatchObject({ kind: 'unauthenticated', status: 401 });
       // The session's flows run the rest of the expiry path.
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['expired']));
+      expect(await flowsRan()).toEqual(['expired']);
     });
 
     it('cancels, ending nothing, a 401 for a session the cookie no longer names', async () => {
@@ -805,7 +820,7 @@ describe('TmHttpApi', () => {
       await flush();
       expect(rig.host.requests).toHaveLength(1);
       expect(read.error).toMatchObject({ kind: 'cancelled' });
-      await vi.waitFor(() => expect(TestBed.inject(TmRecordingSessionFlows).calls).toEqual(['changedUser']));
+      expect(await flowsRan()).toEqual(['changedUser']);
       expect(rig.log.entries[0].end).toMatchObject({ outcome: 'cancelled' });
     });
 

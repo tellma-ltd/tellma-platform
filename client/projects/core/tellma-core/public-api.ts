@@ -108,6 +108,11 @@ export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization'
 export type { TmLocaleSave } from './src/l10n/tm-locale-write';
 export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
 export { tmEnglish } from './src/l10n/tm-english';
+// The device's time zone: the per-device option and the check that offers
+// to follow a change. The check and its prompt are lazily loaded chunks of
+// this entry point, whose loader the state testing providers replace.
+export { TmDeviceZone, type TmZoneDoc, type TmZoneUser } from './src/l10n/tm-device-zone';
+export { TM_ZONE_CHECK_LOAD as ɵTM_ZONE_CHECK_LOAD, type TmZoneCheckModule as ɵTmZoneCheckModule } from './src/l10n/tm-device-zone';
 
 // Routes and URLs: the title strategy, the app's URLs and the search query codec.
 export { TmTitleStrategy } from './src/routes/tm-title-strategy';
@@ -323,9 +328,9 @@ export {
   type TmSyncTrigger,
 } from './src/state/sync/tm-cache-refresher';
 
-// The user's preferences. The tab's memory (page state, drafts and tree
-// expansion) is @tellma/core/memory's, and recently visited pages are
-// @tellma/core/recents'.
+// The user's preferences. The tab's memory (page state and tree expansion)
+// is @tellma/core/memory's, its drafts are @tellma/core/drafts', and
+// recently visited pages are @tellma/core/recents'.
 export { tmPreferenceKey, type TmPreferenceKey, type TmPreferenceKind } from './src/state/prefs/tm-preference-key';
 export { TmPreferences } from './src/state/prefs/tm-preferences';
 
@@ -339,11 +344,12 @@ export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs
 // error presenter, which the app's error presenter provides; not for app code.
 export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
 export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
-// What @tellma/core/memory and @tellma/core/recents build on: the browser
-// seams, the routed tenant of a URL, the route data the route table adds, the
-// drafts' storage (which @tellma/core-testing replaces) and keys (which the
-// session's sign-in sweep shares), and the state's section of the support
-// dump with the parts the services report to it. Not for app code.
+// What @tellma/core/memory, @tellma/core/drafts and @tellma/core/recents
+// build on: the browser seams, the routed tenant of a URL, the route data the
+// route table adds, the drafts' storage (which @tellma/core-testing replaces)
+// and keys (which the session's sign-in sweep shares), and the state's
+// section of the support dump with the parts the services report to it. Not
+// for app code.
 export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
 // The worker's update check, and the update service's loader, which the
 // error views' Reload uses and @tellma/core-testing replaces; not for app code.

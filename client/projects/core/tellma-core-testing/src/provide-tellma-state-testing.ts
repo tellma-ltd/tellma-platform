@@ -11,6 +11,7 @@ import {
   ɵTM_LEADER_LOAD,
   ɵTM_STORE_HOST,
   ɵTM_UPDATES_LOAD,
+  ɵTM_ZONE_CHECK_LOAD,
   ɵTmLocks,
   type ɵTmStoreHost,
 } from '@tellma/core';
@@ -88,12 +89,14 @@ export function tmMemoryStoreProvider(): Provider {
  * {@link TmFakeTabBus} in place of `TmTabBus`, {@link TmFakeLocks} in place
  * of the browser's locks, a {@link TmFakeSession} in place of `TmSession`,
  * signed in and active, so the store's write guard passes until the test
- * changes the session, and `@tellma/core/memory`'s `TmDrafts` over a session
+ * changes the session, and `@tellma/core/drafts`' `TmDrafts` over a session
  * storage of its own, so no draft outlives the test. A test app starts no
  * leader election, since it has no other tabs and no hub: `TmLeader` reports
  * a follower until the test sets it; a test that starts the election itself
  * finds the leader's realtime connections in {@link TmFakeHub}. Nor does it
- * run a service worker: the update checks find updates disabled. Use it
+ * run a service worker: the update checks find updates disabled. Nor does
+ * it check the device's time zone, which a test app never sees move:
+ * `TmDeviceZone` keeps its option, and its check does nothing. Use it
  * beside `provideTellmaTesting()`.
  *
  * @example
@@ -121,5 +124,6 @@ export function provideTellmaStateTesting(): EnvironmentProviders {
     { provide: ɵTM_HUB_FACTORY, useFactory: () => inject(TmFakeHub).factory },
     { provide: ɵTM_LEADER_LOAD, useValue: () => Promise.resolve(null) },
     { provide: ɵTM_UPDATES_LOAD, useValue: () => Promise.resolve(null) },
+    { provide: ɵTM_ZONE_CHECK_LOAD, useValue: () => Promise.resolve(null) },
   ]);
 }

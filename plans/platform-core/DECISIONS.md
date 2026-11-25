@@ -384,6 +384,358 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-316 (orchestrator, 2026-11-25): PC-126's search-route saving is candidate C, applied at integration
+
+- PC-126's read-only investigation (D-313) found the over-budget edge.
+  - The pager's page-size tm-select imports @tellma/core-ui/form-field in two places: tm-select-base injects TmFormField optionally, only to test for an enclosing field; tm-select provides TM_FORM_FIELD_CONTROL.
+  - Under D-281's mechanism, either import pulls the whole form-field chunk (3.93 KB) into the search route.
+- Ruling: candidate C.
+  - The token definitions move to @tellma/core-ui/private as ɵTM_FORM_FIELD_CONTROL, plus a new ɵTM_FORM_FIELD_HOST that tm-form-field provides.
+  - form-field re-exports the control token under its public name, so the public name, token identity and every other control are unchanged.
+  - tm-select-base injects the host seam instead of TmFormField.
+  - Measured on a merge of platform-core, pc/PC-F101 and PC-126: the search route is 107.43 of 110, initialJs 222.79, unchanged. The core-ui primary stays at 9.20 of 9.21, private goes from 1.55 to 1.62 of 1.69, and form-field from 3.55 to 3.59 of 3.74.
+  - Option A puts the tokens in the core-ui primary beside TM_CELL_EDITOR_HOST. That would put the primary at 9.23, over its 9.21 ceiling, so it would need a raise. C needs none, and private is the ɵ seam home.
+  - Spec 0029 only requires that controls provide the token, so C is spec-neutral.
+- PC-126's three implementer rounds are spent (section 4.4), so C goes in at its integration, from the scratchpad diff PC-126-D313-candC.diff.
+  - The integrate gates and CI cover it, together with the select, form-field and control suites.
+  - For the api golden, prefer the types-only contentChild<TmFormFieldControl> edit if it keeps core-ui.form-field.api.md unchanged; otherwise approve the one-line type print change.
+- Release order is unchanged (D-314): PC-F101, then PC-118, then PC-126, then PC-F88.
+
+### D-315 (orchestrator, 2026-11-25): PC-154 goes to R1 before its shell rows; the first frame
+
+- PC-154's impl (ce6f1973, on 8646bb53) delivers /support but not the D-305 shell rows, because PC-118 has not landed.
+  - Waiting would leave pc-2 idle for several hours: PC-F101, then PC-118, integrate first.
+  - So R1 reviews what is built now. The shell rows come in fix1, after PC-118 lands and PC-154 merges platform-core.
+  - That makes fix1 large, so R2 runs at xhigh on it (section 4.4).
+- First frame: Acme initialJs is 226.61 on the branch, against 217.29.
+  - The implementer measured +2.35 of that from the primary's own pieces.
+  - It puts +6.97 down to /support bringing tm-grid into Acme for the first time, with first-frame code hoisted (the date engine, the number codec, CDK, Angular debug-node) and the initial files going from 18 to 23.
+  - This has the same shape as the grid reach PC-118 removed by moving TM_GRID_KEYS to contracts (D-311).
+  - R1 finds the import edge, and may measure on a read-only merge with pc/PC-118 whether that move removes it.
+- The 230 line is not raised. Whichever of PC-118, PC-126 and PC-154 lands later re-measures (D-214), and over the line means blocked (D-247).
+- R1 checks the ceiling raises against D-031. The "." raise to 54.8 on a measured 54.74 is not an honest round-up to the next 0.5.
+
+### D-314 (orchestrator, 2026-11-25): PC-F97 landed; the harness switches; PC-F101 goes ahead of PC-118
+
+- PC-F97 landed at e4d30847. CI 45622441151 was green on a292f8a7, and the plans-only merge went on top.
+- The gates' delay harness now switches to the PC-F86 postTask scripts for every checkpoint (D-295). The leaky scratchpad harness is retired.
+- The flaky rows tracked by PC-F83, PC-F85, PC-F86, PC-F87, PC-F93 and PC-F97 are marked fixed, with their landing shas.
+- Release order: PC-F101 goes first, ahead of PC-118. This amends D-311, which predates PC-F101 being held.
+  - PC-F101 is a blocking fix, and D-229 puts blocking fixes before T1.
+  - PC-F101 held at 7d6b2f20. R1 was 0/0/2, with notes-only fixes.
+  - Then PC-118. Then PC-126, once PC-F101 has landed and its search-route saving is in hand (D-313). Then PC-F88. One at a time (D-087/D-190).
+  - PC-126's integration must merge its "./search" staticGraphExcludes array with PC-F101's ["./drafts"] into one key. JSON keeps only the last duplicate key, silently (PC-F101 R1-2).
+- D-229 fill for pc-f2:
+  - The only open blocking fix, PC-F101, is held.
+  - PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready.
+  - So the next non-blocking fix in ledger order, PC-F89, takes the slot. PC-F90 is gated on a release; PC-F91, PC-F92 and PC-F100 wait for PC-118; PC-F99 waits for PC-126.
+
+### D-313 (orchestrator, 2026-11-25): PC-F101 leaves the search route 0.08 KB over; PC-126 owns the rest
+
+- PC-F101's impl (c9f8ab8e) moves TmDrafts into a new lazy entry point, @tellma/core/drafts.
+  - On a measure-only merge with pc/PC-126, the search route falls from 111.21 to 110.08 KB, against spec 0024 section 12's 110.
+  - The 2.62 KB shared chunk is gone. The progress bar stays, in its own 1.47 KB chunk, because the search page renders it.
+  - What is still over is shared-chunk splitting since the details work landed: badge/form-field, and a 0.15 KB grid-contracts chunk. None of it is ./memory code.
+- PC-F101 has done its scope, so it goes to R1 as it is. It is not held hostage to the last 80 bytes.
+- The 110 is a spec budget, so it is not raised (D-031 covers our ceilings, not spec budgets). Over means blocked (D-247).
+  - PC-126 owns the search route, so it finds the saving.
+  - It investigates now, read-only, on a scratch merge of platform-core, pc/PC-F101 and its branch, without committing. It applies the saving at its integration, after PC-F101 lands.
+  - If it finds no spec-neutral saving, PC-126 is blocked and the 110 budget goes to Ahmad.
+- For Ahmad (non-blocking):
+  - the new public entry point @tellma/core/drafts (D-310);
+  - spec 0025 section 1 places TmDrafts in the primary entry point, while the code now has it in ./drafts, as with ./memory before.
+- PC-F101 dropped the progress bar from the shared chunk but kept TmTreeExpansion in ./memory. Its only user is the search page (spec 0030 section 16.2), so the brief's condition for moving it is not met.
+
+### D-312 (orchestrator, 2026-11-25): PC-F87 landed; PC-F101 fills pc-f; PC-F97 integrates under postTask
+
+- PC-F87 landed at 906d6306. CI 45610510060 was green on d661993c, and the plans-only merge went on top.
+- D-229 fill for pc-f: PC-F101 is the only open blocking fix (D-310), so it takes the slot.
+  - PC-129 (T1) still waits for PC-126 (D-289).
+  - Its search-route proof uses a local read-only merge with pc/PC-126, which is never pushed.
+- PC-F97 is released first, per D-311.
+- PC-F97's integrate gate runs under the postTask harness (the PC-F86 scripts), not the leaky one.
+  - The leaky harness's starvation is root-caused (D-294, D-302). PC-F97's own fix1 showed it fails prompt waits that pass 20/20 without the leak.
+  - So the leaky harness cannot judge this checkpoint, which is the one that unblocks the switch (D-295).
+  - Every other checkpoint keeps the current harness until PC-F97 lands.
+- Released after PC-F97's land push: PC-118, then PC-F88 (D-311).
+
+### D-311 (orchestrator, 2026-11-25): PC-118 held at 224.00; the release order after PC-F87
+
+- PC-118's fix2 (1660f36a) drops the unfillable seam (D-305) and fixes R2-2 to R2-6.
+  - Moving TM_GRID_KEYS to @tellma/core-ui/contracts took the grid's reach out of the first frame: the date engine, the number codec, week info, CDK bidi and the calendar icon, 8,864 B raw.
+  - So Acme initialJs fell from 229.18 to 224.00 (18 files), and workerShell from 688.76 to 640.84. The 230 conflict with PC-126 (D-291, D-299, D-301) may now clear. The second of the two to land still re-measures (D-214).
+- Release order after PC-F87 lands, one at a time (D-087/D-190), with priority as D-229 orders slot fills:
+  1. PC-F97 first if it is held by then. It is small, and it removes the zone-check red that can fail any client integration (D-304).
+  2. Then PC-118 (T1).
+  3. Then PC-F88.
+  4. PC-126 integrates only after the blocking PC-F101 lands (D-310).
+- pc-f, which PC-F87 frees, goes to PC-F101, which is blocking (D-229).
+
+### D-310 (orchestrator, 2026-11-25): PC-126 fix2; the route goes over 110 after the merge; PC-F101 is blocking
+
+- Fix2 (b9156359) fixes R2-1 to R2-7.
+  - ./grid is re-based from 41.5 to 40.5 after the re-split (measure 40.39), with a new lazy grid-deferred chunk.
+  - ./column-filter is back within 4.
+  - ./search goes from 18 to 18.5. That is its second raise, and honest (measure 18.11), so I confirm it under D-031.
+  - The launch e2e test passes 3 of 3 under 6 workers, so PC-F98 closes with PC-126.
+- The search route is 108.91 of 110 on the branch, but 111.21 on a measure-only merge with platform-core. An integration would then be blocked (D-247).
+  - The cause is in landed code, not PC-126. @tellma/core/memory is a single FESM, so importing tmPageStateKey also brings TmDrafts and the details work's draft code, plus the progress bar.
+  - PC-126 has used its three implementer rounds (§4.4), and the fix belongs to ./memory. So I opened PC-F101, a blocking fix, to split the draft code into its own entry point. It takes the next free fix slot ahead of everything else (D-229). PC-126 integrates only after PC-F101 lands, and re-measures then.
+- The measure-only merge also auto-merges a duplicate router member into tm-entity.testing.util.ts, because both sides added one. PC-126's integration keeps a single member, and typecheck:emitted must pass.
+- PC-126's agent had a command refused that included git branch -D on a local temp branch. Deleting branches is forbidden in this run, so the refusal is correct. As with D-288 and D-294, it is not notified. The temp branch stays local and unpushed.
+- For Ahmad: PC-F101 adds a public entry point, which will be named in its landing.
+
+### D-309 (orchestrator, 2026-11-25): PC-F97 review 1
+
+- R1 found 0 blocking, 0 major and 1 minor, so there is no R2 (§4.4).
+- Both zone-check causes are fixed, and D-304's CI signature comes from the same mechanism, independent of any harness. #ready() reads seen only after the delayed TmEntities import, and a concurrent check() queues on #tail.
+- Calling ɵstart in the tests is exactly what tm-app-init calls at idle, and it is idempotent. "records a first run's zone at idle" still covers the idle callback, so no coverage of spec 0024's trigger is lost.
+- R1-1: the dialog-close test can hang if the startup check runs first, the same race class as the pair. Fix1 makes the startup check its first check.
+- Once PC-F97 is held, it releases after PC-F87 (D-304, D-308). The swap to the postTask harness follows its landing (D-295).
+
+### D-308 (orchestrator, 2026-11-25): PC-F86 landed; PC-F87 released; PC-154 fills pc-2
+
+- PC-F86 landed at a943c82b: CI 45601581404 was green on 5bfc162a, followed by a plans-only merge. PC-F93 closes with it.
+- The swap to the postTask harness now waits only on PC-F97 (D-295).
+- Release: PC-F97 is not held yet, so the queue releases PC-F87 now rather than stand idle. D-304's order holds once PC-F97 is held: it goes next after PC-F87.
+- D-229 fill for pc-2: no blocking fix is open, and PC-129 (T1) waits for PC-126. PC-154 (T2) became ready when PC-150 landed, so it goes ahead of the non-blocking fixes.
+  - Its D-305 carry adds rows in PC-118's files, the session menu and About.
+  - So PC-154 builds /support first, and adds those rows only after PC-118 lands, by merging platform-core into its branch.
+  - If it runs out of other work first, it stops as blocked on PC-118 rather than reimplement the shell.
+
+### D-307 (orchestrator, 2026-11-25): PC-F88 review 1; prove the trust step did something
+
+- R1 found 0 blocking, 2 major and 2 minor. R1-2 is the confirmed root cause of the skeleton-frame gap, outside the diff, and belongs to PC-F100. That leaves one major in PC-F88 itself, so there is no R2 (§4.4).
+- R1-1: three Acme report uploads skip the hidden .artifacts folder: two in nightly-tier.yml and one in ci.yml, which predates PC-F88. All three get include-hidden-files: true.
+- R1-3: CI shows the step passed, but not that it added anything. dotnet dev-certs said a certificate was already present, and the step logs nothing.
+  - Fix1 logs, for each certificate, whether it was added or already trusted, and dispatches the nightly once more on pc/PC-F88 to read those lines.
+  - If the image already trusted the certificate, the step stays as a safeguard. The review notes then say so, and say what had made the Windows leg red before.
+- R1-4: the selection is tightened to CN=localhost, self-issued, with a private key.
+- PC-F100's row gains R1-2's refinements: a unit test that tmShellRoute is synchronous after preload, and warming the tenant shell when the picker renders, because Playwright clicks within milliseconds of its hover.
+
+### D-306 (orchestrator, 2026-11-25): PC-F88's nightly proof; the skeleton-frame gap; report uploads
+
+- PC-F88 (impl d07d94e2) proved its trust step in a manual nightly dispatch on its branch, 45596696902 (D-300). All seven jobs ran, the trust step was green, and every Windows sign-in worked.
+- That run is the first time either Acme nightly leg has run. Both are red on one gate only: route-feedback.spec.ts:99, "the route skeleton in the click's frame" (@perf), on chromium and chromium-ar.
+  - The cause is a product gap (D-011). TmUrls.preload never loads the tenant shell, so the first tenant entry from the picker paints its skeleton in frame 2 or 3.
+  - Opened as PC-F100, a non-blocking fix that starts after PC-118 lands, because PC-118 owns the tenant shell. Until then, the Acme nightly legs stay red on that gate. The nightly is not an integration gate.
+- The Acme report uploads find nothing, because the .artifacts folder is hidden and upload-artifact skips hidden files by default. This is runner-only, so it folds into PC-F88's fix1 (include-hidden-files: true on the Acme report uploads in nightly-tier.yml and ci.yml).
+- Cold launch LCP measured about 9 s on both OSes against the 4 s budget. By design it is a warning annotation, not a failure, so it goes on the watch list. PC-F100's preload fix may move it, and it is re-read after PC-F100.
+- From now on, nightly triage filters gh run list --workflow nightly-tier.yml with --branch platform-core, because pc dispatches appear in the list too.
+
+### D-305 (orchestrator, 2026-11-25): PC-118 review 2 rulings; the support seam is dropped and handed to PC-154
+
+- R2 found 0 blocking, 1 major and 5 minor. Every fix1 figure reproduces from clean builds: ./shell 8.65 of 9 and Acme initialJs 229.18. Fix2 is PC-118's third and last implementer round (§4.4); a hold follows.
+- R2-1 (major): ɵTM_SHELL_SUPPORT cannot be provided by anyone.
+  - /support loads only on demand, the primary may not import ./shell, and a distribution provider would contradict specs 0027 §2 and 0026 §12.1.
+  - Its labels would come from strings that are not loaded yet, and it has no place for spec 0026 §8.4's offline line.
+  - I took the reviewer's second option. Fix2 drops the seam, the Report a problem row and its life-buoy glyph, and About's Diagnostics tabs, and the tm-about-dialog raise from 3 to 3.5 goes with them.
+  - PC-154 adds both pieces itself, with an internal providedIn 'root' token pointed at the primary's TmSupport. This replaces D-291's carry, and frees a little of the first frame.
+- R1-2 is confirmed: five first-frame modules import the lucide index (platform-icons, tm-app-bar, tm-banner-bar, tm-toast-host, tm-page-header). The session-menu glyphs, about 0.5 to 0.6 KB gzip, move only with PC-F91.
+- R2-2 to R2-6 are fixed in fix2:
+  - Forward stays enabled after a replace navigation;
+  - presses before the overlays chunk loads collapse to the final state;
+  - Reload anyway catches its failure;
+  - TM_GRID_KEYS moves to @tellma/core-ui/contracts, so the Shortcuts dialog no longer pulls the grid's code in a packaged distribution;
+  - a test for the md-up case.
+- Corrections for Ahmad:
+  - D-301's API item for ɵTM_SHELL_SUPPORT is withdrawn, since the seam is dropped. TM_GRID_KEYS's new home in ./contracts is an API change; the grid still re-exports it.
+  - Spec 0027 §10.1 says slot rows show "below sm" where §7.1 means below md. The code follows §7.1, and §10.1's cell needs correcting.
+
+### D-304 (orchestrator, 2026-11-25): the zone-check race is seen in CI without a harness; PC-F86 re-integrates
+
+- CI 45595768600 on 368e684e (pc/PC-F86) failed in the client job on one test, the tm-zone-check entry test: [{ timeZone: 'Europe/London' }] against []. CI runs no delay harness, so the race is real without one.
+- PC-F86 does not touch the zone-check spec or its product code. The cause is PC-F97's (D-294, D-303), and PC-F97's R1 is told to confirm that the fix removes this exact signature.
+- So PC-F86 re-integrates, following D-288 and D-292. This is not a retry of a failure of its own.
+- The pair can turn any client integration red until PC-F97 lands. PC-F97 therefore goes next in the release queue after PC-F86, ahead of PC-F87, since D-087/D-190 set one release at a time but no order.
+
+### D-303 (orchestrator, 2026-11-25): PC-F97 goes to R1; the entity specs wait for PC-126
+
+- PC-F97 (impl 04114076) reproduced both zone-check causes under the postTask harness and fixed them in the spec, which now calls ɵstart itself in the tests that wait for the startup check. Its full core runs: 2589/2589 twice under postTask; 2588/2589 twice under the current harness, with starvation-class failures only (D-294). The zone-check pair never failed.
+- R1 is asked to judge whether calling ɵstart directly still proves what spec 0024's zone check requires, or whether coverage of the product's idle trigger is lost.
+- The chunk-crossing waits in tm-entity-field.spec, tm-entity-pickers.spec and tm-value.spec are skipped, because pc/PC-126 renames or changes those files. They go to PC-F99, which starts after PC-126 lands.
+- tm-blob-fetcher (core-ui) is left as it is: core-ui has no tmSettleUntil, and the spec loads its chunk statically.
+
+### D-302 (orchestrator, 2026-11-25): PC-F86 integrates under the current harness; another starvation sighting
+
+- PC-F86 integrated as 368e684e. Its full core run under the current, leaky gate harness passed 2588 of 2589.
+- The one failure was TmErrorHandler "marks an unhandled rejection global", a wait that did not hold within 5,573 ms. It is the starvation class that PC-F86 diagnosed: it passes alone 6/6, it failed the same way in an earlier leaky run, and it never failed in ten leak-free runs.
+  - So it does not block PC-F86. It is one more reason for the swap, and it is not opened as a new fix.
+  - The swap still waits on PC-F97 (D-295), because PC-F97 must first make the zone-check pair pass under the new harness.
+- tm-session-tabs.spec.ts:149, 153 and 156 still use vi.waitFor across a lazy chunk. They predate PC-F86, which corrected its own R1-1 response, so they join PC-F97's sweep.
+
+### D-301 (orchestrator, 2026-11-25): PC-118 fix1 goes to R2; the first-frame figures for the landing order
+
+- Fix1 (4779d5c7) fixes R1-1, R1-3, R1-4 and R1-5, and fixes R1-2 in part. R2 runs at xhigh on fc8d58c6..4779d5c7, since R1 had a blocking finding (§4.4).
+- R1-2:
+  - TmBadge is out of Acme's first frame through the new @tellma/core-ui/counter entry point.
+  - The session-menu glyphs are not. Per-icon imports were built, measured and reverted: they moved nothing, because the primary's platform-icons.ts, tm-app-bar, tm-banner-bar, tm-toast-host and about 30 core-ui files import the lucide index.
+  - Only PC-F91's platform-wide change can move them. So D-297's wait no longer holds for overlap reasons alone. PC-F91 still touches tm-app-bar, which PC-118 owns, so it starts after PC-118 lands.
+- The ./shell re-split is done. Installed-mode history is a lazy tm-shell-history chunk. ./shell is re-based from 9.35 to 9 (measure 8.65), and every remaining eager piece is spec 0027 first frame. R2 checks this and the tm-about-dialog raise from 3 to 3.5.
+- First frame, for the landing order: Acme initialJs is 229.18 on PC-118's branch and about 225 for PC-126 after its merge; each alone is under 230. Whichever lands second re-measures (D-214). Fix1's honest savings are taken, and lucide is the only one left.
+  - If the second to land crosses 230, it is blocked (D-247). I then bring the 230 line to Ahmad with the itemized first frame, rather than raising it, or land PC-F91 first if its saving is enough.
+  - The order is decided once PC-126's fix2 and both R2s report.
+- PC-118 also changed scripts/api-extractor.mjs to patch every rollup before analyzing any, because a re-exported class's doc note had raced the gate. R2 checks it.
+- For Ahmad: the public seam ɵTM_SHELL_SUPPORT (Report a problem, and About's Diagnostics tab), which PC-154 fills from /support. Add this to D-291's list of API additions.
+
+### D-300 (orchestrator, 2026-11-25): PC-F88's permission block; the nightly tier runs on a pc branch only on a manual dispatch
+
+- PC-F88 wanted to run its new nightly step locally as proof: the step adds the ASP.NET dev certificate to LocalMachine\Root on the Windows runner. The auto-mode classifier refused it as "Undermining Oversight". Ahmad was notified at once by push and email, under the subject "Platform-core: permission block on PC-F88".
+- Nobody runs the step locally by another route (the standing rule on permission laundering). The run does not wait on Ahmad. PC-F88 goes on without that local proof.
+- Proof in CI instead. Every nightly-tier job was guarded to refs/heads/platform-core alone, so a dispatch on a pc branch skipped them all. PC-F88 widens each guard to also allow a workflow_dispatch on refs/heads/pc/**, and makes the concurrency group per-ref, so a pc dispatch cannot cancel a pending platform-core nightly.
+  - Schedules and pushes still run only on platform-core.
+  - This does not extend D-144. A push to pc/** still runs CI only on a ": integrate" message, and only a deliberate gh workflow run starts the nightly tier on a pc branch.
+- Evidence so far: no Acme nightly leg has run on either OS. The last nightly-tier run, 45395656478, predates PC-114's landing (7a27e3c6), which added those legs. So PC-F88's dispatch is also the Linux acme-e2e nightly leg's first run, and a red result there is root-caused (D-011).
+
+### D-299 (orchestrator, 2026-11-25): PC-126 review 2 rulings; the ./grid re-split; first-frame order
+
+- R2 found 0 blocking, 1 major and 6 minor. The 110 KB route (109.55) and the 222.40 first frame reproduce from clean builds. Fix2 is PC-126's third and last implementer round (§4.4); a hold follows.
+- R2-1 (major): the launch e2e "two live tenants" test regressed from 1 in 3 failing to every run.
+  - The cause is ngsw's inline initializeFully on localhost, which waits for the shell prefetch. The larger prefetch is by design (spec 0024 §5.3, 804.78 of 1,536 KB).
+  - The test fix lands in PC-126's fix2, because it must land with or before this integration. PC-F98 closes with it.
+- R2-2 to R2-6 are fixed in fix2:
+  - the menu chunk failure path;
+  - a parallel entity-editing import, which is the cause of the one core timeout;
+  - stale columns in offline rows;
+  - a page past the end loads the last page with rows;
+  - a test for the More menu.
+- Ceilings (D-031):
+  - ./grid has risen three times by value since PC-F44's re-split (41.23, 41.37, 41.5), the way D-291 counted ./shell. So a re-split is due: fix2 itemizes ./grid's eager modules, moves out what a first grid frame does not use, and re-bases.
+  - ./column-filter must stay within 4 KB; it is 1 byte over.
+  - The ./entity note must name the savings sought.
+- First frame: PC-126 measures about 225 after the merge and PC-118 about 229.7, so whichever lands second will likely cross 230.
+  - Under D-291, the second to land re-measures and seeks honest savings first. R2 finds only lucide left, which PC-F91 owns. PC-F91 waits for PC-118 (D-297).
+  - I will decide the landing order, and whether the 230 line goes to Ahmad, once PC-118's fix1 and PC-126's fix2 report their initialJs.
+- For Ahmad:
+  - spec 0010 §B.7's glyph table joins the misalignments in PC-126's deviation 21;
+  - spec 0030 §14 says nothing about a page past the end. PC-126 loads the last page that has rows, like the 413 fallback.
+
+### D-298 (orchestrator, 2026-11-25): PC-F87 review 1; a longer deadline is right for browser-process latency
+
+- R1 found 0 blocking, 0 major and 3 minor, so there is no R2 (§4.4). It reproduced the CI signature with the old spec under in-page and cross-page browser-process load; the new spec passes under both. It ruled out cross-talk: each session gets its own browser context, and isolate is false within a session.
+- tmWaitUntil is not a deviation. client CONTRIBUTING.md's tmSettleUntil rule covers waits across import(), and no wait in this spec crosses one. TestBed.tick() would also build a fresh testing module after the spec's TestBed reset.
+- The fix rests on moving from vi.waitFor's 1 s to the shared 4 s deadline. The ledger row warned that a raise alone is not a fix. Here it is right, because delivery waits on Chromium's browser process and no in-page condition can stand in for it. The fix adds more than the raise: long-lived listeners, numbered marks, a final check and a named error. Fix1 records it as a deviation with that reason.
+- Open risk, accepted: a browser-process delay over 4 s still fails, now with an error that names the channel and the mark. R1 reached 4.7 s only under a deliberately heavy synthetic load.
+
+### D-297 (orchestrator, 2026-11-25): PC-F85 landed; PC-150 released; PC-F97 fills pc-f2 ahead of PC-F88
+
+- PC-F85 landed at 1e7c28cc: CI 45581618968 was green on 6c0c2e06, followed by a plans-only merge. PC-150 is released to integrate. PC-F86, held, follows it (D-087/D-190).
+- D-229 fill for pc-f2: no blocking fix is open, PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready, so the slot takes a non-blocking fix.
+- PC-F97 goes ahead of PC-F88 to PC-F96 for two reasons:
+  - It gates the harness switch (D-295).
+  - The zone-check pair is intermittently red under the current gate harness, so it can fail any client integration.
+- The sweep leaves out the spec files that other items own, or that pc/PC-118 and pc/PC-126 change, so that held branches meet no conflicts.
+- PC-F91 and PC-F92 (lucide and kbd first-frame weight) wait for PC-118 to land, because PC-118's fix1 moves the session-menu glyphs to per-icon imports in the same area.
+
+### D-296 (orchestrator, 2026-11-25): PC-126 fix1 goes to R2; the launch e2e failure is pre-existing
+
+- Fix1 (e585508d) reports R1-1 to R1-9 fixed, with 21 deviations. The search route measures 109.55 of 110 KB with prefetches counted (D-290). R2 runs at xhigh on 9afed7d5..e585508d, since R1 had a blocking finding (§4.4).
+- R2 is asked to check:
+  - the route measure by hand;
+  - the deferred pieces' behaviour;
+  - each ceiling change against D-031, counting raises in history;
+  - the first-frame attribution (initialJs 222.40 against 215.81), which PC-118 shares under the 230 line (D-291);
+  - the new entry points and staticGraphExcludes (D-281);
+  - the one core load timeout (D-011);
+  - whether the larger shell prefetch (96 files, 2,272 KB, against 62 files, 1,724 KB) is a regression.
+- The launch e2e "two live tenants lands on the picker" also fails on fd97c5f4, 1 of 3 runs, so it is pre-existing. Opened as PC-F98. PC-126's larger prefetch makes it fail 3 of 3, which R2 judges.
+- I removed the scratch base checkout PC-126 left, pc-126-base (26,107 files, already deregistered by git, a long-path removal failure), as with pc-f82-base. Its LocalDB databases with the suffix pc126base remain; they hold only test data.
+- For Ahmad:
+  - Two new public entry points: @tellma/core-ui/l10n-input, which takes the parse names out of ./l10n, and @tellma/core-ui/multi-select, which takes TmMultiSelect out of ./select. TM_CHECKBOX_CELL_DISPLAY also moves to ./contracts, re-exported from ./checkbox.
+  - Spec 0005 §2.2 and spec 0010 §B.4 still place these names in ./l10n and ./select, and need amending.
+
+### D-295 (orchestrator, 2026-11-25): PC-F86 review 1 confirms the harness cause
+
+- R1 found 0 blocking, 0 major and 3 minor, so there is no R2 (§4.4). All five claims hold:
+  - the leaky spin stalls a page (a 2,127 ms gap in the probe);
+  - the timer form covers the same 35 sites in 25 files and reverts byte for byte;
+  - it fails the zone-check pair on every run;
+  - tmWaitUntil's real clock is correct under Vitest 4.1.9.
+  The spec changes are alignment, not the fix.
+- Corrections to D-294:
+  - The zone-check pair is intermittent under the current harness too, failing 1 of 2 full runs in R1.
+  - Its second test fails by its own mechanism, three writes. PC-F97's row says so now.
+  - PC-F97 also takes the sweep of the roughly 21 core specs that use vi.waitFor across a lazy chunk (R1-1), apart from tm-session-flows.spec, which PC-F86 fixes now.
+- R1-2: the timer form can capture a faked setTimeout when a wrapped lazy file first evaluates under fake timers. Fix1 moves the harness to scheduler.postTask with a 300 ms delay, which Vitest does not fake, and proves the case.
+- PC-F93 (tm-arrivals) closes with PC-F86: R1 confirms that its failure has the same starvation cause as the guard's.
+- The harness is swapped once PC-F86 and PC-F97 have both landed, with fix1's postTask version as the new gate harness. Until then, gates keep the current one, which is still a real 300 ms delay. A zone-check pair failure under it is PC-F97's, not the item under test's.
+
+### D-294 (orchestrator, 2026-11-25): PC-F86 blames the delay harness; switch only after R1; PC-F87's gh api denial
+
+- PC-F86 (impl 7b8cd2c8) finds that the 300 ms integration delay harness is what starves pages, not the specs. The harness is orchestrator tooling. Its spin opens a new MessageChannel on every tick and never closes it, about 10,000 per 300 ms wait. That stalls a page's main thread for 1 to 4.5 s, and starves quiet pages when 12 run at once.
+  - PC-F86 proposes a timer-form replacement, scratchpad PC-F86-inject_lazy_delay.py and PC-F86-remove_lazy_delay.py.
+  - In three full core runs under each form, the failures per run were 0/5/1 for the current harness and 0/0/0 for one channel per wait. Under the timer form, the only failure is the tm-zone-check pair, every time.
+- The harness stays as it is until R1 has verified the claim, the replacement's coverage and byte-identical revert, and the zone-check cause. On a confirmed R1, the timer form becomes the gate harness only after PC-F97 lands, because the timer form would otherwise turn the zone-check pair red on every integration.
+- PC-F97 is opened for the zone-check pair, which counts turns past a lazy import. If R1 confirms that PC-F93 (tm-arrivals) has the same cause, PC-F93 closes with PC-F86.
+- PC-F85's integration keeps the harness in force now, which is still a real 300 ms delay and so still a valid gate. Its comment "faked timers leave it alone" is wrong, because Vitest 4's vi.useFakeTimers() fakes performance.now as well. The comment lives in the harness, not in the product, so it is fixed when the harness is swapped.
+- PC-F87 stopped on a denied command that read the CI log through gh api. This run forbids gh api, so the denial is correct. It is not a permission block to notify (as in D-288). The allowlist is not widened, and nobody fetches the log on PC-F87's behalf. The ledger row already holds the failure text, and PC-F87 carries on without the log.
+- PC-F86's implementer ran one rm with a glob on its own ignored probe screenshot. Nothing else was affected; the rule against it is restated in later briefs.
+
+### D-293 (orchestrator, 2026-11-25): PC-F83 landed; its connect-variant filter waits on Ahmad
+
+- PC-F83 landed as a fast-forward to 664d98c4 after a green CI run, 45572535841.
+- R1-2 is fixed in part. A filter by connect variant on tellma.access.connect.results needs a variant tag, and spec 0014 fixes that instrument's tags to result alone. That is a spec change, so it stays out until Ahmad rules on it.
+- For Ahmad: should tellma.access.connect.results gain a variant tag (spec 0014)?
+- D-229 fill for pc-f: no blocking fix is open, PC-129 (T1) waits for PC-126 (D-289), and no T2 is ready, so the slot takes the next non-blocking fix, PC-F87. PC-F85 is released to integrate.
+
+### D-292 (orchestrator, 2026-11-24): PC-F83's red CI comes from an unrelated race, so PC-F83 re-integrates
+
+- CI 45567894634 on a10330ee failed in build-test (windows-latest) on one test, HubConnectTests.A_member_connects_and_is_tracked_counted_and_logged. Every other job and test passed.
+- The root cause is in the test (D-011). TellmaHub.OnDisconnectedAsync removes the connection from the tracker before it records the -1, so a test that waits on Count == 0 and then asserts the -1 at once can see the gap. PC-F83 changes only the version-tag cache and its tests, and nothing on the realtime path.
+- So I opened PC-F96 for the test, and PC-F83 merges platform-core and integrates again, following D-288's precedent. This does not retry a failure of PC-F83's own.
+- PC-150 is held at 2c7880b3 and queues after PC-F85: one held item is released at a time (D-087/D-190).
+
+### D-291 (orchestrator, 2026-11-24): PC-118 review 1 rulings, and the first-frame headroom
+
+- R1 found 1 blocking, 1 major and 3 minor on fc8d58c6, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): tm-route-host.spec's failed-cold-entry focus test fails on every run. The new tenant shell drops the outlet on a non-API sync failure.
+  - The test keeps its host case, using a sync promise that never settles.
+  - A new test covers the shell's failed line.
+- R1-2 (major): two barrel-hoisting first-frame leaks (D-281's mechanism), together about 1.5 KB of Acme initialJs.
+  - TmBadge comes in through TmCounter's import from @tellma/core-ui/badge. Fix: a new @tellma/core-ui/counter entry point, which ./badge re-exports, and badge added to ./shell's staticGraphExcludes.
+  - Six session-menu glyphs come in through the lucide index. Fix: per-icon imports inside the overlays chunk.
+- TmInstalledHistory (about 0.9 KB) moves to a lazy chunk, since spec 0027 does not need it in the first frame.
+- The ./shell ceiling's third raise (1.28, then 1.35, 2.35, 9.35) falls under D-031's re-split clause.
+  - R1's module itemization, together with these moves, is that re-split: every remaining eager piece is first-frame per spec 0027.
+  - The ceiling is re-based on the measure after the moves. Spec 0027 §1 plans 16 KB for the shell.
+- First-frame headroom: Acme initialJs is about 229.7 of 230 on PC-118's branch. PC-126 adds its own first-frame bytes on another base.
+  - Under D-214, whichever lands second re-measures.
+  - If that measure crosses 230, that item finds honest savings first. If none are left, I flag the 230 line to Ahmad, with the itemization, rather than raising it.
+- R1-3 to R1-5 are fixed in fix1: the accessible name's dangling comma, a seam for Report a problem and the Diagnostics tab (carried to PC-154), and the missing tests.
+- Not done now: a per-scope lazy Arabic seam could take about 1.08 KB of overlay and dialog Arabic off Arabic users' boot path. It needs a locale-pack mechanism that does not exist yet, because tmArabic() loads every part at once. The ./shell-strings first raise from 1 to 2 is honest meanwhile.
+- For Ahmad: three public API additions, the @tellma/core-ui/initials entry point, TmMenu.panelClass and TmMenuItem.detailLabel, plus the @tellma/core-ui/counter entry point coming in fix1.
+
+### D-290 (orchestrator, 2026-11-24): PC-126 review 1 rulings
+
+- R1 found 1 blocking, 1 major and 8 minor across d27c719a and the D-289 split 9afed7d5, so fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): the search route's real closure is 123.26 KB in 7 files, not 97.8, against 110.
+  - The 97.8 figure left out the menu, image/avatar and badge/form-field chunks, which Acme's index.html only prefetches.
+  - Ruling: a route's measure counts every chunk the route loads beyond the initial (modulepreload) set; prefetch is not the initial set. fix1 defers TmMenu in the search host and TmImage/TmAvatar in tm-value, which the reviewer puts at about 107.6.
+  - At integration, the size tool's route figure (PC-127's D-285 measure) must agree with the hand measure, prefetched chunks included.
+- R1-2 (major): Acme initialJs rose about 8.9 KB to 224.72, close to the 230 warn line.
+  - About 3.2 KB is avoidable: the core-ui parse halves of the date engine and number codec, and the date helpers that go with them. fix1 moves them out of the first frame, with CDK scrolling, bidi and tm-display-name if only search code reaches them.
+  - Angular's _debug_node, resource and rxjs-interop pieces are accepted. Lucide stays with PC-F91.
+  - fix1 measures a baseline on fd97c5f4 and attributes the whole rise.
+- The Acme launch e2e "a cold launch of a user with two live tenants lands on the picker" hangs on the launch skeleton under 6 workers. Its cause is not established. fix1 runs it on a clean fd97c5f4 build: a failure there opens a fix item; otherwise PC-126 root-causes it.
+- R1-3 to R1-9 are fixed in fix1. The launch.spec fragment change (q to a filter payload, per spec 0024 §9.5) is recorded as a deviation.
+- Carries: R1-6's snapshot-select comparison (from D-275) goes to PC-132, which owns page state; §5.2's 500 ms no-key rule goes to PC-128, the search field.
+- For Ahmad (R1-10): specs 0029 §12.1 and 0031 still name tmGridColumnFor's `editable` option, which the D-289 split moved to tmEditableGridColumnFor in /entity-editing. Spec 0030 §1's parts table places TmSearchContext in /search.
+
+### D-289 (orchestrator, 2026-11-24): split /entity along its read/edit line
+
+- PC-126's search route measured a real closure of 150.8 KB against spec 0024 §12's 110 KB. The chunks were the grid, host and entity view (79), the entity edit stack (18), the forms, pickers, select and date-picker (46), and the modal (6.5).
+- The cause, reproduced with plain esbuild, is code splitting over the /entity barrel. /entity's own import() chunks (the action dialog and the rest) keep its edit stack live, and the barrel spreads that stack into every importer's static chunks.
+- With leaf imports the route comes to 104.5 KB, which is not legitimate across entry points. This is the same cause behind PC-127's 107 KB details route with a TmValue layout (D-287).
+- Ruling: the route budgets stand (110 search, 80 details).
+  - /entity splits along its read/edit line, as @tellma/core-ui/grid and /grid-editing already do. /entity keeps the view side: select plans, value formats, typed value components, blob checks, and the actions' front with its confirmation loop.
+  - A new entry point holds the edit stack: the entity picker binding, the entity fields, and everything that reaches the core-ui editors or @angular/forms.
+  - /entity's lazily loaded dialogs import it only by import().
+  - A staticGraphExcludes guard keeps /entity, /search and /details off it.
+  - D-285's "do not split /entity" is superseded. It rested on the over-count, and the closure measured from the host's import() is still over budget.
+- PC-126 does the split on its branch, because it is blocked on it and holds the measurements. PC-129 starts only after PC-126 lands, so that tm-field builds on the split, and D-287's lazy edit controls follow from it.
+- ./search measured 17.76 KB against spec 0030 §1's 16. After the split PC-126 re-measures and looks for honest savings. If it is still over, the ceiling is the honest measure (D-031), and it is flagged to Ahmad.
+- For Ahmad: ARCHITECTURE.md's @tellma/core row lists the entity picker binding and the entity fields under /entity. The new edit entry point moves them out, so one of the two needs bringing in line. Spec 0030 §1's 16 KB for ./search may need revisiting, and PC-126 will report the figure.
+
 ### D-288 (orchestrator, 2026-11-24): PC-F82's Windows build stall
 
 - CI 45524650837 on PC-F82's integrate commit 907f5290 went red because build-test (windows-latest) was cancelled at the 30 min job limit.

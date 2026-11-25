@@ -22,6 +22,7 @@ import { TM_UPDATES_LOAD } from '../api/tm-api-seams';
 import { TmHttpApi } from '../api/tm-http-api';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import { TmPageContexts } from '../context/tm-page-contexts';
+import { TmDeviceZone } from '../l10n/tm-device-zone';
 import { TmLocalization } from '../l10n/tm-localization';
 import { tmRoutedTenant } from '../launch/tm-routed-tenant';
 import { TmClientMetadataStore } from '../metadata/tm-client-metadata';
@@ -49,9 +50,10 @@ import type { TmAppConfig } from './tm-app-config';
 // navigation and the launch's timing; the session's cross-tab paths; after
 // first render, the entry points of the recent pages, the leader election
 // and the worker's updates; and at idle the Contracts chunk, so the first
-// API call does not wait for it, the telemetry pipeline (spec 0026 §3) and
-// the load's paint metrics (§5.2). The page visits are timed from the first
-// navigation on (§5.1), and Copy diagnostics' shortcut works from then (§8.3).
+// API call does not wait for it, the telemetry pipeline (spec 0026 §3),
+// the load's paint metrics (§5.2) and the device-zone check (spec 0024
+// §7.8). The page visits are timed from the first navigation on (spec 0026
+// §5.1), and Copy diagnostics' shortcut works from then (§8.3).
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -167,7 +169,8 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       }
       // After first render: the recent pages' visit count, the leader
       // election and the worker's updates; at idle, the Contracts chunk,
-      // which the HTTP layer keeps, and the telemetry pipeline.
+      // which the HTTP layer keeps, the telemetry pipeline, the paint metrics
+      // and the device-zone check.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
@@ -207,6 +210,11 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
             // a chunk that fails to load sends no metrics.
             if (alive) {
               void import('../observe/tm-load-metrics').then(({ tmStartLoadMetrics }) => alive && tmStartLoadMetrics(injector), () => undefined);
+            }
+            // The device-zone check's chunk, which checks now and then on
+            // each tenant entry and whenever the tab comes into view.
+            if (alive) {
+              injector.get(TmDeviceZone).ɵstart();
             }
           };
           if (window?.requestIdleCallback) {
