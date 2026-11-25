@@ -384,6 +384,42 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-320 (orchestrator, 2026-11-25): the first-frame set; PC-F102 re-enables the chunk optimizer within section 6
+
+- The D-318 analysis (scratchpad first-frame-analysis.md) built the full merge. Acme initialJs, step by step:
+
+  | State | Acme initialJs (KB) | Files |
+  |---|---|---|
+  | 13cbb8e5 | 217.29 | 18 |
+  | + PC-118 | 226.86 | 21 |
+  | + PC-126 with candidate C | 231.88 | 26 |
+  | + PC-154 | 234.33 | 27 |
+
+  - The fixture is at 233.61, and five fixture build tests fail on the budget warning.
+  - PC-126 is the one that crosses the line. The grid hoist is already paid by its search route.
+- Source routes, measured cumulatively:
+  - The l10n parse split is already in PC-126 (e585508d), so it saves nothing more.
+  - PC-F91: -0.55.
+  - PC-154's ɵTmSupportOffline re-export: -0.45. It goes into PC-154's fix1.
+  - PC-F92: -0.58.
+  - CDK scrolling and bidi, and _debug_node: nothing realistic. Each is one module that esbuild places whole.
+  - All of them together leave 232.75, so no source route holds the line.
+- About 10 KB is the cost of splitting the first frame into many files, because the tool runs ng build with NG_BUILD_OPTIMIZE_CHUNKS=false (D-065).
+  - With the optimizer on, the set measures 224.33 in 4 files.
+  - The tool currently crashes in that mode: leftover chunks nothing references, and merged chunk names in Rollup's base64url alphabet.
+  - D-065 turned the optimizer off because those names fail spec 0024 section 6's hashed-name rule (a - and at least eight [A-Z0-9]), and stats.json fell out of step with the output.
+- Ruling:
+  - Open PC-F102, blocking for PC-126 and PC-154. It re-enables the optimizer while keeping section 6 as written: either an option for the hash alphabet, or compliant content-hashed names that the tool assigns, with every reference rewritten. It also keeps stats.json and the graph honest, and re-measures every budget.
+  - Widening section 6's pattern is a spec change, so it is not ours to make.
+  - If PC-F102 finds no compliant way, it stops and reports. The choice then goes to Ahmad: amend section 6 to admit the optimizer's names, or move the 230 line. In that case the itemization above is the brief for him.
+  - PC-F102 takes the first slot that frees: pc-1, when PC-118 lands (D-229, blocking first).
+  - D-065's optimizer ruling is revisited on new facts. Its section 6 constraint stands.
+- Release queue after PC-118:
+  - PC-126 is blocked until PC-F102 lands (D-247), so it is skipped.
+  - PC-F88, then PC-F89.
+  - PC-154's fix1 waits for PC-118 as planned. Its integration also waits for PC-F102.
+- For Ahmad (non-blocking unless PC-F102 fails): the first frame of the full T1 shell set is 234.33 KB against 230 under today's build. The fix within the current spec is PC-F102.
+
 ### D-319 (orchestrator, 2026-11-25): PC-F89 held; release queue; restart recovery
 
 - PC-F89 held at 3b3a31a5. Its fix1 is test-only: the gives-up test now proves the logout carried on, and it fails under the early-return mutation.
