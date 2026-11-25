@@ -14,7 +14,7 @@ import { TM_DISPLAY_NAME_GOLDEN as golden } from '../../src/entity/tm-display-na
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { TM_T17, tmSettle } from '../../src/routes/tm-app.testing.util';
 import pasteGolden from './paste-leaf-golden.json';
-import { ɵtmPasteLeaf, ɵtmPasteMatch, ɵtmResolveLabels, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
+import { ɵtmPasteGroups, ɵtmPasteLeaf, ɵtmPasteMatch, ɵtmResolveLabels, ɵTM_PIPELINE_LIMITS } from './tm-entity-paste';
 import { TmEntityPickers } from './tm-entity-pickers';
 import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
 import { TmLazyPickerPage } from './tm-lazy-picker-page';
@@ -72,6 +72,33 @@ function serve(table: readonly TmJsonObject[]): (call: TmFakeApiCall) => { rows:
         rows: table.map((row) => select.map((term) => at(row, term))),
       },
     };
+  };
+}
+
+/**
+ * Answers a paste's query route from a table as its filter leaf asks,
+ * loosely: the rows with a value equal, ignoring case, to an item of one
+ * of the leaf's `in` lists, whichever list, in the select's columns. The
+ * answer holds every row the server's would, and the client's own exact
+ * matching decides among them; a label left out of its leaf is found
+ * nowhere. A read so answered holds about as many rows as its leaf holds
+ * labels, as the server's does, where an answer of every row would make a
+ * large paste match each label against the whole table.
+ *
+ * @param table - The rows.
+ * @returns The responder.
+ */
+function servePaste(table: readonly TmJsonObject[]): (call: TmFakeApiCall) => { rows: TmQueryRowSet } {
+  return (call) => {
+    // The paste's own leaf is the last; the items are read as the server's lexer would.
+    const leaf = (call.body as { filters: readonly string[] }).filters.at(-1)!;
+    const items = new Set(
+      leafParts(leaf)
+        .lists.flat()
+        .map((item) => (item.startsWith("'") ? item.slice(1, -1).replaceAll("''", "'") : item).toLowerCase()),
+    );
+    const asked = table.filter((row) => Object.values(row).some((value) => (typeof value === 'string' || typeof value === 'number') && items.has(String(value).toLowerCase())));
+    return serve(asked)(call);
   };
 }
 
@@ -479,7 +506,7 @@ describe('TmEntityPickers', () => {
 
     it('splits many prefixed names over several queries within the server’s ceilings, and resolves each', async () => {
       const rig = await tmEntityRig({ ...SYSTEM, languages: 2 });
-      rig.api.respond('customers/query', serve(customers(300)));
+      rig.api.respond('customers/query', servePaste(customers(300)));
       const labels = customers(300).map((row) => `${row['code']} - ${row['name']}`);
       const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
 
@@ -492,7 +519,7 @@ describe('TmEntityPickers', () => {
     it('splits more short codes than one list holds over several queries, and resolves each', async () => {
       const rig = await tmEntityRig(SYSTEM);
       const table = Array.from({ length: 600 }, (_, index) => ({ id: index + 1, code: `C${index}`, name: `Customer ${index}` }));
-      rig.api.respond('customers/query', serve(table));
+      rig.api.respond('customers/query', servePaste(table));
       const labels = table.map((row) => row.code);
       const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
 
@@ -529,6 +556,58 @@ describe('TmEntityPickers', () => {
       expect(lists).toEqual([[`'${longest}'`, `'-${longest}'`, `'${longer}'`, `'#${longer}'`, `'${longer} - Cash'`], [longest, `-${longest}`]]);
     });
 
+    it('groups the labels as taking them one at a time would: each group the longest run whose leaf fits', () => {
+      // The reference: each label in turn, a group ending where the next would make its leaf too long or too full.
+      const literals = Math.min(ɵTM_PIPELINE_LIMITS.maxListItems, ɵTM_PIPELINE_LIMITS.maxParameters / 2);
+      const oneByOne = (plan: ɵTmFindablePlan, texts: readonly string[], room: number): string[][] => {
+        const groups: string[][] = [];
+        let group: string[] = [];
+        for (const text of texts) {
+          const leaf = ɵtmPasteLeaf(plan, [...group, text]);
+          if (group.length > 0 && (leaf.text.length > room || leaf.literals > literals)) {
+            groups.push(group);
+            group = [];
+          }
+          group.push(text);
+        }
+        return group.length > 0 ? [...groups, group] : groups;
+      };
+      const key: ɵTmPickerTerm = { name: 'Id', json: 'id', type: 'integer' };
+      const named: ɵTmFindablePlan = {
+        key,
+        slots: ['Name', 'Name2', 'Name3'].map((name) => ({ name, json: name.toLowerCase(), type: 'string' as const })),
+        prefix: { name: 'Code', json: 'code', type: 'string' },
+      };
+      const numbered: ɵTmFindablePlan = { key, slots: [{ name: 'Name', json: 'name', type: 'string' }], prefix: { name: 'Number', json: 'number', type: 'integer' } };
+      // Labels of every kind and uneven lengths: codes, halves, integers, ids, quotes, and integers
+      // written with a leading zero, whose literal another label's already holds.
+      const kind = (index: number): string =>
+        [`C${index}`, `${1000 + index} - Customer ${index}`, String(index), `#${index}`, `O'Brien ${'x'.repeat(index % 37)}`, `0${index % 50}`][index % 6]!;
+      const labels = [...new Set(Array.from({ length: 600 }, (_, index) => kind(index)))];
+      for (const plan of [named, numbered]) {
+        expect(ɵtmPasteGroups(plan, [], 8192)).toEqual([]);
+        // From a room a few labels fill to one only the literal ceiling bounds.
+        for (const room of [120, 1000, 8192, 100_000]) {
+          const sendable = labels.filter((text) => ɵtmPasteLeaf(plan, [text]).text.length <= room);
+          const groups = ɵtmPasteGroups(plan, sendable, room);
+          expect(groups.length).toBeGreaterThan(1);
+          expect(groups).toEqual(oneByOne(plan, sendable, room));
+        }
+      }
+    });
+
+    it('resolves a name pasted in every row of a column with one query, the name in it once', async () => {
+      const rig = await tmEntityRig(SYSTEM);
+      rig.api.respond('customers/query', servePaste(customers(2)));
+      const labels = [...Array.from({ length: 3000 }, () => 'Customer 1'), 'Customer 2', 'Customer 1'];
+      const resolved = await pickers().ɵpasteResolver('acme.Customer', signal(null))(labels, { locale: 'en', signal: new AbortController().signal });
+
+      expect(Object.fromEntries(resolved)).toEqual({ 'Customer 1': { value: 1 }, 'Customer 2': { value: 2 } });
+      const leaves = bodies(rig, 'customers/query').map((body) => (body['filters'] as string[])[0]!);
+      expect(leaves).toHaveLength(1);
+      expect(leafParts(leaves[0]!).lists[0]).toEqual(["'Customer 1'", "'Customer 2'"]);
+    });
+
     it('settles each query apart: a label no filter carries is not found, and a failed query leaves only its own labels to a retry', async () => {
       const rig = await tmEntityRig(SYSTEM);
       const table = Array.from({ length: 600 }, (_, index) => ({ id: index + 1, code: `C${index}`, name: `Customer ${index}` }));
@@ -537,7 +616,7 @@ describe('TmEntityPickers', () => {
         if ((call.body as { filters: string[] }).filters[0]!.includes("'C0'")) {
           throw new Error('The query failed.');
         }
-        return serve(table)(call);
+        return servePaste(table)(call);
       });
       const tooLong = 'x'.repeat(5000);
       const labels = [...table.map((row) => row.code), tooLong];
@@ -563,18 +642,25 @@ describe('TmEntityPickers', () => {
       let flying = 0;
       let most = 0;
       let release = false;
+      // The fourth held query, awaited as it arrives: the paste's chunk loads
+      // first, so a wait on real time would race the load.
+      let fourth!: () => void;
+      const four = new Promise<void>((resolve) => (fourth = resolve));
       rig.api.respond('customers/query', (call: TmFakeApiCall) => {
         flying++;
         most = Math.max(most, flying);
         return new Promise((resolve) => {
           const answer = (): void => {
             flying--;
-            resolve(serve(table)(call));
+            resolve(servePaste(table)(call));
           };
           if (release) {
             answer();
           } else {
             held.push(answer);
+            if (held.length === 4) {
+              fourth();
+            }
           }
         });
       });
@@ -582,7 +668,8 @@ describe('TmEntityPickers', () => {
         table.map((row) => row.code),
         { locale: 'en', signal: new AbortController().signal },
       );
-      await vi.waitFor(() => expect(held).toHaveLength(4));
+      await four;
+      // Turns enough for a fifth query to start, were the pool to let it.
       await tmSettle();
       expect(held).toHaveLength(4);
 
