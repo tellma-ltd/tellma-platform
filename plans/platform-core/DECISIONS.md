@@ -384,6 +384,29 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-301 (orchestrator, 2026-11-25): PC-118 fix1 goes to R2; the first-frame figures for the landing order
+
+- Fix1 (4779d5c7) fixes R1-1, R1-3, R1-4 and R1-5, and fixes R1-2 in part. R2 runs at xhigh on fc8d58c6..4779d5c7, since R1 had a blocking finding (§4.4).
+- R1-2:
+  - TmBadge is out of Acme's first frame through the new @tellma/core-ui/counter entry point.
+  - The session-menu glyphs are not. Per-icon imports were built, measured and reverted: they moved nothing, because the primary's platform-icons.ts, tm-app-bar, tm-banner-bar, tm-toast-host and about 30 core-ui files import the lucide index.
+  - Only PC-F91's platform-wide change can move them. So D-297's wait no longer holds for overlap reasons alone. PC-F91 still touches tm-app-bar, which PC-118 owns, so it starts after PC-118 lands.
+- The ./shell re-split is done. Installed-mode history is a lazy tm-shell-history chunk. ./shell is re-based from 9.35 to 9 (measure 8.65), and every remaining eager piece is spec 0027 first frame. R2 checks this and the tm-about-dialog raise from 3 to 3.5.
+- First frame, for the landing order: Acme initialJs is 229.18 on PC-118's branch and about 225 for PC-126 after its merge; each alone is under 230. Whichever lands second re-measures (D-214). Fix1's honest savings are taken, and lucide is the only one left.
+  - If the second to land crosses 230, it is blocked (D-247). I then bring the 230 line to Ahmad with the itemized first frame, rather than raising it, or land PC-F91 first if its saving is enough.
+  - The order is decided once PC-126's fix2 and both R2s report.
+- PC-118 also changed scripts/api-extractor.mjs to patch every rollup before analyzing any, because a re-exported class's doc note had raced the gate. R2 checks it.
+- For Ahmad: the public seam ɵTM_SHELL_SUPPORT (Report a problem, and About's Diagnostics tab), which PC-154 fills from /support. Add this to D-291's list of API additions.
+
+### D-300 (orchestrator, 2026-11-25): PC-F88's permission block; the nightly tier runs on a pc branch only on a manual dispatch
+
+- PC-F88 wanted to run its new nightly step locally as proof: the step adds the ASP.NET dev certificate to LocalMachine\Root on the Windows runner. The auto-mode classifier refused it as "Undermining Oversight". Ahmad was notified at once by push and email, under the subject "Platform-core: permission block on PC-F88".
+- Nobody runs the step locally by another route (the standing rule on permission laundering). The run does not wait on Ahmad. PC-F88 goes on without that local proof.
+- Proof in CI instead. Every nightly-tier job was guarded to refs/heads/platform-core alone, so a dispatch on a pc branch skipped them all. PC-F88 widens each guard to also allow a workflow_dispatch on refs/heads/pc/**, and makes the concurrency group per-ref, so a pc dispatch cannot cancel a pending platform-core nightly.
+  - Schedules and pushes still run only on platform-core.
+  - This does not extend D-144. A push to pc/** still runs CI only on a ": integrate" message, and only a deliberate gh workflow run starts the nightly tier on a pc branch.
+- Evidence so far: no Acme nightly leg has run on either OS. The last nightly-tier run, 45395656478, predates PC-114's landing (7a27e3c6), which added those legs. So PC-F88's dispatch is also the Linux acme-e2e nightly leg's first run, and a red result there is root-caused (D-011).
+
 ### D-299 (orchestrator, 2026-11-25): PC-126 review 2 rulings; the ./grid re-split; first-frame order
 
 - R2 found 0 blocking, 1 major and 6 minor. The 110 KB route (109.55) and the 222.40 first frame reproduce from clean builds. Fix2 is PC-126's third and last implementer round (§4.4); a hold follows.
