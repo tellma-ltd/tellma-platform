@@ -1,15 +1,17 @@
 /**
- * Public API Surface of @tellma/core/entity — what edits, renders and queries
- * through the entity registry, which every entity page loads with it and the
- * app never loads at start: select plans that expand column keys into query
- * terms and read their rows back, the typed-value formats, the view and edit
- * components a value descriptor chooses, a form's uploads, the grid columns
- * of a plan, the client check of a blob kind's policy, the entity picker
- * binding with the entity fields built on it, the entity actions with
- * their dialogs and the confirmation loop, the client Queryex (a lexer,
- * and a builder and printer for the Queryex the client writes), and the
- * column filters with their descriptions. The control that edits a column
- * filter is `@tellma/core/column-filter`'s.
+ * Public API Surface of @tellma/core/entity — the view side of what renders
+ * and queries through the entity registry, which every entity page loads
+ * with it and the app never loads at start: select plans that expand column
+ * keys into query terms and read their rows back, the typed-value formats,
+ * the view components a value descriptor chooses, the read-only grid
+ * columns of a plan, the client check of a blob kind's policy, the picker
+ * pages' contract, the entity actions with the confirmation loop and their
+ * lazily loaded dialogs, the client Queryex (a lexer, and a builder and
+ * printer for the Queryex the client writes), and the column filters with
+ * their descriptions. The edit side (the value editor, the entity picker
+ * binding with the entity fields, a form's uploads and the editable grid
+ * columns) is `@tellma/core/entity-editing`'s; the control that edits a
+ * column filter is `@tellma/core/column-filter`'s.
  *
  * @packageDocumentation
  */
@@ -20,23 +22,25 @@
 // LICENSE file in the root directory of this source tree.
 
 // Select plans; their shapes are the primary's types.
-export { tmSelectPlan, type TmSelectPlanOptions } from './src/tm-select-plan';
+export { tmSelectPlan, ɵtmDisplayNameOrder, type TmSelectPlanOptions } from './src/tm-select-plan';
 
-// Typed values: formats, view and edit.
+// Typed values: formats and view; the control a value takes in edit mode, which the editing entry point renders.
 export { TmFormats, type TmValueStyle } from './src/tm-formats';
 export { TmValue } from './src/tm-value';
-export { TmValueEditor } from './src/tm-value-editor';
-export { TmUploads } from './src/tm-uploads';
-export { tmGridColumnFor, type TmGridColumnConfig, type TmGridColumnOptions } from './src/tm-grid-column-for';
+export { ɵtmEditorKind, type ɵTmEditorKind } from './src/tm-editor-kind';
+export {
+  tmGridColumnFor,
+  ɵtmGridColumnFor,
+  ɵtmIsNewRow,
+  type TmGridColumnConfig,
+  type TmGridColumnOptions,
+} from './src/tm-grid-column-for';
 
-// Entity pickers: the binding, the fields and the pages they open.
-export { TmEntityPickers, type TmEntityPickerBinding, type TmEntityPickerOptions } from './src/tm-entity-pickers';
-export { TmEntityField } from './src/tm-entity-field';
-export { TmEntityMultiField } from './src/tm-entity-multi-field';
-export { TmLazyPickerPage, type TmEntityPickerContext, ɵTM_PICKER_PAGES, type ɵTmPickerPages } from './src/tm-lazy-picker-page';
+// The pages an entity picker opens: what they are opened for, and the seam each page family fills.
+export { type TmEntityPickerContext, ɵTM_PICKER_PAGES, type ɵTmPickerPages } from './src/tm-picker-pages';
 
 // Blob-kind policies.
-export { tmCheckBlobFile, type TmBlobFileCheck } from './src/tm-blob-check';
+export { tmCheckBlobFile, ɵtmCropCoverSquare, type TmBlobFileCheck } from './src/tm-blob-check';
 
 // Entity actions: the runner, its dialogs and the confirmation loop.
 export {

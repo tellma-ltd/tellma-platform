@@ -44,7 +44,6 @@ import { TmAlert } from '@tellma/core-ui/alert';
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmReference } from '@tellma/core-ui/copy';
-import { TmFormField } from '@tellma/core-ui/form-field';
 import { TM_MODAL_DATA, TmModal, TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 
 import { ɵtmRunAction } from './tm-action-run';
@@ -56,7 +55,6 @@ import {
   type TmEntityActionOptions,
   type TmEntityActionOutcome,
 } from './tm-entity-actions';
-import { TmValueEditor } from './tm-value-editor';
 
 // An entity action's dialog (spec 0031 §10.4), which `TmEntityActions.dialog`
 // loads on first use: a `TmModal` titled with the action's label, holding
@@ -66,7 +64,9 @@ import { TmValueEditor } from './tm-value-editor';
 // argument errors land on the dialog's form by the error-path walk (§8.5),
 // and every other failure lists in an alert atop the dialog, with the
 // call's reference. Its strings ship here, under `tm.actionDialog`, since
-// only this chunk reads them.
+// only this chunk reads them. A generated form's fields are the editing
+// entry point's, loaded with `import()` before the modal opens, so this
+// chunk never reaches the editors statically.
 
 /**
  * The action dialog's English strings, under `tm.actionDialog`. Internal:
@@ -80,6 +80,12 @@ export const ɵTM_ACTION_DIALOG_STRINGS_EN = {
     message: 'The connection dropped before the action finished. Check whether it went through before you run it again.',
   },
 } as const satisfies TmStringTree;
+
+/** What the dialog loads from `@tellma/core/entity-editing`, which it reaches only with `import()`. */
+interface TmEntityEditingModule {
+  /** A labelled value editor, one per generated argument. */
+  readonly ɵTmValueFormField: Type<unknown>;
+}
 
 /** The kind of a server error placed on a dialog's field. */
 const SERVER_ERROR = 'tm.server';
@@ -96,6 +102,8 @@ interface TmActionDialogData {
   readonly options: TmEntityActionOptions;
   /** The declared dialog's component; `null` for the generated one. */
   readonly component: Type<unknown> | null;
+  /** The generated form's labelled value editor; `null` with a declared dialog. */
+  readonly field: Type<unknown> | null;
   /** The outcome of the last successful run, which a dismissal still reports. */
   readonly ran: { outcome: TmEntityActionOutcome | null };
 }
@@ -154,7 +162,7 @@ function json(value: unknown): string {
  * @param ids - The rows.
  * @param options - The initial arguments and request options.
  * @returns The outcome the dialog closed with, else that of its last successful run; `null` when nothing ran.
- * @throws TmApiError of kind `offline` when a declared dialog's code cannot load.
+ * @throws TmApiError of kind `offline` when a declared dialog's code, or a generated form's editors, cannot load.
  */
 export async function ɵtmOpenActionDialog(
   injector: Injector,
@@ -168,11 +176,16 @@ export async function ɵtmOpenActionDialog(
   const declared: TmLazyComponent | undefined = action.declaration?.dialog;
   const loaded = declared === undefined ? null : await ɵtmLoad(declared);
   const component = loaded === null ? null : typeof loaded === 'function' ? loaded : loaded.default;
+  // A generated form's editors load before the modal opens, from the editing entry point.
+  const field =
+    component === null
+      ? (await ɵtmLoad(() => import('@tellma/core/entity-editing' as string) as Promise<TmEntityEditingModule>)).ɵTmValueFormField
+      : null;
   const ran: TmActionDialogData['ran'] = { outcome: null };
   const ref = injector.get(TmModal).open<TmEntityActionOutcome | null>(ɵTmActionDialog, {
     size: 'md',
     title: action.label(),
-    data: { entity, action, ids, options, component, ran } satisfies TmActionDialogData,
+    data: { entity, action, ids, options, component, field, ran } satisfies TmActionDialogData,
   });
   const result = await ref.closed;
   // A dismissal, or a close with no outcome, after a run that stayed open still reports that run.
@@ -186,7 +199,7 @@ export async function ɵtmOpenActionDialog(
  */
 @Component({
   selector: 'tm-action-dialog',
-  imports: [NgComponentOutlet, TmAlert, TmButton, TmFormField, TmModalFooter, TmReference, TmValueEditor],
+  imports: [NgComponentOutlet, TmAlert, TmButton, TmModalFooter, TmReference],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
     :host {
@@ -234,9 +247,7 @@ export async function ɵtmOpenActionDialog(
       <!-- The generated form: one field per argument, in order -->
       <form class="tm-action-dialog__form" novalidate [id]="formId" (submit)="apply($event)">
         @for (generated of fields; track generated.field.name) {
-          <tm-form-field [label]="generated.label()">
-            <tm-value-editor [property]="generated.field.value" [field]="generated.tree" />
-          </tm-form-field>
+          <ng-container *ngComponentOutlet="data.field; inputs: { label: generated.label(), property: generated.field.value, field: generated.tree }" />
         }
       </form>
       <div tmModalFooter>

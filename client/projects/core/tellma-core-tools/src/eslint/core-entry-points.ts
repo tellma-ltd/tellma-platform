@@ -57,10 +57,17 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },
   './entity': { load: 'lazy', imports: [] },
+  // The edit side of spec 0029's /entity (the value editor, the entity
+  // picker binding and fields, uploads, the editable grid columns), split
+  // off along the read/edit line as the component library splits its grid
+  // from its grid editing: a read-only page never reaches it, and a page
+  // or a dialog that edits loads it.
+  './entity-editing': { load: 'lazy', imports: ['./entity'] },
   // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
   // /entity; a column header's popover opens it, so the search page loads
-  // it then, and /entity's own measure never carries it.
-  './column-filter': { load: 'lazy', imports: ['./entity'] },
+  // it then, and /entity's own measure never carries it. Its navigation
+  // filter picks rows with the entity list field.
+  './column-filter': { load: 'lazy', imports: ['./entity', './entity-editing'] },
   // Spec 0029 §10's expression editor and §11's path picker, which spec 0029
   // §1 places in /entity; the hosts that edit Queryex or choose fields (the
   // search page's advanced filter and column chooser, the role editor's

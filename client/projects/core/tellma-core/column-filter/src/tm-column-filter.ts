@@ -21,13 +21,13 @@ import {
   tmFormatFilter,
   tmParseFilter,
   TM_ENUM_PICKER_THRESHOLD,
-  TmEntityMultiField,
   ɵTM_FILTER_OPS,
   ɵTM_FILTER_STRINGS_EN,
   ɵtmParseExact,
   type TmFilterOp,
   type TmFilterSpec,
 } from '@tellma/core/entity';
+import { TmEntityMultiField } from '@tellma/core/entity-editing';
 import { TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';

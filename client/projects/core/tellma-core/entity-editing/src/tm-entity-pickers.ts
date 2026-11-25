@@ -28,12 +28,11 @@ import {
 import type { TmLabelResolution, TmPasteContext } from '@tellma/core-ui/contracts';
 import type { TmEntityPickerPage, TmEntitySearchFn, TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+import { TmFormats, tmSelectPlan, ɵtmDisplayNameOrder, type TmEntityPickerContext } from '@tellma/core/entity';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
 import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
-import { TmFormats } from './tm-formats';
-import { TmLazyPickerPage, ɵtmRegisterPickerStrings, type TmEntityPickerContext } from './tm-lazy-picker-page';
-import { tmSelectPlan, ɵtmDisplayNameOrder } from './tm-select-plan';
+import { TmLazyPickerPage, ɵtmRegisterPickerStrings } from './tm-lazy-picker-page';
 
 // The generic entity picker binding (spec 0029 §14): one binding, built from
 // the target's descriptor, turns the component library's entity picker into
