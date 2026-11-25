@@ -86,14 +86,39 @@ function lines(problems: readonly TmConfigProblem[]): string[] {
   return problems.map((problem) => `${problem.code} ${problem.key} ${problem.feature}`);
 }
 
-/** Checks a configuration against (patched) test metadata. */
+/**
+ * The platform's (`core.*`) items with every label fallback dropped, at any depth; other items as
+ * they are. The test metadata carries the platform's entities as the server emits them, and the
+ * server writes a fallback for each of their labels no string resource declares yet. Dropping them
+ * gives the chunks a platform whose strings are complete would send, so each spec sees only the
+ * warnings its own configuration and patches cause.
+ */
+function declared<T extends { readonly name: string }>(items: readonly T[]): T[] {
+  return items.map((item) =>
+    item.name.startsWith('core.') ? (JSON.parse(JSON.stringify(item, (key, value: unknown) => (key === 'labelFallback' ? undefined : value))) as T) : item,
+  );
+}
+
+/** The test Core chunk, patched, with the platform's labels declared. */
+function coreChunk(patch: Partial<TmClientMetadata> = {}): TmClientMetadata {
+  const core = tmTestMetadata(patch);
+  return { ...core, entities: declared(core.entities) };
+}
+
+/** The test Entities chunk, patched, with the platform's labels declared. */
+function entitiesChunk(patch: Partial<TmEntitiesChunk> = {}): TmEntitiesChunk {
+  const chunk = tmTestEntitiesChunk(patch);
+  return { entities: declared(chunk.entities), enums: declared(chunk.enums) };
+}
+
+/** Checks a configuration against (patched) test metadata, the platform's labels declared. */
 function check(
   appConfig: TmAppConfig,
   metadata: Partial<TmClientMetadata> = {},
   entities: Partial<TmEntitiesChunk> = {},
   strings: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
 ): readonly TmConfigProblem[] {
-  return tmCheckAppConfig(appConfig, tmTestMetadata(metadata), tmTestEntitiesChunk(entities), strings);
+  return tmCheckAppConfig(appConfig, coreChunk(metadata), entitiesChunk(entities), strings);
 }
 
 /** An app-bar slot. */
@@ -205,8 +230,8 @@ describe('tmCheckAppConfig', () => {
     };
     const problems = tmCheckAppConfig(
       appConfig,
-      tmTestMetadata({ calendars: ['gc', 'hj'], features: [...tmTestMetadata().features, { key: 'zeta', version: '1' }] }),
-      tmTestEntitiesChunk(),
+      coreChunk({ calendars: ['gc', 'hj'], features: [...tmTestMetadata().features, { key: 'zeta', version: '1' }] }),
+      entitiesChunk(),
     );
     // Every declaration and every patch was accepted, so each path ran over its spies.
     expect(problems).toEqual([]);
@@ -286,7 +311,8 @@ describe('tmCheckAppConfig', () => {
     }
 
     it('accepts kebab-case literals and camelCase parameters after a literal first segment', () => {
-      for (const path of ['credit-review', 'reports/:id/studio', 'a1/b-2/:itemId', 'x']) {
+      // `customers` is acme.Customer's own segment; `reports` would be core.Report's, which acme may not take.
+      for (const path of ['credit-review', 'customers/:id/studio', 'a1/b-2/:itemId', 'x']) {
         expect(pathProblems(path)).toEqual([]);
       }
     });

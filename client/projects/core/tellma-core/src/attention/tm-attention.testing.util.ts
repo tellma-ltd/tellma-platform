@@ -9,7 +9,6 @@ import { type TmFakeApi, tmWarmTenant } from '@tellma/core-testing';
 
 import type { TmClientMetadata } from '../metadata/tm-client-metadata';
 import type { TmLanguageDefinition, TmStringTree } from '../app/tm-app-config';
-import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmEntityType } from '../entity/tm-entity-types';
 import type { TmDecimal } from '../json/tm-json';
 import { tmEnglish } from '../l10n/tm-english';
@@ -30,20 +29,6 @@ export const TM_TEST_NOTIFICATION_TYPES: readonly TmNotificationTypeMetadata[] =
   { key: 'gl.center.shared', category: 'sharing', mutable: true, severity: 'Info', toast: false, inbox: true },
   { key: 'gl.center.flagged', category: 'centers', mutable: true, severity: 'Warning', toast: true, inbox: true, targetResource: 'gl.Center' },
 ];
-
-/** The notifications' summary, so their search page has a route. */
-const NOTIFICATION: TmEntitySummary = {
-  name: 'core.Notification',
-  segment: 'notifications',
-  labelKey: 'core_Notification',
-  pluralLabelKey: 'core_Notification_Plural',
-  newLabelKey: 'core_Notification_New',
-  labelFallback: 'core.Notification',
-  operations: ['query', 'details'],
-  capabilities: [],
-  displayName: { source: 'Title', multilingual: false },
-  kind: 'stack',
-};
 
 /** The server strings the specs render, by language. */
 const STRINGS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
@@ -110,9 +95,8 @@ export async function tmAttentionRig(docs: Partial<TmLaunchDocs> = {}, metadata:
       ...docs,
     },
     metadata: {
+      // The routed metadata carries the platform's notifications, whose search page the toasts' overflow pill opens.
       ...routed,
-      // The notifications, whose search page the toasts' overflow pill opens.
-      entities: [...routed.entities, NOTIFICATION],
       notificationTypes: TM_TEST_NOTIFICATION_TYPES,
       jobHandlers: [
         { key: 'core.export', schedulable: false, labelKey: 'JobHandler_core_export', labelFallback: 'core.export' },

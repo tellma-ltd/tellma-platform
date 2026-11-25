@@ -60,6 +60,10 @@ const { summaries, chunk } = tmTestEntities();
 const metadata = tmTestMetadata({ entities: summaries });
 ```
 
+`tmTestMetadata()` and `tmTestEntitiesChunk()` take their `core.*` entities and enums from the same
+recording, so the platform's entities are never hand-written. A test that needs a shape the
+platform lacks declares a test entity of its own.
+
 ```ts
 const field = await loader.getHarness(TmEntityFieldHarness);
 await field.pick('1101 - Cash');

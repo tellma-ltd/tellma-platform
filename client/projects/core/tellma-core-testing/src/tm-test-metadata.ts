@@ -9,14 +9,25 @@ import type {
   TmEntityMetadata,
   TmEntityOperation,
   TmEntitySummary,
+  TmEnumMetadata,
   TmNavigationMetadata,
   TmPropertyMetadata,
 } from '@tellma/core';
 
+import recordedChunk from '../fixtures/entity-model/entities-chunk.json';
+import recordedSummaries from '../fixtures/entity-model/core-entities.json';
+
 // The test client metadata: a small, coherent Acme distribution with the
-// `core`, `gl` and `acme` features, two languages, five entities, one coded
-// report and one widget type. Its Core and Entities chunks agree with each
-// other, so a test patches only the facts it is about.
+// `core`, `gl` and `acme` features, two languages, the platform's entities,
+// a customer and a center, one coded report and one widget type. Its Core
+// and Entities chunks agree with each other, so a test patches only the
+// facts it is about.
+//
+// The platform's entities and enums (`core.*`) are never hand-written: they
+// are taken from the entity model the server's suite records, which is what
+// the server emits for them, so a spec cannot lean on a `core` field the
+// product never sends. The customer and the center are the test
+// distribution's own entities, written here.
 
 /** The operations of a stack every operation reaches. */
 const STACK_OPERATIONS: readonly TmEntityOperation[] = ['query', 'details', 'save', 'delete', 'import', 'export'];
@@ -31,6 +42,35 @@ interface TestEntity {
   readonly navigations: readonly TmNavigationMetadata[];
   /** The names of its actions. */
   readonly actions: readonly string[];
+}
+
+/**
+ * Whether a name is the platform's own: an entity or enum of the `core` feature.
+ *
+ * @param item - The entity, summary or enum.
+ * @returns Whether its name starts with `core.`.
+ */
+function isPlatform(item: { readonly name: string }): boolean {
+  return item.name.startsWith('core.');
+}
+
+/** The platform's entity summaries, as the server emits them into the Core chunk. */
+const PLATFORM_SUMMARIES: readonly TmEntitySummary[] = (recordedSummaries as unknown as readonly TmEntitySummary[]).filter(isPlatform);
+
+/** The platform's entities, as the server emits them into the Entities chunk. */
+const PLATFORM_ENTITIES: readonly TmEntityMetadata[] = (recordedChunk as unknown as TmEntitiesChunk).entities.filter(isPlatform);
+
+/** The platform's named enums, which its entities' properties and action fields name. */
+const PLATFORM_ENUMS: readonly TmEnumMetadata[] = (recordedChunk as unknown as TmEntitiesChunk).enums.filter(isPlatform);
+
+/**
+ * Orders items by name, as the server orders both chunks' entities.
+ *
+ * @param items - The items.
+ * @returns A new array, ordered.
+ */
+function byName<T extends { readonly name: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 /**
@@ -75,14 +115,13 @@ function navigation(entity: string, name: string, target: string): TmNavigationM
 }
 
 /**
- * A test entity summary.
+ * A test entity summary: a stack every operation reaches.
  *
  * @param name - The entity's name.
  * @param segment - Its route segment.
- * @param operations - Its operations.
  * @returns The summary.
  */
-function summary(name: string, segment: string | null, operations: readonly TmEntityOperation[] = STACK_OPERATIONS): TmEntitySummary {
+function summary(name: string, segment: string): TmEntitySummary {
   const label = name.replace('.', '_');
   return {
     name,
@@ -90,38 +129,20 @@ function summary(name: string, segment: string | null, operations: readonly TmEn
     labelKey: label,
     pluralLabelKey: `${label}_Plural`,
     newLabelKey: `${label}_New`,
-    operations,
+    operations: STACK_OPERATIONS,
     capabilities: [],
     displayName: { source: 'Name', multilingual: false },
-    kind: segment === null ? 'readonly' : 'stack',
+    kind: 'stack',
   };
 }
 
-/** The test entities, ordered by name. */
+/** The test distribution's own entities, ordered by name; the platform's join them from the recording. */
 const ENTITIES: readonly TestEntity[] = [
   {
     summary: summary('acme.Customer', 'customers'),
     properties: [property('acme.Customer', 'Name'), property('acme.Customer', 'Code'), property('acme.Customer', 'CreditLimit', 'decimal'), property('acme.Customer', 'CenterId', 'integer')],
     navigations: [navigation('acme.Customer', 'Center', 'gl.Center')],
     actions: ['set-credit-limit'],
-  },
-  {
-    summary: summary('core.Blob', null, []),
-    properties: [property('core.Blob', 'Name')],
-    navigations: [],
-    actions: [],
-  },
-  {
-    summary: summary('core.Role', 'roles'),
-    properties: [property('core.Role', 'Name'), property('core.Role', 'IsActive', 'bool')],
-    navigations: [],
-    actions: ['activate', 'deactivate'],
-  },
-  {
-    summary: summary('core.User', 'users'),
-    properties: [property('core.User', 'Name'), property('core.User', 'Email'), property('core.User', 'ManagerId', 'integer')],
-    navigations: [navigation('core.User', 'Manager', 'core.User')],
-    actions: [],
   },
   {
     summary: summary('gl.Center', 'centers'),
@@ -132,8 +153,54 @@ const ENTITIES: readonly TestEntity[] = [
 ];
 
 /**
+ * One test distribution entity's metadata, built from its facts.
+ *
+ * @param entity - The entity's facts.
+ * @returns Its metadata, as the Entities chunk carries it.
+ */
+function metadata(entity: TestEntity): TmEntityMetadata {
+  return {
+    ...entity.summary,
+    key: { property: 'Id', type: 'int' },
+    properties: [property(entity.summary.name, 'Id', 'integer'), ...entity.properties],
+    navigations: entity.navigations,
+    children: [],
+    actions: entity.actions.map((name) => ({
+      name,
+      kind: 'entity',
+      builtIn: false,
+      action: 'Update',
+      labelKey: `${entity.summary.name.replace('.', '_')}_Action_${name}`,
+      mutation: true,
+      idempotent: false,
+      destructive: false,
+      singleTarget: true,
+      supportsFilter: false,
+      result: 'entities',
+    })),
+    relatedSelect: [],
+    defaultOrderBy: 'Id desc',
+    searchable: ['Name'],
+    prefixSearchable: [],
+    naturalKeys: [],
+    extras: [],
+    limits: {
+      maxTake: 500,
+      countCap: 10000,
+      maxSkipWindow: 10000,
+      maxSearchLength: 200,
+      maxIds: 1000,
+      maxExtras: 20,
+      maxFilterLength: 4000,
+    },
+  };
+}
+
+/**
  * The test Core chunk: the Acme distribution, with every section filled.
- * The top-level members `patch` sets replace the fixture's whole.
+ * Its `core.*` entity summaries are the platform's own, as the server emits
+ * them; its other entities belong to the test distribution. The top-level
+ * members `patch` sets replace the fixture's whole.
  *
  * @param patch - The members to replace.
  * @returns The chunk.
@@ -163,7 +230,8 @@ export function tmTestMetadata(patch: Partial<TmClientMetadata> = {}): TmClientM
       { code: 'ar', nativeName: 'العربية', dir: 'rtl', region: 'SA', regions: ['SA', 'AE'], nativeDigits: 'arab' },
     ],
     calendars: ['gc'],
-    entities: ENTITIES.map((entity) => entity.summary),
+    // A fresh copy each call, so a test may patch any depth of it.
+    entities: structuredClone(byName([...PLATFORM_SUMMARIES, ...ENTITIES.map((entity) => entity.summary)])),
     securables: [
       {
         resource: 'acme.Customer',
@@ -220,7 +288,9 @@ export function tmTestMetadata(patch: Partial<TmClientMetadata> = {}): TmClientM
 
 /**
  * The test Entities chunk, agreeing with {@link tmTestMetadata}'s entity
- * summaries. The top-level members `patch` sets replace the fixture's whole.
+ * summaries. Its `core.*` entities and enums are the platform's own, as the
+ * server emits them. The top-level members `patch` sets replace the
+ * fixture's whole.
  *
  * @param patch - The members to replace.
  * @returns The chunk.
@@ -233,44 +303,9 @@ export function tmTestMetadata(patch: Partial<TmClientMetadata> = {}): TmClientM
  */
 export function tmTestEntitiesChunk(patch: Partial<TmEntitiesChunk> = {}): TmEntitiesChunk {
   return {
-    entities: ENTITIES.map(
-      (entity): TmEntityMetadata => ({
-        ...entity.summary,
-        key: { property: 'Id', type: 'int' },
-        properties: [property(entity.summary.name, 'Id', 'integer'), ...entity.properties],
-        navigations: entity.navigations,
-        children: [],
-        actions: entity.actions.map((name) => ({
-          name,
-          kind: 'entity',
-          builtIn: false,
-          action: 'Update',
-          labelKey: `${entity.summary.name.replace('.', '_')}_Action_${name}`,
-          mutation: true,
-          idempotent: false,
-          destructive: false,
-          singleTarget: true,
-          supportsFilter: false,
-          result: 'entities',
-        })),
-        relatedSelect: [],
-        defaultOrderBy: 'Id desc',
-        searchable: ['Name'],
-        prefixSearchable: [],
-        naturalKeys: [],
-        extras: [],
-        limits: {
-          maxTake: 500,
-          countCap: 10000,
-          maxSkipWindow: 10000,
-          maxSearchLength: 200,
-          maxIds: 1000,
-          maxExtras: 20,
-          maxFilterLength: 4000,
-        },
-      }),
-    ),
-    enums: [],
+    // A fresh copy each call, so a test may patch any depth of it.
+    entities: structuredClone(byName([...PLATFORM_ENTITIES, ...ENTITIES.map(metadata)])),
+    enums: structuredClone(PLATFORM_ENUMS),
     ...patch,
   };
 }
