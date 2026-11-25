@@ -74,7 +74,8 @@ import { TmRelativeTime } from '@tellma/core-ui/relative-time';
 import { TmReorderEmpty, TmReorderItem, TmReorderList } from '@tellma/core-ui/reorder-list';
 import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
 import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
-import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 import { TmSplitter, TmSplitterPane } from '@tellma/core-ui/splitter';
@@ -137,7 +138,7 @@ import * as reorderListExamples from './reorder-list/tm-reorder-list.examples';
 import * as searchExamples from './search-field/tm-search.examples';
 import * as searchFieldExamples from './search-field/tm-search-field.examples';
 import * as segmentedExamples from './segmented/tm-segmented.examples';
-import * as multiSelectExamples from './select/tm-multi-select.examples';
+import * as multiSelectExamples from './multi-select/tm-multi-select.examples';
 import * as selectExamples from './select/tm-select.examples';
 import * as skeletonExamples from './skeleton/tm-skeleton.examples';
 import * as spinnerExamples from './spinner/tm-spinner.examples';
@@ -1004,7 +1005,7 @@ const SUITES = [
   { source: 'files/tm-dropzone.examples.ts', examples: dropzoneExamples },
   { source: 'checkbox/tm-checkbox.examples.ts', examples: checkboxExamples },
   { source: 'select/tm-select.examples.ts', examples: selectExamples },
-  { source: 'select/tm-multi-select.examples.ts', examples: multiSelectExamples },
+  { source: 'multi-select/tm-multi-select.examples.ts', examples: multiSelectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'badge/tm-badge.examples.ts', examples: badgeExamples },
   { source: 'badge/tm-counter.examples.ts', examples: counterExamples },

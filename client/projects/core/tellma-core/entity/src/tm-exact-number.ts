@@ -5,7 +5,12 @@
 
 import type { ValidationError } from '@angular/forms/signals';
 import { TmDecimals, type TmDecimal } from '@tellma/core';
-import { TM_NUMBER_MAX_DIGITS, tmFormatNumber, tmNumberDigitCount, tmParseNumber } from '@tellma/core-ui/l10n';
+import { tmFormatNumber } from '@tellma/core-ui/l10n';
+import {
+  TM_NUMBER_MAX_DIGITS,
+  tmNumberDigitCount,
+  tmParseNumber,
+} from '@tellma/core-ui/l10n-input';
 
 // Decimals and longs edited as numbers (spec 0029 §12.2: "the tmNumber
 // control converts at the binding"). The text a user types is read into

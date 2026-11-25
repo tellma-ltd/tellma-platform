@@ -8,6 +8,7 @@ import {
   Component,
   effect,
   inject,
+  InjectionToken,
   input,
   output,
   signal,
@@ -29,6 +30,19 @@ import { TmEmptyState } from '@tellma/core-ui/empty-state';
 // renders the state inside the grid's empty template, so the
 // header and its Columns button stay reachable; the copy is
 // entity-neutral.
+
+/** What loads the error views: their entry point's module. */
+export type TmSearchErrorViewsLoader = () => Promise<typeof import('@tellma/core/errors')>;
+
+/**
+ * Loads the error views the results region renders for a failed read. The
+ * default loads their lazy entry point; a test provides a loader that fails,
+ * as an offline load or a deploy that removed the chunk would.
+ */
+export const ɵTM_SEARCH_ERROR_VIEWS = new InjectionToken<TmSearchErrorViewsLoader>('TmSearchErrorViews', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/errors'),
+});
 
 /** The Create link a state offers: the URL and the entity's "New customer" label. */
 export interface TmSearchStateCreate {
@@ -212,6 +226,7 @@ export class TmSearchState {
   constructor() {
     // --- The error view, from the lazily loaded error views; a line of its own when they fail to load ---
     const telemetry = inject(TmTelemetry);
+    const load = inject(ɵTM_SEARCH_ERROR_VIEWS);
     effect((onCleanup) => {
       const slot = this.errorSlot();
       const shown = this.state();
@@ -224,7 +239,7 @@ export class TmSearchState {
         slot.clear();
         this.#errorViewsMissing.set(false);
       });
-      import('@tellma/core/errors').then(
+      load().then(
         ({ TmErrorPresenter, TmErrorState }) => {
           if (live) {
             const view = slot.injector.get(TmErrorPresenter).describe(shown.error, { kind: 'read', entity: shown.entity });

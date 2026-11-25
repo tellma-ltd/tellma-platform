@@ -36,7 +36,7 @@ import {
   type TmControlSize,
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
-import { ɵtmWallTimeOf } from '@tellma/core-ui/l10n';
+import { ɵtmWallTimeOf } from '@tellma/core-ui/l10n-input';
 
 import {
   ɵtmFormatTimeOfDay,

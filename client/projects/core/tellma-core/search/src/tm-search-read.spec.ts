@@ -71,6 +71,13 @@ describe('tmSearchRereads', () => {
     expect(tmSearchRereads(held, request({ select: "Id,coalesce(Name2, 'a,b')" }))).toBe(false);
     expect(tmSearchRereads(held, request({ select: "Id,coalesce(Name3, 'a,b')" }))).toBe(true);
   });
+
+  it("reads again when a quoted literal's case changes, though a name's case alone does not", () => {
+    const held = request({ select: "Id,IIF(Name = 'Acme', 1, 0)" });
+    expect(tmSearchRereads(held, request({ select: "Id,IIF(Name = 'ACME', 1, 0)" }))).toBe(true);
+    expect(tmSearchRereads(held, request({ select: "Id,iif(NAME = 'Acme', 1, 0)" }))).toBe(false);
+    expect(tmSearchRereads(request({ select: "Id,IIF(Name = 'it''s', 1, 0)" }), request({ select: "Id,IIF(Name = 'IT''S', 1, 0)" }))).toBe(true);
+  });
 });
 
 describe('tmSearchTotal', () => {

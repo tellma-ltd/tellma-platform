@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Location } from '@angular/common';
 import type { SpyLocation } from '@angular/common/testing';
 import { signal, type Provider } from '@angular/core';
@@ -25,6 +26,7 @@ import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
+import { ɵTM_SEARCH_ERROR_VIEWS } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
 import { tmSearchTestHash } from './tm-search.testing.util';
 
@@ -426,6 +428,12 @@ describe('TmSearchHost', () => {
       expect(await page.getStateActions()).toEqual(['Clear filters']);
     });
 
+    it('offer to clear the filters when nothing matches with inactive rows included', async () => {
+      const { page } = await open('/17/customers?inactive=1', { rows: [] });
+      expect(await page.getStateHeading()).toBe('No matches');
+      expect(await page.getStateActions()).toEqual(['Clear filters']);
+    });
+
     it("show an invalid filter's first diagnostic and the code it points at", async () => {
       const { page } = await open(() => '/17/customers' + tmSearchTestHash('Bogus > 0'), {
         respond: () => {
@@ -489,6 +497,30 @@ describe('TmSearchHost', () => {
       expect(reads(api)).toHaveLength(2);
     });
 
+    it("show a line of their own with Try again while the error views can't load", async () => {
+      let fail = true;
+      const respond = answer(customers(2));
+      const { api, page } = await open('/17/customers', {
+        // The error views' chunk fails to load, as offline or after a deploy removed it.
+        providers: [{ provide: ɵTM_SEARCH_ERROR_VIEWS, useValue: () => Promise.reject(new Error('chunk load failed')) }],
+        respond: (call) => {
+          if (fail) {
+            throw new TmApiError({ kind: 'server', status: 500, code: 'server', traceId: 'trace-9' });
+          }
+          return respond(call);
+        },
+      });
+      await tmSettleUntil(() => host()?.querySelector('.tm-search-state__failed') != null, 'the fallback line shows');
+      const line = host()!.querySelector<HTMLElement>('.tm-search-state__failed')!;
+      expect(line.textContent).toContain("The results couldn't be loaded.");
+      expect(host()!.querySelector('tm-search-state tm-error-state')).toBeNull();
+      expect(await page.hasColumnsButton()).toBe(true);
+      fail = false;
+      line.querySelector<HTMLElement>('button')!.click();
+      await tmSettleUntil(() => rowTexts().length === 2, 'Try again reads the rows');
+      expect(reads(api)).toHaveLength(2);
+    });
+
     it("show that a drill-through list's link has no valid filter, and read nothing", async () => {
       const { api, page } = await open('/17/list/customers');
       expect(await page.getStateHeading()).toBe("This link's filter is not valid");
@@ -507,6 +539,7 @@ describe('TmSearchHost', () => {
       expect(rowTexts()).toEqual([]);
       await errorViews();
       expect(await page.getStateHeading()).not.toBeNull();
+      expect(await page.hasColumnsButton()).toBe(true);
     });
 
     it('keeps the rows through an offline Refresh, and reads again once the API is back', async () => {
@@ -519,6 +552,7 @@ describe('TmSearchHost', () => {
       await resettle();
       expect(rowTexts()).toHaveLength(3);
       expect(await page.getStateHeading()).toBeNull();
+      expect(await page.hasColumnsButton()).toBe(true);
 
       api.respond('customers/query', answer(customers(4)));
       api.setOnline(true);
@@ -538,6 +572,17 @@ describe('TmSearchHost', () => {
       const [, first, second] = api.calls().filter((call) => call.route === 'customers/query');
       expect((first!.options as { readonly signal: AbortSignal }).signal.aborted).toBe(true);
       expect((second!.options as { readonly signal: AbortSignal }).signal.aborted).toBe(false);
+    });
+
+    it('read nothing when a column is removed', async () => {
+      const { api, rig } = await open();
+      expect(header('Currency')).not.toBeNull();
+      await rig.router.navigateByUrl('/17/customers?cols=Code,Name');
+      await resettle();
+      await tmSettle();
+      expect(header('Currency')).toBeNull();
+      expect(rowTexts()[0]).toHaveLength(2);
+      expect(reads(api)).toHaveLength(1);
     });
 
     it('read again on Refresh, as a refresh', async () => {
@@ -597,6 +642,37 @@ describe('TmSearchHost', () => {
       await tmSettle();
       await resettle();
       expect(reads(api)).toHaveLength(1);
+    });
+  });
+
+  describe('announcements', () => {
+    it('announce the count of a settled result', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      await open();
+      expect(announce).toHaveBeenCalledWith('3 results', 'polite');
+    });
+
+    it('announce a capped count as a lower bound', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      await open('/17/customers', { respond: answer(customers(60), { count: 10_000, countCapped: true }) });
+      expect(announce).toHaveBeenCalledWith(expect.stringMatching(/^10,?000\+ results$/), 'polite');
+    });
+
+    it('announce that the rows on screen were kept through an offline read', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      const { api, page } = await open();
+      api.respond('customers/query', () => {
+        throw new TmApiError({ kind: 'offline' });
+      });
+      api.setOnline(false);
+      announce.mockClear();
+      await page.refresh();
+      await resettle();
+      expect(announce).toHaveBeenCalledWith("You're offline", 'polite');
+      expect(announce.mock.calls.some(([message]) => /results/.test(String(message)))).toBe(false);
     });
   });
 

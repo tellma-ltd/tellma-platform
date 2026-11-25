@@ -10,8 +10,8 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 
-import { TmMultiSelect } from './tm-multi-select';
 import { TmOption } from './tm-option';
 import { TmOptionGroup } from './tm-option-group';
 import { TmSelect } from './tm-select';

@@ -16,7 +16,8 @@ import {
 } from '@angular/core';
 import { TmDecimals, TmLocalization, type TmColumnPlan, type TmDataType, type TmDecimal, type TmFilterKind, type TmId } from '@tellma/core';
 import { TmL10n } from '@tellma/core-ui';
-import { tmStripBidiControls, ɵtmInstantOfWallTime } from '@tellma/core-ui/l10n';
+import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+import { ɵtmInstantOfWallTime } from '@tellma/core-ui/l10n-input';
 
 import { ɵTM_FILTER_STRINGS_EN } from './tm-entity-strings';
 import { ɵtmFormatExact, TmFormats } from './tm-formats';

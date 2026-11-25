@@ -425,7 +425,12 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
       }
     }
 
-    <tm-menu [items]="core().menuItems()" />
+    <!-- The context menu loads once the browser is idle after the first render, or at once
+         when it is asked for sooner, so its code is not part of what a grid's first paint
+         waits for. -->
+    @defer (on idle; when core().menuWanted()) {
+      <tm-menu #contextMenu [items]="core().menuItems()" />
+    }
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
          or clearing never shift the grid's (or the page's) layout. The same
@@ -612,7 +617,7 @@ export class ɵTmGridView {
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
-  private readonly menu = viewChild(TmMenu);
+  private readonly menu = viewChild<TmMenu>('contextMenu');
 
   /**
    * Measures the loading/empty overlay's trailing insets, only while a

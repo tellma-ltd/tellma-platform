@@ -27,6 +27,7 @@ import type { FieldTree, ValidationError } from '@angular/forms/signals';
 import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2 } from 'lucide';
 
 import {
+  TM_CHECKBOX_CELL_DISPLAY,
   TM_PARSE_ERROR,
   type SignalLike,
   type TmGridContentState,
@@ -44,7 +45,6 @@ import {
   type TmErrorDisplayState,
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
-import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
 import { tmIsApplePlatform, tmKeysMatch, tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
 import type {
   TmEntityId,
@@ -63,16 +63,24 @@ import {
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 import {
-  TM_NUMBER_MAX_DIGITS,
   tmFormatDate,
   tmFormatNumber,
   tmGregorianCalendar,
+  type TmCalendar,
+} from '@tellma/core-ui/l10n';
+import {
+  TM_NUMBER_MAX_DIGITS,
   tmNumberDigitCount,
   tmParseDate,
   tmParseNumber,
-  type TmCalendar,
-} from '@tellma/core-ui/l10n';
-import { type TmMenu, type TmMenuEntry, type TmMenuItem } from '@tellma/core-ui/menu';
+} from '@tellma/core-ui/l10n-input';
+import {
+  type TmMenu,
+  type TmMenuAnchor,
+  type TmMenuEntry,
+  type TmMenuItem,
+  type TmMenuOpenOptions,
+} from '@tellma/core-ui/menu';
 import { ɵtmObserveLongPress } from '@tellma/core-ui/overlay';
 // Types only: the editing code itself arrives through import() (loadEditing).
 import type {
@@ -982,6 +990,11 @@ export interface ɵTmGridViewCore {
   attachEditorOutlet(outlet: ViewContainerRef | null): void;
   /** Hands the core the context menu (or `null` when it is gone). */
   attachMenu(menu: TmMenu | null): void;
+  /**
+   * Whether the context menu was asked for: a right-click, a long-press or
+   * the Menu key before its code arrived. The view loads the menu then.
+   */
+  readonly menuWanted: Signal<boolean>;
   /** The scroller's scroll handler. */
   onScroll(event: Event): void;
   /** The scroller's keydown handler. */
@@ -1110,6 +1123,12 @@ export class ɵTmGridCore<T>
   private lastOutsidePointerDown = 0;
   private dragCleanup: (() => void) | null = null;
   private menuRef: TmMenu | null = null;
+  /** A context-menu open asked for before the menu attached; it opens on attach. */
+  private pendingMenuOpen: { readonly anchor: TmMenuAnchor; readonly options: TmMenuOpenOptions | undefined } | null = null;
+  /** Whether the context menu was asked for before it attached. */
+  private readonly menuWantedSignal = signal(false);
+  /** Whether the context menu was asked for: the view loads it then. */
+  readonly menuWanted = this.menuWantedSignal.asReadonly();
   /** Generation guard for the chunked error-tally warm-up chains. */
   private warmupGeneration = 0;
   /** Each rendered row's slot from the last render, by row key, in render order. */
@@ -2054,6 +2073,28 @@ export class ɵTmGridCore<T>
   /** Hands the core the context menu (or `null` when it is gone). */
   attachMenu(menu: TmMenu | null): void {
     this.menuRef = menu;
+    const pending = this.pendingMenuOpen;
+    if (menu !== null && pending !== null) {
+      this.pendingMenuOpen = null;
+      menu.open(pending.anchor, pending.options);
+    }
+  }
+
+  /**
+   * Opens the context menu, or, while its code has not arrived, asks the
+   * view for it and opens it once it attaches.
+   *
+   * @param anchor - Where the menu opens.
+   * @param options - Where focus returns when it closes.
+   */
+  private openMenu(anchor: TmMenuAnchor, options: TmMenuOpenOptions | undefined): void {
+    const menu = this.menuRef;
+    if (menu === null) {
+      this.pendingMenuOpen = { anchor, options };
+      this.menuWantedSignal.set(true);
+      return;
+    }
+    menu.open(anchor, options);
   }
 
   /**
@@ -3501,13 +3542,11 @@ export class ɵTmGridCore<T>
     }
     event.preventDefault();
     const menu = this.menuRef;
-    if (menu === null) {
-      return;
-    }
     // The keyboard Menu key opens the menu from its keydown AND emits a native
     // contextmenu; if that one lands here (focus still on the scroller), just
     // swallow it — the menu is already open, reopening would flicker/re-anchor.
-    if (untracked(menu.isOpen)) {
+    // An open asked for before the menu arrived is in flight the same way.
+    if ((menu !== null && untracked(menu.isOpen)) || (menu === null && this.pendingMenuOpen !== null)) {
       return;
     }
     if (untracked(() => this.engine.edit.session()) !== null) {
@@ -3521,7 +3560,7 @@ export class ɵTmGridCore<T>
       keyboardSourced && element !== null
         ? element.getBoundingClientRect()
         : { x: event.clientX, y: event.clientY };
-    menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
+    this.openMenu(anchor, element !== null ? { restoreFocus: element } : undefined);
   }
 
   /**
@@ -3532,17 +3571,13 @@ export class ɵTmGridCore<T>
    */
   private onLongPress(point: { x: number; y: number }): void {
     this.pressLongPressed = true;
-    const menu = this.menuRef;
-    if (menu === null) {
-      return;
-    }
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
     const hit = document.elementFromPoint(point.x, point.y);
     this.selectMenuTarget(hit);
     const element = this.activeCellElement();
-    menu.open(point, element !== null ? { restoreFocus: element } : undefined);
+    this.openMenu(point, element !== null ? { restoreFocus: element } : undefined);
   }
 
   /**
@@ -4595,12 +4630,11 @@ export class ɵTmGridCore<T>
         return true;
       }
       case 'menu': {
-        const menu = this.menuRef;
         const element = this.activeCellElement();
-        if (menu === null || element === null) {
+        if (element === null) {
           return false;
         }
-        menu.open(element.getBoundingClientRect(), { restoreFocus: element });
+        this.openMenu(element.getBoundingClientRect(), { restoreFocus: element });
         return true;
       }
       case 'clear':

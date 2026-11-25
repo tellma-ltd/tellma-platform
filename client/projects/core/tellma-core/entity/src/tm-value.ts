@@ -38,6 +38,9 @@ import { ɵtmPlanBlobPath } from './tm-select-plan';
 // avatar when the entity has an image; an enum value renders a badge; an
 // image renders a thumbnail, requested only when the blob lists one; a file
 // renders its name as a download link; a guid or a time renders mono.
+// The avatar and the thumbnail load in `@defer` blocks, on their first use:
+// a page whose values show no image (most search grids) never downloads
+// them, and a box of the same size holds their place while they load.
 
 /** One related row a value names. */
 interface TmValueItem {
@@ -129,6 +132,15 @@ function objectOf(value: unknown): TmJsonObject | null {
       align-items: center;
       gap: var(--tm-space-1, 0.25rem);
     }
+    /* The boxes that hold a deferred avatar's or thumbnail's place. */
+    .tm-value__avatar-slot {
+      display: inline-block;
+      inline-size: var(--avatar-size-xs);
+      block-size: var(--avatar-size-xs);
+    }
+    .tm-value__image-slot {
+      display: inline-block;
+    }
   `,
   template: `
     @let shown = view();
@@ -159,7 +171,11 @@ function objectOf(value: unknown): TmJsonObject | null {
         @for (item of shown.items; track $index) {
           <span class="tm-value__row">
             @if (item.avatar; as avatar) {
-              <tm-avatar size="xs" decorative [name]="avatar.name" [colorKey]="avatar.colorKey" [src]="avatar.src" />
+              @defer (on immediate) {
+                <tm-avatar size="xs" decorative [name]="avatar.name" [colorKey]="avatar.colorKey" [src]="avatar.src" />
+              } @placeholder {
+                <span class="tm-value__avatar-slot" aria-hidden="true"></span>
+              }
             }
             @if (item.href; as href) {
               <a [routerLink]="href"><tm-display-name [parts]="item.parts" /></a>
@@ -171,7 +187,11 @@ function objectOf(value: unknown): TmJsonObject | null {
       }
       <!-- A thumbnail, its box fixed so the layout never moves -->
       @case ('image') {
-        <tm-image mode="view" [src]="shown.src" [alt]="shown.alt" [width]="size()" [height]="size()" [srcForSize]="asIs" />
+        @defer (on immediate) {
+          <tm-image mode="view" [src]="shown.src" [alt]="shown.alt" [width]="size()" [height]="size()" [srcForSize]="asIs" />
+        } @placeholder {
+          <span class="tm-value__image-slot" aria-hidden="true" [style.inline-size.px]="size()" [style.block-size.px]="size()"></span>
+        }
       }
       <!-- A file's name, downloading it -->
       @case ('file') {

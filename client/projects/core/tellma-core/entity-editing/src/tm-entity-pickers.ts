@@ -294,7 +294,7 @@ export class TmEntityPickers {
    * slot, a text prefix, and the findable rule with equality in place of a
    * prefix match. A label one row matches resolves to it; none, or several,
    * is an error. Its code loads on the first paste. Internal:
-   * `tmGridColumnFor` binds it.
+   * `tmEditableGridColumnFor` binds it.
    *
    * @param entity - The entity's name.
    * @param filter - The column's Queryex filter.

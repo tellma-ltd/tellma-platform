@@ -22,7 +22,7 @@ export type TmSearchReadSource = 'load' | 'typing' | 'filter' | 'order' | 'page'
  * aborts the one in flight.
  */
 export interface TmSearchReadKey {
-  /** The identity of the state the read answers: its canonical URL, or in picker mode its canonical query. */
+  /** The identity of the rows the read answers: the page's path and its canonical query, less the shown columns and the view. */
   readonly canonical: string;
   /** The request. */
   readonly request: TmSearchRequest;
@@ -200,7 +200,23 @@ function terms(select: TmJson | undefined): readonly string[] {
     }
   }
   found.push(select.slice(start));
-  return found.map((term) => term.trim().toLowerCase());
+  return found.map((term) => foldOutsideQuotes(term.trim()));
+}
+
+/**
+ * A term with its names folded to lower case and its quoted literals kept
+ * as written: names compare without case, a literal's text with it.
+ *
+ * @param term - The term.
+ * @returns The folded term.
+ */
+function foldOutsideQuotes(term: string): string {
+  // Even pieces lie outside quotes and odd ones inside; a doubled quote
+  // makes an empty outside piece between two inside ones.
+  return term
+    .split("'")
+    .map((piece, index) => (index % 2 === 0 ? piece.toLowerCase() : piece))
+    .join("'");
 }
 
 /**

@@ -299,12 +299,18 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         </button>
       }
 
-      <!-- More: the menu page actions; in the narrowest form, every declared one. -->
-      @if (menuActions().length > 0) {
-        <button tmButton tmPageToolbar type="button" variant="ghost" data-tm-more [tmMenuTriggerFor]="more" [attr.aria-label]="text.moreActions()">
-          <tm-icon [svg]="glyphs.more" />
-        </button>
-      }
+      <!-- More: the menu page actions; in the narrowest form, every declared one. The menu's code
+           loads the first time there are any, so a page with none never downloads it. -->
+      <span tmPageToolbar class="tm-search-host__more">
+        @defer (when menuActions().length > 0) {
+          @if (menuActions().length > 0) {
+            <button tmButton type="button" variant="ghost" data-tm-more [tmMenuTriggerFor]="more" [attr.aria-label]="text.moreActions()">
+              <tm-icon [svg]="glyphs.more" />
+            </button>
+          }
+          <tm-menu #more [items]="menuActions()" [aria-label]="text.moreActions()" />
+        }
+      </span>
 
       <!-- Refresh re-reads the query; the pager ends the toolbar. -->
       <button tmButton tmPageToolbarEnd type="button" variant="ghost" data-tm-refresh [attr.aria-label]="text.refresh()" [title]="text.refresh()" (click)="invoke('search.refresh')">
@@ -325,8 +331,6 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         (pageSizeChange)="setSize($event)"
       />
     </tm-page-header>
-
-    <tm-menu #more [items]="menuActions()" [aria-label]="text.moreActions()" />
 
     <!-- The results region: busy while a read runs, the progress bar over the rows it keeps. -->
     <div class="tm-search-host__region" [attr.aria-busy]="loading() ? 'true' : null" (pointerover)="hover($event)">
@@ -544,10 +548,18 @@ export class TmSearchHost implements OnInit {
   /** The state's canonical URL: empty in picker mode and for a list's invalid payload. */
   readonly #canonical = computed(() => tmSearchUrl(this.#setting(), this.#state()));
 
-  /** What identifies the state's result: its canonical URL, else its canonical query. */
+  /**
+   * What identifies the state's rows: the canonical URL's path and the
+   * canonical query, less the shown columns and the view, which change what
+   * shows of the rows but not which rows. Whether a changed column set needs
+   * the rows again is the select comparison's to decide.
+   */
   readonly #identity = computed(() => {
     const state = this.#state();
-    return this.#canonical() || JSON.stringify({ query: state.query, list: state.listFilter ?? null });
+    // A member set to undefined drops out of the JSON.
+    const rows = { ...state.query, cols: undefined, view: undefined };
+    const path = this.#canonical().split(/[?#]/)[0] ?? '';
+    return JSON.stringify({ path, query: rows, list: state.listFilter ?? null });
   });
 
   /** The shown columns, by identity: a change of anything else keeps them. */
@@ -581,10 +593,12 @@ export class TmSearchHost implements OnInit {
   #source: TmSearchReadSource = 'load';
 
   /**
-   * The read's key: a new one for a new canonical query or a new
-   * generation, and for a rebuilt request the held one cannot answer (a
+   * The read's key: a new one for a new identity (another page, or a query
+   * that picks other rows) or a new generation, and for a rebuilt request
+   * the held one cannot answer (a column whose terms the select gains, a
    * language switch under a text order, a moved permission); otherwise the
-   * held key, so a column removal or a scalar order reads nothing.
+   * held key, so a column removal, a view toggle or a scalar order reads
+   * nothing.
    */
   readonly #key = linkedSignal<{ readonly identity: string; readonly request: TmSearchRequest | null; readonly generation: number }, TmSearchReadKey | null>({
     source: () => ({ identity: this.#identity(), request: this.#request(), generation: this.#generation() }),
@@ -713,7 +727,7 @@ export class TmSearchHost implements OnInit {
   /** The grid's identity, so the widths survive navigation and a picker never shares a page's. */
   protected readonly gridId = computed(() => `${this.#mode === 'list' ? 'list' : 'search'}.${this.#descriptor().name}`);
 
-  /** The grid's content key: the canonical query of the result on screen, which changes when that result lands. */
+  /** The grid's content key: the identity of the rows on screen, which changes when another result lands. */
   protected readonly contentKey = computed(() => this.#held().result?.key.canonical ?? '');
 
   /** The rows the grid binds: none while a failure or a first load shows. */
@@ -1403,14 +1417,15 @@ export class TmSearchHost implements OnInit {
 
   /**
    * The state of a result with no rows: no data when nothing narrows the
-   * query, else no matches with the way out it offers.
+   * query and inactive rows are excluded, else no matches with the way out
+   * it offers.
    *
    * @param query - The query.
    * @returns The state.
    */
   #emptyState(query: TmSearchQuery): TmSearchRegionState {
     const filtered = query.columnFilters !== undefined || query.filter !== undefined || query.custom !== undefined;
-    if (!filtered && query.q === undefined) {
+    if (!filtered && query.q === undefined && query.inactive !== true) {
       const create = this.create();
       return { kind: 'no-data', create: create !== null && create.reason === null ? { href: create.href, label: create.label } : null };
     }

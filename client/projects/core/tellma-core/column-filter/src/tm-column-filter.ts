@@ -37,7 +37,8 @@ import { TmEntityMultiPicker, type TmEntitySearchFn } from '@tellma/core-ui/enti
 import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
-import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 
 
 // The column filter control (spec 0029 §13.3): the content of a column

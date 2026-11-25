@@ -45,7 +45,8 @@ import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 import { TmImage, type TmImageEdit } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
-import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 import { ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, type ɵTmEditorKind } from '@tellma/core/entity';
 
 import { ɵTmExactBinding } from './tm-exact-binding';
