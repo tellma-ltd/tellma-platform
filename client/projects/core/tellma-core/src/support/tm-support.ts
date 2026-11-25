@@ -6,7 +6,6 @@
 import {
   computed,
   type DestroyRef,
-  DOCUMENT,
   inject,
   Injectable,
   InjectionToken,
@@ -33,12 +32,14 @@ import { TmUrls } from '../urls/tm-urls';
 // the shell reaches it: the support dialog, the dump's builder and the panel
 // are the lazy @tellma/core/support (worker group on-demand, spec 0024 §5.3).
 // Between the two sits the support host, a lazy chunk of the primary that
-// the facade preloads at idle together with @tellma/core/page-snapshot: once
+// the facade preloads with @tellma/core/page-snapshot when the app's startup
+// starts it at idle: once
 // both are in, a press opens the dialog in its own frame, with a placeholder
 // in the dialog's final size, and snapshots the page contexts before any
 // await (§10.4 step 1); the support entry point then loads into the dialog.
-// A press that comes before they land runs the moment they do, and a load
-// that fails is tried again on the next press. The facade also keeps the
+// Presses that come before they land collapse to one per kind, the last,
+// which runs the moment they do; a load that fails is tried again on the
+// next press. The facade also keeps the
 // dump's contributed sections, among them the client state's (spec 0025 §15).
 
 /** The error the support dialog opened from, as the dump records it. */
@@ -230,6 +231,9 @@ export class TmSupport {
   /** The tools, once loaded. */
   #loaded: TmSupportTools | null = null;
 
+  /** The press of each kind waiting for the tools, at most one: a later press replaces it. */
+  readonly #pending = new Map<string, { action: (tools: TmSupportTools) => unknown; readonly settled: Promise<void> }>();
+
   /** Whether the user can send a support request now. */
   readonly canSend: Signal<boolean> = computed(() => {
     const launch = this.#injector.get(TmLaunchCache);
@@ -245,27 +249,30 @@ export class TmSupport {
     return member && this.#injector.get(TmApi).online() && launch.docs.tenant()?.state === 'Active';
   });
 
-  /** Registers the client state's section, and preloads the support host at idle. */
+  /** Registers the client state's section. */
   constructor() {
     this.registerDumpSection('state', () => this.#injector.get(TmStateDump).read() as unknown as TmJson);
-    const window = inject(DOCUMENT).defaultView;
-    const preload = (): void => void this.#load().catch(() => undefined);
-    if (window?.requestIdleCallback) {
-      window.requestIdleCallback(preload);
-    } else {
-      setTimeout(preload);
-    }
+  }
+
+  /**
+   * Preloads the support host and the page snapshot, so that a first press
+   * opens the dialog in its own frame. Internal: the app's startup calls it
+   * at idle; a failed load is tried again on the next press.
+   */
+  ɵstart(): void {
+    this.#load().catch(() => undefined);
   }
 
   /**
    * Opens the support dialog: in this frame once the support host has
    * loaded, else the moment it lands. The page contexts are snapshotted
-   * before the dialog's content loads, so the dialog is not in them.
+   * before the dialog's content loads, so the dialog is not in them. Presses
+   * made before the host lands open one dialog, from the last press.
    *
    * @param options - The error the dialog opens from, such as the 5xx dialog's.
    */
   open(options?: { readonly error?: TmApiError }): void {
-    this.#run((tools) => tools.host.ɵtmOpenSupport(this.#injector, tools.pages, options?.error), 'tm.support.open');
+    void this.#run((tools) => tools.host.ɵtmOpenSupport(this.#injector, tools.pages, options?.error), 'tm.support.open');
   }
 
   /**
@@ -278,9 +285,14 @@ export class TmSupport {
     this.#injector.get(TmRequestLog).copy(trigger);
   }
 
-  /** Downloads the dump as a file, without page data. */
-  downloadDump(): void {
-    this.#run((tools) => tools.host.ɵtmDownloadSupport(this.#injector, tools.pages), 'tm.support.download');
+  /**
+   * Downloads the dump as a file, without page data. Presses made before the
+   * support host lands download one file.
+   *
+   * @returns A promise that settles once the download has started or failed; it never rejects.
+   */
+  downloadDump(): Promise<void> {
+    return this.#run((tools) => tools.host.ɵtmDownloadSupport(this.#injector, tools.pages), 'tm.support.download');
   }
 
   /**
@@ -335,28 +347,46 @@ export class TmSupport {
   }
 
   /**
-   * Runs an action with the tools: now when they are loaded, else once they
-   * land. A failure goes to telemetry, never to the caller.
+   * Runs an action with the tools: now, synchronously, when they are
+   * loaded, else once they land. Before they land, a later action of the
+   * same kind replaces the waiting one, so presses never stack. A failure
+   * goes to telemetry, never to the caller.
    *
    * @param action - The action.
-   * @param where - The action's name, for telemetry.
+   * @param where - The action's kind, for telemetry.
+   * @returns A promise that settles once the action has run or failed.
    */
-  #run(action: (tools: TmSupportTools) => unknown, where: string): void {
+  #run(action: (tools: TmSupportTools) => unknown, where: string): Promise<void> {
     const report = (error: unknown): void => this.#telemetry.error(error, { where });
-    const go = (tools: TmSupportTools): void => {
+    // The action's synchronous part runs before the first await, inside the caller's frame.
+    const go = async (tools: TmSupportTools, act: (tools: TmSupportTools) => unknown): Promise<void> => {
       try {
-        const result = untracked(() => action(tools));
-        if (result instanceof Promise) {
-          result.catch(report);
-        }
+        await untracked(() => act(tools));
       } catch (error) {
         report(error);
       }
     };
     if (this.#loaded !== null) {
-      go(this.#loaded);
-    } else {
-      this.#load().then(go, report);
+      return go(this.#loaded, action);
     }
+    // --- Before the tools land: one waiting press per kind ---
+    const waiting = this.#pending.get(where);
+    if (waiting !== undefined) {
+      waiting.action = action;
+      return waiting.settled;
+    }
+    const entry: { action: (tools: TmSupportTools) => unknown; settled: Promise<void> } = { action, settled: Promise.resolve() };
+    entry.settled = this.#load().then(
+      (tools) => {
+        this.#pending.delete(where);
+        return go(tools, entry.action);
+      },
+      (error: unknown) => {
+        this.#pending.delete(where);
+        report(error);
+      },
+    );
+    this.#pending.set(where, entry);
+    return entry.settled;
   }
 }

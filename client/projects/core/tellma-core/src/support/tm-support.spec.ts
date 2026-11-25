@@ -236,6 +236,51 @@ describe('TmSupport', () => {
       await tmSettleUntil(() => document.querySelector('tm-support-host') === null);
     });
 
+    it("preloads the support host when the app's startup goes idle, so the first press opens the dialog in its frame", async () => {
+      let loads = 0;
+      let landed = false;
+      const support = await setUp({
+        tools: () => {
+          loads++;
+          return import('@tellma/core/page-snapshot' as string).then((pages) => {
+            landed = true;
+            return { host, pages: pages as TmSupportTools['pages'] };
+          });
+        },
+      });
+      await tmNavigate('/17');
+      // Nothing was pressed: the startup's idle step loaded the host.
+      await tmSettleUntil(() => landed);
+      expect(loads).toBe(1);
+      support.open();
+      expect(document.querySelector('.tm-modal-panel')).not.toBeNull();
+      await tmSettleUntil(() => document.querySelector('.tm-test-support-dialog') !== null);
+      expect(loads).toBe(1);
+    });
+
+    it('opens one dialog and downloads one file for presses made before the support host lands', async () => {
+      let release!: () => void;
+      const held = new Promise<void>((done) => (release = done));
+      const support = await setUp({
+        tools: () => held.then(() => import('@tellma/core/page-snapshot' as string)).then((pages) => ({ host, pages: pages as TmSupportTools['pages'] })),
+      });
+      await tmNavigate('/17');
+      await tmSettle();
+      // A double press on each, while the host is still loading.
+      support.open();
+      support.open();
+      const first = support.downloadDump();
+      const second = support.downloadDump();
+      expect(document.querySelector('tm-support-host')).toBeNull();
+      release();
+      await Promise.all([first, second]);
+      await tmSettleUntil(() => shown.length > 0);
+      await tmSettle();
+      expect(document.querySelectorAll('tm-support-host').length).toBe(1);
+      expect(shown.length).toBe(1);
+      expect(downloaded.length).toBe(1);
+    });
+
     it('reports a failed load of the support host, and tries it again on the next press', async () => {
       let loads = 0;
       const support = await setUp({
@@ -243,7 +288,7 @@ describe('TmSupport', () => {
           ++loads <= 2 ? Promise.reject(new TypeError('Failed to fetch dynamically imported module')) : import('@tellma/core/page-snapshot' as string).then((pages) => ({ host, pages: pages as TmSupportTools['pages'] })),
       });
       await tmNavigate('/17');
-      // The idle preload fails first; the press tries again, and fails too.
+      // The startup's idle preload fails first; the press tries again, and fails too.
       await tmSettleUntil(() => loads === 1);
       support.open();
       await tmSettleUntil(() => loads === 2);

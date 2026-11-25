@@ -398,17 +398,19 @@ export class TmDiagnosticsPanel {
 
   /** Download diagnostic file: from the support dialog's snapshot, or a snapshot taken now; never with page data. */
   protected async download(): Promise<void> {
-    const snapshot = this.snapshot();
-    if (snapshot === undefined) {
-      this.#support.downloadDump();
-      return;
-    }
+    // One download at a time: a second press while one is pending does nothing.
     if (untracked(this.downloading)) {
       return;
     }
+    const snapshot = this.snapshot();
     this.downloading.set(true);
     try {
-      tmDownloadSupportDump(await tmBuildSupportDump(snapshot, { includeData: false, injector: this.#injector }), this.#injector);
+      if (snapshot === undefined) {
+        // The facade never rejects; it reports its own failures.
+        await this.#support.downloadDump();
+      } else {
+        tmDownloadSupportDump(await tmBuildSupportDump(snapshot, { includeData: false, injector: this.#injector }), this.#injector);
+      }
     } catch (error) {
       this.#injector.get(TmTelemetry).error(error, { where: 'tm.support.download' });
     } finally {

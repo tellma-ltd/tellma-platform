@@ -137,20 +137,30 @@ describe('TmDiagnosticsPanel', () => {
     expect(await grid.getCellText(1, 0)).toMatch(/^4\.81 s\s*\d\d:\d\d:\d\d · Failed$/);
   });
 
-  it('copies the diagnostics, downloads the file without page data, and opens the support dialog', async () => {
+  it('copies the diagnostics, downloads the file once at a time without page data, and opens the support dialog', async () => {
     const { panel, fixture } = await setUp();
     const support = TestBed.inject(TmSupport);
     const copy = vi.spyOn(TestBed.inject(TmRequestLog), 'copy').mockImplementation(() => undefined);
-    const download = vi.spyOn(support, 'downloadDump').mockImplementation(() => undefined);
+    // The facade's download stays pending until the test lets it start.
+    let started!: () => void;
+    const download = vi.spyOn(support, 'downloadDump').mockImplementation(() => new Promise<void>((done) => (started = done)));
     const open = vi.spyOn(support, 'open').mockImplementation(() => undefined);
     expect(await panel.getButtons()).toEqual(['Copy diagnostics', 'Download diagnostic file', 'Report a problem']);
 
     await (await panel.getButton('Copy diagnostics')).click();
-    await (await panel.getButton('Download diagnostic file')).click();
     await (await panel.getButton('Report a problem')).click();
     expect(copy).toHaveBeenCalledWith('button');
-    expect(download).toHaveBeenCalledTimes(1);
     expect(open).toHaveBeenCalledTimes(1);
+
+    // --- Download: pending until the file starts, and a second press meanwhile does nothing ---
+    const button = await panel.getButton('Download diagnostic file');
+    await button.click();
+    expect(await button.isPending()).toBe(true);
+    await button.click();
+    expect(download).toHaveBeenCalledTimes(1);
+    started();
+    await tmSettle();
+    expect(await button.isPending()).toBe(false);
 
     // --- In the support dialog: no Report a problem, and the file from the dialog's snapshot ---
     const clicks: string[] = [];

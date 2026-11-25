@@ -2214,7 +2214,7 @@ export class TmSupport {
     constructor();
     readonly canSend: Signal<boolean>;
     copyDiagnostics(trigger?: TmDiagnosticsTrigger): void;
-    downloadDump(): void;
+    downloadDump(): Promise<void>;
     open(options?: {
         readonly error?: TmApiError;
     }): void;

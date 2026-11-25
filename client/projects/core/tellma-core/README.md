@@ -1202,18 +1202,21 @@ and About can call it before the tools load. `open()` takes the snapshot of the 
 dialogs and opens the support dialog in the caller's frame, with a placeholder in the dialog's
 final size until `@tellma/core/support` lands; when that entry point cannot load, the dialog says
 so and names Copy diagnostics' shortcut, which still works. `downloadDump()` downloads the
-diagnostic file, never with page data. `canSend` holds while a request could reach support:
+diagnostic file, never with page data, and settles once the download has started. Presses made
+before the tools land collapse to one of each kind, the last. `canSend` holds while a request could reach support:
 support enabled in the distribution, a live member of an active tenant online in a live session.
-The facade preloads the small host chunk that opens the dialog when the browser is next idle.
+The app's startup preloads the small host chunk that opens the dialog when the browser first goes
+idle, so even the first press opens the dialog in its own frame.
 
 The dump is one JSON document, at most 2 MB: the builds and the browser, the tenant, the page's
 address and its contexts (with page data only when the user includes it), the storage estimate,
 the last requests, telemetry events and errors, and the registered sections. Over the cap it
-drops, in order, the visible rows, the older telemetry, the page data and the sections, and names
-each step it took. It never holds the stored documents, cookies, web storage or the user's
+drops, in order, the visible rows, the telemetry, the page data and the sections, each only while
+the dump is still over, and names each step that dropped something. It never holds the stored documents, cookies, web storage or the user's
 profile. A feature adds a section with `registerDumpSection(name, read, destroyRef)`: a short
-lowercase name, a read that returns plain JSON within 64 KB, which the dump calls once and skips
-when it throws, and the `DestroyRef` that ends it; without one, the section lasts as long as the
+lowercase name, a read that returns plain JSON within 64 KB, which the dump calls once (a read
+that throws is recorded as `{ "error": "<class>" }` under the section's name, and one over 64 KB as
+`{ "truncated": true }`), and the `DestroyRef` that ends it; without one, the section lasts as long as the
 app. The client state's section, `state`, is the platform's.
 
 ## Seams
