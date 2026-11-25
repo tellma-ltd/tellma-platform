@@ -74,7 +74,10 @@ sources with the client's Prettier settings.
    development certificate, which the host creates. The web host's sign-in fetches the identity
    engine's discovery document from its own origin, so .NET must trust that certificate: on Linux
    the host runs `dotnet dev-certs https --trust`, which needs no prompt there; on Windows,
-   where trusting asks, trust it once yourself with the same command. The browsers need no trust:
+   where trusting asks, trust it once yourself with the same command. The nightly tier's Windows
+   leg has nobody to answer that prompt, so a step of its own adds the certificate to
+   `LocalMachine\Root` before the suite starts, which an administrator can do without one (see
+   `.github/workflows/nightly-tier.yml`). The browsers need no trust:
    the config ignores certificate errors per context and launches Chromium with
    `--ignore-certificate-errors`, without which Chromium refuses to register the service worker
    on Linux, where its own certificate store does not hold the development certificate.

@@ -207,13 +207,19 @@ node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-inver
 
 The client build takes about five minutes; with `TELLMA_E2E_WEBROOT` set to an app already built,
 such as the published `wwwroot` above, the host serves it instead, as CI does. CI runs the suite
-on Linux; the nightly tier runs it on Windows too.
+on Linux; the nightly tier runs it on Windows too. The web host's sign-in calls its own HTTPS
+origin, so .NET must trust the ASP.NET development certificate: the host trusts it on Linux, and
+on Windows, where trusting asks for confirmation, run `dotnet dev-certs https --trust` once
+yourself. The nightly Windows leg cannot answer that prompt, so it adds the certificate to
+`LocalMachine\Root` as the runner's administrator before the suite starts.
 
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
-`gh workflow run nightly-tier.yml --ref platform-core`. Its commands also run locally; an empty tier
-passes.
+`gh workflow run nightly-tier.yml --ref platform-core`. A `pc/**` working branch runs it only when
+dispatched by hand the same way (`--ref pc/<id>`), never on a schedule or a push, so a fix to a
+failure only the nightly tier sees can be proven on its branch before it merges; each branch's
+runs queue in a group of their own. Its commands also run locally; an empty tier passes.
 
 ```bash
 dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"

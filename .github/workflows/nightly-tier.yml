@@ -4,12 +4,17 @@
 # GitHub fires `schedule` (and accepts `workflow_dispatch`) only for workflows on the default
 # branch, so main carries a trampoline under this same file name: each night it runs
 # `gh workflow run nightly-tier.yml --ref platform-core`, and GitHub then runs THIS version of the
-# file from platform-core. Hence no schedule here, and every job is guarded to platform-core: a
-# dispatch on any other branch that carries this file skips every job.
+# file from platform-core. Hence no schedule here, and every job is guarded to platform-core.
+#
+# The guards also let a manual dispatch of a `pc/**` working branch through
+# (`gh workflow run nightly-tier.yml --ref pc/<id>`), so a fix to a failure only this tier sees is
+# proven on its own branch before it merges onward. A working branch runs this tier only on such a
+# dispatch, never on a schedule or a push. A dispatch on any other branch that carries this file
+# skips every job.
 #
 # When platform-core merges into main, this file replaces the trampoline. At that merge, add the
-# schedule trigger back and point the job guards at refs/heads/main, or the nightly tier stops
-# running.
+# schedule trigger back and point the job guards' platform-core half at refs/heads/main, or the
+# nightly tier stops running.
 #
 # Selection, mirrored by CONTRIBUTING.md:
 #   - dotnet: every test carrying [Trait("Category", "Nightly")], whatever its other Category
@@ -39,10 +44,12 @@ on:
 permissions:
   contents: read
 
-# One nightly at a time, never cancelled: a manual dispatch while the scheduled run is still going
-# queues behind it rather than replacing it.
+# One nightly at a time per branch, never cancelled: a manual dispatch while the scheduled run is
+# still going queues behind it rather than replacing it. The group is per branch because GitHub
+# keeps one pending run per group and cancels an older pending one, so a working branch's dispatch
+# must never share platform-core's group, where it could cancel a queued nightly.
 concurrency:
-  group: nightly-tier
+  group: nightly-tier-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -50,7 +57,7 @@ jobs:
   # Server containers, which Windows runners cannot host. The Chromium install serves the identity
   # E2E project, whose Playwright tests may carry the Nightly category too.
   dotnet:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 120
     runs-on: ubuntu-latest
     steps:
@@ -81,7 +88,7 @@ jobs:
   # unit test moved to the nightly tier must keep its Windows run. Nightly integration and E2E tests
   # stay on the Linux job above: they need Linux containers or the Linux browser setup.
   dotnet-windows:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 120
     runs-on: windows-latest
     steps:
@@ -102,7 +109,7 @@ jobs:
   # the PR tier runs on Linux only. The other integration suites need nothing Windows-specific and
   # run on Linux alone, in the PR tier and in the dotnet job above.
   integration-windows:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 45
     runs-on: windows-latest
     env:
@@ -161,7 +168,7 @@ jobs:
   # launch on Slow 4G and the warm chrome under CPU throttling, all through Chromium's DevTools
   # protocol, on the e2e host over a SQL Server container and the published app.
   acme-e2e:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
@@ -197,7 +204,7 @@ jobs:
   # The Acme browser suite on Windows (spec 0024 §14: the e2e host runs on Ubuntu and Windows):
   # every flow, nightly gates included, against LocalDB. The PR tier runs it on Linux alone.
   acme-e2e-windows:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 60
     runs-on: windows-latest
     steps:
@@ -231,6 +238,69 @@ jobs:
         timeout-minutes: 15
         run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E exec playwright install chromium
       - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
+      # The web host's sign-in fetches the identity engine's discovery document from its own
+      # https://localhost origin, so .NET must trust the ASP.NET development certificate that
+      # Kestrel serves, or the sign-in fails with an untrusted root. The e2e host trusts it itself
+      # on Linux, but on Windows `dotnet dev-certs https --trust` adds it to CurrentUser\Root, which
+      # Windows confirms in a dialog nobody on a runner can answer, so the host only creates it
+      # there. This step creates it and adds its public certificate to LocalMachine\Root instead:
+      # the runner's account is an administrator, a machine store takes a certificate without a
+      # prompt, and every account's chain engine, .NET's included, trusts that store's roots. The
+      # private key stays in the user's store, and the trust goes with the runner at the job's end.
+      - name: Trust the development certificate
+        shell: pwsh
+        run: |
+          dotnet dev-certs https
+          if ($LASTEXITCODE -ne 0) { throw "dotnet dev-certs https failed (exit $LASTEXITCODE)." }
+
+          # The valid development certificates: those carrying ASP.NET Core's marker extension.
+          $marker = '1.3.6.1.4.1.311.84.1.1'
+          $now = Get-Date
+          $certificates = @(Get-ChildItem Cert:\CurrentUser\My | Where-Object {
+            ($_.Extensions | Where-Object { $_.Oid.Value -eq $marker }) -and
+            $_.NotBefore -le $now -and $now -lt $_.NotAfter
+          })
+          if ($certificates.Count -eq 0) {
+            throw 'dotnet dev-certs https left no valid development certificate in CurrentUser\My.'
+          }
+
+          # The check the web host's own call makes: the chain builds to a trusted root. The
+          # certificate names no revocation list, so revocation is not checked.
+          function Test-Trusted([System.Security.Cryptography.X509Certificates.X509Certificate2] $certificate) {
+            $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+            $chain.ChainPolicy.RevocationMode = 'NoCheck'
+            try {
+              return [pscustomobject]@{
+                Trusted = $chain.Build($certificate)
+                Status = ($chain.ChainStatus | ForEach-Object { $_.Status }) -join ', '
+              }
+            } finally {
+              $chain.Dispose()
+            }
+          }
+
+          # --- Each certificate not yet trusted goes to LocalMachine\Root, public part only ---
+          $untrusted = @($certificates | Where-Object { -not (Test-Trusted $_).Trusted })
+          if ($untrusted.Count -gt 0) {
+            $root = [System.Security.Cryptography.X509Certificates.X509Store]::new('Root', 'LocalMachine')
+            $root.Open('ReadWrite')
+            try {
+              foreach ($certificate in $untrusted) {
+                $root.Add([System.Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate.RawData))
+              }
+            } finally {
+              $root.Close()
+            }
+          }
+
+          # --- Every certificate is now trusted, or the step fails before the suite starts ---
+          foreach ($certificate in $certificates) {
+            $result = Test-Trusted $certificate
+            if (-not $result.Trusted) {
+              throw "The development certificate $($certificate.Thumbprint) is still untrusted ($($result.Status))."
+            }
+            Write-Output "The development certificate $($certificate.Thumbprint) is trusted."
+          }
       - name: Acme browser suite (Windows)
         env:
           TELLMA_E2E_SQL: localdb
@@ -247,7 +317,7 @@ jobs:
 
   # The Playwright nightly tier on the showcase, every browser engine, quarantined tests excluded.
   client-e2e:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     timeout-minutes: 120
     runs-on: ubuntu-latest
     # The client's own scripts run from client/, where their path arguments (the report and
@@ -295,7 +365,7 @@ jobs:
   # conclusion is honest, but `continue-on-error` keeps it out of the run's verdict. Triage reads the
   # per-test table in the job summary; the full report is uploaded whatever the outcome.
   client-e2e-quarantine:
-    if: github.ref == 'refs/heads/platform-core'
+    if: github.ref == 'refs/heads/platform-core' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/pc/'))
     continue-on-error: true
     timeout-minutes: 60
     runs-on: ubuntu-latest
