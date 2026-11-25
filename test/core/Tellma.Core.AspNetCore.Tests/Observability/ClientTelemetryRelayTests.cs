@@ -16,6 +16,8 @@ using System.Text.Json.Nodes;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Composition;
 using Tellma.Core.Abstractions.Hosting;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.AspNetCore.Csrf;
 using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.Tests.Infrastructure;
 using Tellma.Testing.WebHost;
@@ -350,6 +352,69 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
             JsonElement telemetry = document.RootElement.GetProperty("telemetry");
             Assert.False(telemetry.GetProperty("enabled").GetBoolean());
             Assert.Equal(0.25, telemetry.GetProperty("sampleRate").GetDouble());
+        }
+
+        [Fact]
+        public async Task An_error_s_class_and_route_reach_its_message_only_within_the_value_grammar()
+        {
+            CapturingLoggerProvider capture = new();
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(options =>
+                options.ConfigureServices = services => services.AddSingleton<ILoggerProvider>(capture));
+
+            // --- A forged log line and a terminal escape, each in the class and in the route ---
+            const string Forged = "X\r\n12:00:00 [ERR] Payment ledger corrupted";
+            const string Escape = "Y\u001b[31mred\u001b[0m";
+            DateTimeOffset sentAt = host.Time.GetUtcNow();
+            JsonObject batch = Batch(
+                sentAt,
+                Item("error", "tm.error.captured", sentAt, new JsonObject { ["errorClass"] = Forged, ["route"] = Escape }),
+                Item("error", "tm.error.captured", sentAt, new JsonObject { ["errorClass"] = Escape, ["route"] = Forged }),
+                Item("error", "tm.error.captured", sentAt, new JsonObject { ["errorClass"] = new string('A', 65), ["route"] = 7 }));
+
+            using HttpResponseMessage response = await PostAsync(host, batch.ToJsonString());
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            CapturedEvent[] errors = [.. capture.Events.Where(static captured => captured.EventName == "ClientError")];
+            Assert.Equal(3, errors.Length);
+            Assert.All(errors, static error =>
+            {
+                Assert.Equal("Client error \"(other)\" on \"(other)\"", error.Message);
+                Assert.Equal(ClientTelemetryLog.Other, error.Members["ErrorClass"]);
+                Assert.Equal(ClientTelemetryLog.Other, error.Members["ClientRoute"]);
+                Assert.DoesNotContain(error.Message, static character => character is '\r' or '\n' or '\u001b');
+                Assert.DoesNotContain("Payment ledger", error.Message, StringComparison.Ordinal);
+            });
+        }
+
+        [Fact]
+        public async Task A_configured_client_other_than_the_spa_is_refused_as_a_cross_site_request()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.Settings["Tellma:Api:ClientNames:0"] = "web";
+                options.Settings["Tellma:Api:ClientNames:1"] = "excel";
+            });
+            using MetricCollector<long> refusals = new(
+                host.Services.GetRequiredService<IMeterFactory>(), HostTelemetryNames.MeterName, HostTelemetryNames.CsrfRejections);
+            DateTimeOffset sentAt = host.Time.GetUtcNow();
+            string body = Batch(sentAt, "2.0", Item("event", "tm.action.used", sentAt)).ToJsonString();
+
+            // The CSRF control admits the other name; the relay, the SPA's alone, does not.
+            using HttpRequestMessage request = TellmaTestHost.SpaRequest(HttpMethod.Post, Route, host.Cookie(), body);
+            _ = request.Headers.Remove(TellmaAuthentication.CsrfHeaderName);
+            request.Headers.Add(TellmaAuthentication.CsrfHeaderName, "excel/2.0");
+            using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+            Problem problem = await Problem.ReadAsync(response);
+            Assert.Equal("csrf-rejected", problem.Code);
+            Assert.Equal(CsrfRules.Header, problem.Argument("rule"));
+            CollectedMeasurement<long> refusal = Assert.Single(refusals.GetMeasurementSnapshot());
+            Assert.Equal(CsrfRules.Header, refusal.Tags[HostTelemetryNames.RuleTag]);
+
+            // The SPA, under the same configuration, is served.
+            using HttpResponseMessage spa = await PostAsync(host, Batch(sentAt, Item("event", "tm.action.used", sentAt)).ToJsonString());
+            Assert.Equal(HttpStatusCode.NoContent, spa.StatusCode);
         }
 
         [Theory]

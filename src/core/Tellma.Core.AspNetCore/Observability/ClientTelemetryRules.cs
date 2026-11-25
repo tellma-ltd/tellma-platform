@@ -44,6 +44,9 @@ namespace Tellma.Core.AspNetCore.Observability
         /// <summary>The longest an item's name is.</summary>
         public const int MaxNameLength = 64;
 
+        /// <summary>The longest a value a log message names is.</summary>
+        public const int MaxValueLength = 64;
+
         /// <summary>The longest a text property is, but for a message or a stack.</summary>
         public const int MaxTextLength = 128;
 
@@ -136,6 +139,24 @@ namespace Tellma.Core.AspNetCore.Observability
         public static bool IsName(string? name)
         {
             return name is { Length: > 0 and <= MaxNameLength } && NamePattern().IsMatch(name);
+        }
+
+        /// <summary>
+        ///     A property's value as a log message may name it: a text of 1 to 64 letters, digits and
+        ///     <c>_ . : / @ + -</c> as itself, nothing as <see cref="ClientTelemetryLog.None" />, and
+        ///     anything else as <see cref="ClientTelemetryLog.Other" />. No line break or control
+        ///     character reaches a rendered message.
+        /// </summary>
+        /// <param name="value">The kept property's value; null when the item has none.</param>
+        /// <returns>The text to name.</returns>
+        public static string MessageValue(object? value)
+        {
+            return value switch
+            {
+                null or "" => ClientTelemetryLog.None,
+                string { Length: <= MaxValueLength } text when ValuePattern().IsMatch(text) => text,
+                _ => ClientTelemetryLog.Other,
+            };
         }
 
         /// <summary>Whether a trace id is 32 lowercase hexadecimal digits, not all zeros.</summary>
@@ -264,6 +285,11 @@ namespace Tellma.Core.AspNetCore.Observability
         /// <returns>The pattern.</returns>
         [GeneratedRegex(@"^[a-z][a-z0-9]*(?:\.[a-z0-9][a-z0-9-]*){2,5}\z", RegexOptions.CultureInvariant, 1000)]
         private static partial Regex NamePattern();
+
+        /// <summary>A value a log message may name: letters, digits and <c>_ . : / @ + -</c>.</summary>
+        /// <returns>The pattern.</returns>
+        [GeneratedRegex(@"^[A-Za-z0-9_.:/@+-]*\z", RegexOptions.CultureInvariant, 1000)]
+        private static partial Regex ValuePattern();
 
         /// <summary>A property key: camelCase, at most 32 characters.</summary>
         /// <returns>The pattern.</returns>

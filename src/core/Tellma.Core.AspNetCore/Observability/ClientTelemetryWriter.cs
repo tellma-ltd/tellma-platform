@@ -177,7 +177,11 @@ namespace Tellma.Core.AspNetCore.Observability
                 using IDisposable? itemScope = _logger.BeginScope(dimensions);
                 if (error)
                 {
-                    ClientTelemetryLog.ClientError(_logger, Text(properties, "errorClass"), Text(properties, "route"));
+                    // Only text within the value grammar reaches the message; the reduced route also overrides the scope's raw one.
+                    ClientTelemetryLog.ClientError(
+                        _logger,
+                        ClientTelemetryRules.MessageValue(properties.GetValueOrDefault("errorClass")),
+                        ClientTelemetryRules.MessageValue(properties.GetValueOrDefault("route")));
                 }
                 else
                 {
@@ -236,15 +240,6 @@ namespace Tellma.Core.AspNetCore.Observability
             _ = activity.SetIdFormat(ActivityIdFormat.W3C);
             _ = activity.SetParentId(ActivityTraceId.CreateFromString(traceId), ActivitySpanId.CreateRandom(), ActivityTraceFlags.None);
             return activity.Start();
-        }
-
-        /// <summary>A kept text property, or <see cref="ClientTelemetryLog.None" />.</summary>
-        /// <param name="properties">The kept properties.</param>
-        /// <param name="key">The property's key.</param>
-        /// <returns>The text.</returns>
-        private static string Text(Dictionary<string, object> properties, string key)
-        {
-            return properties.GetValueOrDefault(key) as string ?? ClientTelemetryLog.None;
         }
     }
 }

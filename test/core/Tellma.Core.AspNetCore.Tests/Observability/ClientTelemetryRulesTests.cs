@@ -133,6 +133,31 @@ namespace Tellma.Core.AspNetCore.Tests.Observability
         }
 
         [Theory]
+        [InlineData("TmApiError", "TmApiError")]
+        [InlineData("/:t/centers/:id", "/:t/centers/:id")]
+        [InlineData("a+b@c.d-e_f", "a+b@c.d-e_f")]
+        [InlineData("", "(none)")]
+        [InlineData("Type Error", "(other)")]
+        [InlineData("X\r\nforged", "(other)")]
+        [InlineData("X\u001b[31m", "(other)")]
+        [InlineData("X\t", "(other)")]
+        [InlineData("caf\u00e9", "(other)")]
+        public void A_message_names_a_value_only_within_the_value_grammar(string value, string expected)
+        {
+            Assert.Equal(expected, ClientTelemetryRules.MessageValue(value));
+        }
+
+        [Fact]
+        public void A_message_names_a_missing_long_or_non_text_value_by_its_placeholder()
+        {
+            Assert.Equal("(none)", ClientTelemetryRules.MessageValue(null));
+            Assert.Equal(new string('a', 64), ClientTelemetryRules.MessageValue(new string('a', 64)));
+            Assert.Equal("(other)", ClientTelemetryRules.MessageValue(new string('a', 65)));
+            Assert.Equal("(other)", ClientTelemetryRules.MessageValue(7L));
+            Assert.Equal("(other)", ClientTelemetryRules.MessageValue(true));
+        }
+
+        [Theory]
         [InlineData("0af7651916cd43dd8448eb211c80319c", true)]
         [InlineData("0AF7651916CD43DD8448EB211C80319C", false)]
         [InlineData("00000000000000000000000000000000", false)]

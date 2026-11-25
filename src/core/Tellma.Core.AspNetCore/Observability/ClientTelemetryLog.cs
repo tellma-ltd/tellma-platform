@@ -10,8 +10,11 @@ namespace Tellma.Core.AspNetCore.Observability
 {
     /// <summary>The records the client telemetry relay writes for the SPA, under the relay's own logger category.</summary>
     /// <remarks>
-    ///     Each record's logger scope carries the item's dimensions and properties; the messages name
-    ///     closed values alone.
+    ///     Each record's logger scope carries the item's dimensions and properties, which no message
+    ///     template renders. A message names only what the relay checked: an event's name, which
+    ///     follows the name grammar, and an error's class and route, each reduced to the value grammar
+    ///     (at most 64 letters, digits and <c>_ . : / @ + -</c>) or else <see cref="Other" />, so no
+    ///     client text breaks a log line or carries a terminal's control sequence.
     /// </remarks>
     internal static partial class ClientTelemetryLog
     {
@@ -23,6 +26,9 @@ namespace Tellma.Core.AspNetCore.Observability
 
         /// <summary>The value a message names for a dimension the item does not carry.</summary>
         public const string None = "(none)";
+
+        /// <summary>The value a message names for a client value outside the value grammar.</summary>
+        public const string Other = "(other)";
 
         /// <summary>
         ///     The custom event's record: its message template is the attribute alone, so the event's
@@ -48,8 +54,8 @@ namespace Tellma.Core.AspNetCore.Observability
 
         /// <summary>An error the SPA captured.</summary>
         /// <param name="logger">The logger.</param>
-        /// <param name="errorClass">The error's class, or <see cref="None" />.</param>
-        /// <param name="clientRoute">The route template of the page it happened on, or <see cref="None" />.</param>
+        /// <param name="errorClass">The error's class within the value grammar, or <see cref="None" /> or <see cref="Other" />.</param>
+        /// <param name="clientRoute">The route template of the page it happened on within the value grammar, or <see cref="None" /> or <see cref="Other" />.</param>
         [LoggerMessage(
             EventName = "ClientError",
             Level = LogLevel.Warning,

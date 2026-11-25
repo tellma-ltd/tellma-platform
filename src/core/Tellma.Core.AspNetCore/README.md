@@ -212,7 +212,9 @@ kind (a declared one) and outcome (`served` when the response starts as `200` or
 `POST /api/client-telemetry` takes one browser tab's batch of telemetry items
 (`ClientTelemetryBatch`: `version`, `tabId`, `tenantId`, `sentAt`, at most 100 `items`) and writes
 them into the host's logs and two counters, so the SPA needs no telemetry SDK of its own. It
-requires a session (`Tellma.Web`) and passes the CSRF control like any cookie write, takes
+requires a session (`Tellma.Web`) and passes the CSRF control like any cookie write, serves the
+SPA alone (a `Tellma-Client` naming any other configured client is `403 csrf-rejected`, counted and
+logged as the CSRF control's `header` rule), takes
 `tellma-telemetry` alone (60 batches a minute per user), reads at most 32 KB
 (`413 limit-exceeded`), opens no tenant scope and touches no database, is never traced, and never
 renews the session. It answers `204` whenever the batch parses, however many items it dropped; with
@@ -229,7 +231,10 @@ A `message` or `stack` is masked again as the SPA masks it (URLs to `<url>`, the
 to `<email>`), without backtracking, so a crafted text costs linear time. Each kept item is one
 record under the `Tellma.ClientTelemetry` category: an event or a timing is an Information record
 whose message template is `{microsoft.custom_event.name}`, an Application Insights custom event; an
-error is a Warning, `Client error {ErrorClass} on {ClientRoute}`. Its logger scope carries the
+error is a Warning, `Client error {ErrorClass} on {ClientRoute}`, whose two values are the
+error's `errorClass` and `route` only when each is at most 64 letters, digits and `_.:/@+-` (else
+`(other)`, or `(none)` when absent), so no client text breaks a log line or carries a terminal
+escape. Its logger scope carries the
 session's `Subject`, the `UserAgent`, `ClientVersion`, `ClientOutdated` (the version is not the
 distribution's), `ClientTabId`, `ClientTenantId` (the client's claim, for filtering alone),
 `tellma.deployment.id`, `ClientAt` (the item's time moved by the batch's skew, the server's clock
