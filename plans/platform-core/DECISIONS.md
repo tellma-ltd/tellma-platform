@@ -384,6 +384,75 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-288 (orchestrator, 2026-11-24): PC-F82's Windows build stall
+
+- CI 45524650837 on PC-F82's integrate commit 907f5290 went red because build-test (windows-latest) was cancelled at the 30 min job limit.
+  - The `dotnet build Tellma.slnx -c Release --no-restore` step started and never finished, so the analyzer probe and unit tests never ran.
+  - GitHub kept no log, and `gh api` is forbidden in this run, so the raw log cannot be fetched. Its denial was not notified, as the command is one Ahmad ruled out.
+- The evidence that PC-F82's code is not the cause:
+  - The same step took 3 to 4 min on the five runs either side, and ubuntu built the identical tree in 3m10s.
+  - 907f5290 differs from 8b4f2dff only in PC-F82's Identity C#, one migration, tests and markdown, with no build files among them.
+  - Local Release builds of both trees succeeded, in 2m45s and 2m14s.
+  - Per-project analyzer reports show no analyzer or generator slowing over PC-F82's code.
+- D-011 wants a root cause, but a stall that leaves no log cannot be root-caused from here. So:
+  - PC-F95 (non-blocking) makes a stall fail fast and leave a binary log.
+  - A Flaky row records the stall.
+  - PC-F82 re-integrates on the current platform-core, which has moved by ledger snapshots, and its CI runs on that new commit. That is a new integration, not a re-run of the old one.
+- If the stall recurs on PC-F82 or anywhere else, PC-F95 becomes blocking and goes first.
+- The deregistered scratch worktree pc-f82-base, holding about 4.8 GB of build output that `git worktree remove` could not delete because of long paths, was removed with a long-path-aware delete of that one folder.
+
+### D-287 (orchestrator, 2026-11-24): the details route budget, for PC-129
+
+- PC-127's fix1 corrected the route measure (D-285). Acme's layout without TmValue measures 30.75 of 80.
+- With a TmValue layout it still measures 107.08 of 80, and that is real first-visit code:
+  - customer-details imports @tellma/core/entity's public API, which reaches tm-entity-field and @tellma/core-ui/entity-picker.
+  - esbuild puts that code (the pickers, multi-select, tm-value-editor, select, date-picker, @angular/forms, image, menu and form-field) in a chunk the layout shares with the action dialog, so the first visit loads it.
+- PC-127 lands with Acme on raw values (its deviation 15). PC-129's tm-field must meet the 80 KB route budget with Acme's 17-line customer layout.
+- How, in this order:
+  1. Keep the edit-mode controls out of the view-mode first visit, so the tmFieldEdit templates and their editors load only on entering edit mode (`@defer` or a lazy import), and prove that the view-mode route has none of them.
+  2. If a barrel still drags them in, make the import tree-shake: leaf imports inside the platform, side-effect-free modules.
+- A new or split entry point needs its own ruling first; D-285 found splitting /entity not spec-backed.
+- Raising the route budget is the last resort. It needs a measurement that shows the view-mode closure itself exceeds 80, and is flagged to Ahmad, not done silently.
+- For Ahmad (non-blocking): the 80 KB details route budget (spec 0024 §12) was set before a layout showed what a view-mode field costs. PC-129 will report the real figure.
+
+### D-286 (orchestrator, 2026-11-24): PC-152 review 1 rulings
+
+- R1 found 0 blocking, 2 major and 7 minor on ae723f9d, so there is no R2 unless fix1 is large (§4.4).
+- The "." raise from 50.23 to 50.55 (+328 B) is honest. R1 measured it piece by piece after a clean build: §7.8 puts TmDeviceZone and its synchronous `auto` signal in the primary, while the check itself is lazy and starts at idle. D-281's exclusions are intact. With PC-127 (about +0.08) and held PC-113 (about +3.0), the cap line heads to about 53.6 of 55, so the next primary addition gets the same scrutiny.
+- TmLocks.tryRun is not a deviation. 0024 §7.8 step 7.1 requires `ifAvailable`, and 0025 §5.3's "never ifAvailable" covers only the sync lock. No spec change is needed.
+- fix1 does the following:
+  - R1-1: tests the tenant-entry trigger.
+  - R1-2: makes the second-tab e2e assert on that tab's own state rather than the shared IndexedDB.
+  - R1-3: fixes the lost prompt when the lock holder hides before asking.
+  - R1-5: passes the description items and the telemetry through.
+  - R1-6: resets the flows by clearing the preference, and keeps flow 2 robust to a leftover preference.
+  - R1-7: names and asserts the alias flow honestly.
+  - R1-8 and R1-9: correct the deviation and test records.
+- R1-4 keeps the current behaviour, following 0028 §9.3.
+- For Ahmad, on spec 0024 §7.8 against 0028 §9.3: on a return to the tab, whenIdle resolves at once, so the time zone prompt shows immediately. §7.8's example says "after 2 s without input". Should a return to the tab wait for fresh idle time?
+
+### D-285 (orchestrator, 2026-11-24): PC-127 review 1 rulings
+
+- R1 found 0 blocking, 3 major and 5 minor on b169e7ea, so there is no R2 unless fix1 is large (§4.4). fix1 fixes all of them on the merits:
+  - R1-1: a failed clone read gives a ready create form, and Save is live while the clone loads.
+  - R1-2: a failed edit-mode refresh is silent, and its stale error replaces the record after Save or Cancel.
+  - R1-3: the fake details in edit mode give an empty, dirty context.
+- The route budget: the details and search routes both measured 121.01 KB once a layout imports @tellma/core/entity.
+  - The reason is that the tools' route measure counts every chunk holding an /entity module, including /entity's own on-use chunks (the action dialog, action run, confirmations, paste).
+  - Spec 0024 §12 measures a route as the closure of the host's import() plus the layouts. So the measure is wrong, not the bundle.
+  - PC-127's fix1 corrects the measure, with a test, so that PC-129's tm-field is not blocked by it. Splitting /entity into view and edit pieces is not spec-backed and is not done.
+- The "." raise from 50.23 to 50.31 (+79 B, the details loader and the page-title seam) is honest. R1 measured it after a clean build, D-281's exclusions are intact, and the seam has to live in the primary.
+- The Arabic details-strings parity test may live in core, following precedent.
+- Carry to PC-129: test that tm-field instantiates neither template while the page is loading with nothing held (§6.2, §14). This reading of "nothing instantiated" is accepted.
+- For Ahmad, on spec 0031 §1: the import list should also admit @tellma/core/errors (by import()), @tellma/core/error-paths, @tellma/core/memory and @tellma/core-ui. PC-127 imports them.
+
+### D-284 (Ahmad, 2026-11-24): PC-124's platform-core push
+
+- PC-124's agent was denied `git push origin HEAD:platform-core` from pc-4 twice by the auto mode classifier ("[Destructive or Unwanted Actions]"), even after Ahmad's approval was relayed to it.
+- Ahmad approved this one push in chat ("Approve the push").
+- The agent had merged the plans/-only snapshot cbcb1bfb as 8b4f2dff. I checked the slot was clean at 8b4f2dff and that it fast-forwarded origin/platform-core (still cbcb1bfb), then ran the push and pushed pc/PC-124 myself, as in D-264.
+- The approval covers this push only. It sets no rule for other pushes. If a later land push is blocked, I notify Ahmad again.
+
 ### D-283 (orchestrator, 2026-11-24): PC-F84 review 1 rulings
 
 - R1 found 0 blocking, 0 major and 2 minor on a7cff53c. The review confirmed three things:
