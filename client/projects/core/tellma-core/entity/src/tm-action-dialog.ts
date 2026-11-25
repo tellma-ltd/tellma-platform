@@ -82,7 +82,7 @@ export const ɵTM_ACTION_DIALOG_STRINGS_EN = {
 } as const satisfies TmStringTree;
 
 /** What the dialog loads from `@tellma/core/entity-editing`, which it reaches only with `import()`. */
-interface TmEntityEditingModule {
+export interface ɵTmEntityEditingModule {
   /** A labelled value editor, one per generated argument. */
   readonly ɵTmValueFormField: Type<unknown>;
 }
@@ -161,6 +161,7 @@ function json(value: unknown): string {
  * @param action - The action.
  * @param ids - The rows.
  * @param options - The initial arguments and request options.
+ * @param editing - A generated form's editors, already loading; loaded here when absent.
  * @returns The outcome the dialog closed with, else that of its last successful run; `null` when nothing ran.
  * @throws TmApiError of kind `offline` when a declared dialog's code, or a generated form's editors, cannot load.
  */
@@ -170,6 +171,7 @@ export async function ɵtmOpenActionDialog(
   action: TmEntityActionDescriptor,
   ids: readonly TmId[],
   options: TmEntityActionOptions,
+  editing?: Promise<ɵTmEntityEditingModule>,
 ): Promise<TmEntityActionOutcome | null> {
   injector.get(TmLocalization).ɵregisterStrings('actionDialog', ɵTM_ACTION_DIALOG_STRINGS_EN);
   // A declared dialog's code loads before the modal opens.
@@ -179,7 +181,7 @@ export async function ɵtmOpenActionDialog(
   // A generated form's editors load before the modal opens, from the editing entry point.
   const field =
     component === null
-      ? (await ɵtmLoad(() => import('@tellma/core/entity-editing' as string) as Promise<TmEntityEditingModule>)).ɵTmValueFormField
+      ? (await (editing ?? ɵtmLoad(() => import('@tellma/core/entity-editing' as string) as Promise<ɵTmEntityEditingModule>))).ɵTmValueFormField
       : null;
   const ran: TmActionDialogData['ran'] = { outcome: null };
   const ref = injector.get(TmModal).open<TmEntityActionOutcome | null>(ɵTmActionDialog, {

@@ -600,8 +600,16 @@ export class TmSearchHost implements OnInit {
    * held key, so a column removal, a view toggle or a scalar order reads
    * nothing.
    */
-  readonly #key = linkedSignal<{ readonly identity: string; readonly request: TmSearchRequest | null; readonly generation: number }, TmSearchReadKey | null>({
-    source: () => ({ identity: this.#identity(), request: this.#request(), generation: this.#generation() }),
+  readonly #key = linkedSignal<
+    { readonly identity: string; readonly cols: string; readonly request: TmSearchRequest | null; readonly generation: number },
+    TmSearchReadKey | null
+  >({
+    source: () => ({
+      identity: this.#identity(),
+      cols: JSON.stringify(this.#state().query.cols ?? null),
+      request: this.#request(),
+      generation: this.#generation(),
+    }),
     computation: (next, previous) => {
       if (next.request === null) {
         return null;
@@ -614,7 +622,7 @@ export class TmSearchHost implements OnInit {
       }
       // A rebuilt request over the same query re-reads as a refresh does.
       const source = held !== null && next.identity === held.canonical && next.generation === previous!.source.generation ? 'refresh' : this.#source;
-      return { canonical: next.identity, request: next.request, generation: next.generation, source };
+      return { canonical: next.identity, cols: next.cols, request: next.request, generation: next.generation, source };
     },
   });
 
@@ -635,9 +643,19 @@ export class TmSearchHost implements OnInit {
       if (outcome.ok) {
         return { result: outcome, failure: null };
       }
-      // An offline re-read of the rows on screen keeps them: the banner may lag.
-      if (outcome.error.kind === 'offline' && held.result !== null && held.result.key.canonical === outcome.key.canonical) {
-        return { result: held.result, failure: outcome };
+      // An offline re-read of the rows on screen keeps them, the banner may lag: the same rows,
+      // and columns they can fill. A select that gains a term keeps them only for the same shown
+      // columns (a re-granted column, spec 0030 §5.4); an added column would show empty cells
+      // that look like real empty values. With the same rows, the request differs from the held
+      // one in its select alone, so the re-read rule says whether the select gained a term.
+      const result = held.result;
+      if (
+        outcome.error.kind === 'offline' &&
+        result !== null &&
+        result.key.canonical === outcome.key.canonical &&
+        (result.key.cols === outcome.key.cols || !tmSearchRereads(result.key.request, outcome.key.request))
+      ) {
+        return { result, failure: outcome };
       }
       return { result: null, failure: outcome };
     },
@@ -824,7 +842,8 @@ export class TmSearchHost implements OnInit {
     }
     const held = this.#held();
     if (held.result !== null) {
-      return held.result.set.rows.length > 0 ? null : this.#emptyState(state.query);
+      // A page past the end shows nothing while the last page with rows loads.
+      return held.result.set.rows.length > 0 || tmSearchLastPage(held.result) !== null ? null : this.#emptyState(state.query);
     }
     return held.failure === null ? null : this.#failureState(held.failure);
   });
@@ -1052,6 +1071,15 @@ export class TmSearchHost implements OnInit {
       const failure = this.#held().failure;
       if (failure?.error.kind === 'limit' && failure.key.request.tree !== 'browse' && (untracked(this.#state).query.page ?? 1) > 1) {
         untracked(() => this.#apply(tmSearchUpdate(this.#setting(), this.#state(), { page: undefined }), 'page', 'replace'));
+      }
+    });
+
+    // --- A page past the end of the rows (rows deleted meanwhile, a stale link) loads the last page with rows ---
+    effect(() => {
+      const result = this.#held().result;
+      const last = result === null ? null : tmSearchLastPage(result);
+      if (last !== null) {
+        untracked(() => this.#apply(tmSearchUpdate(this.#setting(), this.#state(), { page: last > 1 ? last : undefined }), 'page', 'replace'));
       }
     });
 
@@ -1731,6 +1759,25 @@ export class TmSearchHost implements OnInit {
       this.#destroyRef,
     );
   }
+}
+
+/**
+ * The last page that has rows, for a result that came back empty past the
+ * end of them: a page after the first whose total says rows exist. `null`
+ * for any other result, a browse tree's included.
+ *
+ * @param result - The result.
+ * @returns The last page with rows, or `null`.
+ */
+function tmSearchLastPage(result: TmSearchResult): number | null {
+  const { body, tree } = result.key.request;
+  const { skip, take } = body;
+  // An unknown or zero total, a first page or a browse tree's rows have no last page to go to.
+  if (result.set.rows.length > 0 || tree === 'browse' || typeof skip !== 'number' || typeof take !== 'number' || !skip || !result.total) {
+    return null;
+  }
+  const last = Math.ceil(result.total / take);
+  return last * take > skip ? null : last;
 }
 
 /**

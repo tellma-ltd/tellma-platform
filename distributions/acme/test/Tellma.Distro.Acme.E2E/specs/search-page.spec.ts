@@ -30,12 +30,21 @@ function rows(page: Page): Locator {
  * @returns The code.
  */
 async function firstCode(page: Page): Promise<string> {
-  const column = await page.getByRole('grid').locator('[role="columnheader"][data-key="Code"]').getAttribute('data-col');
-  return (await rows(page).first().locator(`[role="gridcell"][data-col="${column}"]`).innerText()).trim();
+  const column = await page
+    .getByRole('grid')
+    .locator('[role="columnheader"][data-key="Code"]')
+    .getAttribute('data-col');
+  return (
+    await rows(page).first().locator(`[role="gridcell"][data-col="${column}"]`).innerText()
+  ).trim();
 }
 
 test.describe('search page', () => {
-  test('lists the customers, orders them by a header and pages through them', async ({ page, text, cast }) => {
+  test('lists the customers, orders them by a header and pages through them', async ({
+    page,
+    text,
+    cast,
+  }) => {
     await signInAs(page, cast.user);
     await page.goto('/1/customers');
     await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();

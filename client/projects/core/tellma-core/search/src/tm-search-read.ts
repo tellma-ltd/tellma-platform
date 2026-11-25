@@ -24,6 +24,8 @@ export type TmSearchReadSource = 'load' | 'typing' | 'filter' | 'order' | 'page'
 export interface TmSearchReadKey {
   /** The identity of the rows the read answers: the page's path and its canonical query, less the shown columns and the view. */
   readonly canonical: string;
+  /** The canonical query's shown columns when the read started, as JSON. */
+  readonly cols: string;
   /** The request. */
   readonly request: TmSearchRequest;
   /** The refresh generation the read was started under. */

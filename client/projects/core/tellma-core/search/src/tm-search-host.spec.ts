@@ -22,6 +22,7 @@ import {
 } from '@tellma/core';
 import { TmFakeApi, TmPageContextHarness, TmSearchPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
 import { TM_DEVICE_TIME_ZONE } from '@tellma/core-ui';
+import { TmMenuHarness } from '@tellma/core-ui-testing';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
@@ -402,6 +403,23 @@ describe('TmSearchHost', () => {
       expect(location.urlChanges.at(-1)).toBe('replace: /17/customers');
       expect(reads(api).map((body) => body['skip'])).toEqual([100, 0]);
     });
+
+    it('loads the last page with rows instead of one past the end of them', async () => {
+      const { api, location, page } = await open('/17/customers?page=9', { respond: answer(customers(120)) });
+      expect(address()).toBe('/17/customers?page=3');
+      expect(location.urlChanges.at(-1)).toBe('replace: /17/customers?page=3');
+      expect(reads(api).map((body) => body['skip'])).toEqual([400, 100]);
+      expect(rowTexts()[0]?.[0]).toBe('C-101');
+      expect(await page.getStateHeading()).toBeNull();
+    });
+
+    it('loads the first page for one past the end of a single page of rows', async () => {
+      const { api, location } = await open('/17/customers?page=4', { respond: answer(customers(3)) });
+      expect(address()).toBe('/17/customers');
+      expect(location.urlChanges.at(-1)).toBe('replace: /17/customers');
+      expect(reads(api).map((body) => body['skip'])).toEqual([150, 0]);
+      expect(rowTexts().length).toBe(3);
+    });
   });
 
   describe('states', () => {
@@ -559,6 +577,22 @@ describe('TmSearchHost', () => {
       await tmSettleUntil(() => rowTexts().length === 4, 'the reconnect reads again');
       expect(reads(api)).toHaveLength(3);
     });
+
+    it('empties the region for a column added back while offline', async () => {
+      const { api, page, rig } = await open('/17/customers?cols=Code,Name');
+      expect(header('Currency')).toBeNull();
+      api.respond('customers/query', () => {
+        throw new TmApiError({ kind: 'offline' });
+      });
+      api.setOnline(false);
+      // The Customers nav item opens the default columns, whose Currency the held rows lack.
+      await rig.router.navigateByUrl('/17/customers');
+      await resettle();
+      expect(reads(api)).toHaveLength(2);
+      expect(rowTexts()).toEqual([]);
+      await errorViews();
+      expect(await page.getStateHeading()).not.toBeNull();
+    });
   });
 
   describe('reads', () => {
@@ -687,6 +721,34 @@ describe('TmSearchHost', () => {
       const create = await page.getCreate();
       expect(create?.href).toBeNull();
       expect(create?.disabledReason).toBeTruthy();
+    });
+  });
+
+  describe('the More menu', () => {
+    it('loads with a menu page action, opens from More and runs it', async () => {
+      const run = vi.fn(() => Promise.resolve());
+      const { rig, page } = await open('/17/customers', {
+        customer: { ...CUSTOMER, pageActions: [{ id: 'acme.customer.export', labelKey: 'Acme_Export', group: 'menu', run }] },
+        labels: { en: { Acme_Export: 'Export' } },
+      });
+      // The menu's code loads once there is a menu action; More shows when it has.
+      await tmSettleUntil(() => host()?.querySelector('[data-tm-more]') != null, 'the More menu loads');
+      expect(await page.hasMore()).toBe(true);
+
+      host()!.querySelector<HTMLElement>('[data-tm-more]')!.click();
+      await tmSettle();
+      const menu = await TestbedHarnessEnvironment.documentRootLoader(rig.router.fixture).getHarness(TmMenuHarness);
+      expect(await menu.getItemLabels()).toEqual(['Export']);
+      await menu.clickItem('Export');
+      await tmSettleUntil(() => run.mock.calls.length > 0, 'the action runs');
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('never renders the menu for a page without a menu action', async () => {
+      const { page } = await open();
+      expect(await page.hasMore()).toBe(false);
+      // The deferred block's content holds the menu itself, so no menu means the block stayed unloaded.
+      expect(host()!.querySelector('.tm-search-host__more tm-menu')).toBeNull();
     });
   });
 

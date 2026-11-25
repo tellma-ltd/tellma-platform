@@ -452,7 +452,7 @@ export class TmColumnFilter {
       composing ||
       event.defaultPrevented ||
       !(target instanceof HTMLInputElement) ||
-      target.closest('tm-select, tm-multi-select, tm-entity-multi-picker, tm-entity-multi-field') !== null
+      target.closest('tm-select,tm-multi-select,tm-entity-multi-picker,tm-entity-multi-field') !== null
     ) {
       return;
     }
