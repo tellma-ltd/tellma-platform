@@ -17,7 +17,9 @@ import {
 // The launcher's page search as pure functions: the query's tokens, the two
 // match classes with the Arabic article's variants and the English terms,
 // the order of the matches, the create rows and the row cap, the marked runs
-// of a label, and the time a 300-entry index takes to build and to query.
+// of a label, and the work a 300-entry index takes to build and to query:
+// one fold of every term together, one of the query, none per match. The
+// wall-clock budgets are the nightly tier's, in the launcher's perf spec.
 
 /** A candidate of a kind, label and terms, the label its first term unless the terms say otherwise. */
 function candidate(
@@ -60,20 +62,6 @@ function marked(label: string, query: string): string {
   return tmLauncherMarks(label, tmLauncherTokens(query))
     .map((segment) => (segment.mark ? `[${segment.text}]` : segment.text))
     .join('');
-}
-
-/** The fastest of several runs after a warm-up, in milliseconds, so a busy machine's pause does not count. */
-function fastest(run: () => unknown): number {
-  for (let i = 0; i < 5; i++) {
-    run();
-  }
-  let best = Infinity;
-  for (let i = 0; i < 20; i++) {
-    const started = performance.now();
-    run();
-    best = Math.min(best, performance.now() - started);
-  }
-  return best;
 }
 
 // The worked example: Farah works in Arabic, and has a pin no entry covers.
@@ -234,11 +222,9 @@ describe('the launcher page search', () => {
     });
   });
 
-  describe('speed', () => {
+  describe('work', () => {
     // 300 entries, each with a label, two synonyms and the English label, as
-    // a large distribution's launcher holds. The limits are the spec's: an
-    // index built in 5 ms, a query answered in 2 ms, each the fastest of
-    // twenty runs after a warm-up.
+    // a large distribution's launcher holds.
     const words = ['Sales', 'Purchase', 'Invoices', 'Receipts', 'Centers', 'Accounts', 'Journal', 'Assets', 'Stock', 'Payroll', 'Budgets', 'Taxes'];
     const arabic = ['المبيعات', 'المشتريات', 'الفواتير', 'الإيصالات', 'المراكز', 'الحسابات', 'اليومية', 'الأصول', 'المخزون', 'الرواتب', 'الموازنات', 'الضرائب'];
     const entries = Array.from({ length: 300 }, (_, i) => {
@@ -249,15 +235,21 @@ describe('the launcher page search', () => {
       });
     });
 
-    it('builds the index of 300 entries in 5 ms or less', () => {
-      expect(fastest(() => tmLauncherIndex(entries))).toBeLessThanOrEqual(5);
-    });
-
-    it('answers a query over 300 entries in 2 ms or less', () => {
-      const index = tmLauncherIndex(entries);
-      for (const query of ['inv', 'sales inv', 'voice', 'الفوات', 'مراكز']) {
-        const tokens = tmLauncherTokens(query);
-        expect(fastest(() => tmLauncherRows(tmLauncherMatch(index, tokens))), query).toBeLessThanOrEqual(2);
+    it("folds the 300 entries' terms in one pass, and a query once, matching with no fold at all", () => {
+      const normalize = vi.spyOn(String.prototype, 'normalize');
+      try {
+        const index = tmLauncherIndex(entries);
+        expect(normalize).toHaveBeenCalledTimes(1);
+        for (const query of ['inv', 'sales inv', 'voice', 'الفوات', 'مراكز']) {
+          normalize.mockClear();
+          const tokens = tmLauncherTokens(query);
+          expect(normalize, query).toHaveBeenCalledTimes(1);
+          normalize.mockClear();
+          tmLauncherRows(tmLauncherMatch(index, tokens));
+          expect(normalize, query).not.toHaveBeenCalled();
+        }
+      } finally {
+        normalize.mockRestore();
       }
     });
   });

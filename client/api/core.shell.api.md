@@ -59,10 +59,11 @@ export class TmAppBar {
     protected preloadSlot(slot: TmShellSlot): void;
     protected readonly searchIcon: lucide.IconNode;
     protected readonly searchLabel: _angular_core.Signal<string>;
+    protected searchLauncher(button: HTMLElement): void;
     protected sessionKeydown(event: KeyboardEvent, button: HTMLElement): void;
     protected slotLabel(item: TmShellSlotView): string;
     protected readonly slots: readonly TmShellSlotView[];
-    protected toggleLauncher(): void;
+    protected toggleLauncher(button: HTMLElement): void;
     protected toggleMarker(marker: TmShellMarker, button: HTMLElement): void;
     protected toggleSession(button: HTMLElement): void;
     protected toggleSlot(slot: TmShellSlot, button: HTMLElement): void;

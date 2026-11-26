@@ -11,8 +11,8 @@ import { tmSearchNormalize } from '@tellma/core/search-normalize';
 // own that the panel loads only when the app registers a provider. The
 // providers run on the edges of a burst of typing, as TmSearch's search
 // output times them: at once on the first change after a pause, then once
-// the burst ends. A run aborts the one before it, and an IME composition or
-// a held key holds them until it ends. Each answer becomes a bucket, the
+// the burst ends. The next keystroke aborts the run in flight at once, and
+// an IME composition or a held key holds them until it ends. Each answer becomes a bucket, the
 // buckets kept in the providers' order.
 
 /** How long a burst of typing waits for its next key before the providers run again. */
@@ -51,7 +51,8 @@ export class TmLauncherRuns {
   readonly #providers: readonly TmLauncherProvider[];
   readonly #host: TmLauncherRunsHost;
   #abort: AbortController | null = null;
-  #lastRun = '';
+  // The text the providers last ran on, or `null` when the next change runs them whatever the text.
+  #lastRun: string | null = null;
   #trailing: ReturnType<typeof setTimeout> | undefined;
   #holding = false;
 
@@ -70,6 +71,12 @@ export class TmLauncherRuns {
   changed(): void {
     if (untracked(this.#host.composing) || this.#holding) {
       return;
+    }
+    // The keystroke supersedes the run in flight, and its answers are dropped (spec 0027 §9.6).
+    if (untracked(this.#host.query).trim() !== this.#lastRun) {
+      this.#abort?.abort();
+      this.#abort = null;
+      this.#lastRun = null;
     }
     const leading = this.#trailing === undefined;
     clearTimeout(this.#trailing);
@@ -97,7 +104,7 @@ export class TmLauncherRuns {
 
   /** Forgets the last run, so the next change runs on the text even when it is the same. */
   restart(): void {
-    this.#lastRun = '';
+    this.#lastRun = null;
   }
 
   /** Stops what runs: the run in flight, the pending trailing edge and the hold. */
@@ -120,8 +127,12 @@ export class TmLauncherRuns {
     return l10n.ɵtext('tm.launcher.bucketCount', { bucket: l10n.ɵtext(bucket.provider.labelKey)(), count: bucket.items.length })();
   }
 
-  /** Runs the providers on the text, unless they last ran on the same text. */
+  /** Runs the providers on the text, unless they last ran on the same text, or a composition or a held key holds them. */
   #flush(): void {
+    // The composition's end and the key's release flush in their turn.
+    if (untracked(this.#host.composing) || this.#holding) {
+      return;
+    }
     const query = untracked(this.#host.query).trim();
     if (query === this.#lastRun) {
       return;

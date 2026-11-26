@@ -25,7 +25,7 @@ import {
   TmUrls,
 } from '@tellma/core';
 import { TmLauncherHarness, TmTenantShellHarness, tmWarmTenant } from '@tellma/core-testing';
-import { TmModal } from '@tellma/core-ui/modal';
+import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { page } from 'vitest/browser';
 
 import {
@@ -40,6 +40,7 @@ import {
 } from '../../../src/routes/tm-app.testing.util';
 import { TM_LAUNCHER_LOAD, TmLauncher, type TmLauncherChunk } from './tm-launcher';
 import { TM_LAUNCHER_COMMANDS, type TmLauncherCommand } from './tm-launcher-commands';
+import { TmNavTermsReader } from './tm-nav-terms';
 
 // The launcher in a whole test app at /17/credit-review, through the tenant
 // shell's harness and the launcher's: spec 0027 §9.2's transitions, the
@@ -47,11 +48,13 @@ import { TM_LAUNCHER_COMMANDS, type TmLauncherCommand } from './tm-launcher-comm
 // typed state's rows, marks, no-match line and announcements, §9.5's keys,
 // the providers' buckets in their order with the superseded run aborted,
 // the recent pages that visibleWhen or a lost permission hides, the three
-// surfaces by width, and the deferred chunk: its skeleton, its failure and
-// the first open in the click's frame once it is in. Then §5.3's focus
-// rules from lg and at md in both directions, the pinned band's commands,
-// the active row that answers arriving later do not move, and §9.8's
-// preloading.
+// surfaces by width, and the deferred chunks: the panel's, the Menu modal's
+// and the providers' runs', each with its skeleton or its wait, its failure
+// and its retry, and the open that waits answering §9.2's closing events.
+// Then §5.3's focus rules from lg and at md in both directions, the pinned
+// band's commands and where they leave focus, the active row that answers
+// arriving later do not move, §9.8's preloading, and the index that builds
+// on the first open and neither on keystrokes nor while closed.
 
 /** A permission, as the access document grants it. */
 type TmGrant = readonly [resource: string, action: string];
@@ -215,19 +218,39 @@ class TmTestProvider implements TmLauncherProvider {
 })
 class TmTestDialog {}
 
-/** The launcher's own loader, behind a gate a test opens, failing while the test says so. */
-function gatedLoad(gate: Promise<void>, failing: () => boolean = () => false): () => Promise<TmLauncherChunk> {
-  return () =>
-    gate.then(() => {
-      if (failing()) {
-        return Promise.reject(new Error('The chunk is gone.'));
-      }
-      return Promise.all([import('./tm-launcher-panel'), import('./tm-launcher-icons'), import('@tellma/core/recents')]).then(
-        ([panel, icons, recents]) => ({
-          create: (injector) => panel.tmCreateLauncherSurface(injector, icons.tmRegisterLauncherIcons, recents.TmRecents),
-        }),
-      );
-    });
+/** How a test holds a chunk's load: behind a gate it opens, failing while it says so. */
+interface TmGate {
+  /** Resolves when the load may go on; at once by default. */
+  readonly gate?: Promise<void>;
+  /** Whether the load fails once the gate opens; never by default. */
+  readonly failing?: () => boolean;
+}
+
+/** A load behind a gate. */
+function gated<T>(load: () => Promise<T>, { gate = Promise.resolve(), failing = () => false }: TmGate = {}): () => Promise<T> {
+  return () => gate.then(() => (failing() ? Promise.reject(new Error('The chunk is gone.')) : load()));
+}
+
+/** The launcher's own loader, its panel's chunk and the panel's own pieces each behind a gate of the test's. */
+function gatedLoad(panel: TmGate = {}, pieces: { readonly sheet?: TmGate; readonly runs?: TmGate } = {}): () => Promise<TmLauncherChunk> {
+  return gated(
+    () =>
+      Promise.all([import('./tm-launcher-panel'), import('./tm-launcher-icons'), import('@tellma/core/recents')]).then(([chunk, icons, recents]) => ({
+        create: (injector) =>
+          chunk.tmCreateLauncherSurface(injector, icons.tmRegisterLauncherIcons, recents.TmRecents, {
+            sheet: gated(() => import('./tm-launcher-sheet'), pieces.sheet),
+            runs: gated(() => import('./tm-launcher-runs'), pieces.runs),
+          }),
+      })),
+    panel,
+  );
+}
+
+/** A gate a test opens. */
+function latch(): { readonly wait: Promise<void>; readonly release: () => void } {
+  let release: () => void = () => undefined;
+  const wait = new Promise<void>((resolve) => (release = resolve));
+  return { wait, release };
 }
 
 /** Presses a key combination on an element, the focused one by default, and says whether something handled it. */
@@ -245,6 +268,32 @@ function field(): HTMLInputElement {
   return document.querySelector<HTMLInputElement>('.tm-app-bar__field input')!;
 }
 
+/** The Menu button. */
+function menu(): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>('.tm-app-bar__menu')!;
+}
+
+/** The launcher's skeleton, while it shows. */
+function skeleton(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('.tm-app-bar__launcher-skeleton');
+}
+
+/** A button on the page, outside the shell, which the test's end removes. */
+function pageButton(): HTMLButtonElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'tm-test-page-control';
+  button.textContent = 'A page control';
+  document.body.append(button);
+  return button;
+}
+
+/** Waits past the close's own timeout, after which focus has settled. */
+async function settled(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  await tmSettle();
+}
+
 describe('the launcher', () => {
   let rig: TmAppRig;
   let shell: TmTenantShellHarness;
@@ -255,6 +304,9 @@ describe('the launcher', () => {
 
   afterEach(async () => {
     TestBed.resetTestingModule();
+    for (const control of document.querySelectorAll('.tm-test-page-control')) {
+      control.remove();
+    }
     await page.viewport(...viewport);
   });
 
@@ -514,31 +566,6 @@ describe('the launcher', () => {
   });
 
   describe('focus', () => {
-    /** The Menu button. */
-    const menu = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('.tm-app-bar__menu')!;
-
-    /** Waits past the close's own timeout, after which focus has settled. */
-    const settled = async (): Promise<void> => {
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      await tmSettle();
-    };
-
-    /** A button on the page, outside the shell, which the test removes. */
-    function pageButton(): HTMLButtonElement {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'tm-test-page-control';
-      button.textContent = 'A page control';
-      document.body.append(button);
-      return button;
-    }
-
-    afterEach(() => {
-      for (const control of document.querySelectorAll('.tm-test-page-control')) {
-        control.remove();
-      }
-    });
-
     // Each rule from lg, where the input is the app bar's field, and at md, where it is the panel's own, in both directions.
     for (const { width, arabic, name } of [
       { width: 1280, arabic: false, name: 'from lg, in English' },
@@ -574,6 +601,18 @@ describe('the launcher', () => {
         it('gives focus back to the Menu button after Escape', async () => {
           await start({ width, arabic });
           const harness = await fromMenu();
+          expect(document.activeElement).toBe(input());
+          await harness.close();
+          expect(document.activeElement).toBe(menu());
+        });
+
+        it('gives focus back to the Menu button after Escape when the press left focus where it was', async () => {
+          await start({ width, arabic });
+          (document.activeElement as HTMLElement | null)?.blur();
+          // A click that does not focus the button, as a press in Safari or a tap on iOS.
+          menu().click();
+          await tmSettle();
+          const harness = await loader.getHarness(TmLauncherHarness);
           expect(document.activeElement).toBe(input());
           await harness.close();
           expect(document.activeElement).toBe(menu());
@@ -693,6 +732,42 @@ describe('the launcher', () => {
       expect(rig.router.url).toBe('/17/credit-review');
     });
 
+    it('gives focus to the opener, else the Menu button, before a command runs, so a dialog it opens gives focus back there', async () => {
+      let dialog: TmModalRef<unknown> | null = null;
+      const run = (): void => {
+        dialog = TestBed.inject(TmModal).open(TmTestDialog, { size: 'sm', title: 'A dialog' });
+      };
+      const commands: readonly TmLauncherCommand[] = [{ id: 'manage', label: 'Manage pins', icon: 'pin', run }];
+      await start({
+        preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' },
+        providers: [{ provide: TM_LAUNCHER_COMMANDS, useValue: signal(commands).asReadonly() }],
+      });
+      /** Runs the command from the open launcher, then closes its dialog. */
+      const runAndClose = async (harness: TmLauncherHarness): Promise<void> => {
+        await harness.pressKey(TestKey.DOWN_ARROW);
+        await harness.pressKey(TestKey.ENTER);
+        expect(launcher().state()).toBe('closed');
+        await tmSettleUntil(() => document.querySelector('tm-test-dialog') !== null, 'the dialog opens');
+        dialog!.close();
+        await tmSettle();
+      };
+      // Opened from the field, whose focus would open it again: the Menu button.
+      field().focus();
+      await tmSettle();
+      await runAndClose(await loader.getHarness(TmLauncherHarness));
+      expect(document.activeElement).toBe(menu());
+      expect(launcher().state()).toBe('closed');
+      // Opened from a page control: the control.
+      const button = pageButton();
+      button.focus();
+      expect(press(MOD_K, button)).toBe(true);
+      await tmSettle();
+      await runAndClose(await loader.getHarness(TmLauncherHarness));
+      expect(document.activeElement).toBe(button);
+      expect(launcher().state()).toBe('closed');
+      expect(events('tm.launcher.opened')).toHaveLength(2);
+    });
+
     it('has no commands by default, so the band hides with no pins', async () => {
       await start({ preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' } });
       const harness = await shell.openLauncher('menu');
@@ -783,6 +858,28 @@ describe('the launcher', () => {
         'Pinned',
         '/17/customers?f.CustomerType=in:Corporate',
       ]);
+    });
+
+    it('builds the page index as it opens, and neither on keystrokes nor while closed', async () => {
+      await start();
+      const read = vi.spyOn(TestBed.inject(TmNavTermsReader), 'read');
+      let harness = await shell.openLauncher('menu');
+      expect(read).toHaveBeenCalled();
+      read.mockClear();
+      for (const text of ['c', 'ce', 'cen', 'cent', 'cente']) {
+        await harness.type(text);
+      }
+      expect(read).not.toHaveBeenCalled();
+      await harness.close();
+      // The kept text and a change of the access document while closed: nothing builds until the next open.
+      const { me } = docs(GRANTS.filter(([resource]) => resource !== 'acme.Approval'));
+      await rig.store.put(TM_T17, 'me', { tag: null, savedAt: Date.now(), data: me });
+      await tmSettle();
+      expect(read).not.toHaveBeenCalled();
+      harness = await shell.openLauncher('menu');
+      expect(read).toHaveBeenCalled();
+      expect(await harness.getState()).toBe('typed');
+      read.mockRestore();
     });
 
     it('says when nothing matched', async () => {
@@ -1047,6 +1144,18 @@ describe('the launcher', () => {
       expect([launcher().state(), launcher().query()]).toEqual(['closed', 'cent']);
     });
 
+    it('gives focus back to the Menu button as the Menu modal closes when the tap left focus nowhere', async () => {
+      await start({ width: 420 });
+      (document.activeElement as HTMLElement | null)?.blur();
+      menu().click();
+      await tmSettleUntil(() => document.querySelector('.tm-launcher__list') !== null, 'the Menu modal opens');
+      const harness = await loader.getHarness(TmLauncherHarness);
+      expect(await harness.getSurface()).toBe('sheet');
+      await harness.close();
+      await tmSettleUntil(() => document.querySelector('.tm-launcher__list') === null, 'the modal closes');
+      expect(document.activeElement).toBe(menu());
+    });
+
     it('selects the text on Mod+K in the Menu modal', async () => {
       await start({ width: 420 });
       const harness = await shell.openLauncher('search');
@@ -1085,31 +1194,247 @@ describe('the launcher', () => {
   });
 
   describe('loading', () => {
+    /** Whether the app reported a launcher error. */
+    const reported = (): boolean => rig.telemetry.recent().some((item) => item.name === 'tm.error.captured' && item.props['source'] === 'tm-launcher');
+
+    /** Waits for the launcher's chunk, which the bar loads once the browser is idle. */
+    const landed = (): Promise<void> => tmSettleUntil(() => launcher().ɵsurface() !== null, "the launcher's chunk lands");
+
     it('shows a skeleton while an open waits for the chunk, then the panel', async () => {
-      let release: () => void = () => undefined;
-      const gate = new Promise<void>((resolve) => (release = resolve));
-      await start({ load: gatedLoad(gate) });
-      document.querySelector<HTMLButtonElement>('.tm-app-bar__menu')!.click();
+      const panel = latch();
+      await start({ load: gatedLoad({ gate: panel.wait }) });
+      menu().click();
       await tmSettle();
       expect(launcher().state()).toBe('browse');
       expect(await shell.isLauncherSkeletonShown()).toBe(true);
-      expect(document.querySelector('.tm-app-bar__launcher-skeleton')!.matches(':popover-open')).toBe(true);
-      release();
+      expect(skeleton()!.matches(':popover-open')).toBe(true);
+      panel.release();
       const harness = await shell.openLauncher('menu');
       expect(await shell.isLauncherSkeletonShown()).toBe(false);
       expect(await harness.isInputFocused()).toBe(true);
     });
 
+    it('focuses the field at once on Mod+K from lg while the chunk loads, and keeps the text typed meanwhile unselected', async () => {
+      const panel = latch();
+      await start({ load: gatedLoad({ gate: panel.wait }) });
+      launcher().setQuery('ac');
+      await tmSettle();
+      const button = pageButton();
+      button.focus();
+      expect(press(MOD_K, button)).toBe(true);
+      // The field takes focus before the panel, with the kept text selected.
+      expect(document.activeElement).toBe(field());
+      expect([field().selectionStart, field().selectionEnd]).toEqual([0, 2]);
+      // The user types over the selection.
+      field().value = 'cent';
+      field().dispatchEvent(new Event('input', { bubbles: true }));
+      expect(launcher().query()).toBe('cent');
+      panel.release();
+      await tmSettleUntil(() => document.querySelector('.tm-launcher')?.matches(':popover-open') === true, 'the panel opens');
+      expect(document.activeElement).toBe(field());
+      expect([field().value, field().selectionStart, field().selectionEnd]).toEqual(['cent', 4, 4]);
+      expect(launcher().state()).toBe('typed');
+    });
+
+    it('closes an open that waits on Escape, giving focus back, and opens nothing when the chunk lands', async () => {
+      const panel = latch();
+      await start({ load: gatedLoad({ gate: panel.wait }) });
+      const button = pageButton();
+      button.focus();
+      press(MOD_K, button);
+      expect(launcher().state()).toBe('browse');
+      expect(press({ key: 'Escape', code: 'Escape' })).toBe(true);
+      expect(launcher().state()).toBe('closed');
+      expect(document.activeElement).toBe(button);
+      panel.release();
+      await landed();
+      await tmSettle();
+      expect(launcher().state()).toBe('closed');
+      expect(document.querySelector('.tm-launcher')!.matches(':popover-open')).toBe(false);
+      expect(await shell.isLauncherSkeletonShown()).toBe(false);
+      expect(document.activeElement).toBe(button);
+    });
+
+    it('closes an open that waits on a press outside, a path change or a dialog taking focus', async () => {
+      const panel = latch();
+      await start({ load: gatedLoad({ gate: panel.wait }) });
+      const button = pageButton();
+      // A press on the page's text: focus goes back to the control that had it.
+      button.focus();
+      press(MOD_K, button);
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      field().blur();
+      await settled();
+      expect(launcher().state()).toBe('closed');
+      expect(document.activeElement).toBe(button);
+      // A press inside the app bar's controls is the launcher's own.
+      press(MOD_K, button);
+      field().dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      expect(launcher().state()).toBe('browse');
+      // A path change.
+      await rig.router.navigateByUrl('/17/approvals');
+      await tmSettle();
+      expect(launcher().state()).toBe('closed');
+      // A dialog, which takes focus.
+      press(MOD_K, document.body);
+      expect(launcher().state()).toBe('browse');
+      const ref = TestBed.inject(TmModal).open(TmTestDialog, { size: 'sm', title: 'A dialog' });
+      await tmSettle();
+      expect(launcher().state()).toBe('closed');
+      panel.release();
+      await landed();
+      await tmSettle();
+      expect(launcher().state()).toBe('closed');
+      expect(document.querySelector('tm-test-dialog')?.closest('.cdk-overlay-container')?.contains(document.activeElement)).toBe(true);
+      ref.close();
+      await tmSettle();
+    });
+
+    it("holds the keys typed below lg while the chunk loads, for the panel's own field, the first replacing the kept text", async () => {
+      const panel = latch();
+      await start({ width: 900, load: gatedLoad({ gate: panel.wait }) });
+      launcher().setQuery('zz');
+      const button = pageButton();
+      button.focus();
+      press(MOD_K, button);
+      const heard = vi.fn();
+      button.addEventListener('keydown', heard);
+      // Before the skeleton renders, the keys are already the launcher's, never the page's.
+      expect(press({ key: 'c', code: 'KeyC' }, button)).toBe(true);
+      await tmSettle();
+      expect(document.activeElement).toBe(skeleton());
+      for (const key of ['e', 'n', 'x', 'Backspace']) {
+        expect(press({ key })).toBe(true);
+      }
+      expect(heard).not.toHaveBeenCalled();
+      expect(launcher().query()).toBe('cen');
+      panel.release();
+      await tmSettleUntil(() => document.querySelector('.tm-launcher__own-input') !== null, "the panel's own field");
+      const own = document.querySelector<HTMLInputElement>('.tm-launcher__own-input')!;
+      expect(document.activeElement).toBe(own);
+      expect([own.value, own.selectionStart, own.selectionEnd]).toEqual(['cen', 3, 3]);
+    });
+
+    it('closes an open that waits below lg on Tab, giving focus back to the control that had it, from which Tab moves on', async () => {
+      const panel = latch();
+      await start({ width: 900, load: gatedLoad({ gate: panel.wait }) });
+      const button = pageButton();
+      button.focus();
+      press(MOD_K, button);
+      await tmSettle();
+      expect(document.activeElement).toBe(skeleton());
+      expect(press({ key: 'Tab', code: 'Tab' })).toBe(false);
+      expect(launcher().state()).toBe('closed');
+      expect(document.activeElement).toBe(button);
+    });
+
     it('closes an open whose chunk fails to load, reports it, and tries again on the next', async () => {
       let failing = true;
-      await start({ load: gatedLoad(Promise.resolve(), () => failing) });
+      await start({ load: gatedLoad({ failing: () => failing }) });
       document.querySelector<HTMLButtonElement>('.tm-app-bar__menu')!.click();
       await tmSettleUntil(() => launcher().state() === 'closed', 'the open closes');
       expect(await shell.isLauncherSkeletonShown()).toBe(false);
-      expect(rig.telemetry.recent().some((item) => item.name === 'tm.error.captured' && item.props['source'] === 'tm-launcher')).toBe(true);
+      expect(reported()).toBe(true);
       failing = false;
       const harness = await shell.openLauncher('menu');
       expect(await harness.getState()).toBe('browse');
+    });
+
+    it("shows the skeleton while the Menu modal's chunk loads, then the modal, which its own opening leaves open", async () => {
+      const sheet = latch();
+      await start({ width: 420, load: gatedLoad({}, { sheet: { gate: sheet.wait } }) });
+      await landed();
+      menu().click();
+      await tmSettle();
+      expect(await shell.isLauncherSkeletonShown()).toBe(true);
+      expect(document.activeElement).toBe(skeleton());
+      sheet.release();
+      const harness = await shell.openLauncher('menu');
+      expect(await harness.getSurface()).toBe('sheet');
+      await settled();
+      expect(launcher().state()).toBe('browse');
+      expect(await shell.isLauncherSkeletonShown()).toBe(false);
+      expect(document.activeElement?.classList.contains('tm-launcher__close')).toBe(true);
+    });
+
+    it("closes on Tab and on Escape while the Menu modal's chunk loads, giving focus back to the trigger", async () => {
+      const sheet = latch();
+      await start({ width: 420, load: gatedLoad({}, { sheet: { gate: sheet.wait } }) });
+      await landed();
+      (document.activeElement as HTMLElement | null)?.blur();
+      menu().click();
+      await tmSettle();
+      expect(press({ key: 'Tab', code: 'Tab' })).toBe(false);
+      expect(launcher().state()).toBe('closed');
+      expect(document.activeElement).toBe(menu());
+      const search = document.querySelector<HTMLButtonElement>('.tm-app-bar__narrow-search')!;
+      menu().blur();
+      search.click();
+      await tmSettle();
+      expect(document.activeElement).toBe(skeleton());
+      expect(press({ key: 'Escape', code: 'Escape' })).toBe(true);
+      expect(launcher().state()).toBe('closed');
+      expect(document.activeElement).toBe(search);
+      sheet.release();
+      await settled();
+      expect(document.querySelector('.tm-launcher__list')).toBeNull();
+    });
+
+    it("closes an open whose Menu modal's chunk fails to load, reports it, and tries again on the next", async () => {
+      let failing = true;
+      const sheet = latch();
+      await start({ width: 420, load: gatedLoad({}, { sheet: { gate: sheet.wait, failing: () => failing } }) });
+      await landed();
+      menu().click();
+      await tmSettle();
+      expect(await shell.isLauncherSkeletonShown()).toBe(true);
+      sheet.release();
+      await tmSettleUntil(() => launcher().state() === 'closed', 'the open closes');
+      expect(await shell.isLauncherSkeletonShown()).toBe(false);
+      expect(reported()).toBe(true);
+      failing = false;
+      const harness = await shell.openLauncher('menu');
+      expect(await harness.getSurface()).toBe('sheet');
+    });
+
+    it("lets a dialog that opens while the Menu modal's chunk loads win", async () => {
+      const sheet = latch();
+      await start({ width: 420, load: gatedLoad({}, { sheet: { gate: sheet.wait } }) });
+      await landed();
+      menu().click();
+      await tmSettle();
+      const ref = TestBed.inject(TmModal).open(TmTestDialog, { size: 'sm', title: 'A dialog' });
+      await tmSettle();
+      expect(launcher().state()).toBe('closed');
+      sheet.release();
+      await settled();
+      expect(document.querySelector('.tm-launcher-sheet')).toBeNull();
+      expect(document.querySelector('tm-test-dialog')).not.toBeNull();
+      ref.close();
+      await tmSettle();
+    });
+
+    it("runs the providers once their chunk lands during a typed open", async () => {
+      const runs = latch();
+      await start({ load: gatedLoad({}, { runs: { gate: runs.wait } }) });
+      await landed();
+      const harness = await shell.openLauncher('menu');
+      await harness.type('cent');
+      await tmSettle();
+      expect(alpha.calls).toEqual([]);
+      runs.release();
+      await tmSettleUntil(() => alpha.calls.at(-1)?.query === 'cent', 'the run');
+    });
+
+    it("tries the providers' chunk again on the next open after a failed load", async () => {
+      let failing = true;
+      await start({ load: gatedLoad({}, { runs: { failing: () => failing } }) });
+      await landed();
+      await tmSettleUntil(reported, 'the failed load is reported');
+      failing = false;
+      const harness = await shell.openLauncher('menu');
+      await harness.type('cent');
+      await tmSettleUntil(() => alpha.calls.at(-1)?.query === 'cent', 'the run');
     });
   });
 });

@@ -17,7 +17,7 @@ import { TmIcon } from '@tellma/core-ui/icon';
 import { TM_MODAL_DATA } from '@tellma/core-ui/modal';
 import { Search, X } from 'lucide';
 
-import type { TmLauncher, TmLauncherVia } from './tm-launcher';
+import type { TmLauncher } from './tm-launcher';
 
 // The launcher below md (spec 0027 §9.1): a TmModal of size lg labelled
 // "Menu", full screen below sm, with a 44 px field beside Close above the
@@ -44,8 +44,8 @@ export interface TmLauncherSheetHost {
   readonly searchLabel: Signal<string>;
   /** The input's `aria-keyshortcuts`. */
   readonly keyShortcuts: string;
-  /** What opened the modal, which decides whether Close or the field takes focus. */
-  readonly sheetVia: Signal<TmLauncherVia | null>;
+  /** What takes focus as the modal opens: Close after the Menu button, else the field. */
+  readonly sheetFocus: Signal<'close' | 'field'>;
   /** Whether an IME composition is in progress in the input. */
   readonly composing: WritableSignal<boolean>;
   /**
@@ -96,7 +96,7 @@ export interface TmLauncherSheetHost {
           <tm-icon [svg]="searchIcon" />
           <input type="text" class="tm-launcher__sheet-input" autocomplete="off" spellcheck="false" dir="auto" [placeholder]="host.searchLabel()" [attr.aria-label]="host.searchLabel()" [value]="host.launcher.query()" [attr.aria-activedescendant]="host.activeId()" [attr.aria-controls]="host.listboxId" [attr.aria-describedby]="host.hintId" aria-autocomplete="list" aria-expanded="true" role="combobox" [attr.aria-keyshortcuts]="host.keyShortcuts" (input)="host.typed($event)" (keydown)="host.keydown($event)" (keyup)="host.keyup()" (compositionstart)="host.composing.set(true)" (compositionend)="host.compositionEnd()" />
         </label>
-        <button type="button" class="tm-launcher__close" [attr.cdkFocusInitial]="host.sheetVia() === 'menu' ? '' : null" [attr.aria-label]="host.text('close')" (click)="host.launcher.close('escape')">
+        <button type="button" class="tm-launcher__close" [attr.cdkFocusInitial]="host.sheetFocus() === 'close' ? '' : null" [attr.aria-label]="host.text('close')" (click)="host.launcher.close('escape')">
           <tm-icon [svg]="closeIcon" />
         </button>
       </div>

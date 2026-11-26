@@ -49,7 +49,10 @@ import { TmShellSlots, type TmShellSlotView } from './tm-shell-slots';
 // replaces them once it loads. The Menu button, the search field and the
 // search buttons open the launcher, whose panel is a deferred chunk of its
 // own; from lg up the field is the launcher's combobox input, and an open
-// that beats the chunk shows a skeleton in the panel's place. In installed
+// that beats the chunk shows a skeleton in the panel's place, which below lg
+// holds focus, so the keys typed meanwhile are the launcher's. Each button
+// hands itself to the launcher as it opens it, so focus can go back to it
+// where a press does not focus a button (Safari, iOS). In installed
 // mode the bar reserves Back and Forward's box and fills it from a chunk of
 // their own, which a browser tab never loads.
 
@@ -95,23 +98,25 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
     -->
     <div class="tm-app-bar__group" data-tm-launcher-trigger (pointerenter)="prefetchLauncher()" (focusin)="prefetchLauncher()">
       <button
+        #menuButton
         type="button"
         class="tm-app-bar__menu"
         aria-haspopup="dialog"
         [attr.aria-expanded]="launcherOpen()"
         [attr.aria-label]="menuLabel()"
-        (click)="toggleLauncher()"
+        (click)="toggleLauncher(menuButton)"
       >
         <tm-icon [svg]="menuIcon" />
         <span class="tm-app-bar__wide" aria-hidden="true">{{ menuLabel() }}</span>
       </button>
       <button
+        #groupSearch
         type="button"
         class="tm-app-bar__group-search"
         aria-haspopup="dialog"
         [attr.aria-expanded]="launcherOpen()"
         [attr.aria-label]="searchLabel()"
-        (click)="launcher.show('icon')"
+        (click)="searchLauncher(groupSearch)"
       >
         <tm-icon [svg]="searchIcon" />
       </button>
@@ -151,6 +156,7 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
     <span class="tm-app-bar__spacer"></span>
     <!-- Search, after the spacer below md. -->
     <button
+      #narrowSearch
       type="button"
       class="tm-app-bar__icon-button tm-app-bar__narrow-search"
       aria-haspopup="dialog"
@@ -159,7 +165,7 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       [attr.aria-label]="searchLabel()"
       (pointerenter)="prefetchLauncher()"
       (focus)="prefetchLauncher()"
-      (click)="launcher.show('icon')"
+      (click)="searchLauncher(narrowSearch)"
     >
       <tm-icon [svg]="searchIcon" />
     </button>
@@ -251,9 +257,12 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
     </button>
     <!-- The overlays' host, where their deferred chunk renders. -->
     <ng-container #overlayHost />
-    <!-- The launcher's skeleton, in its panel's place, while an open waits for its chunk. -->
+    <!--
+      The launcher's skeleton, in its panel's place, while an open waits for
+      its chunk; below lg it holds focus, the input not being there yet.
+    -->
     @if (launcherPending()) {
-      <div #launcherSkeleton popover="manual" class="tm-app-bar__launcher-skeleton" aria-busy="true">
+      <div #launcherSkeleton popover="manual" class="tm-app-bar__launcher-skeleton" role="dialog" tabindex="-1" aria-busy="true" [attr.aria-label]="menuLabel()">
         <tm-skeleton [lines]="6" />
       </div>
     }
@@ -681,6 +690,11 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       color: var(--text-body);
     }
 
+    /* It holds focus as the whole surface does, its input not there yet: no ring of its own. */
+    .tm-app-bar__launcher-skeleton:focus {
+      outline: none;
+    }
+
     @media (width < 768px) {
       .tm-app-bar__launcher-skeleton {
         inset: var(--modal-lg-margin);
@@ -712,6 +726,8 @@ export class TmAppBar {
   private readonly overlayHost = viewChild.required('overlayHost', { read: ViewContainerRef });
   /** The search field, the launcher's input from lg up. */
   private readonly field = viewChild.required<ElementRef<HTMLInputElement>>('field');
+  /** The Menu button, where the launcher sends focus when no control had it. */
+  private readonly menuButton = viewChild.required<ElementRef<HTMLButtonElement>>('menuButton');
   /** The launcher's skeleton, while it shows. */
   private readonly launcherSkeleton = viewChild<ElementRef<HTMLElement>>('launcherSkeleton');
 
@@ -817,8 +833,8 @@ export class TmAppBar {
 
   /**
    * Creates the bar, which hands the overlays their host and the launcher
-   * its field after its first render, and loads the launcher's chunk once the
-   * browser is idle.
+   * its field and its Menu button after its first render, and loads the
+   * launcher's chunk once the browser is idle.
    */
   constructor() {
     tmRegisterTenantShellStrings(this.#l10n);
@@ -826,12 +842,17 @@ export class TmAppBar {
       this.overlays.attach(this.overlayHost());
       const field = this.field().nativeElement;
       this.launcher.ɵfield = field;
+      this.launcher.ɵmenu = this.menuButton().nativeElement;
       const view = field.ownerDocument.defaultView;
       const idle = (run: () => void): unknown => (view?.requestIdleCallback ? view.requestIdleCallback(run) : setTimeout(run));
       idle(() => this.launcher.ɵprefetch());
     });
-    // The skeleton shows in the top layer, above the page, as the panel would.
-    afterRenderEffect(() => this.launcherSkeleton()?.nativeElement.showPopover());
+    // The skeleton shows in the top layer, above the page, as the panel would, and the launcher hears of it.
+    afterRenderEffect(() => {
+      const skeleton = this.launcherSkeleton()?.nativeElement ?? null;
+      skeleton?.showPopover();
+      untracked(() => this.launcher.ɵskeleton(skeleton));
+    });
 
     // --- The history buttons' chunk, loaded once the app runs installed ---
     // A failed load (offline, or after a deploy removed the chunk) leaves the
@@ -884,10 +905,24 @@ export class TmAppBar {
     this.launcher.ɵprefetch();
   }
 
-  /** The Menu button: opens the launcher, or closes it when it is open. */
-  protected toggleLauncher(): void {
+  /**
+   * A search button: opens the launcher, or, when it is open, focuses its
+   * input and selects the text.
+   *
+   * @param button - The button.
+   */
+  protected searchLauncher(button: HTMLElement): void {
+    this.launcher.ɵshowFrom('icon', button);
+  }
+
+  /**
+   * The Menu button: opens the launcher, or closes it when it is open.
+   *
+   * @param button - The button.
+   */
+  protected toggleLauncher(button: HTMLElement): void {
     if (this.launcher.state() === 'closed') {
-      this.launcher.show('menu');
+      this.launcher.ɵshowFrom('menu', button);
     } else {
       this.launcher.close('outside');
     }

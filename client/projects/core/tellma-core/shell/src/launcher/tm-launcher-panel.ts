@@ -92,6 +92,23 @@ const ANNOUNCE_MS = 500;
 /** The recent pages, as the surface reads them. Internal: the surface's creation provides them. */
 export const TM_LAUNCHER_RECENTS = new InjectionToken<Pick<TmRecents, 'pages'>>('TM_LAUNCHER_RECENTS');
 
+/** The surface's own deferred pieces, each a chunk it loads when it needs it. Internal: a test delays a load or makes it fail. */
+export interface TmLauncherPieces {
+  /** Loads the Menu modal's content, the surface below md. */
+  sheet(): Promise<typeof import('./tm-launcher-sheet')>;
+  /** Loads the providers' runs. */
+  runs(): Promise<typeof import('./tm-launcher-runs')>;
+}
+
+/** The surface's pieces, as its creation provides them. */
+const TM_LAUNCHER_PIECES = new InjectionToken<TmLauncherPieces>('TM_LAUNCHER_PIECES');
+
+/** The pieces' own chunks. */
+const PIECES: TmLauncherPieces = {
+  sheet: () => import('./tm-launcher-sheet'),
+  runs: () => import('./tm-launcher-runs'),
+};
+
 /** One option of the listbox. */
 interface TmOption {
   /** The element's id, stable for its key. */
@@ -471,6 +488,7 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
   readonly #l10n = inject(TmLocalization);
   readonly #navigation = inject(TmNavigation);
   readonly #recents = inject(TM_LAUNCHER_RECENTS);
+  readonly #pieces = inject(TM_LAUNCHER_PIECES);
   readonly #prefs = inject(TmPreferences);
   readonly #urls = inject(TmUrls);
   readonly #router = inject(Router);
@@ -506,6 +524,8 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
   #sheetChunk: Promise<typeof import('./tm-launcher-sheet') | null> | null = null;
   // The providers' runs, once their chunk is in; `null` while no provider is registered.
   #runs: TmLauncherRuns | null = null;
+  // The runs' chunk while it loads; `null` before, once in, and after a failed load, so the next open tries again.
+  #runsChunk: Promise<void> | null = null;
   #releaseEscape: (() => void) | null = null;
   #modalsAtOpen: ReadonlySet<HTMLElement> = new Set();
   #announceTimer: ReturnType<typeof setTimeout> | undefined;
@@ -532,8 +552,8 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
   /** Whether an open waits for the Menu modal's chunk. */
   readonly waiting = this.#waiting.asReadonly();
 
-  /** What opened the modal, which decides whether Close or the field takes focus. */
-  readonly sheetVia = signal<TmLauncherVia | null>(null);
+  /** What takes focus as the modal opens: Close after the Menu button, else the field. */
+  readonly sheetFocus = signal<'close' | 'field'>('field');
 
   /** Whether an IME composition is in progress in the input, which holds the providers. */
   readonly composing = signal(false);
@@ -703,9 +723,14 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
 
   /**
    * The active option's id: the one the keys, the pointer or the first
-   * showing chose for this text, else the first row of the typed state.
+   * showing chose for this text, else the first row of the typed state;
+   * `null` while closed, so a change of the candidates then builds nothing
+   * (the index builds again on the next open).
    */
   readonly activeId = computed(() => {
+    if (this.#kind() === 'closed') {
+      return null;
+    }
     const options = this.#options();
     const chosen = this.#active();
     if (chosen !== null && chosen.query === this.launcher.query() && options.some((option) => option.id === chosen.id)) {
@@ -746,9 +771,7 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
       });
     });
     // --- The providers' runs, a chunk loaded only when a provider is registered ---
-    if (this.#providers.length > 0) {
-      void this.#loadRuns();
-    }
+    this.#loadRuns();
     // --- Every change of the text: the providers' edges and the announcement ---
     effect(() => {
       const query = this.launcher.query();
@@ -792,7 +815,7 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
   }
 
   /** {@inheritDoc TmLauncherSurface.open} */
-  open(via: TmLauncherVia, reopened: boolean, returnTo: HTMLElement | null): void {
+  open(via: TmLauncherVia, reopened: boolean, returnTo: HTMLElement | null, typed: boolean): void {
     if (reopened) {
       // A click in the field it already types in places the caret; any other open selects the text.
       if (via !== 'field') {
@@ -804,15 +827,16 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
     this.#active.set(null);
     this.#buckets.set([]);
     this.#runs?.restart();
+    // A failed load of the providers' runs is tried again.
+    this.#loadRuns();
     this.#modalsAtOpen = new Set(ɵtmOpenModals());
     const field = this.launcher.ɵfield;
     const kind = this.#surfaceFor(untracked(this.#md), untracked(this.#lg));
     if (kind === 'sheet') {
-      // --- Below md: the Menu modal, once its chunk is in ---
-      this.sheetVia.set(via);
+      // --- Below md: the Menu modal, once its chunk is in; TmLauncher answers the wait ---
+      // Text typed while the open waited goes on in the field.
+      this.sheetFocus.set(via === 'menu' && !typed ? 'close' : 'field');
       this.#kind.set('sheet');
-      // Until the modal is up, which then answers Escape itself, Escape closes the launcher.
-      this.#releaseEscape = tmPushEscapeDismissal(() => this.launcher.close('escape'));
       void this.#openSheet();
     } else {
       // --- From md up: the panel under the shell's rows ---
@@ -826,13 +850,14 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
       if (kind === 'panel' && field !== null) {
         this.#listen(field, true);
         // A press on the field opened it: the press's release would place the caret over the selection.
-        if (via === 'field' && !field.matches(':focus-visible')) {
+        if (via === 'field' && !typed && !field.matches(':focus-visible')) {
           const keep = (event: Event): void => event.preventDefault();
           field.addEventListener('mouseup', keep, { once: true });
           setTimeout(() => field.removeEventListener('mouseup', keep), 1_000);
         }
       }
-      this.#focusInput(true);
+      // Text typed while the open waited stays as typed, unselected.
+      this.#focusInput(!typed);
     }
     // The page index builds on the first open, so the first keystroke finds it.
     untracked(this.#index);
@@ -860,18 +885,24 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
     this.#runs?.stop();
     clearTimeout(this.#announceTimer);
     // --- Hide the surface; focus goes back as spec 0027 §5.3 says ---
+    const returnTo = this.#returnTo;
     if (kind === 'sheet') {
-      // The modal returns focus to what had it before the open.
+      // The modal gives focus back to what had it at its open. When that was
+      // nothing, as after a tap that does not focus a button, or the skeleton,
+      // which is gone, focus goes to the trigger (spec 0027 §5.3).
       const ref = this.#sheetRef;
       this.#sheetRef = null;
       ref?.close();
+      const active = this.#document.activeElement;
+      if (active === null || active === this.#document.body) {
+        this.#restore(returnTo);
+      }
       return;
     }
     const layer = this.layer().nativeElement;
     if (layer.matches(':popover-open')) {
       layer.hidePopover();
     }
-    const returnTo = this.#returnTo;
     if (reason === 'escape' || (reason === 'tab' && kind === 'field')) {
       // From the panel's own field, Tab goes on from the control that opened it.
       this.#restore(returnTo);
@@ -1057,8 +1088,12 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
     this.#report(option, newTab && run === null);
     this.launcher.close('chosen');
     if (run !== null) {
-      // A command may open a dialog of its own, which takes focus; until then, the opener has it.
-      this.#keepFocus(option, true);
+      // A command may open a dialog, which gives focus back where it was at
+      // the dialog's open: focus leaves the launcher's input first, for the
+      // control that opened the launcher, else the Menu button, so that return
+      // does not open the launcher again.
+      const returnTo = this.#returnTo;
+      this.#restore(returnTo !== null && returnTo !== this.launcher.ɵfield && returnTo.isConnected ? returnTo : this.launcher.ɵmenu);
       run();
     } else if (newTab) {
       this.#document.defaultView?.open(option.href, '_blank', 'noopener');
@@ -1165,10 +1200,22 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
 
   // --- The deferred pieces: the providers' runs and the Menu modal ---
 
-  /** Loads the providers' runs; once they are in, an open typed state runs them on its text. */
-  async #loadRuns(): Promise<void> {
+  /**
+   * Loads the providers' runs once a provider is registered, unless they are
+   * in or loading; once they are in, an open typed state runs them on its
+   * text. A failed load is tried again on the next open.
+   */
+  #loadRuns(): void {
+    if (this.#providers.length === 0 || this.#runs !== null || this.#runsChunk !== null) {
+      return;
+    }
+    this.#runsChunk = this.#startRuns();
+  }
+
+  /** Loads the runs' chunk and starts the runs. */
+  async #startRuns(): Promise<void> {
     try {
-      const { TmLauncherRuns } = await import('./tm-launcher-runs');
+      const { TmLauncherRuns } = await this.#pieces.runs();
       const host: TmLauncherRunsHost = {
         query: this.launcher.query,
         composing: this.composing,
@@ -1186,14 +1233,16 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
         this.#runs.changed();
       }
     } catch (error: unknown) {
-      // Offline, or after a deploy removed the chunk: the pages still answer, and the buckets stay away.
+      // Offline, or after a deploy removed the chunk: the pages still answer, and the buckets stay away until the next open.
       this.#telemetry.error(error, { source: 'tm-launcher' });
+    } finally {
+      this.#runsChunk = null;
     }
   }
 
   /** Loads the Menu modal's chunk once; `null` when it fails, so the next open tries again. */
   #loadSheet(): Promise<typeof import('./tm-launcher-sheet') | null> {
-    this.#sheetChunk ??= import('./tm-launcher-sheet').then(
+    this.#sheetChunk ??= this.#pieces.sheet().then(
       (chunk) => chunk,
       (error: unknown) => {
         this.#telemetry.error(error, { source: 'tm-launcher' });
@@ -1212,8 +1261,6 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
       return;
     }
     this.#waiting.set(false);
-    this.#releaseEscape?.();
-    this.#releaseEscape = null;
     // A dialog that opened while the chunk loaded wins, as it would over the open modal.
     if (chunk === null || ɵtmOpenModals().some((host) => !this.#modalsAtOpen.has(host))) {
       this.launcher.close('route');
@@ -1336,15 +1383,23 @@ export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
  * @param injector - The app's injector.
  * @param registerIcons - Registers the icon names it draws that the app has not.
  * @param recents - The recent pages' service, whose entry point is lazy to the shell's.
+ * @param pieces - The surface's own deferred pieces; their chunks by default.
  * @returns The surface's component.
  */
 export function tmCreateLauncherSurface(
   injector: EnvironmentInjector,
   registerIcons: (registry: TmIconRegistry) => void,
   recents: Type<TmRecents>,
+  pieces: TmLauncherPieces = PIECES,
 ): ComponentRef<TmLauncherSurface> {
   registerIcons(injector.get(TmIconRegistry));
-  const elementInjector = Injector.create({ providers: [{ provide: TM_LAUNCHER_RECENTS, useValue: injector.get(recents) }], parent: injector });
+  const elementInjector = Injector.create({
+    providers: [
+      { provide: TM_LAUNCHER_RECENTS, useValue: injector.get(recents) },
+      { provide: TM_LAUNCHER_PIECES, useValue: pieces },
+    ],
+    parent: injector,
+  });
   const ref = createComponent(TmLauncherPanel, { environmentInjector: injector, elementInjector });
   injector.get(DOCUMENT).body.appendChild(ref.location.nativeElement as HTMLElement);
   injector.get(ApplicationRef).attachView(ref.hostView);

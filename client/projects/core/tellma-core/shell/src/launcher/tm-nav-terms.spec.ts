@@ -25,8 +25,9 @@ import { TmNavTermsReader } from './tm-nav-terms';
 // an entity, a feature entry with English synonyms and the platform's My
 // profile entry, with Arabic synonyms split on the Arabic comma; the reader
 // brings the platform entries' English synonyms when it is created. Then the
-// time the first open's index takes over 300 such entries, their terms read
-// in both languages.
+// work the first open's index takes over 300 such entries: each entry's
+// terms read once in each language, and one collator. The wall-clock budget
+// is the nightly tier's, in the launcher's perf spec.
 
 /** Arabic, with the platform strings the tests read. */
 const ARABIC: TmLanguageDefinition = {
@@ -114,8 +115,8 @@ describe('TmNavTermsReader', () => {
     expect(reader.read(item(navigation, 'acme.Currency'), 'en')).toEqual({ label: 'acme.Currency', synonyms: [] });
   });
 
-  it("builds the first open's index over 300 entries, their terms read in both languages, in 5 ms or less", async () => {
-    // 300 entries, each with a label and a synonym in Arabic and in English, as the index's own benchmark holds them.
+  it("builds the first open's index over 300 entries with one read of each entry's terms in each language, and one collator", async () => {
+    // 300 entries, each with a label and a synonym in Arabic and in English.
     const words = ['Sales', 'Purchase', 'Invoices', 'Receipts', 'Centers', 'Accounts', 'Journal', 'Assets', 'Stock', 'Payroll', 'Budgets', 'Taxes'];
     const arabic = ['المبيعات', 'المشتريات', 'الفواتير', 'الإيصالات', 'المراكز', 'الحسابات', 'اليومية', 'الأصول', 'المخزون', 'الرواتب', 'الموازنات', 'الضرائب'];
     const en: Record<string, string> = {};
@@ -131,13 +132,16 @@ describe('TmNavTermsReader', () => {
     const { navigation } = await rig({ entries, en, ar });
     const reader = TestBed.inject(TmNavTermsReader);
     const entities = TestBed.inject(TmEntities);
-    expect(navigation.items().length).toBeGreaterThanOrEqual(300);
-    // The panel's own build: the candidates from the registry and the reader, then the index.
-    const build = (): unknown =>
-      tmLauncherIndex(
+    const items = navigation.items();
+    expect(items.length).toBeGreaterThanOrEqual(300);
+    const read = vi.spyOn(reader, 'read');
+    const collator = vi.spyOn(Intl, 'Collator');
+    try {
+      // The panel's own build: the candidates from the registry and the reader, then the index.
+      const index = tmLauncherIndex(
         tmLauncherCandidates({
           language: 'ar',
-          entries: navigation.items(),
+          entries: items,
           sections: new Map(navigation.sections().map((section) => [section.id, section.label])),
           pins: [],
           recents: [],
@@ -148,17 +152,19 @@ describe('TmNavTermsReader', () => {
           entry: (href) => navigation.byHref(href),
         }),
       );
-    // The fastest of fifty runs after a warm-up: more runs than the index's own benchmark takes, since this one reads
-    // the strings too, so a busy machine is likelier to give it one run of its own.
-    for (let i = 0; i < 5; i++) {
-      build();
+      expect(index.entries).toHaveLength(items.length);
+      // Each entry's terms, read once in Arabic and once in English.
+      const reads = new Map<string, number>();
+      for (const [entry, language] of read.mock.calls) {
+        const key = `${entry.id} ${language}`;
+        reads.set(key, (reads.get(key) ?? 0) + 1);
+      }
+      expect(read).toHaveBeenCalledTimes(2 * items.length);
+      expect(items.flatMap((entry) => ['ar', 'en'].map((language) => reads.get(`${entry.id} ${language}`)))).toEqual(items.flatMap(() => [1, 1]));
+      expect(collator).toHaveBeenCalledTimes(1);
+    } finally {
+      read.mockRestore();
+      collator.mockRestore();
     }
-    let best = Infinity;
-    for (let i = 0; i < 50; i++) {
-      const started = performance.now();
-      build();
-      best = Math.min(best, performance.now() - started);
-    }
-    expect(best).toBeLessThanOrEqual(5);
   });
 });
