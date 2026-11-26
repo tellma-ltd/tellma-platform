@@ -7,11 +7,11 @@ import { ComponentHarness, HarnessPredicate } from '@angular/cdk/testing';
 import { TmButtonHarness, TmEmptyStateHarness, TmGridHarness, TmPagerHarness, TmProgressBarHarness } from '@tellma/core-ui-testing';
 
 // The search page an entity's search route renders: its title, the Create
-// control and Refresh of its toolbar, the pager, the grid of its rows
-// (through the component library's grid harness, which reads the headers
-// and cells and sorts by a header), the first load's skeleton, the progress
-// bar of a re-read, and the state a read shows in the rows' place with the
-// way out it offers.
+// control and Refresh of its toolbar, the search field and its clear
+// button, the pager, the grid of its rows (through the component library's
+// grid harness, which reads the headers and cells and sorts by a header),
+// the first load's skeleton, the progress bar of a re-read, and the state a
+// read shows in the rows' place with the way out it offers.
 
 /** What the Create control of a search page is: a link to the create page, or a button that says why it is disabled. */
 export interface TmSearchPageCreate {
@@ -62,6 +62,12 @@ export class TmSearchPageHarness extends ComponentHarness {
   /** The state in the rows' place. */
   readonly #state = this.locatorForOptional('tm-search-state');
 
+  /** The search field's input. */
+  readonly #field = this.locatorFor('[data-tm-search]');
+
+  /** The search field's clear button. */
+  readonly #clearSearch = this.locatorFor('[data-tm-search-clear]');
+
   /**
    * The page's title, the entity's plural label.
    *
@@ -109,6 +115,38 @@ export class TmSearchPageHarness extends ComponentHarness {
   /** Clicks Refresh, which reads the query again. */
   async refresh(): Promise<void> {
     return (await this.#refresh()).click();
+  }
+
+  /**
+   * The search field's text, as typed.
+   *
+   * @returns The text.
+   */
+  async getSearchText(): Promise<string> {
+    return (await this.#field()).getProperty<string>('value');
+  }
+
+  /**
+   * The search field's placeholder, which is also its accessible name.
+   *
+   * @returns The placeholder.
+   */
+  async getSearchPlaceholder(): Promise<string | null> {
+    return (await this.#field()).getAttribute('placeholder');
+  }
+
+  /**
+   * Whether the search field's clear button shows: it does while the field holds text.
+   *
+   * @returns Whether it does.
+   */
+  async isClearSearchShown(): Promise<boolean> {
+    return !(await (await this.#clearSearch()).hasClass('tm-search-host__clear--hidden'));
+  }
+
+  /** Clicks the search field's clear button, which clears the text as an undoable edit and searches everything. */
+  async clearSearchField(): Promise<void> {
+    return (await this.#clearSearch()).click();
   }
 
   /**

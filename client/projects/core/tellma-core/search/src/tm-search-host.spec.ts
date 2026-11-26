@@ -26,7 +26,7 @@ import { TmMenuHarness } from '@tellma/core-ui-testing';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
+import { tmSettle, tmSettleUntil, tmWaitUntil } from '../../src/routes/tm-app.testing.util';
 import { ɵTM_SEARCH_ERROR_VIEWS } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
 import { tmSearchTestHash } from './tm-search.testing.util';
@@ -36,7 +36,9 @@ import { tmSearchTestHash } from './tm-search.testing.util';
 // and the rows that follow, the links, the headers, the order, the paging
 // and its history, every state of the results region with the Columns
 // button above it, the offline rules, the re-read rule on a language
-// switch, Create, Refresh, the page's context and its page actions, and
+// switch, the search field (its burst timing, the pending Enter, type-to-
+// search, the undo anchor and the paused announcements), the row menu,
+// Create, Refresh, the page's context and its page actions, and
 // the strings' Arabic.
 
 /** One customer as the fake server holds it, by select term. */
@@ -233,6 +235,112 @@ function invalid(clause: string, start: number, length: number): TmApiError {
       errorDetails: { diagnostics: [{ clause, code: 'Queryex.UnknownProperty', start, length, location: null, arguments: { name: 'Bogus' } }] },
     },
   });
+}
+
+/**
+ * The answer of a query that searches the rows' names: the rows whose name
+ * holds the body's search text, ignoring case, as {@link answer} pages them.
+ *
+ * @param all - The rows.
+ * @returns The responder.
+ */
+function searched(all: readonly TmCustomerRow[]): (call: TmFakeApiCall) => TmJsonObject {
+  return (call) => {
+    const text = String((call.body as TmJsonObject)['search'] ?? '').toLowerCase();
+    return answer(all.filter((row) => String(row['Name']).toLowerCase().includes(text)))(call);
+  };
+}
+
+/**
+ * A responder that answers after a delay on the page's clock.
+ *
+ * @param ms - The delay.
+ * @param respond - The answer.
+ * @returns The responder.
+ */
+function later(ms: number, respond: (call: TmFakeApiCall) => TmJsonObject): (call: TmFakeApiCall) => Promise<TmJsonObject> {
+  return (call) => new Promise((resolve) => setTimeout(() => resolve(respond(call)), ms));
+}
+
+/** Fakes the page's timers and clock, so a spec counts the milliseconds between keys. */
+function fakeClock(): void {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
+}
+
+/**
+ * Moves the fake clock on and renders.
+ *
+ * @param ms - How far.
+ */
+async function step(ms: number): Promise<void> {
+  await vi.advanceTimersByTimeAsync(ms);
+  TestBed.tick();
+}
+
+/**
+ * Moves the fake clock on in small steps until a condition holds.
+ *
+ * @param condition - What the spec waits for.
+ * @param description - What it is, in the error.
+ */
+async function until(condition: () => boolean, description: string): Promise<void> {
+  await tmWaitUntil(condition, () => step(10), description);
+}
+
+/**
+ * The search field's input.
+ *
+ * @returns The input.
+ */
+function field(): HTMLInputElement {
+  return host()!.querySelector<HTMLInputElement>('[data-tm-search]')!;
+}
+
+/**
+ * Whether the results region's progress bar shows.
+ *
+ * @returns Whether it does.
+ */
+function barShown(): boolean {
+  return !host()!.querySelector('tm-progress-bar')!.classList.contains('tm-progress-bar--hidden');
+}
+
+/**
+ * The abort signal a fake API call was made with.
+ *
+ * @param call - The call.
+ * @returns The signal.
+ */
+function signalOf(call: TmFakeApiCall): AbortSignal {
+  return (call.options as { readonly signal: AbortSignal }).signal;
+}
+
+/**
+ * Presses a key on an element as the browser dispatches it: a keydown that bubbles, then the keyup.
+ *
+ * @param target - The element with focus.
+ * @param key - The key.
+ * @returns Whether the keydown went unhandled (its default was not prevented).
+ */
+function press(target: Element, key: string): boolean {
+  const unhandled = target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  target.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
+  return unhandled;
+}
+
+/**
+ * Types a key into the focused search field as the browser does: the
+ * keydown, the edit at the caret with its input event, then the keyup.
+ *
+ * @param key - The key, one character.
+ */
+function typeKey(key: string): void {
+  const input = field();
+  const unhandled = input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  if (unhandled) {
+    document.execCommand('insertText', false, key);
+  }
+  input.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
 }
 
 describe('TmSearchHost', () => {
@@ -732,6 +840,270 @@ describe('TmSearchHost', () => {
       await resettle();
       expect(announce).toHaveBeenCalledWith("You're offline", 'polite');
       expect(announce.mock.calls.some(([message]) => /results/.test(String(message)))).toBe(false);
+    });
+  });
+
+  describe('the search field', () => {
+    // The field's keys run on the fake clock where a spec counts the
+    // milliseconds between them; the page opens on the real one first.
+    afterEach(() => vi.useRealTimers());
+
+    it('names itself, ties itself to the title and the results, and caps its text', async () => {
+      const { page } = await open('/17/customers?q=Customer');
+      const input = field();
+      expect(await page.getSearchText()).toBe('Customer');
+      expect(await page.getSearchPlaceholder()).toBe('Search');
+      expect(input.getAttribute('aria-label')).toBe('Search');
+      expect(input.getAttribute('type')).toBe('search');
+      expect(input.getAttribute('dir')).toBe('auto');
+      expect(input.maxLength).toBe(200);
+      // The description reads the page's title, then how to move through the results.
+      const [title, hint] = input.getAttribute('aria-describedby')!.split(' ');
+      expect(document.getElementById(title!)!.textContent!.trim()).toBe('Customers');
+      expect(document.getElementById(hint!)!.textContent!.trim()).toBe('Arrow keys move through the results. Enter opens one.');
+      // The field drives the grid's highlight, which it names as its active descendant.
+      expect(document.getElementById(input.getAttribute('aria-controls')!)?.getAttribute('role')).toBe('grid');
+      input.focus();
+      press(input, 'ArrowDown');
+      await tmSettle();
+      const active = input.getAttribute('aria-activedescendant');
+      expect(active).not.toBeNull();
+      expect(host()!.querySelector(`[id="${active}"]`)).not.toBeNull();
+      expect(await page.isClearSearchShown()).toBe(true);
+    });
+
+    it('reads twice for five keys typed 30 ms apart, aborting the first read, with the bar on from the first key', async () => {
+      const { api } = await open();
+      fakeClock();
+      api.respond('customers/query', later(200, searched(customers(3))));
+      field().focus();
+      const keys = ['m', 'e', 'r', ' ', '1'];
+      for (const [index, key] of keys.entries()) {
+        if (index > 0) {
+          await step(30);
+        }
+        typeKey(key);
+        TestBed.tick();
+        // The bar shows from the first key and stays through the burst: the rows on screen answer another text.
+        expect(barShown()).toBe(true);
+      }
+      // The burst's trailing edge reads the whole text and aborts the leading edge's read, which still runs.
+      await step(50);
+      const calls = api.calls().filter((call) => call.route === 'customers/query');
+      expect(calls.map((call) => (call.body as TmJsonObject)['search'] ?? null)).toEqual([null, 'm', 'mer 1']);
+      expect(signalOf(calls[1]!).aborted).toBe(true);
+      expect(signalOf(calls[2]!).aborted).toBe(false);
+      expect(barShown()).toBe(true);
+      await until(() => rowTexts().length === 1, 'the result for the whole text lands');
+      expect(rowTexts()[0]![1]).toBe('Customer 1');
+      // The result landed with focus in the field: its first row is highlighted.
+      expect(field().getAttribute('aria-activedescendant')).not.toBeNull();
+    });
+
+    it('holds the bar for at least its minimum time when the result lands at once', async () => {
+      const { api } = await open();
+      fakeClock();
+      api.respond('customers/query', searched(customers(3)));
+      field().focus();
+      typeKey('2');
+      TestBed.tick();
+      expect(barShown()).toBe(true);
+      await until(() => rowTexts().length === 1, 'the result lands');
+      await step(100);
+      expect(barShown()).toBe(true);
+      await step(200);
+      expect(barShown()).toBe(false);
+    });
+
+    it('opens the first row of the result for the field’s text on an Enter that comes before it', async () => {
+      const { api, rig, location } = await open();
+      fakeClock();
+      api.respond('customers/query', later(100, searched(customers(3))));
+      field().focus();
+      typeKey('r');
+      await step(10);
+      typeKey(' ');
+      typeKey('3');
+      press(field(), 'Enter');
+      await until(() => address() === '/17/customers/3', 'the pending Enter opens the first row of the result for "r 3"');
+      expect(location.getState()).toEqual(expect.objectContaining({ tmFrom: '/17/customers', tmPage: 1 }));
+      expect(rig.telemetry.recent().find((item) => item.name === 'tm.search.open')?.props).toEqual({ via: 'pending', newTab: false });
+    });
+
+    it('opens the highlighted row on Enter over a fresh result', async () => {
+      const { page } = await open();
+      field().focus();
+      press(field(), 'ArrowDown');
+      press(field(), 'ArrowDown');
+      await tmSettle();
+      const active = await (await page.getGrid())!.getActiveRowIndex();
+      expect(active).not.toBeNull();
+      press(field(), 'Enter');
+      await tmSettleUntil(() => address() === `/17/customers/${active! + 1}`, 'Enter opens the highlighted row');
+    });
+
+    it('disarms a pending Enter on a pointer press and on another key', async () => {
+      const { api } = await open();
+      fakeClock();
+      api.respond('customers/query', later(100, searched(customers(3))));
+      field().focus();
+      typeKey('2');
+      press(field(), 'Enter');
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      await until(() => rowTexts().length === 1, 'the result for "2" lands');
+      await step(50);
+      expect(address()).toBe('/17/customers?q=2');
+
+      typeKey('2');
+      press(field(), 'Enter');
+      press(field(), 'ArrowLeft');
+      await until(() => rowTexts().length === 0 && settled(), 'the result for "22" lands');
+      await step(50);
+      expect(address()).toBe('/17/customers?q=22');
+    });
+
+    it('says there are no matches for a pending Enter whose result is empty, once the keys pause', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      const { api } = await open();
+      fakeClock();
+      api.respond('customers/query', later(100, searched(customers(3))));
+      announce.mockClear();
+      field().focus();
+      typeKey('z');
+      press(field(), 'Enter');
+      await until(() => settled() && rowTexts().length === 0, 'the empty result lands');
+      await step(400);
+      expect(announce).toHaveBeenCalledWith('No matches', 'polite');
+      expect(address()).toBe('/17/customers?q=z');
+    });
+
+    it('announces a result only once no key was pressed for half a second', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      const { api } = await open();
+      fakeClock();
+      api.respond('customers/query', searched(customers(3)));
+      announce.mockClear();
+      field().focus();
+      typeKey('2');
+      await until(() => rowTexts().length === 1, 'the result lands');
+      await step(300);
+      expect(announce).not.toHaveBeenCalled();
+      // A key that changes nothing still puts the announcement off.
+      press(field(), 'Shift');
+      await step(400);
+      expect(announce).not.toHaveBeenCalled();
+      await step(150);
+      expect(announce).toHaveBeenCalledWith('1 result', 'polite');
+    });
+
+    it('takes a printable key the grid leaves unhandled, replacing the field’s text', async () => {
+      const { page, rig } = await open('/17/customers?q=Customer', { respond: searched(customers(3)) });
+      await (await page.getGrid())!.pressKeys(TestKey.DOWN_ARROW);
+      const cell = document.activeElement!;
+      expect(cell.getAttribute('role')).toBe('gridcell');
+      press(cell, '2');
+      expect(document.activeElement).toBe(field());
+      expect(field().value).toBe('2');
+      await tmSettleUntil(() => address() === '/17/customers?q=2', 'the typed key searches');
+      await resettle();
+      expect(rowTexts()).toHaveLength(1);
+      expect(rig.telemetry.recent().some((item) => item.name === 'tm.search.type-to-search')).toBe(true);
+    });
+
+    it('takes a paste the grid leaves unhandled, on one line', async () => {
+      const { page } = await open('/17/customers', { respond: searched(customers(3)) });
+      await (await page.getGrid())!.pressKeys(TestKey.DOWN_ARROW);
+      const data = new DataTransfer();
+      data.setData('text/plain', 'Customer\n3');
+      document.activeElement!.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+      expect(field().value).toBe('Customer 3');
+      await tmSettleUntil(() => address() === '/17/customers?q=Customer%203', 'the paste searches');
+    });
+
+    it('undoes an accidental key with no request, back to the page and the highlighted row it left', async () => {
+      const { api, page, rig } = await open('/17/customers?page=2', { respond: searched(customers(60)) });
+      const grid = (await page.getGrid())!;
+      await grid.pressKeys(TestKey.DOWN_ARROW, TestKey.DOWN_ARROW, TestKey.DOWN_ARROW);
+      const active = await grid.getActiveRowIndex();
+      expect(rowTexts()[0]![0]).toBe('C-051');
+
+      press(document.activeElement!, 'C');
+      await tmSettleUntil(() => address() === '/17/customers?q=C', 'the accidental key searches');
+      await resettle();
+      expect(rowTexts()[0]![0]).toBe('C-001');
+      expect(reads(api)).toHaveLength(2);
+
+      // Undo in the field takes the key back: the anchor's rows return from memory.
+      expect(document.activeElement).toBe(field());
+      document.execCommand('undo');
+      await tmSettleUntil(() => address() === '/17/customers?page=2', 'the undo restores the page');
+      await resettle();
+      expect(field().value).toBe('');
+      expect(rowTexts()[0]![0]).toBe('C-051');
+      expect(reads(api)).toHaveLength(2);
+      expect(await grid.getActiveRowIndex()).toBe(active);
+      const timing = rig.telemetry
+        .recent()
+        .filter((item) => item.name === 'tm.search.query')
+        .at(-1);
+      expect(timing?.props).toEqual(expect.objectContaining({ source: 'anchor', outcome: 'ok' }));
+    });
+
+    it('clears on its clear button as an undoable edit, keeping focus in the field', async () => {
+      const { api, page } = await open('/17/customers?q=Customer', { respond: searched(customers(3)) });
+      await page.clearSearchField();
+      await tmSettleUntil(() => address() === '/17/customers', 'the clear searches everything');
+      expect(document.activeElement).toBe(field());
+      expect(await page.getSearchText()).toBe('');
+      expect(await page.isClearSearchShown()).toBe(false);
+      document.execCommand('undo');
+      await tmSettleUntil(() => address() === '/17/customers?q=Customer', 'the undo restores the text');
+      expect(reads(api)).toHaveLength(2);
+    });
+
+    it('shows the text of a query from elsewhere: Clear search, a link and Back', async () => {
+      const { page, rig, location } = await open('/17/customers?q=zzz', { respond: searched(customers(3)) });
+      await page.clickStateAction('Clear search');
+      await resettle();
+      expect(await page.getSearchText()).toBe('');
+      await rig.router.navigateByUrl('/17/customers?q=Customer%202');
+      await resettle();
+      expect(await page.getSearchText()).toBe('Customer 2');
+      // The app's bootstrap listens for Back and Forward; the test bed's router starts without it.
+      TestBed.inject(Router).setUpLocationChangeListener();
+      location.back();
+      await tmSettleUntil(() => rowTexts().length === 3, 'Back returns to the query before');
+      await resettle();
+      expect(address()).toBe('/17/customers');
+      expect(await page.getSearchText()).toBe('');
+    });
+  });
+
+  describe('the row menu', () => {
+    it('opens the highlighted row in a new tab and copies its link', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      const opened = vi.spyOn(window, 'open').mockReturnValue(null);
+      onTestFinished(() => opened.mockRestore());
+      const written = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+      onTestFinished(() => written.mockRestore());
+      const { page } = await open();
+      const grid = (await page.getGrid())!;
+      await grid.pressKeys(TestKey.DOWN_ARROW);
+      const row = (await grid.getActiveRowIndex())! + 1;
+
+      let menu = await grid.openContextMenu();
+      expect(await menu.getItemLabels()).toEqual(expect.arrayContaining(['Open in new tab', 'Copy link']));
+      await menu.clickItem('Open in new tab');
+      expect(opened).toHaveBeenCalledWith(`/17/customers/${row}`, '_blank', 'noopener');
+
+      menu = await grid.openContextMenu();
+      await menu.clickItem('Copy link');
+      await tmSettle();
+      expect(written).toHaveBeenCalledWith(new URL(`/17/customers/${row}`, document.baseURI).href);
+      expect(announce).toHaveBeenCalledWith('Link copied', 'polite');
     });
   });
 

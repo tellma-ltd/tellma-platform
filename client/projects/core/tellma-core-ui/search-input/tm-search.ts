@@ -38,6 +38,10 @@ import {
  * - during IME composition, only after the composition ends;
  * - never with the value it emitted last.
  *
+ * A write to `value` from outside (a reset, a restored query) is the
+ * consumer's own query: it counts as searched, so it emits nothing, and it
+ * ends the burst it replaces.
+ *
  * Escape clears the text while there is text to clear (unless
  * `escapeClears` is `false`), and otherwise propagates, so an enclosing
  * dialog or launcher still closes on it. Clearing runs as an edit — the
@@ -100,10 +104,17 @@ export class TmSearch implements OnInit {
   constructor() {
     // External writes (a reset, a restored query) reach the element; the
     // directive's own writes already match it, so the caret never jumps.
+    // An external write is the consumer's own query, already searched: it
+    // becomes the value emitted last and ends any open burst, so a later
+    // edit back to the previous text still emits, and a pending trailing
+    // edge never re-emits text the write replaced.
     effect(() => {
       const value = this.value() ?? '';
       if (this.element.value !== value) {
         this.element.value = value;
+        clearTimeout(this.trailing);
+        this.trailing = undefined;
+        this.lastEmitted = value;
       }
     });
     // The engines' own `search` event (Enter, or their cancel button) would

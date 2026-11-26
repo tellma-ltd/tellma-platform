@@ -20,7 +20,7 @@ own.
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
 | `@tellma/core/path-picker` | `tm-path-picker`, a root entity's fields as a tree: column keys or Queryex paths, navigations as branches, the multilingual twins, image and file navigations, date parts in the active calendar, a search three navigation steps deep, `tm.path` drags whose text is valid Queryex, activation and selection; paths the user cannot reach never show | lazy, with the search page's column chooser and advanced filter, the role editor and the report studio |
-| `@tellma/core/search` | An entity's search page and the drill-through list, one host (`tm-search-host`, the entity routes' component): the page header with Create, the declared page actions, Refresh and the pager; the grid over one read per query, with its links, skeleton rows and the results region's states; the host's page context and page actions. A declaration's results component and display cells reach the page through `injectTmSearch` and the `TmSearchCell` base. Its query model (where a page's query state comes from, its canonical URL, how a change reaches history and the preferences, the rows request and its diagnostics) is internal; the types a declaration and the details page name (`TmTileDeclaration`, `TmCustomFilterDeclaration`, `TmSearchPageActionDeclaration`, `TmSearchContext`, `TmColumnPreference`, `TmSearchSnapshot`) are the primary's, types only | lazy, with the route |
+| `@tellma/core/search` | An entity's search page and the drill-through list, one host (`tm-search-host`, the entity routes' component): the page header with the search field, Create, the declared page actions, Refresh and the pager; the grid over one read per query, with its links, skeleton rows, the results region's states and its row menu (Open in new tab, Copy link); type-to-search, the field's pending Enter and the undo anchor; the host's page context and page actions. A declaration's results component and display cells reach the page through `injectTmSearch` and the `TmSearchCell` base. Its query model (where a page's query state comes from, its canonical URL, how a change reaches history and the preferences, the rows request and its diagnostics) is internal; the types a declaration and the details page name (`TmTileDeclaration`, `TmCustomFilterDeclaration`, `TmSearchPageActionDeclaration`, `TmSearchContext`, `TmColumnPreference`, `TmSearchSnapshot`) are the primary's, types only | lazy, with the route |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
@@ -1122,6 +1122,30 @@ canonical `TmSearchQuery`, the shown columns and their source). Pure functions o
   with the tile's paths and the tree's keys beside them) and the rows request, its leaves and
   named filters in a fixed order with their origins; `tmSearchDiagnose` maps a refused query's
   diagnostics back to those origins.
+
+## The search field
+
+The search page's field sits at the end of the header's first row: 240 px wide from sm, 320 px
+at xxl, and filling the row after the title below sm. It is a `tmSearch` input
+(`@tellma/core-ui/search-input`), which searches on the leading and trailing edges of a burst of
+typing, on Enter and on clear; Escape and the clear button clear it as one undoable edit. The
+progress bar shows from the first key until the result for the field's text lands, and for at
+least its minimum time.
+
+- **The highlight.** The field drives the grid's highlight (`tmGridDriver`): the arrow keys, Page
+  Up and Page Down move it while focus stays in the field, which names the highlighted row as its
+  active descendant. A result that lands while focus is in the field highlights its first row.
+- **Enter.** Over a fresh result, Enter opens the highlighted row (Mod+Enter in a new tab). Over a
+  stale one it flushes the search and waits: the result for the field's text opens its first row,
+  or says "No matches". A pointer press, a blur, another key or a navigation disarms the wait.
+- **Type-to-search.** A printable key or a paste that nothing on the page handled, with focus
+  outside any editable control and no dialog or popup open, replaces the field's text as one
+  undoable edit and moves focus there. A non-editable grid leaves pastes to the page for this.
+- **The anchor.** The first text change of a run keeps what showed before it: the query, its
+  result and the highlighted row. Text that returns to it (an undo of an accidental key) restores
+  that query with a URL replace, its rows from memory with no request, and the highlight. Any
+  other change of the query, a refresh, or a move of the permissions ends the run.
+- **Announcements.** The live region speaks a result's count once no key was pressed for 500 ms.
 
 ## The device time zone
 

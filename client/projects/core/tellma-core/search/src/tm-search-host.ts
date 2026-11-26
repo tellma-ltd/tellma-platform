@@ -12,6 +12,7 @@ import {
   DestroyRef,
   DOCUMENT,
   effect,
+  ElementRef,
   inject,
   Injector,
   input,
@@ -20,6 +21,7 @@ import {
   runInInjectionContext,
   signal,
   untracked,
+  viewChild,
   type InputSignal,
   type OnInit,
   type Signal,
@@ -27,8 +29,8 @@ import {
   type WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
-import { CircleAlert, Columns3, Ellipsis, Inbox, Plus, RefreshCw, SearchX } from 'lucide';
+import { ActivatedRoute, NavigationEnd, NavigationStart, Router, RouterLink } from '@angular/router';
+import { CircleAlert, Columns3, Ellipsis, ExternalLink, Inbox, Link, Plus, RefreshCw, Search, SearchX, X } from 'lucide';
 import {
   TmApi,
   TmApiError,
@@ -39,6 +41,7 @@ import {
   TmPageContexts,
   TmPermissions,
   TmPreferences,
+  TmShortcuts,
   TmTelemetry,
   TmUrls,
   type TmActionResult,
@@ -63,17 +66,20 @@ import {
 } from '@tellma/core';
 import { TmFormats, TmValue, tmGridColumnFor, type TmGridColumnConfig } from '@tellma/core/entity';
 import { tmPageStateKey } from '@tellma/core/memory';
-import { TmBreakpoints } from '@tellma/core-ui';
+import { TmBreakpoints, ɵtmControlSize } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
+import type { TmRowId } from '@tellma/core-ui/contracts';
 import {
   TmGrid,
   TmGridColumn,
   TmGridDisplayDef,
+  TmGridDriver,
   TmGridEmptyDef,
   TmGridHeaderAction,
   TmGridHeaderDef,
   TmGridLoadingDef,
   TmGridRowEndHeaderDef,
+  type TmGridDriverTarget,
   type TmGridRowActivation,
   type TmGridSort,
 } from '@tellma/core-ui/grid';
@@ -82,10 +88,11 @@ import { TmMenu, TmMenuTrigger, type TmMenuItem } from '@tellma/core-ui/menu';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPager } from '@tellma/core-ui/pager';
 import { TmProgressBar } from '@tellma/core-ui/progress';
+import { TmSearch } from '@tellma/core-ui/search-input';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
-import { tmSearchCanonical, tmSearchQuiet, tmSearchUrl } from './tm-search-canonical';
-import { tmSearchResize, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
+import { tmSearchCanonical, tmSearchQuiet, tmSearchText, tmSearchUrl } from './tm-search-canonical';
+import { tmSearchApply, tmSearchResize, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
 import { ɵTM_SEARCH_CONTEXT } from './tm-search-context';
 import { tmSearchDiagnose } from './tm-search-diagnostics';
 import {
@@ -121,6 +128,7 @@ import { tmSearchPlan, tmSearchRequest, type TmSearchRequest } from './tm-search
 import { tmSearchColumnsOf, tmSearchResolve, type TmSearchOpening } from './tm-search-resolve';
 import { TmSearchState as TmSearchStateView, type TmSearchRegionState } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
+import { tmSearchCapturesKey, tmSearchInsert, tmSearchOnTop, tmSearchPastedText } from './tm-search-typing';
 
 // The search host (spec 0030 §3, §5, §7, §13.1, §13.4, §14, §19): the page
 // of an entity's search route. It resolves the query state from the URL,
@@ -167,8 +175,39 @@ interface TmSearchGridColumn {
   readonly display: TmLazyComponent | null;
 }
 
+/**
+ * What showed just before a run of text changes, so an accidental key is
+ * free to undo: the query whole, the read's key, the result it answered and
+ * the highlighted row.
+ */
+interface TmSearchAnchor {
+  /** The query, the page included. */
+  readonly query: TmSearchQuery;
+  /** The read's key; `null` while the query read nothing. */
+  readonly key: TmSearchReadKey | null;
+  /** The result that answered the key; `null` when none had landed, so a restore reads again. */
+  readonly result: TmSearchResult | null;
+  /** The highlighted row's id. */
+  readonly highlight: TmId | null;
+}
+
+/** An Enter that arrived before the result for the field's text: the first row opens when that result lands. */
+interface TmSearchPending {
+  /** Whether the row opens in a new tab (Mod+Enter). */
+  readonly newTab: boolean;
+}
+
 /** No result and no failure: what shows before the first read lands. */
 const NOTHING_HELD: TmSearchHeld = { result: null, failure: null };
+
+/** How long the live region waits after the last key before it speaks, so it never speaks once per keystroke. */
+const ANNOUNCE_QUIET_MS = 500;
+
+/** The last search page's number, which keeps each page's element ids apart. */
+let pages = 0;
+
+/** The keys that only modify another, which leave a pending Enter armed. */
+const MODIFIER_KEYS: ReadonlySet<string> = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock']);
 
 /** How many rows the first load's skeleton draws. */
 const SKELETON_ROWS = 12;
@@ -238,6 +277,7 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
+    TmGridDriver,
     TmGridEmptyDef,
     TmGridHeaderAction,
     TmGridHeaderDef,
@@ -249,6 +289,7 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmPageHeader,
     TmPager,
     TmProgressBar,
+    TmSearch,
     TmSearchStateView,
     TmSkeleton,
     TmValue,
@@ -256,9 +297,49 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
   providers: [{ provide: ɵTM_SEARCH_CONTEXT, useFactory: (): TmSearchContext => inject(TmSearchHost).ɵcontext }],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- The header: the title, then Create and the page actions at the toolbar's start, Refresh and the pager at its end. -->
+    <!-- The header: the title and the search field, then Create and the page actions at the toolbar's start, Refresh
+         and the pager at its end. -->
     <tm-page-header>
-      <h1 tmPageTitle tabindex="-1">{{ title() }}</h1>
+      <h1 tmPageTitle tabindex="-1" [id]="ids.title">{{ title() }}</h1>
+
+      <!-- The search field: a native search input in the field chrome, from the first frame, so the header never
+           shifts. It filters as the user types and drives the results' highlight while focus stays in it; the clear
+           button keeps its slot while hidden, so the text never reflows. -->
+      <span
+        tmPageHeaderEnd
+        class="tm-search-host__field"
+        [class.tm-search-host__field--sm]="fieldSize() === 'sm'"
+        [class.tm-search-host__field--lg]="fieldSize() === 'lg'"
+      >
+        <tm-icon class="tm-search-host__magnifier" [svg]="glyphs.search" />
+        <input
+          #field
+          tmSearch
+          class="tm-search-host__input"
+          data-tm-search
+          [tmGridDriver]="driver"
+          [(value)]="fieldText"
+          [attr.maxlength]="maxLength()"
+          [placeholder]="text.search()"
+          [attr.aria-label]="text.search()"
+          [attr.aria-describedby]="ids.title + ' ' + ids.hint"
+          (search)="typed($event)"
+          (keydown)="fieldKey($event)"
+          (blur)="disarm()"
+        />
+        <button
+          type="button"
+          class="tm-search-host__clear"
+          data-tm-search-clear
+          [class.tm-search-host__clear--hidden]="fieldText() === ''"
+          [attr.aria-label]="text.clearSearch()"
+          [title]="text.clearSearch()"
+          (click)="clearField()"
+        >
+          <tm-icon [svg]="glyphs.clear" />
+        </button>
+        <span [id]="ids.hint" hidden>{{ text.searchHint() }}</span>
+      </span>
 
       <!-- Create: a link while the user may create, else a button that says why not; icon-only in the narrowest form.
            Each block has one root element, which the header projects by its selector. -->
@@ -348,9 +429,17 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
       }
     </tm-page-header>
 
-    <!-- The results region: busy while a read runs, the progress bar over the rows it keeps. -->
-    <div class="tm-search-host__region" [attr.aria-busy]="loading() ? 'true' : null" (pointerover)="hover($event)">
-      <tm-progress-bar class="tm-search-host__progress" [active]="loading() || (hatched() && body() === null)" [label]="text.loading()" />
+    <!-- The results region: busy while a read runs, the progress bar over the rows it keeps while the result is
+         stale, so it never blinks between keys. -->
+    <div
+      class="tm-search-host__region"
+      [id]="ids.region"
+      [attr.aria-busy]="loading() ? 'true' : null"
+      (pointerover)="hover($event)"
+      (click)="followed($event)"
+      (auxclick)="followed($event)"
+    >
+      <tm-progress-bar class="tm-search-host__progress" [active]="stale() || (hatched() && body() === null)" [label]="text.loading()" />
 
       @if (hatched()) {
         <!-- The declaration's own results component, which reads the page through its context. -->
@@ -374,6 +463,7 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
           [orderBy]="sort()"
           (orderByChange)="orderBy($event)"
           (rowActivate)="activate($event)"
+          [extraMenuItems]="rowMenu()"
         >
           @for (column of gridColumns(); track column.plan.key) {
             <tm-grid-column
@@ -491,7 +581,9 @@ export class TmSearchHost implements OnInit {
   readonly #tenantUrls = this.#urls.forTenant(ɵtmRoutedTenant(this.#path)!);
 
   readonly #announcer = inject(LiveAnnouncer);
-  readonly #window = inject(DOCUMENT).defaultView;
+  readonly #document = inject(DOCUMENT);
+  readonly #window = this.#document.defaultView;
+  readonly #element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
   readonly #breakpoints = inject(TmBreakpoints);
   readonly #contexts = inject(TmPageContexts);
 
@@ -605,6 +697,9 @@ export class TmSearchHost implements OnInit {
   /** The refresh generation, which Refresh, Try again and a reconnect bump. */
   readonly #generation = signal(0);
 
+  /** The anchor a restore applied: its key, which reads nothing, and the result that answers it. */
+  readonly #prefilled = signal<{ readonly key: TmSearchReadKey; readonly result: TmSearchResult } | null>(null);
+
   /** What started the next read, for its timing. */
   #source: TmSearchReadSource = 'load';
 
@@ -629,6 +724,18 @@ export class TmSearchHost implements OnInit {
     computation: (next, previous) => {
       if (next.request === null) {
         return null;
+      }
+      // An anchor restore reads its own key again, which the loader answers with the anchor's result and no
+      // request, unless the rebuilt request is one the anchor's result cannot answer (spec 0030 §5.2, §5.4).
+      const prefilled = untracked(this.#prefilled)?.key;
+      if (
+        prefilled !== undefined &&
+        next.identity === prefilled.canonical &&
+        next.cols === prefilled.cols &&
+        next.generation === prefilled.generation &&
+        !tmSearchRereads(prefilled.request, next.request)
+      ) {
+        return prefilled;
       }
       const held = previous?.value ?? null;
       const fresh =
@@ -677,8 +784,8 @@ export class TmSearchHost implements OnInit {
     },
   });
 
-  /** Whether a read runs. */
-  protected readonly loading = computed(() => this.#read.isLoading());
+  /** Whether a read runs: an anchor restore's, which answers from memory, does not count. */
+  protected readonly loading = computed(() => this.#read.isLoading() && this.#key() !== this.#prefilled()?.key);
 
   /** The rows on screen: the held result read through the current plan. */
   readonly #rows = computed<readonly TmPlanRow[]>(() => {
@@ -706,7 +813,7 @@ export class TmSearchHost implements OnInit {
     if (this.#state().payloadInvalid) {
       return 'error';
     }
-    if (this.#read.isLoading()) {
+    if (this.loading()) {
       return 'loading';
     }
     return this.#held().failure === null ? 'ready' : 'error';
@@ -749,6 +856,102 @@ export class TmSearchHost implements OnInit {
   /** Whether rows open: a declared link, or the details page the user may open. */
   protected readonly activation = computed(() =>
     this.#mode !== 'picker' && (this.#declared().rowLink !== undefined || this.#permissions.allows(this.#descriptor().name, 'details')()) ? 'row' : 'none',
+  );
+
+  // ---------------------------------------------------------------------------
+  // The search field: its text, the stale rule, the driver, the pending open and the anchor
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The field's text as typed; the query's `q` is its stripped, trimmed form.
+   * It starts from the query's text and follows the query only when the text
+   * changes from elsewhere (an address, Clear search, a page action), so the
+   * user's own spaces and keys in flight are never overwritten.
+   */
+  protected readonly fieldText = linkedSignal<string, string>({
+    source: this.entity,
+    computation: () => untracked(this.#state).query.q ?? '',
+  });
+
+  /** The field's `maxlength`: the entity's longest search; none while the limits are unknown. */
+  protected readonly maxLength = computed(() => this.#descriptor().limits.maxSearchLength || null);
+
+  /** The text the result on screen (or the failure in its place) answers; `null` before any read lands. */
+  readonly #answered = computed(() => {
+    const held = this.#held();
+    const key = (held.result ?? held.failure)?.key;
+    return key === undefined ? null : String(key.request.body['search'] ?? '');
+  });
+
+  /**
+   * Whether the result on screen is stale: a read runs, or the field's text,
+   * stripped and trimmed as the query carries it, differs from the text the
+   * result answers. The progress bar shows while it is, so it never blinks
+   * between keys.
+   */
+  protected readonly stale = computed(() => {
+    if (this.loading()) {
+      return true;
+    }
+    const answered = this.#answered();
+    return answered !== null && this.#fieldQuery() !== answered;
+  });
+
+  /** The field's text as the query would carry it. */
+  readonly #fieldQuery = computed(() => tmSearchText(this.fieldText(), this.#descriptor().limits.maxSearchLength));
+
+  /** The field's size: the workspace's, and `lg` below `sm`, as every control's. */
+  protected readonly fieldSize = ɵtmControlSize(signal(undefined));
+
+  /** The field's input element. */
+  private readonly field = viewChild<ElementRef<HTMLInputElement>>('field');
+
+  /** The field's search behaviour, which flushes a burst on Enter. */
+  private readonly search = viewChild(TmSearch);
+
+  /** The grid, while the page shows one. */
+  private readonly grid = viewChild(TmGrid);
+
+  /**
+   * What the field drives: the grid's highlight, every member forwarded, and
+   * Enter's open wrapped with the stale rule, so Enter always acts on the
+   * result for the text in the field. Tiles will take the grid's place here.
+   */
+  protected readonly driver: TmGridDriverTarget = {
+    activeRowId: computed(() => this.grid()?.activeRowId() ?? null),
+    controlsId: computed(() => this.grid()?.controlsId() ?? this.ids.region),
+    activeDescendantId: computed(() => this.grid()?.activeDescendantId() ?? null),
+    pageStep: computed(() => this.grid()?.pageStep() ?? 1),
+    moveActiveRow: (by) => this.grid()?.moveActiveRow(by),
+    activateRow: (rowId, options) => this.#enter(rowId, options?.newTab === true),
+  };
+
+  /** The Enter waiting for the result for the field's text; `null` while none is armed. */
+  #pending: TmSearchPending | null = null;
+
+  /** The anchor of the current run of text changes; `null` between runs. */
+  #anchor: TmSearchAnchor | null = null;
+
+  /** The result an anchor restore put back, which seeds no highlight. */
+  #restored: TmSearchResult | null = null;
+
+  /** When the last key was pressed on the page, on the page's clock: the live region waits for a pause. */
+  #keyAt = Number.NEGATIVE_INFINITY;
+
+  /** The announcement waiting for a pause in the keys. */
+  #announcing: ReturnType<typeof setTimeout> | undefined;
+
+  /** The ids the header and the field name each other by. */
+  protected readonly ids = ((page) => ({ title: `tm-search-title-${page}`, hint: `tm-search-hint-${page}`, region: `tm-search-region-${page}` }))(++pages);
+
+  /** The row context menu's own items, after the grid's copy items: they open or copy the highlighted row's target. */
+  protected readonly rowMenu = computed<readonly TmMenuItem[]>(() =>
+    this.activation() === 'none'
+      ? []
+      : [
+          { id: 'search.open-in-new-tab', label: this.text.openInNewTab(), icon: this.glyphs.newTab, action: () => this.#openHighlighted() },
+          { id: 'search.copy-link', label: this.text.copyLink(), icon: this.glyphs.link, action: () => this.#copyLink() },
+        ],
   );
 
   // ---------------------------------------------------------------------------
@@ -932,16 +1135,30 @@ export class TmSearchHost implements OnInit {
   /** The ids of the page actions running, which their buttons show busy. */
   protected readonly running: Signal<ReadonlySet<string>>;
 
-  /** The glyphs of the toolbar and the grid. */
-  protected readonly glyphs = { refresh: RefreshCw, create: Plus, columns: Columns3, more: Ellipsis };
+  /** The glyphs of the field, the toolbar, the grid and the row menu; the new-tab arrow points along the reading direction. */
+  protected readonly glyphs = {
+    search: Search,
+    clear: X,
+    refresh: RefreshCw,
+    create: Plus,
+    columns: Columns3,
+    more: Ellipsis,
+    newTab: { node: ExternalLink, mirrorInRtl: true },
+    link: Link,
+  };
 
-  /** The toolbar's and the grid's labels. */
+  /** The field's, the toolbar's, the grid's and the row menu's labels. */
   protected readonly text = {
+    search: this.#l10n.ɵtext('tm.search.search'),
+    searchHint: this.#l10n.ɵtext('tm.search.searchHint'),
+    clearSearch: this.#l10n.ɵtext('tm.search.clearSearch'),
     refresh: this.#l10n.ɵtext('tm.search.refresh'),
     more: this.#l10n.ɵtext('tm.search.more'),
     moreActions: this.#l10n.ɵtext('tm.search.moreActions'),
     chooseColumns: this.#l10n.ɵtext('tm.search.chooseColumns'),
     loading: this.#l10n.ɵtext('tm.search.loading'),
+    openInNewTab: this.#l10n.ɵtext('tm.search.openInNewTab'),
+    copyLink: this.#l10n.ɵtext('tm.search.copyLink'),
   };
 
   /** The page actions, for the host's own controls. */
@@ -1017,6 +1234,8 @@ export class TmSearchHost implements OnInit {
       const shown = new Set(state.columns.map(columnIdentity));
       if (columns.some((column) => !shown.has(columnIdentity(column)))) {
         untracked(() => {
+          // A change of the columns ends the run of text changes.
+          this.#dropAnchor();
           this.#state.set({ ...state, query: tmSearchCanonical(setting, { ...state.query, cols: undefined }, columns), columns, columnsFrom: from });
           this.#write(this.#canonical(), 'replace');
         });
@@ -1099,12 +1318,49 @@ export class TmSearchHost implements OnInit {
       }
     });
 
-    // --- Back, Forward and a link to this page with another query re-resolve the state ---
+    // --- A result that lands seeds the highlight while focus is in the field; a fresh result settles a pending Enter ---
+    let landed: TmSearchResult | null = null;
+    effect(() => {
+      const held = this.#held();
+      const stale = this.stale();
+      untracked(() => {
+        if (held.result !== landed) {
+          landed = held.result;
+          this.#seed(held.result);
+        }
+        if (!stale) {
+          this.#settle(held);
+        }
+      });
+    });
+
+    // --- A permissions or settings move drops the anchor; a language switch keeps it, and its restore re-reads only
+    // when the rebuilt request needs to (spec 0030 §5.2, §5.4) ---
+    let language = untracked(this.#l10n.language);
+    effect(() => {
+      this.#descriptor();
+      const current = this.#l10n.language();
+      untracked(() => {
+        if (current === language) {
+          this.#dropAnchor();
+        }
+        language = current;
+      });
+    });
+
+    // --- Back, Forward and a link to this page with another query re-resolve the state; a navigation to another
+    // page or through history disarms a pending Enter, while the page's own address writes do not ---
     this.#router.events.pipe(takeUntilDestroyed()).subscribe((event) => {
-      if (event instanceof NavigationEnd) {
+      if (event instanceof NavigationStart && (event.navigationTrigger === 'popstate' || tmPageStateKey(event.url) !== this.#from)) {
+        this.disarm();
+      } else if (event instanceof NavigationEnd) {
         this.#follow();
       }
     });
+
+    // TmShortcuts listens on the document from its creation; created first, it sees every key before type-to-search.
+    inject(TmShortcuts);
+    this.#destroyRef.onDestroy(() => clearTimeout(this.#announcing));
   }
 
   /**
@@ -1123,6 +1379,7 @@ export class TmSearchHost implements OnInit {
 
     this.#publish();
     this.#register();
+    this.#listen();
     this.#write(this.#canonical(), 'replace');
   }
 
@@ -1183,7 +1440,55 @@ export class TmSearchHost implements OnInit {
    * @param activation - The activation.
    */
   protected activate(activation: TmGridRowActivation<TmPlanRow>): void {
-    void this.#open(activation.row.id, activation.newTab);
+    if (this.#open(activation.row.id, activation.newTab)) {
+      this.#opened(activation.via, activation.newTab);
+    }
+  }
+
+  /**
+   * Reports a row opened through its link: a click, a Mod- or Shift-click,
+   * or a middle click on the display name's link, which the browser follows.
+   *
+   * @param event - The click or the auxiliary click.
+   */
+  protected followed(event: MouseEvent): void {
+    const link = event.target instanceof Element ? event.target.closest('a.tm-search-host__link') : null;
+    if (link === null || event.button !== (event.type === 'auxclick' ? 1 : 0)) {
+      return;
+    }
+    this.#opened('link', event.type === 'auxclick' || event.ctrlKey || event.metaKey || event.shiftKey);
+  }
+
+  /**
+   * Searches the text the field emitted: on the leading and trailing edges
+   * of a burst of typing, on Enter and on clear.
+   *
+   * @param text - The field's text.
+   */
+  protected typed(text: string): void {
+    this.#text(text, true);
+  }
+
+  /**
+   * A key in the field disarms a pending Enter; Enter itself, which arms
+   * one, and a bare modifier do not.
+   *
+   * @param event - The keydown.
+   */
+  protected fieldKey(event: KeyboardEvent): void {
+    if (event.key !== 'Enter' && !MODIFIER_KEYS.has(event.key)) {
+      this.disarm();
+    }
+  }
+
+  /** Disarms a pending Enter: focus left the field, a pointer pressed, or the page navigates. */
+  protected disarm(): void {
+    this.#pending = null;
+  }
+
+  /** The clear button: clears the field as an undoable edit, searches the empty text and keeps focus in the field. */
+  protected clearField(): void {
+    this.search()?.clear();
   }
 
   /**
@@ -1228,7 +1533,12 @@ export class TmSearchHost implements OnInit {
    * @param what - What to clear.
    */
   protected clear(what: 'filters' | 'search'): void {
-    this.#update(what === 'search' ? { q: undefined } : { columnFilters: undefined, filter: undefined, custom: undefined, inactive: undefined });
+    if (what === 'search') {
+      // A text change like the field's own, so the anchor restores the page from before the run.
+      this.#text('', false);
+    } else {
+      this.#update({ columnFilters: undefined, filter: undefined, custom: undefined, inactive: undefined });
+    }
   }
 
   /** Reads the query again: the error view's Try again. */
@@ -1263,14 +1573,24 @@ export class TmSearchHost implements OnInit {
 
   /**
    * Applies a transition: the state, the preferences it writes, and the URL.
+   * Any change but the text's ends the run of text changes, so the next one
+   * takes a new anchor; a change that did not come from the field shows its
+   * text there.
    *
    * @param transition - The transition.
    * @param source - What the read it starts reports.
    * @param history - How the URL reaches history; the transition's own when omitted.
+   * @param fromField - Whether the field's own text made the change, so the field already shows it.
    */
-  #apply(transition: TmSearchTransition, source: TmSearchReadSource, history = transition.history): void {
+  #apply(transition: TmSearchTransition, source: TmSearchReadSource, history = transition.history, fromField = false): void {
+    if (source !== 'typing') {
+      this.#dropAnchor();
+    }
     this.#source = source;
     this.#state.set(transition.state);
+    if (!fromField) {
+      this.#syncField();
+    }
     // --- The preferences the change writes ---
     const entity = this.#descriptor().name;
     const { columns, view, pageSize } = transition.preferences;
@@ -1288,10 +1608,253 @@ export class TmSearchHost implements OnInit {
     }
   }
 
-  /** Reads the current query again under a new generation. */
+  /** Reads the current query again under a new generation; the anchor's rows may be out of date now, so it drops. */
   #refresh(): void {
+    this.#dropAnchor();
     this.#source = 'refresh';
     this.#generation.update((generation) => generation + 1);
+  }
+
+  /**
+   * Searches a text, from the field or from Clear search. The first change
+   * of a run takes the anchor, a snapshot of what shows now; a text that
+   * comes back to the anchor's restores it, with no request when the anchor
+   * held its result (spec 0030 §5.2).
+   *
+   * @param text - The text, as typed.
+   * @param fromField - Whether the field emitted it, so it shows there already.
+   */
+  #text(text: string, fromField: boolean): void {
+    const q = tmSearchText(text, this.#descriptor().limits.maxSearchLength);
+    const anchor = this.#anchor;
+    if (anchor !== null && q === (anchor.query.q ?? '')) {
+      this.#restore(anchor, fromField);
+      return;
+    }
+    const state = this.#state();
+    if (q === (state.query.q ?? '')) {
+      // Only spaces or stripped controls changed: the query stays, and so do its rows.
+      if (!fromField) {
+        this.#syncField();
+      }
+      return;
+    }
+    this.#anchor ??= this.#snapshot();
+    this.#prefilled.set(null);
+    this.#apply(tmSearchUpdate(this.#setting(), state, { q: q === '' ? undefined : q }), 'typing', undefined, fromField);
+  }
+
+  /**
+   * The anchor of a run of text changes: the query now, its key and the
+   * result that answers it, and the highlighted row. A result that does not
+   * answer the query yet (a read still runs) is not kept, so a restore
+   * reads again.
+   *
+   * @returns The anchor.
+   */
+  #snapshot(): TmSearchAnchor {
+    const key = this.#key();
+    const held = this.#held();
+    const answered = key !== null && held.failure === null && held.result?.key === key && !this.loading();
+    return { query: this.#state().query, key, result: answered ? held.result : null, highlight: this.highlight() };
+  }
+
+  /**
+   * Restores an anchor: its query whole, with a URL replace and no paging
+   * rule, its rows with no request when it held them, and its highlighted
+   * row. The grid restores its scroll and active cell from its store by the
+   * rows' content key; the highlight is not seeded.
+   *
+   * @param anchor - The anchor.
+   * @param fromField - Whether the field emitted the text that returned to it.
+   */
+  #restore(anchor: TmSearchAnchor, fromField: boolean): void {
+    this.#anchor = null;
+    const { key, result } = anchor;
+    this.#prefilled.set(key === null || result === null ? null : { key, result });
+    this.#restored = result;
+    this.#apply(tmSearchApply(this.#setting(), this.#state(), anchor.query), 'typing', undefined, fromField);
+    this.highlight.set(anchor.highlight);
+  }
+
+  /** Ends the run of text changes: the next one takes a new anchor, and nothing restores from memory. */
+  #dropAnchor(): void {
+    this.#anchor = null;
+    this.#prefilled.set(null);
+  }
+
+  /** Shows the query's text in the field when the field's own text no longer carries it. */
+  #syncField(): void {
+    const q = this.#state().query.q ?? '';
+    if (untracked(this.#fieldQuery) !== q) {
+      this.fieldText.set(q);
+    }
+  }
+
+  /**
+   * The field's Enter, through the driver: on a fresh result it opens the
+   * highlighted row (Mod+Enter, in a new tab); on a stale one it flushes the
+   * search and arms a pending open, which the result for the field's text
+   * settles (spec 0030 §6.3).
+   *
+   * @param rowId - The row to open; the highlighted one when omitted.
+   * @param newTab - Whether it opens in a new tab.
+   * @returns Whether Enter was taken; with no row to open on a fresh result, it stays the field's.
+   */
+  #enter(rowId: TmRowId | undefined, newTab: boolean): boolean {
+    const grid = this.grid();
+    if (grid === undefined) {
+      return false;
+    }
+    if (this.activation() === 'row' && untracked(this.stale)) {
+      this.search()?.flush();
+      this.#pending = { newTab };
+      return true;
+    }
+    return grid.activateRow(rowId, { newTab });
+  }
+
+  /**
+   * Seeds the highlight from a result that landed: the first row while focus
+   * is in the field (in a search tree, the first match); otherwise, and after
+   * an anchor restore, the highlighted row stays.
+   *
+   * @param result - The result.
+   */
+  #seed(result: TmSearchResult | null): void {
+    if (result === null || result === this.#restored || this.#document.activeElement !== this.field()?.nativeElement) {
+      return;
+    }
+    const first = this.#rows()[0];
+    if (first !== undefined) {
+      this.highlight.set(first.id);
+    }
+  }
+
+  /**
+   * Settles a pending Enter once the result for the field's text is fresh:
+   * its first row opens (after an anchor restore, the restored highlight
+   * when it shows); an empty result or a failure disarms it, and an empty
+   * one says "No matches".
+   *
+   * @param held - What the host holds now.
+   */
+  #settle(held: TmSearchHeld): void {
+    const pending = this.#pending;
+    if (pending === null) {
+      return;
+    }
+    this.#pending = null;
+    if (held.result === null) {
+      return;
+    }
+    const rows = this.#rows();
+    if (rows.length === 0) {
+      this.#speak(this.#l10n.ɵtext('tm.search.noMatches')());
+      return;
+    }
+    const restored = held.result === this.#restored ? this.highlight() : null;
+    const id = restored !== null && this.#byId().has(restored) ? restored : rows[0]!.id;
+    this.highlight.set(id);
+    if (this.#open(id, pending.newTab)) {
+      this.#opened('pending', pending.newTab);
+    }
+  }
+
+  /** Opens the highlighted row's target in a new tab: the row menu's item. */
+  #openHighlighted(): void {
+    const id = this.highlight();
+    if (id !== null) {
+      this.#open(id, true);
+    }
+  }
+
+  /** Copies the highlighted row's link, as an absolute URL, and says whether it was copied. */
+  #copyLink(): void {
+    const id = this.highlight();
+    const url = id === null ? null : this.ɵcontext.url(id);
+    if (url === null) {
+      return;
+    }
+    const href = new URL(this.#location.prepareExternalUrl(url), this.#document.baseURI).href;
+    // The write starts synchronously inside the gesture, which the clipboard requires.
+    let written: Promise<void>;
+    try {
+      written = this.#window!.navigator.clipboard.writeText(href);
+    } catch (error) {
+      // No clipboard here, such as on an insecure origin.
+      written = Promise.reject(error);
+    }
+    const say = (key: 'linkCopied' | 'linkCopyFailed'): void => void this.#announcer.announce(this.#l10n.ɵtext(`tm.search.${key}`)(), 'polite');
+    written.then(
+      () => say('linkCopied'),
+      () => say('linkCopyFailed'),
+    );
+  }
+
+  /**
+   * Reports a row the user opened, sampled.
+   *
+   * @param via - How: a pointer or the keyboard on the row, its link, or a pending Enter.
+   * @param newTab - Whether it opened in a new tab.
+   */
+  #opened(via: 'pointer' | 'keyboard' | 'link' | 'pending', newTab: boolean): void {
+    this.#telemetry.event('tm.search.open', { via, newTab }, { sampled: true });
+  }
+
+  /**
+   * Listens for type-to-search: a printable key or a paste the page leaves
+   * unhandled lands in the field (spec 0030 §6.2). The listener runs in the
+   * bubble phase on the document, or on the picker modal's pane in picker
+   * mode, so focused components and the app's shortcuts see the key first.
+   * It also notes every key for the live region's pause, and every pointer
+   * press, which disarms a pending Enter.
+   */
+  #listen(): void {
+    const scope: Document | Element = (this.#mode === 'picker' ? this.#element.closest('.cdk-overlay-pane') : null) ?? this.#document;
+    const onTop = (): boolean => tmSearchOnTop(this.#mode, scope, this.#contexts.overlays().length);
+    const field = (): HTMLInputElement | null => {
+      const element = this.field()?.nativeElement;
+      return element?.isConnected === true ? element : null;
+    };
+    const keydown = (event: Event): void => {
+      this.#keyAt = performance.now();
+      const input = field();
+      if (input !== null && tmSearchCapturesKey(event as KeyboardEvent, scope, onTop)) {
+        event.preventDefault();
+        this.#typeIn(input, (event as KeyboardEvent).key);
+      }
+    };
+    const paste = (event: Event): void => {
+      const input = field();
+      const text = input === null ? null : tmSearchPastedText(event as ClipboardEvent, scope, onTop);
+      if (input !== null && text !== null) {
+        event.preventDefault();
+        this.#typeIn(input, text);
+      }
+    };
+    const press = (): void => this.disarm();
+    scope.addEventListener('keydown', keydown);
+    scope.addEventListener('paste', paste);
+    scope.addEventListener('pointerdown', press, { capture: true, passive: true });
+    this.#destroyRef.onDestroy(() => {
+      scope.removeEventListener('keydown', keydown);
+      scope.removeEventListener('paste', paste);
+      scope.removeEventListener('pointerdown', press, { capture: true });
+    });
+  }
+
+  /**
+   * Types a captured key or a pasted text into the field, replacing its
+   * text as one undoable edit; the input event searches it as typed.
+   *
+   * @param input - The field.
+   * @param text - The key or the pasted text.
+   */
+  #typeIn(input: HTMLInputElement, text: string): void {
+    this.#pending = null;
+    this.#telemetry.event('tm.search.type-to-search', undefined, { sampled: true });
+    tmSearchInsert(input, text);
   }
 
   /**
@@ -1377,8 +1940,12 @@ export class TmSearchHost implements OnInit {
       return;
     }
     const resolution = tmSearchResolve(this.#setting(), this.#opening(navigation));
+    // Another query from the address ends the run of text changes and any pending Enter, and shows its text.
+    this.#dropAnchor();
+    this.disarm();
     this.#source = 'load';
     this.#state.set(resolution.state);
+    this.#syncField();
     this.#write(resolution.canonical, 'replace');
   }
 
@@ -1425,6 +1992,12 @@ export class TmSearchHost implements OnInit {
    */
   async #load(key: TmSearchReadKey, signal: AbortSignal): Promise<TmSearchOutcome> {
     const started = performance.now();
+    // An anchor restore answers from memory: its result, with no request.
+    const prefilled = untracked(this.#prefilled);
+    if (prefilled !== null && prefilled.key === key) {
+      this.#time({ ...key, source: 'anchor' }, started, prefilled.result.set.rows.length === 0 ? 'empty' : 'ok');
+      return prefilled.result;
+    }
     const entity = untracked(this.#descriptor).name;
     try {
       const wire = await this.#api.read<TmSearchWire>(key.request.route, key.request.body, { signal });
@@ -1505,24 +2078,45 @@ export class TmSearchHost implements OnInit {
 
   /**
    * Announces a settled result: its count, or that the rows on screen were
-   * kept through an offline re-read. A state announces itself.
+   * kept through an offline re-read. A state announces itself. What the
+   * host held before and has not said yet is never said: the new result
+   * supersedes it.
    *
    * @param held - What the host holds now.
    * @param previous - What it held before.
    */
   #announce(held: TmSearchHeld, previous: TmSearchHeld): void {
+    clearTimeout(this.#announcing);
     if (held.failure?.error.kind === 'offline' && held.result !== null) {
-      void this.#announcer.announce(this.#l10n.ɵtext('tm.search.offline')(), 'polite');
+      this.#speak(this.#l10n.ɵtext('tm.search.offline')());
       return;
     }
     const result = held.result;
     if (result !== null && result !== previous.result && result.set.rows.length > 0) {
       const count = result.total ?? result.set.rows.length;
-      void this.#announcer.announce(this.#l10n.ɵtext(result.capped ? 'tm.search.resultsAtLeast' : 'tm.search.results', { count })(), 'polite');
+      this.#speak(this.#l10n.ɵtext(result.capped ? 'tm.search.resultsAtLeast' : 'tm.search.results', { count })());
     }
     // A leaf or a named filter from code that the server refused is a distribution's bug.
     if (held.failure !== null && held.failure !== previous.failure && tmSearchDiagnose(held.failure.key.request, this.#mode, held.failure.error)?.state === 'invalid-code') {
       this.#telemetry.event('tm.search.custom-filter-invalid');
+    }
+  }
+
+  /**
+   * Speaks a message in the polite live region once no key was pressed for
+   * {@link ANNOUNCE_QUIET_MS}, so typing never makes it speak once per key
+   * (spec 0030 §5.2). A key pressed while it waits puts it off again; a
+   * newer message replaces it.
+   *
+   * @param message - The message.
+   */
+  #speak(message: string): void {
+    clearTimeout(this.#announcing);
+    const wait = this.#keyAt + ANNOUNCE_QUIET_MS - performance.now();
+    if (wait > 0) {
+      this.#announcing = setTimeout(() => this.#speak(message), wait);
+    } else {
+      void this.#announcer.announce(message, 'polite');
     }
   }
 

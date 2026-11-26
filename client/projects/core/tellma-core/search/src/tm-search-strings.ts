@@ -25,6 +25,14 @@ export const ɵTM_SEARCH_STRINGS_EN = {
   moreActions: 'More actions',
   chooseColumns: 'Choose columns',
   loading: 'Loading results',
+  // The search field: its name, the hint that describes it, and its clear button's name (clearSearch).
+  search: 'Search',
+  searchHint: 'Arrow keys move through the results. Enter opens one.',
+  // The row context menu's own items, and what copying a row's link says.
+  openInNewTab: 'Open in new tab',
+  copyLink: 'Copy link',
+  linkCopied: 'Link copied',
+  linkCopyFailed: "The link couldn't be copied",
   // What the live region says once a result settles.
   results: '{count, plural, one {# result} other {# results}}',
   resultsAtLeast: '{count}+ results',

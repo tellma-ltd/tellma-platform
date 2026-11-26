@@ -3761,10 +3761,17 @@ export class ɵTmGridCore<T>
    * The scroller's paste handler: reduces the richest available clipboard
    * flavor through the resolution ladder (§9.3) and hands it to the engine.
    * While an editor or a draft is open the event stays with its input
-   * untouched (plain text editing inside the cell).
+   * untouched (plain text editing inside the cell), and a grid that cannot
+   * be edited leaves every paste unhandled, to the page.
    */
   onPaste(event: ClipboardEvent): void {
     if (this.ignoresClipboard(event)) {
+      return;
+    }
+    // A grid that cannot be edited has nothing to paste into: the event
+    // stays the page's, unhandled, so a page that gives pasted text a home
+    // (a search page's field, spec 0030 §6.2) receives it.
+    if (!untracked(this.editable)) {
       return;
     }
     const engine = this.engineInstance;

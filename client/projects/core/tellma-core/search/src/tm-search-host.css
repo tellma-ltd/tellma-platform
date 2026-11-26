@@ -16,6 +16,144 @@
   min-block-size: 0;
 }
 
+/* ---- the search field ---- */
+
+/* The field's box: the form-field chrome (border, fill, the focus glow on
+   the whole box) around the magnifier, the input and the clear slot, at the
+   field height of the resolved size; 46 px below sm, as every control. Its
+   width is fixed per width class (spec 0030 §3.2), never by its text. */
+.tm-search-host__field {
+  --tm-search-field-block-size: var(--field-height);
+  --tm-search-field-font-size: var(--field-font-size);
+  --tm-search-field-padding-x: var(--field-padding-x);
+
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-inline-size: 160px;
+  block-size: var(--tm-search-field-block-size);
+  padding-inline: var(--tm-search-field-padding-x);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  background: var(--field-bg);
+  color: var(--field-text);
+  font-family: var(--font-ui);
+  font-size: var(--tm-search-field-font-size);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.tm-search-host__field--sm {
+  --tm-search-field-block-size: var(--field-height-sm);
+  --tm-search-field-font-size: var(--field-font-size-sm);
+  --tm-search-field-padding-x: var(--field-padding-xsm);
+}
+
+.tm-search-host__field--lg {
+  --tm-search-field-block-size: var(--field-height-lg);
+  --tm-search-field-font-size: var(--field-font-size-lg);
+  --tm-search-field-padding-x: var(--field-padding-xlg);
+}
+
+/* From sm up the field is 240 px wide, 320 px at xxl; below sm it fills
+   row 1 after the title, never narrower than 160 px. */
+@media (width >= 576px) {
+  .tm-search-host__field {
+    flex: none;
+    inline-size: 240px;
+  }
+}
+
+@media (width >= 1440px) {
+  .tm-search-host__field {
+    inline-size: 320px;
+  }
+}
+
+.tm-search-host__field:hover {
+  border-color: var(--field-border-hover);
+}
+
+/* The glow wraps the whole box, as a form field's does. A transparent real
+   outline beneath it carries focus in forced colors, which strip shadows. */
+.tm-search-host__field:focus-within {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+.tm-search-host__magnifier {
+  --icon-size: var(--space-4);
+
+  flex: none;
+  color: var(--field-icon);
+}
+
+/* The input fills the box, which draws its chrome and its focus. Its own
+   width is zero, so its text size never sizes the box. */
+.tm-search-host__input {
+  flex: 1 1 0;
+  inline-size: 0;
+  min-inline-size: 0;
+  block-size: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+.tm-search-host__input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+/* The clear button: the square trailing button of tm-search-field. Hidden,
+   it keeps its slot, so the text never reflows, and leaves the tab order
+   and the accessibility tree. */
+.tm-search-host__clear {
+  --icon-size: var(--space-4);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--field-icon);
+  cursor: pointer;
+}
+
+.tm-search-host__clear:hover {
+  background: var(--surface-hover);
+  color: var(--field-text);
+}
+
+.tm-search-host__clear:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+.tm-search-host__clear--hidden {
+  visibility: hidden;
+}
+
+@media (forced-colors: active) {
+  .tm-search-host__clear {
+    color: ButtonText;
+  }
+}
+
 /* ---- the results region ---- */
 
 .tm-search-host__region {

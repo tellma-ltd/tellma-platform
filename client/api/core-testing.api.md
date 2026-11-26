@@ -344,10 +344,13 @@ export interface TmSearchPageCreate {
 
 // @public
 export class TmSearchPageHarness extends ComponentHarness {
+    clearSearchField(): Promise<void>;
     clickStateAction(label: string): Promise<void>;
     getCreate(): Promise<TmSearchPageCreate | null>;
     getGrid(): Promise<TmGridHarness | null>;
     getPager(): Promise<TmPagerHarness>;
+    getSearchPlaceholder(): Promise<string | null>;
+    getSearchText(): Promise<string>;
     getState(): Promise<TmEmptyStateHarness | null>;
     getStateActions(): Promise<string[]>;
     getStateHeading(): Promise<string | null>;
@@ -356,6 +359,7 @@ export class TmSearchPageHarness extends ComponentHarness {
     hasColumnsButton(): Promise<boolean>;
     hasMore(): Promise<boolean>;
     static hostSelector: string;
+    isClearSearchShown(): Promise<boolean>;
     isFirstLoad(): Promise<boolean>;
     isLoading(): Promise<boolean>;
     refresh(): Promise<void>;

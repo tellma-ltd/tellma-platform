@@ -6,27 +6,6 @@
 
 import * as _angular_core from '@angular/core';
 import * as lucide from 'lucide';
-import { OnInit } from '@angular/core';
-
-// @public
-export class TmSearch implements OnInit {
-    constructor();
-    clear(): void;
-    readonly debounce: _angular_core.InputSignalWithTransform<number, unknown>;
-    readonly escapeClears: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    flush(): void;
-    ngOnInit(): void;
-    protected onBlur(): void;
-    protected onCompositionEnd(): void;
-    protected onCompositionStart(): void;
-    protected onInput(event: Event): void;
-    protected onKeydown(event: KeyboardEvent): void;
-    protected onKeyup(): void;
-    readonly search: _angular_core.OutputEmitterRef<string>;
-    readonly value: _angular_core.ModelSignal<string>;
-    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmSearch, "input[tmSearch]", ["tmSearch"], { "value": { "alias": "value"; "required": false; "isSignal": true; }; "debounce": { "alias": "debounce"; "required": false; "isSignal": true; }; "escapeClears": { "alias": "escapeClears"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "search": "search"; }, never, never, true, never>;
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearch, never>;
-}
 
 // @public
 export class TmSearchField {
