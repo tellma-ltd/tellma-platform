@@ -384,6 +384,32 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-354 (orchestrator, 2026-11-26): PC-126 landed; PC-F106 is released; PC-129 takes pc-4
+
+- PC-126 landed at bf0dc0f5, with CI 45774106884 green on that commit, as a fast-forward over 84cf2ede.
+- PC-F106 is released next, per D-339 and D-351. It merges platform-core and integrates.
+- check_deps --ready lists PC-122 and PC-129 at T1, and four T3 items. PC-122 is already held in pc-3.
+  - pc-4 is a checkpoint slot, so T1 comes before T3 (D-229). PC-129 takes it, branched at bf0dc0f5. Its D-289 wait for PC-126 is now met.
+- The release queue after PC-F106 is PC-154, then PC-F89 and PC-F94, then PC-122, then PC-F91.
+
+### D-353 (orchestrator, 2026-11-26): PC-F91 R1 rulings
+
+- R1 on 6741da4a is 0 blocking, 0 major, 3 minor, so fix1 follows with no R2 (§4.4).
+- R1-2 is fixed: a test that every per-icon import path exists in the installed lucide. Lucide is not pinned; that stays with Ahmad.
+- R1-3 is fixed: the two doc examples name the icon's own module.
+- R1-1 is deferred to a new fix item, PC-F108. The guard for distributions depends on Ahmad's answers on spec 0023 §3.1's example and the spec 0024 §2.1 preset rule list.
+- After fix1, PC-F91 is held and joins the end of the release queue.
+
+### D-352 (orchestrator, 2026-11-26): PC-126 integrates again with an end-slot fix
+
+- PC-126 merged PC-F105 cleanly and pushed bf0dc0f5. CI 45774106884 is running.
+- Under the delay harness one cold entry failed at 0.000620. PC-F105's failure message named the source: the page header's end slot widened by the pager status's 74 px.
+  - The fix is in product code: Refresh and the pager are not rendered until the first read answers, so the empty slot is display:none and then arrives as a new box. Accepted, since a new box is not a shift and the test is not loosened.
+  - It supersedes D-347's visibility:hidden mechanism.
+- Acme initialJs 223.13, under 230 with no warning. searchRoute 104.12 of 110. No ceiling raised.
+- The Windows EPERM rename in the sign-in cookie cache, seen once locally, goes to the flaky table as a local watch. It is not a CI failure, so no fix item yet (D-011 applies if it recurs).
+- The spec question from D-344 stands for Ahmad, now with this mechanism: 0030 §14 or its stable-layout bullet should say the trailing group is not rendered until the first answer.
+
 ### D-351 (orchestrator, 2026-11-26): PC-F105 landed; PC-126 is released; PC-F91 fills pc-f3
 
 - PC-F105 landed at e742b04d, with CI 45760757525 green on that commit, as a fast-forward over e7bd09c4.
