@@ -13,6 +13,7 @@ import {
   TmUrls,
   tmFeature,
   type TmFeature,
+  type TmLaunchDocs,
   type TmLazyComponent,
 } from '@tellma/core';
 import { TmRecents, type TmRecentPage } from '@tellma/core/recents';
@@ -20,6 +21,7 @@ import { TmIcon } from '@tellma/core-ui/icon';
 
 import {
   TM_COLD_SYNC,
+  TM_T17_DOCS,
   tmAppRig,
   tmNavigate,
   tmRouteTestFeature,
@@ -27,17 +29,32 @@ import {
   tmSettleUntil,
   type TmAppRig,
 } from '../../src/routes/tm-app.testing.util';
-import { tmTimeOfDay } from './tm-home-greeting';
+import { tmTimeOfDay, tmUntilNextBoundary } from './tm-home-greeting';
 import { TM_HOME_WIDGETS } from './tm-home-widgets';
 
 // The tenant home in a whole test app at /17: the route's home skeleton,
 // then the greeting and the recently visited list, the only home widget
 // whose type the app declares; the greeting's parts of the day, its name
 // and its date, kept current by its timer and a return to the tab; the
-// recent pages as links; and a feature's home hatch in the page's place.
+// recent pages as links; and a feature's home hatch in the page's place,
+// which takes the arrival focus once it renders.
 
 /** 09:00 on Thursday 26 November 2026 in Riyadh, tenant 17's zone. */
 const MORNING = Date.UTC(2026, 10, 26, 6, 0, 0);
+
+/** An hour, in milliseconds. */
+const HOUR = 3_600_000;
+
+/**
+ * The hour of an instant in a time zone, on a 24-hour clock.
+ *
+ * @param at - The instant, in epoch milliseconds.
+ * @param timeZone - The IANA zone.
+ * @returns The hour, 0 to 23.
+ */
+function hourIn(at: number, timeZone: string): number {
+  return Number(new Intl.DateTimeFormat('en-US', { timeZone, hourCycle: 'h23', hour: 'numeric' }).format(at));
+}
 
 /** The test app's clock, which a spec moves. */
 let now = MORNING;
@@ -72,7 +89,7 @@ class TmAcmeHome {}
 /**
  * Starts the test app at its clock, with more features or providers.
  *
- * @param options - The features beside the test feature, the providers, and whether the entry is cold.
+ * @param options - The features beside the test feature, the providers, whether the entry is cold, and tenant 17's launch documents.
  * @returns The rig.
  */
 function start(
@@ -80,10 +97,12 @@ function start(
     readonly features?: readonly TmFeature[];
     readonly providers?: readonly Provider[];
     readonly cold?: boolean;
+    readonly docs?: TmLaunchDocs;
   } = {},
 ): Promise<TmAppRig> {
   return tmAppRig({
     cold: options.cold,
+    docs: options.docs,
     features: [tmRouteTestFeature(), ...(options.features ?? [])],
     providers: [{ provide: TM_NOW, useValue: () => now }, ...(options.providers ?? [])],
   });
@@ -196,6 +215,26 @@ describe('the tenant home', () => {
     );
   });
 
+  it("names the user by the name in the active content slot, else the record's first", async () => {
+    // The tenant's second content language is the user's: the name is the record's second.
+    const user = { ...TM_T17_DOCS.me.user, name: 'فرح', name2: 'Farah Second' };
+    await start({ docs: { ...TM_T17_DOCS, me: { ...TM_T17_DOCS.me, user } } });
+    const slot = vi.spyOn(TestBed.inject(TmLocalization), 'contentSlot').mockReturnValue(2);
+    const harness = await tmNavigate('/17');
+    await tmSettleUntil(() => greeting(harness) !== '', 'the greeting renders');
+    expect(greeting(harness)).toBe('Good morning, Farah Second');
+    expect(slot).toHaveBeenCalled();
+  });
+
+  it("names the user by the record's first name when the active slot's is blank", async () => {
+    const user = { ...TM_T17_DOCS.me.user, name: 'Farah', name2: '  ' };
+    await start({ docs: { ...TM_T17_DOCS, me: { ...TM_T17_DOCS.me, user } } });
+    vi.spyOn(TestBed.inject(TmLocalization), 'contentSlot').mockReturnValue(2);
+    const harness = await tmNavigate('/17');
+    await tmSettleUntil(() => greeting(harness) !== '', 'the greeting renders');
+    expect(greeting(harness)).toBe('Good morning, Farah');
+  });
+
   it('greets anew at the next boundary in the display zone, and on a return to the tab', async () => {
     // Half a second before noon in Riyadh.
     now = Date.UTC(2026, 10, 26, 8, 59, 59, 500);
@@ -214,6 +253,24 @@ describe('the tenant home', () => {
     document.dispatchEvent(new Event('visibilitychange'));
     await tmSettle();
     expect(greeting(harness)).toBe('Good evening, Farah');
+  });
+
+  it.each([
+    // 00:30 on the night Berlin springs from 02:00 to 03:00; 05:00 is 03:00 UTC.
+    ['Europe/Berlin', Date.UTC(2026, 2, 28, 23, 30), Date.UTC(2026, 2, 29, 3, 0)],
+    // 00:30 on the night New York springs from 02:00 to 03:00; 05:00 is 09:00 UTC.
+    ['America/New_York', Date.UTC(2026, 2, 8, 5, 30), Date.UTC(2026, 2, 8, 9, 0)],
+  ])('greets the morning at 05:00 after a night that springs forward in %s, waiting an hour at most', (zone, from, morning) => {
+    // The timer's waits, one after another, until the greeting is the morning's.
+    const waits: number[] = [];
+    let at = from;
+    while (tmTimeOfDay(hourIn(at, zone)) !== 'morning') {
+      const wait = tmUntilNextBoundary(at, zone);
+      waits.push(wait);
+      at += wait;
+    }
+    expect(at).toBe(morning);
+    expect(Math.max(...waits)).toBeLessThanOrEqual(HOUR);
   });
 
   it("lists the recent pages as links with their launcher icons, else their family's, and preloads one on hover or focus", async () => {
@@ -259,6 +316,22 @@ describe('the tenant home', () => {
     expect(page(harness).querySelector('tm-acme-home')).not.toBeNull();
     expect(page(harness).querySelector('tm-home-page')).toBeNull();
     expect(hatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives a feature's home hatch the arrival focus on an in-app entry, once the hatch renders", async () => {
+    const chunk = deferred<typeof TmAcmeHome>();
+    const rig = await start({ features: [tmFeature({ key: 'shop', home: () => chunk.promise })] });
+    const harness = await tmNavigate('/17/settings');
+    await tmSettle();
+
+    // The home's host draws the skeleton while the hatch's chunk loads; the focus waits for the hatch.
+    await rig.router.navigateByUrl('/17');
+    await tmSettleUntil(() => page(harness).querySelector('tm-home-host tm-page-skeleton') !== null, 'the skeleton draws');
+    chunk.resolve(TmAcmeHome);
+    await tmSettleUntil(() => page(harness).querySelector('tm-acme-home') !== null, 'the hatch renders');
+    await tmSettle();
+
+    expect(document.activeElement).toBe(page(harness).querySelector('tm-acme-home h1'));
   });
 
   it("leaves the platform's home page in place of a hatch whose chunk fails to load", async () => {

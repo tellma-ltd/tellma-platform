@@ -14,6 +14,12 @@ import { expect, test } from '../support/acme';
 // for its dwell then shows in that list as a link back to it.
 
 test.describe('the tenant home', () => {
+  // On a localhost scope the Angular worker prefetches its whole shell group before it answers
+  // any fetch, so a worker registered on the landing would hold the launcher's and the Centers
+  // page's lazy chunks behind that prefetch, which a production scope runs at idle instead.
+  // This test is not about the worker.
+  test.use({ serviceWorkers: 'block' });
+
   test('a sign-in lands on the home, its greeting over the recently visited pages, which list a page once visited', async ({
     page,
     text,
@@ -49,8 +55,21 @@ test.describe('the tenant home', () => {
     ).toHaveAttribute('href', '/1/centers');
     await page.keyboard.press('Enter');
     await expect(page).toHaveURL(/\/1\/centers$/);
-    // A visit counts once the page has shown for two seconds.
-    await page.waitForTimeout(2_500);
+    // A visit counts once the page has shown for two seconds: the launcher's
+    // recent pages, which read the same list, show it then. The launcher
+    // opens on its last query, which the spec clears to show its lists.
+    await page.keyboard.press('ControlOrMeta+K');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    const query = page.getByRole('banner').getByRole('combobox');
+    await query.fill('');
+    await expect(query).toHaveValue('');
+    await expect(
+      page.locator(
+        '[role="group"][aria-labelledby$="-recent-h"] [role="option"][href="/1/centers"]',
+      ),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('listbox')).toBeHidden();
     await page.goBack();
     await expect(page).toHaveURL('/1');
     const link = recents.locator('a[href="/1/centers"]');

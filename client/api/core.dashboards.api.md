@@ -82,11 +82,22 @@ export interface TmPlacement {
 }
 
 // @public
+export interface TmTileModel {
+    readonly component: TmLazyComponent | undefined;
+    readonly denied: TmSecurableRef | null;
+    readonly key: string;
+    readonly title: string;
+}
+
+// @public
 export interface TmTileState {
     readonly executedAt: string | null;
     readonly key: string;
     readonly status: 'denied' | 'error' | 'idle' | 'loading' | 'ready' | 'unavailable' | 'waiting';
     readonly title: string;
 }
+
+// @public
+export type TmTileView = 'denied' | 'error' | 'loading' | 'ready' | 'unavailable';
 
 ```

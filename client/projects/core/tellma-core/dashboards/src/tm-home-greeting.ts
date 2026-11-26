@@ -14,7 +14,8 @@ import { tmPrepareDashboards } from './tm-dashboard-setup';
 // follows the hour in the display time zone, the name is the user's whole
 // name in the active content slot, isolated in a <bdi>, and the date is
 // today's in that zone and the user's calendar. One timer re-renders at the
-// next time-of-day boundary or midnight in the zone, and a return to a
+// next time-of-day boundary or midnight in the zone, waiting an hour at most
+// so a daylight-saving jump costs one more wait, and a return to a
 // hidden tab re-renders too, since hidden tabs throttle timers. A language,
 // calendar or zone change re-renders in place, and the one-line heading
 // moves nothing.
@@ -24,6 +25,9 @@ export type TmTimeOfDay = 'morning' | 'afternoon' | 'evening';
 
 /** The hours at which the greeting changes, and midnight, where the date does. */
 const BOUNDARIES = [0, 5, 12, 17];
+
+/** An hour, the longest the greeting's timer waits, in milliseconds. */
+const HOUR = 3_600_000;
 
 /** A character no translation holds, which marks where the name goes in the greeting. */
 const NAME_MARK = '';
@@ -54,16 +58,19 @@ export function tmTimeOfDay(hour: number): TmTimeOfDay {
 }
 
 /**
- * How long until the next time-of-day boundary or midnight in a zone.
+ * How long the greeting's timer waits: until the next time-of-day boundary
+ * or midnight in a zone, and an hour at most. The wait subtracts wall-clock
+ * times of day, which a night that springs forward makes an hour too long;
+ * the cap bounds that to one more wait.
  *
  * @param now - The instant, in epoch milliseconds.
  * @param timeZone - The IANA zone.
- * @returns The delay in milliseconds, at least one.
+ * @returns The delay in milliseconds, from one to an hour.
  */
-function untilNextBoundary(now: number, timeZone: string): number {
+export function tmUntilNextBoundary(now: number, timeZone: string): number {
   const at = timeOfDayMs(now, timeZone);
-  const next = BOUNDARIES.map((hour) => hour * 3_600_000).find((boundary) => boundary > at) ?? 24 * 3_600_000;
-  return Math.max(1, next - at);
+  const next = BOUNDARIES.map((hour) => hour * HOUR).find((boundary) => boundary > at) ?? 24 * HOUR;
+  return Math.max(1, Math.min(HOUR, next - at));
 }
 
 /** The home page's greeting, the page's title, and today's date under it. */
@@ -127,9 +134,9 @@ export class TmHomeGreeting {
   constructor() {
     tmPrepareDashboards();
 
-    // --- One timer, to the next boundary in the display zone; a zone change sets it again ---
+    // --- One timer, to the next boundary in the display zone or an hour on; a zone change sets it again ---
     effect((onCleanup) => {
-      const delay = untilNextBoundary(this.#now(), this.#l10n.timeZone());
+      const delay = tmUntilNextBoundary(this.#now(), this.#l10n.timeZone());
       const timer = setTimeout(() => this.#now.set(this.#clock()), delay);
       onCleanup(() => clearTimeout(timer));
     });

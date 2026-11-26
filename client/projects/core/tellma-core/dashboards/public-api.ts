@@ -24,7 +24,7 @@ export { TM_HOME_WIDGETS } from './src/tm-home-widgets';
 
 // The grid, its tiles and its layout.
 export { TmDashboardGrid, type TmTileState } from './src/tm-dashboard-grid';
-export { TmDashboardTile } from './src/tm-dashboard-tile';
+export { TmDashboardTile, type TmTileModel, type TmTileView } from './src/tm-dashboard-tile';
 export { tmPackDashboard, type TmPlacement } from './src/tm-pack-dashboard';
 
 // The core widget types' bodies, which the primary's declarations load; not for app code.

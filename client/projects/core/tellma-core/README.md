@@ -560,7 +560,8 @@ the entity's segment (`/:t/centers`, `/:t/centers/:id`; the drill-through list k
 with the view's code (`forbidden`, `offline`, `client-outdated`) among its errors. A reused route
 that shows another entity registers it anew. A page, or its family's host, that registers its own
 context replaces it and keeps its actions. After a path change, focus moves to the page's
-`[tmPageTitle]`, except on a settings tab change, where it stays on the tab list. The document's
+`[tmPageTitle]`, except on a settings tab change, where it stays on the tab list. A family's host
+that loads its own page holds the move until that page renders (`ɵTmPageFocus`). The document's
 title is the page's title and the display name. A stored report's and a dashboard's details pages
 draw the `report` and `dashboard` skeletons.
 
@@ -1121,13 +1122,17 @@ the geometry is the global stylesheet's `styles/tm-dashboard.css`, which the hom
 A tile is a labelled section on a flush card whose body fills it and scrolls inside it. A type no
 declaration knows renders "This widget isn't available."; a type whose permission the user lacks
 leaves the grid, or shows its lock with `denied="show"`, and never loads its body; a body loads
-behind five skeleton rows, and one whose chunk fails offers to try again.
+behind five skeleton rows in a busy section (`aria-busy`), and one whose chunk fails offers to try
+again. A tile takes what the grid resolved for it (`TmTileModel`) and shows one view of it
+(`TmTileView`); the grid reports each tile's state in `tiles`.
 
 The home route renders `TmHomeHost`, which renders the last `home` hatch a feature sets, else
 `TmHomePage`: the greeting by the hour in the display zone with the user's name, today's date in
-the user's calendar, and the grid of `TM_HOME_WIDGETS` whose types the app declares. A hatch
-loads behind the home skeleton, and one whose chunk fails leaves the platform's home page in its
-place. Hovering or focusing a recent page preloads it; preloading the home route preloads the
+the user's calendar, and the grid of `TM_HOME_WIDGETS` whose types the app declares. The
+greeting's one timer waits for the next boundary in the zone, an hour at most, so a night that
+springs forward delays it by no more than one wait. A hatch loads behind the home skeleton, holding
+the arrival focus until it renders, and one whose chunk fails leaves the platform's home page in
+its place. Hovering or focusing a recent page preloads it; preloading the home route preloads the
 hatch.
 
 ## The search page's query model

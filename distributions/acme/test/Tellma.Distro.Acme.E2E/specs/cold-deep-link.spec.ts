@@ -66,6 +66,13 @@ async function customerByCode(page: Page, client: string, code: string): Promise
 }
 
 test.describe('cold deep link', () => {
+  // A cold deep link is the first load on a device, before any worker is installed. On a
+  // localhost scope the Angular worker prefetches its whole shell group before it answers any
+  // fetch, so a worker registered on the deep link would hold its next lazy chunk (the details
+  // page's edit mode) behind that prefetch, which a production scope runs at idle instead.
+  // Neither test is about the worker.
+  test.use({ serviceWorkers: 'block' });
+
   test('a cold deep link renders its page and never another first', async ({
     page,
     text,

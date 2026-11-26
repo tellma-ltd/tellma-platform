@@ -63,7 +63,8 @@ const loaded = new WeakMap<TmLazyComponent, Type<unknown>>();
   // nested in a body keeps its own layout.
   encapsulation: ViewEncapsulation.None,
   template: `
-    <section class="tm-dashboard-tile__section" [attr.aria-label]="tile().title">
+    <!-- The tile's section, busy while its body loads behind the skeleton, which assistive technology does not see. -->
+    <section class="tm-dashboard-tile__section" [attr.aria-label]="tile().title" [attr.aria-busy]="view() === 'loading' ? 'true' : null">
       <tm-card [heading]="tile().title" flush>
         @switch (view()) {
           @case ('ready') {

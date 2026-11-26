@@ -136,21 +136,27 @@ test.describe('launch', () => {
   });
 
   // --- A fragment across a sign-in after an in-app expiry ---
-  test('a search page keeps its filter fragment across the sign-in after an in-app expiry', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await signInAs(page, cast.user);
-    await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
-    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+  test.describe('in-app expiry', () => {
+    // The worker would hold the session flows' lazy chunk behind its localhost prefetch, for the
+    // reason the cold launches give. This test is not about the worker.
+    test.use({ serviceWorkers: 'block' });
 
-    await expireInApp(page);
-    await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
+    test('a search page keeps its filter fragment across the sign-in after an in-app expiry', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
+      await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
 
-    await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
-    await expect(sessionEndedDialog(page)).toHaveCount(0);
-    expect((await tmBootFacts(page)).state).toBe('run');
+      await expireInApp(page);
+      await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
+
+      await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
+      await expect(sessionEndedDialog(page)).toHaveCount(0);
+      expect((await tmBootFacts(page)).state).toBe('run');
+    });
   });
 
   // --- Warm launches ---

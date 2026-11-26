@@ -7,6 +7,7 @@ import { ChangeDetectionStrategy, Component, signal, type Type } from '@angular/
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
+  TmLocalization,
   tmFeature,
   tmWidget,
   type TmDashboardWidgetModel,
@@ -21,7 +22,8 @@ import { TmDashboardGrid } from './tm-dashboard-grid';
 // that renders, one whose permission the user lacks, and one whose body's
 // chunk the spec controls. Each tile resolves its type, title and access
 // against the declarations, renders in reading order at its placement, and
-// shows its body or the state that stands in for it.
+// shows its body or the state that stands in for it, which the grid's tile
+// states report.
 
 /** A widget body, which names itself. */
 @Component({
@@ -118,12 +120,14 @@ class TmGridHost {
  * @param widgets - The grid's widgets.
  * @param denied - Whether a denied tile shows.
  * @param loadFlaky - The controlled type's body.
+ * @param slot - The active content slot, when not the first.
  * @returns The host's fixture.
  */
 async function render(
   widgets: readonly TmDashboardWidgetModel[],
   denied: 'show' | 'hide' = 'hide',
   loadFlaky: TmLazyComponent = () => Promise.resolve(TmCashBody),
+  slot?: 2 | 3,
 ): Promise<ComponentFixture<TmGridHost>> {
   await tmAppRig({
     features: [acme(loadFlaky)],
@@ -136,6 +140,9 @@ async function render(
       },
     },
   });
+  if (slot !== undefined) {
+    vi.spyOn(TestBed.inject(TmLocalization), 'contentSlot').mockReturnValue(slot);
+  }
   const fixture = TestBed.createComponent(TmGridHost);
   fixture.componentInstance.widgets.set(widgets);
   fixture.componentInstance.denied.set(denied);
@@ -163,6 +170,28 @@ function tiles(fixture: ComponentFixture<TmGridHost>): HTMLElement[] {
  */
 function heading(tile: HTMLElement): string {
   return tile.querySelector('.tm-card__heading')?.textContent?.trim() ?? '';
+}
+
+/**
+ * The grid's component.
+ *
+ * @param fixture - The host's fixture.
+ * @returns The grid.
+ */
+function gridOf(fixture: ComponentFixture<TmGridHost>): TmDashboardGrid {
+  return fixture.debugElement.query(By.directive(TmDashboardGrid)).componentInstance as TmDashboardGrid;
+}
+
+/**
+ * The status the grid reports for each tile.
+ *
+ * @param fixture - The host's fixture.
+ * @returns The statuses, by key.
+ */
+function statuses(fixture: ComponentFixture<TmGridHost>): [string, string][] {
+  return gridOf(fixture)
+    .tiles()
+    .map((tile) => [tile.key, tile.status]);
 }
 
 /**
@@ -207,9 +236,7 @@ describe('the dashboard grid', () => {
     expect(heading(tile!)).toBe('Cash position');
     expect(tile!.querySelector('section')?.getAttribute('aria-label')).toBe('Cash position');
     expect(tile!.querySelector('.cash')?.textContent).toBe('Cash 42');
-    const grid = fixture.debugElement.query(By.directive(TmDashboardGrid))
-      .componentInstance as TmDashboardGrid;
-    expect(grid.tiles()).toEqual([
+    expect(gridOf(fixture).tiles()).toEqual([
       { key: 'cash', title: 'Cash position', executedAt: null, status: 'ready' },
     ]);
   });
@@ -254,10 +281,41 @@ describe('the dashboard grid', () => {
     ]);
   });
 
+  it("titles a tile by its own text in the second slot when that slot is active, else by slot 1's", async () => {
+    const fixture = await render(
+      [
+        {
+          key: 'second',
+          type: 'acme.cash-position',
+          title: ['الخزينة', 'Treasury', null],
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 3,
+        },
+        {
+          key: 'first',
+          type: 'acme.cash-position',
+          title: ['Liquidity', '  ', null],
+          x: 6,
+          y: 0,
+          w: 6,
+          h: 3,
+        },
+      ],
+      'hide',
+      undefined,
+      2,
+    );
+
+    expect(tiles(fixture).map(heading)).toEqual(['Treasury', 'Liquidity']);
+  });
+
   it('renders a type no declaration knows as not available, loading nothing', async () => {
     const fixture = await render([{ key: 'gone', type: 'acme.gone', x: 0, y: 0, w: 6, h: 6 }]);
 
     expect(state(tiles(fixture)[0]!)).toBe("This widget isn't available.");
+    expect(statuses(fixture)).toEqual([['gone', 'unavailable']]);
   });
 
   it('leaves out a tile whose permission the user lacks, and its rows close over it', async () => {
@@ -283,9 +341,10 @@ describe('the dashboard grid', () => {
     expect(state(tile!)).toBe("You don't have permission for this");
     expect(tile!.textContent).toContain('It needs “acme.Approval: Read”.');
     expect(loadLocked).not.toHaveBeenCalled();
+    expect(statuses(fixture)).toEqual([['locked', 'denied']]);
   });
 
-  it('shows five skeleton rows while the body loads, then the body', async () => {
+  it('shows five skeleton rows in a busy section while the body loads, then the body', async () => {
     const load = deferred<Type<unknown>>();
     const fixture = await render(
       [{ key: 'flaky', type: 'acme.flaky', x: 0, y: 0, w: 6, h: 6 }],
@@ -296,11 +355,54 @@ describe('the dashboard grid', () => {
 
     expect(tile!.querySelectorAll('.tm-dashboard-frame__rows .tm-skeleton__bar')).toHaveLength(5);
     expect(heading(tile!)).toBe('Flaky');
+    expect(tile!.querySelector('section')?.getAttribute('aria-busy')).toBe('true');
+    expect(statuses(fixture)).toEqual([['flaky', 'loading']]);
 
     load.resolve(TmCashBody);
     await tmSettle();
     expect(tile!.querySelector('tm-skeleton')).toBeNull();
     expect(tile!.querySelector('.cash')).not.toBeNull();
+    expect(tile!.querySelector('section')?.hasAttribute('aria-busy')).toBe(false);
+    expect(statuses(fixture)).toEqual([['flaky', 'ready']]);
+  });
+
+  it('renders nothing and throws nothing when a body loads after its tile is gone', async () => {
+    const load = deferred<Type<unknown>>();
+    const fixture = await render(
+      [{ key: 'flaky', type: 'acme.flaky', x: 0, y: 0, w: 6, h: 6 }],
+      'hide',
+      () => load.promise,
+    );
+    const errors = vi.spyOn(console, 'error');
+    fixture.componentInstance.widgets.set([]);
+    await tmSettle();
+    expect(tiles(fixture)).toEqual([]);
+
+    load.resolve(TmCashBody);
+    await tmSettle();
+    expect(tiles(fixture)).toEqual([]);
+    expect((fixture.nativeElement as HTMLElement).querySelector('.cash')).toBeNull();
+    expect(errors).not.toHaveBeenCalled();
+  });
+
+  it('renders a later tile of a loaded type with its body in its first frame, loading it once', async () => {
+    const loadFlaky = vi.fn<TmLazyComponent>(() => Promise.resolve(TmCashBody));
+    const fixture = await render(
+      [{ key: 'one', type: 'acme.flaky', x: 0, y: 0, w: 6, h: 6 }],
+      'hide',
+      loadFlaky,
+    );
+    expect(tiles(fixture)[0]!.querySelector('.cash')).not.toBeNull();
+
+    fixture.componentInstance.widgets.set([
+      { key: 'one', type: 'acme.flaky', x: 0, y: 0, w: 6, h: 6 },
+      { key: 'two', type: 'acme.flaky', x: 6, y: 0, w: 6, h: 6 },
+    ]);
+    fixture.detectChanges();
+    const second = tiles(fixture)[1]!;
+    expect(second.querySelector('.cash')).not.toBeNull();
+    expect(second.querySelector('tm-skeleton')).toBeNull();
+    expect(loadFlaky).toHaveBeenCalledTimes(1);
   });
 
   it('offers to try again when the body fails to load, and loads it once more on Try again', async () => {
@@ -316,6 +418,7 @@ describe('the dashboard grid', () => {
     const [tile] = tiles(fixture);
 
     expect(state(tile!)).toBe("This widget couldn't be loaded.");
+    expect(statuses(fixture)).toEqual([['flaky', 'error']]);
     const retry = tile!.querySelector<HTMLButtonElement>('button')!;
     expect(retry.textContent?.trim()).toBe('Try again');
 

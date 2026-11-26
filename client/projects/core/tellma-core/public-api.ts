@@ -148,6 +148,8 @@ export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck }
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
 // The route host's page skeletons, which a family's host draws again while its own chunk loads; not for app code.
 export { TmPageSkeleton as ɵTmPageSkeleton } from './src/routes/tm-page-skeleton';
+// The arrival focus, which a family's host holds while its own page loads; not for app code.
+export { TmPageFocus as ɵTmPageFocus } from './src/routes/tm-page-focus';
 
 // The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';

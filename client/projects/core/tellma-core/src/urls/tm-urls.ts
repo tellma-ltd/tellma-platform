@@ -588,7 +588,7 @@ export class TmUrls implements TmTenantUrls {
     const declaration = match.entity === undefined ? undefined : (this.#entities.declaration(match.entity) as TmSearchDeclaration | undefined);
     const details = typeof declaration?.details === 'function' ? { page: declaration.details } : declaration?.details;
     const entities = this.#loadEntities;
-    const loaders: (TmLazyComponent | (() => Promise<unknown>) | undefined)[] = (() => {
+    const loaders: (TmLazyComponent | (() => Promise<unknown>) | null | undefined)[] = (() => {
       switch (match.kind) {
         case 'search':
         case 'list':
@@ -600,7 +600,7 @@ export class TmUrls implements TmTenantUrls {
         case 'page':
           return [match.page?.component];
         case 'home':
-          return [TM_ROUTE_HOSTS.home, this.#injector.get(TM_APP_DECLARATIONS, null)?.home ?? undefined];
+          return [TM_ROUTE_HOSTS.home, this.#injector.get(TM_APP_DECLARATIONS, null)?.home];
         case 'report':
           return [TM_ROUTE_HOSTS.report];
         case 'core':
@@ -609,6 +609,6 @@ export class TmUrls implements TmTenantUrls {
           return [];
       }
     })();
-    return loaders.filter((load) => load !== undefined);
+    return loaders.filter((load) => !!load);
   }
 }
