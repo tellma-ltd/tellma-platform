@@ -46,9 +46,11 @@ describe('file helpers', () => {
     }
   });
 
-  it("hash content as the Migrator names files: SHA-256, Crockford's base32, 12 characters", () => {
+  it("hash content as the Migrator names files: SHA-256, Crockford's base32, 12 characters, or a chunk's first eight", () => {
     expect(tmContentHash(new Uint8Array())).toBe('WERC8GMRZGE1');
     expect(tmContentHash(Buffer.from('{"a":1}\n'))).toBe('WD346811P10Q');
+    // A chunk's name keeps eight, the same digits' first eight.
+    expect(tmContentHash(Buffer.from('{"a":1}\n'), 8)).toBe('WD346811');
   });
 
   it('list files recursively with forward slashes, in ordinal order', () => {

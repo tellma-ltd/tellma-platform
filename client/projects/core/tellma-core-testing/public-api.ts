@@ -30,6 +30,7 @@ export { TmFakeTabBus } from './src/tm-fake-tab-bus';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
+export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';
 export { TmSessionMenuHarness, type TmSessionMenuTenantCard } from './src/tm-session-menu-harness';
 export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';
 export { TmTenantShellHarness, type TmTenantShellMain, type TmTenantShellSlot } from './src/tm-tenant-shell-harness';

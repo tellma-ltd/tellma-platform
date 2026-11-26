@@ -15,6 +15,7 @@ import {
   TmTelemetry,
   tmRowsToObjects,
   type TmCachedEntitySet,
+  type TmColumnPlan,
   type TmDisplayNameParts,
   type TmEntityDescriptor,
   type TmId,
@@ -27,12 +28,11 @@ import {
 import type { TmLabelResolution, TmPasteContext } from '@tellma/core-ui/contracts';
 import type { TmEntityPickerPage, TmEntitySearchFn, TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+import { TmFormats, tmSelectPlan, ɵtmDisplayNameOrder, type TmEntityPickerContext } from '@tellma/core/entity';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
 import { ɵtmFindable, ɵtmSearchMatches, ɵTM_SEARCH_MATCH, type ɵTmFindablePlan, type ɵTmPickerTerm, type ɵTmSearchColumn } from './tm-findable';
-import { TmFormats } from './tm-formats';
-import { TmLazyPickerPage, ɵtmRegisterPickerStrings, type TmEntityPickerContext } from './tm-lazy-picker-page';
-import { tmSelectPlan, ɵtmDisplayNameOrder, type TmColumnPlan } from './tm-select-plan';
+import { TmLazyPickerPage, ɵtmRegisterPickerStrings } from './tm-lazy-picker-page';
 
 // The generic entity picker binding (spec 0029 §14): one binding, built from
 // the target's descriptor, turns the component library's entity picker into
@@ -294,7 +294,7 @@ export class TmEntityPickers {
    * slot, a text prefix, and the findable rule with equality in place of a
    * prefix match. A label one row matches resolves to it; none, or several,
    * is an error. Its code loads on the first paste. Internal:
-   * `tmGridColumnFor` binds it.
+   * `tmEditableGridColumnFor` binds it.
    *
    * @param entity - The entity's name.
    * @param filter - The column's Queryex filter.

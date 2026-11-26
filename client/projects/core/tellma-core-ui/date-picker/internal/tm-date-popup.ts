@@ -27,12 +27,12 @@ import { ChevronLeft, ChevronRight } from 'lucide';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import {
-  tmFirstDayOfWeek,
   ɵtmFormatWithoutEra,
   ɵtmParseIsoDate,
   type TmCalendar,
   type TmCalendarParts,
 } from '@tellma/core-ui/l10n';
+import { tmFirstDayOfWeek } from '@tellma/core-ui/l10n-input';
 
 /** One cell of the month view; `null` pads the fixed five-row layout. */
 type MonthCell = { month: number; label: string; disabled: boolean } | null;

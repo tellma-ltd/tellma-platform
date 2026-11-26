@@ -29,117 +29,126 @@ import {
 
 test.describe('launch', () => {
   // --- Cold launches ---
-  test('a cold launch of a user with one live tenant lands in that tenant', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await tmSignInToIdentityAs(page.context(), cast.user);
+  test.describe('cold', () => {
+    // A cold launch is the first load on a device, before any worker is installed. On a localhost
+    // scope the Angular worker prefetches its whole shell group before it answers any fetch, so a
+    // worker registered mid-launch would hold the launch's next lazy chunk behind that prefetch,
+    // which a production scope runs at idle instead. None of these tests is about the worker.
+    test.use({ serviceWorkers: 'block' });
 
-    await page.goto('/');
+    test('a cold launch of a user with one live tenant lands in that tenant', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await tmSignInToIdentityAs(page.context(), cast.user);
 
-    await expect(page).toHaveURL('/1');
-    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
-    expect((await tmBootFacts(page)).cold).toBe(true);
+      await page.goto('/');
+
+      await expect(page).toHaveURL('/1');
+      await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
+      expect((await tmBootFacts(page)).cold).toBe(true);
+    });
+
+    test('a cold launch of a user with two live tenants lands on the picker', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      // The user's memberships, with the sandbox made a second live tenant.
+      await page.context().route(
+        (url) => url.pathname === '/bff/user',
+        async (route) => {
+          const response = await route.fetch();
+          const user = (await response.json()) as {
+            tenants: { category: string; liveTenantId: number | null }[];
+          };
+          const tenants = user.tenants.map((tenant) => ({
+            ...tenant,
+            category: 'Live',
+            liveTenantId: null,
+          }));
+          await route.fulfill({ response, json: { ...user, tenants } });
+        },
+      );
+
+      await page.goto('/');
+
+      await expect(page).toHaveURL('/tenants');
+      await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Acme', exact: true })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
+      // The picker revalidates the memberships after its first render, so a request can still be
+      // in the handler here; it finishes before the context closes, or its response is disposed.
+      await page.context().unrouteAll({ behavior: 'wait' });
+    });
+
+    test('a cold launch of a user with no live tenant lands on the picker', async ({
+      page,
+      cast,
+    }) => {
+      await tmSignInToIdentityAs(page.context(), cast.sandbox);
+
+      await page.goto('/');
+
+      await expect(page).toHaveURL('/tenants');
+      await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
+    });
+
+    test('a cold deep link opens its page', async ({ page, text, cast }) => {
+      await signInAs(page, cast.user);
+
+      await page.goto('/1/customers');
+
+      await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+      await expect(page).toHaveURL('/1/customers');
+      expect((await tmBootFacts(page)).cold).toBe(true);
+    });
+
+    // --- Fragments across a sign-in ---
+    test('a signed-out drill-through link keeps its fragment across the sign-in', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await tmSignInToIdentityAs(page.context(), cast.user);
+
+      await page.goto('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
+
+      await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+      await expect(page).toHaveURL('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
+      expect((await tmBootFacts(page)).email).toBe(cast.user);
+    });
+
+    test('a search page keeps its filter fragment across a sign-in at a cold launch', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await tmSignInToIdentityAs(page.context(), cast.user);
+
+      await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
+
+      await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+      await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
+    });
   });
 
-  test('a cold launch of a user with two live tenants lands on the picker', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await signInAs(page, cast.user);
-    // The user's memberships, with the sandbox made a second live tenant.
-    await page.context().route(
-      (url) => url.pathname === '/bff/user',
-      async (route) => {
-        const response = await route.fetch();
-        const user = (await response.json()) as {
-          tenants: { category: string; liveTenantId: number | null }[];
-        };
-        const tenants = user.tenants.map((tenant) => ({
-          ...tenant,
-          category: 'Live',
-          liveTenantId: null,
-        }));
-        await route.fulfill({ response, json: { ...user, tenants } });
-      },
-    );
-
-    await page.goto('/');
-
-    await expect(page).toHaveURL('/tenants');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Acme', exact: true })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
-    // The picker revalidates the memberships after its first render, so a request can still be
-    // in the handler here; it finishes before the context closes, or its response is disposed.
-    await page.context().unrouteAll({ behavior: 'wait' });
-  });
-
-  test('a cold launch of a user with no live tenant lands on the picker', async ({
-    page,
-    cast,
-  }) => {
-    await tmSignInToIdentityAs(page.context(), cast.sandbox);
-
-    await page.goto('/');
-
-    await expect(page).toHaveURL('/tenants');
-    await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
-  });
-
-  test('a cold deep link opens its page', async ({ page, text, cast }) => {
-    await signInAs(page, cast.user);
-
-    await page.goto('/1/customers');
-
-    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
-    await expect(page).toHaveURL('/1/customers');
-    expect((await tmBootFacts(page)).cold).toBe(true);
-  });
-
-  // --- Fragments across a sign-in ---
-  test('a signed-out drill-through link keeps its fragment across the sign-in', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await tmSignInToIdentityAs(page.context(), cast.user);
-
-    await page.goto('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
-
-    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
-    await expect(page).toHaveURL('/1/list/customers#d=eyJmIjoiQ29kZSBlcSAnQzEnIn0');
-    expect((await tmBootFacts(page)).email).toBe(cast.user);
-  });
-
-  test('a search page keeps its filter fragment across a sign-in at a cold launch', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await tmSignInToIdentityAs(page.context(), cast.user);
-
-    await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
-
-    await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
-    await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
-  });
-
+  // --- A fragment across a sign-in after an in-app expiry ---
   test('a search page keeps its filter fragment across the sign-in after an in-app expiry', async ({
     page,
     text,
     cast,
   }) => {
     await signInAs(page, cast.user);
-    await page.goto('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await page.goto('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
     await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
 
     await expireInApp(page);
     await sessionEndedDialog(page).getByRole('button', { name: text.signIn }).click();
 
-    await expect(page).toHaveURL('/1/customers#d=eyJxIjoiYWNtZSJ9');
+    await expect(page).toHaveURL('/1/customers#d=eyJmaWx0ZXIiOiJOYW1lIGNvbnRhaW5zICdhY21lJyJ9');
     await expect(sessionEndedDialog(page)).toHaveCount(0);
     expect((await tmBootFacts(page)).state).toBe('run');
   });

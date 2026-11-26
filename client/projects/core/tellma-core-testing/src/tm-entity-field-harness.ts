@@ -6,7 +6,7 @@
 import { ComponentHarness } from '@angular/cdk/testing';
 import { TmEntityMultiPickerHarness, TmEntityPickerHarness } from '@tellma/core-ui-testing';
 
-// Harnesses for @tellma/core/entity's entity fields. Each field draws one
+// Harnesses for @tellma/core/entity-editing's entity fields. Each field draws one
 // picker from @tellma/core-ui and forwards its state to it, so a harness
 // reads and drives the picker inside, and hands it out for the dropdown's
 // rows, descriptions and status.

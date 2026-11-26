@@ -114,6 +114,10 @@ describe('tellma-client build on the fixture app', () => {
     expect(manifest['name_localized']).toEqual({ ar: 'فكسشر' });
     expect(manifest['short_name_localized']).toEqual({ ar: 'فكسشر' });
     expect(manifest['name']).toBe('Fixture');
+    // The brand files' ratios, defined for the app's code: the fixture's 120 by 24 wordmark and 24 px mark.
+    const scripts = readdirSync(browser()).filter((file) => file.endsWith('.js') && file !== 'tm-boot.js');
+    const defined = scripts.filter((file) => read(file).includes('{"wordmark-on-dark":5,"wordmark-on-light":5,"mark-on-dark":1,"mark-on-light":1}'));
+    expect(defined).toHaveLength(1);
   });
 
   it('preloads the Latin and Arabic fonts, the Core chunk and the default string pack', () => {
@@ -225,6 +229,31 @@ describe('tellma-client build on the fixture app', () => {
     // The build's own band: code hoisted with no mapping comes with the run before it, a little over.
     expect(attributed).toBeGreaterThanOrEqual(counted * 0.995 - 16);
     expect(attributed).toBeLessThanOrEqual(counted * 1.01 + 16);
+  });
+
+  it("names the chunk optimizer's chunks by their content, and leaves none that no import reaches", () => {
+    // Angular's chunk optimizer ran: its Rollup chunks import the main entry they share code with.
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    const initial = tmReadInitialFiles(read('index.html'));
+    const main = initial.scripts.find((file) => file.startsWith('main-'))!;
+    expect([...graph.outputs.values()].some((chunk) => chunk.imports.some((edge) => edge.kind === 'static' && edge.path === main))).toBe(true);
+    // The optimizer can add back esbuild outputs Rollup did not use; the build deletes those orphans and
+    // lists them, and the checks below show that none is left and the app reaches every chunk.
+    expect(first.out).toMatch(
+      /^\[tellma-client\] Named [1-9]\d* chunks by their content(?:; deleted [1-9]\d* that no import reaches \((?:chunk-[0-9A-Z]+\.js)(?:, chunk-[0-9A-Z]+\.js)*\))?$/m,
+    );
+    // The stats list exactly the chunks the output holds, and the app reaches every one of them.
+    const chunks = tmListFiles(browser()).filter((file) => file.endsWith('.js') && !['tm-boot.js', 'ngsw-worker.js', 'safety-worker.js'].includes(file));
+    expect([...graph.outputs.keys()].sort()).toEqual(chunks);
+    expect([...graph.reach(initial.scripts)].sort()).toEqual(chunks);
+    for (const chunk of chunks) {
+      expect(chunk).toMatch(/^(?:main|chunk)-[0-9A-HJKMNP-TV-Z]{8}\.js$/);
+      // Each chunk's text names exactly the chunks the stats say it imports. The text is read once:
+      // reading it again for every other chunk is quadratic in file reads.
+      const text = read(chunk);
+      const named = chunks.filter((other) => text.includes(`'./${other}'`) || text.includes(`"./${other}"`));
+      expect(named, chunk).toEqual([...new Set(graph.outputs.get(chunk)!.imports.map((edge) => edge.path))].sort());
+    }
   });
 
   it('moves the source maps out of the deployable output', () => {

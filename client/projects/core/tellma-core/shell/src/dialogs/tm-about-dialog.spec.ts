@@ -8,20 +8,23 @@ import { Component, Injectable, input, type Type } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { TmAppVersion, type TmDistributionInfo, TmLocalization, TmTelemetry } from '@tellma/core';
 import { TmFakeTelemetry } from '@tellma/core-testing';
+import { TmTheme } from '@tellma/core-ui';
 import { TmAlertHarness, TmCopyButtonHarness, TmTabGroupHarness } from '@tellma/core-ui-testing';
 
 import { TM_TEST_SUB, tmAppRig, tmSettle, tmSettleUntil, type TmAppRig, type TmAppRigOptions } from '../../../src/routes/tm-app.testing.util';
+import { TM_SHELL_BRAND_RATIOS, TmShellBrandWriter } from '../frame/tm-shell-frame';
 import { tmRegisterShellOverlaysStrings } from '../session/tm-shell-overlays-strings';
 import type { TmShellSupport } from '../tm-shell-support';
 import { TM_ABOUT_ERROR_VIEWS, TmAboutDialog } from './tm-about-dialog';
 
-// The About dialog in the test app: the wordmark, the distribution's own
-// description only when its server text has one, the versions, the alert
-// and Reload while the server runs a newer build and none while it runs an
-// older one, Reload's failure and Reload anyway (which tries the error views
-// again when they cannot load), and the legal lines; all in an About tab
-// beside a Diagnostics tab, which loads the Diagnostics panel on its first
-// selection and shows the offline line when it cannot.
+// The About dialog in the test app: the wordmark, in its theme's file's
+// box, the distribution's own description only when its server text has
+// one, the versions, the alert and Reload while the server runs a newer
+// build and none while it runs an older one, Reload's failure and Reload
+// anyway (which tries the error views again when they cannot load), and the
+// legal lines; all in an About tab beside a Diagnostics tab, which loads the
+// Diagnostics panel on its first selection and shows the offline line when
+// it cannot.
 
 /** The Diagnostics panel, standing in. */
 @Component({ selector: 'tm-test-diagnostics', template: `<p class="tm-test-diagnostics">Diagnostics content</p>` })
@@ -255,5 +258,30 @@ describe('the About dialog', () => {
     await (await tabs()).selectTab('Diagnostics');
     await tmSettleUntil(() => element.querySelector('.tm-about-dialog__status[role="alert"]') !== null, 'the failure shows');
     expect(element.querySelector('.tm-about-dialog__status')?.textContent?.trim()).toBe("Couldn't open this. Check your connection and try again.");
+  });
+
+  it("gives the wordmark its theme's file's box whether or not the file has loaded", async () => {
+    // The unit runner serves no brand file, so the box comes from the ratio alone.
+    const element = await open({ providers: [{ provide: TM_SHELL_BRAND_RATIOS, useValue: { 'wordmark-on-light': 4, 'wordmark-on-dark': 3 } }] });
+    // No frame renders here, so nothing else has written the ratios.
+    TestBed.inject(TmShellBrandWriter);
+    const theme = TestBed.inject(TmTheme);
+    const setting = theme.setting();
+    const box = (): number[] => {
+      const { width, height } = element.querySelector('img')!.getBoundingClientRect();
+      return [width, height];
+    };
+    try {
+      theme.set('light');
+      await tmSettle();
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('brand/wordmark-on-light.svg');
+      expect(box()).toEqual([80, 20]);
+      theme.set('dark');
+      await tmSettle();
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('brand/wordmark-on-dark.svg');
+      expect(box()).toEqual([60, 20]);
+    } finally {
+      theme.set(setting);
+    }
   });
 });

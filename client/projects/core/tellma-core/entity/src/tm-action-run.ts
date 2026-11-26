@@ -15,6 +15,7 @@ import {
   type TmEntityActionOptions,
   type TmEntityActionOutcome,
 } from './tm-entity-actions';
+import type { ɵTmEntityEditingModule } from './tm-action-dialog';
 
 // An entity action's request and outcome (spec 0031 §10.4), which
 // `TmEntityActions.run`, `TmEntityActions.dialog` and the action dialog load
@@ -158,7 +159,15 @@ export async function ɵtmDialog(
       throw new Error(`The action '${name}' of '${entity}' needs a declared dialog.`);
     }
   }
-  // The dialog's code loads on first use.
+  // The dialog's code loads on first use. A generated form's editors start loading beside it, so
+  // the two chunks arrive together rather than one after the other.
+  const editing =
+    action.declaration?.dialog === undefined
+      ? ɵtmLoad(() => import('@tellma/core/entity-editing' as string) as Promise<ɵTmEntityEditingModule>)
+      : undefined;
+  // A failed dialog load leaves the editors' promise unawaited; it is observed here, and the
+  // dialog still awaits it and rethrows its failure.
+  void editing?.catch(() => undefined);
   const { ɵtmOpenActionDialog } = await ɵtmLoad(() => import('./tm-action-dialog'));
-  return ɵtmOpenActionDialog(injector, entity, action, ids, options);
+  return ɵtmOpenActionDialog(injector, entity, action, ids, options, editing);
 }

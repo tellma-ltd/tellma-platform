@@ -16,6 +16,7 @@ import {
   inject,
   Injector,
   input,
+  isDevMode,
   signal,
   type Signal,
   untracked,
@@ -63,6 +64,8 @@ import { TM_SUPPORT_STRINGS_EN } from './tm-support-strings';
 // phone's full-screen dialog), the grid scrolls inside its own viewport,
 // never the dialog's body, and Reference narrows to that viewport, its chip
 // cut short before its copy button, so the whole column can scroll into view.
+// Until the update service loads, the worker's row shows the version that
+// service will report, so the header keeps its height when it lands.
 // The buttons copy the whole diagnostics text, download the diagnostic
 // file (without page data) and open the support dialog.
 
@@ -89,6 +92,9 @@ const TOAST_KEY = 'tm.support.request-copied';
 
 /** How often a pending request's duration ticks, in milliseconds. */
 const TICK_MS = 1000;
+
+/** The worker's version where the update service is missing or cannot load: none. */
+const NO_WORKER: Signal<string | null> = signal(null).asReadonly();
 
 /** The row headers' track, in px (the grid's `--grid-row-header-width`). */
 const ROW_HEADER_WIDTH = 34;
@@ -324,11 +330,22 @@ export class TmDiagnosticsPanel {
   /** The realtime connection's state, in words. */
   protected readonly hub: Signal<string> = computed(() => this.#l10n.ɵtext(`tm.support.hub.${this.#leader.hubStatus().state}`)());
 
-  /** The worker's version signal, once the update service has loaded; `null` without one. */
+  /** The worker's version signal, once the update service has loaded or failed to; `null` before. */
   readonly #workerVersion = signal<Signal<string | null> | null>(null);
 
+  /**
+   * The worker's version until the update service loads: the UI version while
+   * a worker controls the page outside dev mode, as that service reads it, so
+   * the row has its final height from the panel's first frame.
+   */
+  readonly #workerUntilLoaded =
+    !isDevMode() && (inject(DOCUMENT).defaultView?.navigator.serviceWorker?.controller ?? null) !== null ? this.ui || null : null;
+
   /** The version the worker serves the page, or `null` without a worker. */
-  protected readonly worker: Signal<string | null> = computed(() => this.#workerVersion()?.() ?? null);
+  protected readonly worker: Signal<string | null> = computed(() => {
+    const version = this.#workerVersion();
+    return version === null ? this.#workerUntilLoaded : version();
+  });
 
   /** Whether the grid keeps only the slow and failed requests. */
   protected readonly flaggedOnly = signal(false);
@@ -412,12 +429,13 @@ export class TmDiagnosticsPanel {
       destroyRef.onDestroy(() => observer.disconnect());
     });
     // --- The worker's version, once the update service has loaded ---
+    // Without that service (or when it cannot load) there is no worker's version to report.
     const injector = this.#injector;
     void injector
       .get(ɵTM_UPDATES_LOAD)()
       .then(
-        (loaded) => loaded !== null && this.#workerVersion.set(injector.get(loaded.TmUpdates).version),
-        () => undefined,
+        (loaded) => this.#workerVersion.set(loaded === null ? NO_WORKER : injector.get(loaded.TmUpdates).version),
+        () => this.#workerVersion.set(NO_WORKER),
       );
     // --- A pending duration ticks each second ---
     effect((onCleanup) => {

@@ -14,12 +14,13 @@ own.
 | `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
-| `@tellma/core/entity` | What the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`) and in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); a plan column's grid column (`tmGridColumnFor`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
+| `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
+| `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
 | `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); and the record's context a layout reads with `injectTmDetails()` | lazy, with the first details route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
 | `@tellma/core/path-picker` | `tm-path-picker`, a root entity's fields as a tree: column keys or Queryex paths, navigations as branches, the multilingual twins, image and file navigations, date parts in the active calendar, a search three navigation steps deep, `tm.path` drags whose text is valid Queryex, activation and selection; paths the user cannot reach never show | lazy, with the search page's column chooser and advanced filter, the role editor and the report studio |
-| `@tellma/core/search` | An entity's search page, a picker's advanced search and the drill-through list, one host; its query model (where a page's query state comes from, its canonical URL, how a change reaches history and the preferences, the rows request and its diagnostics) is internal, and the host lands on it. It exports nothing yet; the types a declaration and the details page name (`TmTileDeclaration`, `TmCustomFilterDeclaration`, `TmSearchPageActionDeclaration`, `TmColumnPreference`, `TmSearchSnapshot`) are the primary's, types only | lazy, with the route |
+| `@tellma/core/search` | An entity's search page and the drill-through list, one host (`tm-search-host`, the entity routes' component): the page header with Create, the declared page actions, Refresh and the pager; the grid over one read per query, with its links, skeleton rows and the results region's states; the host's page context and page actions. A declaration's results component and display cells reach the page through `injectTmSearch` and the `TmSearchCell` base. Its query model (where a page's query state comes from, its canonical URL, how a change reaches history and the preferences, the rows request and its diagnostics) is internal; the types a declaration and the details page name (`TmTileDeclaration`, `TmCustomFilterDeclaration`, `TmSearchPageActionDeclaration`, `TmSearchContext`, `TmColumnPreference`, `TmSearchSnapshot`) are the primary's, types only | lazy, with the route |
 | `@tellma/core/leader` | The leader election of the routed tenant over a Web Lock, and the leader tab's work: its realtime connection, the relay of hub events, the leader documents' reads and the polls of degraded mode; the app loads it with `import()` after its first render, and `TmLeader` reports what it decides | lazy, through `import()` after first render |
 | `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
@@ -45,7 +46,11 @@ teal dot), each in ink for light backgrounds and in white for dark ones. They ar
 logo's SVG exports: one `<path>` per glyph with its fill, no clip paths, ids or editor metadata,
 so two of them inline on one page cannot clash. The app renders them inline and gives them their
 accessible name. `tellma-client build` copies each to `brand/` in the output unless the
-distribution's `public/brand/` has a file of the same name.
+distribution's `public/brand/` has a file of the same name. It also reads each file's `viewBox` and
+defines its ratio for the app's code; the shell frame writes them on the root element as
+`--tm-brand-<name>` (such as `--tm-brand-wordmark-on-dark: 3.5384615384615383`, the viewBox's
+width over its height), and every image of a brand file takes its width from its height times that
+ratio, so its box is final whether its file has loaded, is still loading or failed.
 
 ## Boot
 
@@ -617,9 +622,10 @@ them; `tellma-client build` prefetches that chunk, so a launch to either page fe
 An app's bundler puts the code a lazy chunk uses from a file into the first frame's chunks
 whenever the first frame reaches that file through static imports. So the size gate's
 static-graph check (`"tellma".staticGraphExcludes`) fails if any chain of static imports from
-the primary reaches `@tellma/core-ui/menu` or `@tellma/core-ui/image`, even one the primary
-never uses. The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher` for this
-reason. The tenant picker renders the stored memberships in its first frame and reads them again with
+the primary reaches `@tellma/core-ui/menu`, `@tellma/core-ui/image` or
+`@tellma/core-ui/l10n-input` (the parsers a lazily loaded grid or form uses), even one the
+primary never uses. The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher` for
+this reason. The tenant picker renders the stored memberships in its first frame and reads them again with
 `TmLaunchCache.revalidateUser()` only after that frame: live tenants by their name in the active
 language, each sandbox indented under its live tenant, the badges and the reason a tenant cannot be
 opened, a search from seven memberships kept in `?q=` (Enter follows the only enabled match, Mod+K
@@ -887,7 +893,9 @@ same text with the markup some types take: a check for a set flag in a grid, a b
 value, a
 related row's display name as a link to its page when the user may open it, with its avatar, a
 thumbnail asked for only when the blob lists one, and a file's name as its download link.
-`tm-value-editor` takes the control a value's type takes inside a `tm-form-field`, bound to a
+
+`@tellma/core/entity-editing` holds the edit side, which `@tellma/core/entity`, the search page
+and the details page's read mode never reach statically. `tm-value-editor` takes the control a value's type takes inside a `tm-form-field`, bound to a
 Signal Forms field: text, a textarea beyond 255 characters, numbers (decimals and longs held as
 exact text; text that reads as no number, or as more digits than a number holds, keeps the
 field's value and holds the field invalid, so a form's save waits), a checkbox, a date picker, a select per enum, and the image and file pickers, which
@@ -898,9 +906,11 @@ key's ownership), an instant and a type with no control show read-only; a write-
 only while the record is created. A form that provides `TmUploads` sees every upload in flight, to
 hold its save until they settle.
 
-`tmGridColumnFor(column)` makes the grid column of a plan's column: a search grid's reads the
-plan's rows by column key and sorts when the column orders; a form's child grid (`editable`)
-reads the model's rows by their JSON names and edits only the root values the user writes. A
+`tmGridColumnFor(column)` makes the read-only grid column of a plan's column: a search grid's
+reads the plan's rows by column key and sorts when the column orders; a form's grid that does not
+edit (`rows: 'model'`) reads the model's rows by their JSON names. `@tellma/core/entity-editing`'s
+`tmEditableGridColumnFor(column)` makes the column of a form's child grid, which reads the model's
+rows by their JSON names and edits only the root values the user writes. A
 multilingual group there edits the active language's slot, so a host that makes the config in a
 computed follows a language switch. A root navigation there edits its key through the target's
 picker binding with the column's filter: the cell shows the display name, its prefix and name
@@ -914,7 +924,7 @@ queries, so a name whose own page is full is ambiguous rather than guessed.
 
 ### Entity pickers
 
-`TmEntityPickers.binding(entity, options)` turns `@tellma/core-ui`'s entity picker into a picker
+`@tellma/core/entity-editing`'s `TmEntityPickers.binding(entity, options)` turns `@tellma/core-ui`'s entity picker into a picker
 of an entity: every member binds to the picker's input of the same name, or to a grid entity
 column's.
 
@@ -937,7 +947,7 @@ column's.
   which loads the search page's or the details page's picker mode inside the modal, with
   `{ entity, filter, kind }` as its context: advanced search the search family's, Create and Edit
   the details family's. Each family adds its own half to the internal `ɵTM_PICKER_PAGES`
-  multi-provider, so neither replaces the other, with an `import()` of its own entry point, which
+  multi-provider (`@tellma/core/entity`'s, so a family provides it without reaching the editors), so neither replaces the other, with an `import()` of its own entry point, which
   this one never reaches statically; a later provider of the same half wins. Both halves are
   provided at the root environment injector, in the app's providers: `TmModal` opens its dialogs
   without an injector of their own, so a provider on a route or a component is never seen. Until
@@ -1077,7 +1087,8 @@ inject(TmLocalization).ɵregisterStrings('value', { none: '—', fileTooLarge: '
 The strings merge into the English translation, so they format through the same ICU interpreter,
 and a language's table that holds the same keys (a locale pack's `tm.value`) wins, English being
 the fallback. A scope registers once and belongs to one entry point. `@tellma/core/entity`
-registers `tm.value` when `TmFormats` is first created, and `tm.picker` when `TmEntityPickers` is;
+registers `tm.value` when `TmFormats` is first created, and `@tellma/core/entity-editing`
+registers `tm.picker` when `TmEntityPickers` is;
 `TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow

@@ -1,10 +1,12 @@
 /**
  * Public API Surface of @tellma/core-ui/l10n — locale-sensitive number,
- * date and instant formatting/parsing as pure functions (no DOM, no
- * dependency injection, no components): the number codec and the numeric
- * precision helpers, the date engine and the calendar seam, the instant
- * formats (date-time, time of day, relative time, zone offsets and names)
- * and the month and weekday names.
+ * date and instant formatting as pure functions (no DOM, no dependency
+ * injection, no components): the number and date formats, the calendar
+ * seam, the instant formats (date-time, time of day, relative time, zone
+ * offsets and names) and the month and weekday names. The input side
+ * (parsing typed numbers and dates, a date field's placeholder, the week's
+ * first day and wall-clock times in a zone) is `@tellma/core-ui/l10n-input`,
+ * so a page that only displays values never loads it.
  *
  * Everything here is deterministic per (input, locale, options) — the
  * display time zone and "now" are arguments, never read from the device:
@@ -21,14 +23,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export { TM_BIDI_CONTROLS, tmStripBidiControls } from './tm-bidi';
-export {
-  TM_NUMBER_MAX_DIGITS,
-  tmFormatNumber,
-  tmNumberDigitCount,
-  tmParseNumber,
-  type TmNumberFormatOptions,
-  type TmNumberParseOptions,
-} from './tm-number-codec';
+export { tmFormatNumber, type TmNumberFormatOptions } from './tm-number-codec';
 export {
   tmGregorianCalendar,
   ɵtmAdaptCalendar,
@@ -38,13 +33,13 @@ export {
   type TmCalendarParts,
 } from './tm-calendar';
 export {
-  tmDatePlaceholder,
   tmFormatDate,
-  tmParseDate,
+  ɵtmDateFormatter,
   ɵtmFormatWithoutEra,
+  ɵtmPlainText,
+  ɵtmUtcDateOf,
   type ɵTmOwnDate,
   type TmDateFormatOptions,
-  type TmDateParseOptions,
   type TmDateStyle,
 } from './tm-date-engine';
 export { tmFormatMonthName, tmFormatWeekdayName } from './tm-date-names';
@@ -62,11 +57,3 @@ export {
   type TmTimeFormatOptions,
   type TmTimeStyle,
 } from './tm-instant';
-export { tmFirstDayOfWeek } from './tm-week-info';
-export {
-  ɵtmFormatOffsetInstant,
-  ɵtmInstantOfWallTime,
-  ɵtmReadInstant,
-  ɵtmWallTimeOf,
-  type ɵTmWallTime,
-} from './tm-zone-wall-time';

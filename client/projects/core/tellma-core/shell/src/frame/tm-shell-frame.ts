@@ -13,6 +13,7 @@ import {
   type ElementRef,
   inject,
   Injectable,
+  InjectionToken,
   input,
   type Signal,
   signal,
@@ -28,6 +29,17 @@ import { TmBannerHost } from '@tellma/core/attention';
 // @tellma/core/styles.css (tm-frame.css), because the toast host and the
 // pages read `--tm-shell-top` before any shell renders; the frame writes the
 // row heights its shell shows. Nothing in it animates (spec 0027 §5.4).
+//
+// The frame also writes the brand files' ratios (spec 0024 §7.6), each
+// file's width over its height, as `--tm-brand-{file}`. Every image of a
+// brand file sets its height and takes its width from that ratio, so its box
+// is final in the frame it first paints, whether its file has loaded, is
+// still loading or failed. A distribution's files replace the platform's, so
+// their shapes are known only to its build: `tellma-client build` and `serve`
+// read each file's viewBox and define the constant TM_BRAND_RATIOS, which the
+// bundler replaces with a literal. Without it, an image whose file is not yet
+// in the browser's memory is 0 px wide until it loads, and the app bar's
+// items after it move.
 
 /** The scope of the frame's strings under `tm`. */
 const SCOPE = 'shell';
@@ -52,6 +64,37 @@ export interface TmShellRows {
 
 /** The row variables a frame writes on the root element. */
 const ROWS = ['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-height'] as const;
+
+/** By brand file name without `.svg`, its viewBox's width over its height; replaced at build time. */
+declare const TM_BRAND_RATIOS: Readonly<Record<string, number>> | undefined;
+
+/**
+ * The brand files' ratios, each file's width over its height, by file name
+ * without `.svg`, such as `wordmark-on-dark`: what the build measured, or none
+ * in an app the build did not define them for (a test). Internal: a test
+ * provides its own.
+ */
+export const TM_SHELL_BRAND_RATIOS = new InjectionToken<Readonly<Record<string, number>>>('TM_SHELL_BRAND_RATIOS', {
+  providedIn: 'root',
+  factory: () => (typeof TM_BRAND_RATIOS === 'undefined' ? {} : TM_BRAND_RATIOS),
+});
+
+/**
+ * Writes the brand files' ratios on the root element as `--tm-brand-{file}`,
+ * once, for the app's life: the first frame of either shell creates it.
+ */
+@Injectable({ providedIn: 'root' })
+export class TmShellBrandWriter {
+  /** Creates the writer, which writes each ratio now and removes them at the app's end. */
+  constructor() {
+    const style = inject(DOCUMENT).documentElement.style;
+    const names = Object.entries(inject(TM_SHELL_BRAND_RATIOS)).map(([file, ratio]) => {
+      style.setProperty(`--tm-brand-${file}`, String(ratio));
+      return `--tm-brand-${file}`;
+    });
+    inject(DestroyRef).onDestroy(() => names.forEach((name) => style.removeProperty(name)));
+  }
+}
 
 /**
  * Writes the newest live frame's row heights on the root element, where the
@@ -226,8 +269,9 @@ export class TmShellFrame {
   /** The skip link's text. */
   protected readonly skipLabel: Signal<string>;
 
-  /** Creates the frame, which writes its rows' heights while it lives. */
+  /** Creates the frame, which writes its rows' heights while it lives, and the brand files' ratios. */
   constructor() {
+    inject(TmShellBrandWriter);
     const l10n = inject(TmLocalization);
     l10n.ɵregisterStrings(SCOPE, STRINGS_EN);
     this.skipLabel = l10n.ɵtext('tm.shell.skip');

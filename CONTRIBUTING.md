@@ -14,14 +14,18 @@ nightly tier only through the tags below; everything untagged is PR tier.
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
 interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.
 
-Across work that may load a chunk with `import()`, a client unit spec waits on the state the work
-produces, never on a number of task turns: the work goes on only once the chunk's first fetch
-lands, and under load the test server can take far longer than any fixed count of turns. The core
-specs wait with `tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
+Across work that may load a chunk with `import()`, or that waits on the browser's own storage
+(CacheStorage, IndexedDB), a client unit spec waits on the state the work produces, never on a
+number of task turns: the work goes on only once the chunk's first fetch or the storage's answer
+lands, and under load either can take far longer than any fixed count of turns. A fake clock does
+not move them either, so under fake timers an advance of any length is still such a count: it
+yields one real task, and one more for each timer it fires. The core specs wait with
+`tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
 vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`.
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
 error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
-such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk.
+such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
+storage.
 
 ### Tags
 
@@ -207,13 +211,19 @@ node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-inver
 
 The client build takes about five minutes; with `TELLMA_E2E_WEBROOT` set to an app already built,
 such as the published `wwwroot` above, the host serves it instead, as CI does. CI runs the suite
-on Linux; the nightly tier runs it on Windows too.
+on Linux; the nightly tier runs it on Windows too. The web host's sign-in calls its own HTTPS
+origin, so .NET must trust the ASP.NET development certificate: the host trusts it on Linux, and
+on Windows, where trusting asks for confirmation, run `dotnet dev-certs https --trust` once
+yourself. The nightly Windows leg cannot answer that prompt, so it adds the certificate to
+`LocalMachine\Root` as the runner's administrator before the suite starts.
 
 ### Nightly tier
 
 `nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
-`gh workflow run nightly-tier.yml --ref platform-core`. Its commands also run locally; an empty tier
-passes.
+`gh workflow run nightly-tier.yml --ref platform-core`. A `pc/**` working branch runs it only when
+dispatched by hand the same way (`--ref pc/<id>`), never on a schedule or a push, so a fix to a
+failure only the nightly tier sees can be proven on its branch before it merges; each branch's
+runs queue in a group of their own. Its commands also run locally; an empty tier passes.
 
 ```bash
 dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"

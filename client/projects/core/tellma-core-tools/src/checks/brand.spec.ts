@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { TM_BRAND_FILES, tmBrandSvgFaults, tmCheckBrandFiles, tmResolveBrandFiles } from './brand.js';
+import { TM_BRAND_FILES, tmBrandDefine, tmBrandRatios, tmBrandSvgFaults, tmCheckBrandFiles, tmResolveBrandFiles } from './brand.js';
 
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 32"><rect width="120" height="32"/></svg>';
 
@@ -23,6 +23,9 @@ describe('a brand SVG', () => {
   it('needs a viewBox with a positive size', () => {
     expect(tmBrandSvgFaults(SVG.replace(' viewBox="0 0 120 32"', ''))).toEqual(['Its <svg> element has no valid viewBox, so it cannot scale.']);
     expect(tmBrandSvgFaults(SVG.replace('0 0 120 32', '0 0 0 32'))).toEqual(['Its <svg> element has no valid viewBox, so it cannot scale.']);
+    for (const viewBox of ['0 0 120', '0 0 120 32 1', '0 0 120 32px', '0 0 1e 32', '0 0 1e999 32']) {
+      expect(tmBrandSvgFaults(SVG.replace('0 0 120 32', viewBox))).toEqual(['Its <svg> element has no valid viewBox, so it cannot scale.']);
+    }
     expect(tmBrandSvgFaults('<p>not an image</p>')).toEqual(['It holds no <svg> element.']);
   });
 
@@ -107,5 +110,40 @@ describe('the brand files', () => {
       TM_BRAND_FILES.map((name) => ({ name, override: false, found: true })),
     );
     expect(tmCheckBrandFiles(files, (file) => file.name, 'acme')).toEqual([]);
+    // Their boxes: the wordmark is 736 by 208, the mark square.
+    expect(tmBrandRatios(files)).toEqual({ 'wordmark-on-dark': 736 / 208, 'wordmark-on-light': 736 / 208, 'mark-on-dark': 1, 'mark-on-light': 1 });
   });
+
+  it("give each file's viewBox ratio, an override's over the default's, and leave out a file without one", () => {
+    dir = mkdtempSync(join(tmpdir(), 'tm-brand-'));
+    const publicDir = join(dir, 'public');
+    const defaults = join(dir, 'defaults');
+    mkdirSync(join(publicDir, 'brand'), { recursive: true });
+    mkdirSync(defaults);
+    writeFileSync(join(publicDir, 'brand', 'wordmark-on-dark.svg'), SVG.replace('0 0 120 32', '-4,2,1e2 24.5'));
+    writeFileSync(join(defaults, 'wordmark-on-dark.svg'), SVG);
+    writeFileSync(join(defaults, 'wordmark-on-light.svg'), SVG);
+    writeFileSync(join(defaults, 'mark-on-dark.svg'), SVG.replace(' viewBox="0 0 120 32"', ''));
+
+    const files = tmResolveBrandFiles(publicDir, defaults);
+    expect(tmBrandRatios(files)).toEqual({ 'wordmark-on-dark': 100 / 24.5, 'wordmark-on-light': 3.75 });
+    // The Angular build's define: the constant the shells read, as a JSON literal.
+    expect(tmBrandDefine(files)).toBe('TM_BRAND_RATIOS={"wordmark-on-dark":4.081632653061225,"wordmark-on-light":3.75}');
+    expect(tmBrandDefine([])).toBe('TM_BRAND_RATIOS={}');
+  });
+
+  // An exponent with a sign, a leading plus and compact numbers, which a sign
+  // or a point separates, are all SVG numbers.
+  for (const viewBox of ['0 0 7.36e+2 208', '+0 +0 736 208', '-.5-.5 736 208']) {
+    it(`read the viewBox "${viewBox}" as SVG's number grammar does`, () => {
+      dir = mkdtempSync(join(tmpdir(), 'tm-brand-'));
+      const publicDir = join(dir, 'public');
+      mkdirSync(join(publicDir, 'brand'), { recursive: true });
+      const svg = SVG.replace('0 0 120 32', viewBox);
+      writeFileSync(join(publicDir, 'brand', 'wordmark-on-dark.svg'), svg);
+
+      expect(tmBrandSvgFaults(svg)).toEqual([]);
+      expect(tmBrandRatios(tmResolveBrandFiles(publicDir, null))).toEqual({ 'wordmark-on-dark': 736 / 208 });
+    });
+  }
 });

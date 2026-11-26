@@ -111,11 +111,16 @@ import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';
       border-radius: var(--radius-sm);
     }
 
-    /* The wordmark never mirrors. */
+    /*
+     * The wordmark never mirrors. Its width is its height times the file's
+     * ratio, which the shell frame writes, so the box is final before the file
+     * loads; without the ratio the declaration is invalid at computed-value
+     * time, and the width is auto.
+     */
     .tm-tenantless-shell__wordmark img {
       display: block;
       block-size: 14px;
-      inline-size: auto;
+      inline-size: calc(14px * var(--tm-brand-wordmark-on-dark));
     }
 
     .tm-tenantless-shell__spacer {
@@ -190,6 +195,7 @@ import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';
 
       .tm-tenantless-shell__wordmark img {
         block-size: 18px;
+        inline-size: calc(18px * var(--tm-brand-mark-on-dark));
       }
 
       .tm-tenantless-shell__narrow {

@@ -31,7 +31,7 @@ import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenant
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
-import { tmEntity, type TmEntityActionDeclaration, type TmPickerDeclaration } from './tm-entity-declaration';
+import { tmEntity, type TmEntityActionDeclaration, type TmEntityDeclarationInput, type TmPickerDeclaration } from './tm-entity-declaration';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -147,6 +147,8 @@ export interface TmEntityRigOptions {
   readonly pickers?: Partial<Readonly<Record<'acme.Customer' | 'gl.Center' | 'acme.Currency', TmPickerDeclaration<string>>>>;
   /** The actions `acme.Customer` declares; `set-credit-limit` as a button when omitted. */
   readonly actions?: readonly TmEntityActionDeclaration<'acme.Customer'>[];
+  /** What else `acme.Customer` declares, such as its search page's columns, order and page actions; nothing when omitted. */
+  readonly customer?: Partial<TmEntityDeclarationInput<'acme.Customer'>>;
   /** The tenant's calendars, the first its default, such as `['uq', 'gc']`; `['gc']` when omitted. */
   readonly calendars?: readonly string[];
   /** The app's own calendars beside the platform's, such as a test calendar; none when omitted. */
@@ -243,6 +245,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
             key: 'acme',
             entities: [
               tmEntity('acme.Customer', {
+                ...options.customer,
                 details: tmLoadTestPage,
                 actions: options.actions ?? [{ name: 'set-credit-limit', button: true }],
                 ...(pickers['acme.Customer'] && { picker: pickers['acme.Customer'] as never }),
