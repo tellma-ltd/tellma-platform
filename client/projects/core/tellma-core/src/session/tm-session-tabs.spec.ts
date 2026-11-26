@@ -14,7 +14,7 @@ import type { TmBusMessage } from '../state/bus/tm-bus-messages';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../state/bus/tm-tab-bus.testing.util';
 import { TM_DRAFTS_STORAGE, tmDraftPrefix, tmStorageKeys, TM_DRAFT_KEY_PREFIX } from '../state/memory/tm-draft-keys';
-import { TM_STATE_PARTS } from '../state/tm-state-dump';
+import { TM_STATE_PARTS } from '../state/tm-state-parts';
 import { TmFakeStorage } from '../state/tm-storage.testing.util';
 import { tmProfileCookies } from './tm-profile.testing.util';
 import { TmSessionFlows } from './tm-session-flows';

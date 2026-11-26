@@ -8,6 +8,9 @@
 export type SignalLike<T> = () => T;
 
 // @public
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null>;
+
+// @public
 export const TM_GRID_KEYS: readonly TmGridKeyEntry[];
 
 // @public

@@ -16,7 +16,7 @@ import { TM_NOW } from '../app/tm-now';
 import { TM_BOOT_RESULT } from '../boot/tm-boot-result';
 import type { TmBootResult } from '../boot/tm-boot-types';
 import { TmLocalization } from '../l10n/tm-localization';
-import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_T17, TM_TEST_SUB, type TmAppRig } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, tmWaitUntil, TM_T17, TM_TEST_SUB, type TmAppRig } from '../routes/tm-app.testing.util';
 import type { TmBusMessage } from '../state/bus/tm-bus-messages';
 import { TmTabBus } from '../state/bus/tm-tab-bus';
 import { TmRecordingTabBus } from '../state/bus/tm-tab-bus.testing.util';
@@ -406,7 +406,14 @@ describe('TmSessionFlows', () => {
         }),
       ]);
       const queries = rig.bus.types().filter((type) => type === 'drafts.query').length;
-      await vi.advanceTimersByTimeAsync(100);
+      // The confirmed sign-out leaves once the clean-up has swept the
+      // browser's CacheStorage and IndexedDB, whose answers no fake clock
+      // moves: an advance of any length yields one real task, and one more
+      // per timer it fires, which a slow disk outlasts. So the spec waits on
+      // the leave itself, with the fake clock held where the confirm left
+      // it: a second wait for the save would stop at its first query's
+      // window, and the tab would never leave.
+      await tmWaitUntil(() => rig.host.assigned.length > 0, () => vi.advanceTimersByTimeAsync(0), 'the tab left for the signed-out page');
       expect(rig.host.assigned).toEqual(['/signed-out']);
       expect(rig.bus.types().filter((type) => type === 'drafts.query').length).toBe(queries);
     });

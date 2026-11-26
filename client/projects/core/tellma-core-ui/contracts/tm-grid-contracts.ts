@@ -221,3 +221,23 @@ export interface TmGridContentState {
    */
   readonly expandedRowIds?: ReadonlySet<TmRowId>;
 }
+
+/**
+ * The checkbox's cell-display contract: how a grid paints a boolean cell as
+ * static DOM with no component instance. It lives with the contracts, so a
+ * grid that paints booleans never loads the checkbox control itself;
+ * `@tellma/core-ui/checkbox` re-exports it. The text representation is the
+ * spreadsheet-interop literal `TRUE`/`FALSE` (never localized — it is what
+ * copy exports and paste parses); the glyph class renders a checkbox-box
+ * visual driven by the same `--checkbox-box-size` and field tokens the real
+ * control uses, so the two stay in lock-step. A `null` value (a cleared
+ * cell) displays as unchecked.
+ */
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null> = {
+  formatValue(value: boolean | null): string {
+    return value ? 'TRUE' : 'FALSE';
+  },
+  displayClass(value: boolean | null): string {
+    return value ? 'tm-grid-bool tm-grid-bool--on' : 'tm-grid-bool';
+  },
+};

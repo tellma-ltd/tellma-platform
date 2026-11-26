@@ -16,6 +16,7 @@ import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 import { Type } from '@angular/core';
 import { WritableSignal } from '@angular/core';
@@ -79,6 +80,20 @@ export class TmDetailsPageHarness extends ComponentHarness {
     isEnabled(button: TmDetailsPageButton): Promise<boolean>;
     isProgressShown(): Promise<boolean>;
     isTitleLoading(): Promise<boolean>;
+}
+
+// @public
+export type TmDiagnosticsPanelButton = 'Copy diagnostics' | 'Download diagnostic file' | 'Report a problem';
+
+// @public
+export class TmDiagnosticsPanelHarness extends ComponentHarness {
+    getButton(label: string | TmDiagnosticsPanelButton): Promise<TmButtonHarness>;
+    getButtons(): Promise<string[]>;
+    getGrid(): Promise<TmGridHarness>;
+    getHeader(): Promise<Record<string, string>>;
+    static hostSelector: string;
+    isFlaggedOnly(): Promise<boolean>;
+    toggleFlaggedOnly(): Promise<void>;
 }
 
 // @public
@@ -321,6 +336,32 @@ export class TmPathPickerHarness extends ComponentHarness {
 }
 
 // @public
+export interface TmSearchPageCreate {
+    readonly disabledReason: string | null;
+    readonly href: string | null;
+    readonly label: string;
+}
+
+// @public
+export class TmSearchPageHarness extends ComponentHarness {
+    clickStateAction(label: string): Promise<void>;
+    getCreate(): Promise<TmSearchPageCreate | null>;
+    getGrid(): Promise<TmGridHarness | null>;
+    getPager(): Promise<TmPagerHarness>;
+    getState(): Promise<TmEmptyStateHarness | null>;
+    getStateActions(): Promise<string[]>;
+    getStateHeading(): Promise<string | null>;
+    getStateToken(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasColumnsButton(): Promise<boolean>;
+    hasMore(): Promise<boolean>;
+    static hostSelector: string;
+    isFirstLoad(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    refresh(): Promise<void>;
+}
+
+// @public
 export class TmSessionMenuHarness extends TmMenuHarness {
     getAvatarTone(): Promise<number | null>;
     getEmail(): Promise<string>;
@@ -335,6 +376,13 @@ export interface TmSessionMenuTenantCard {
     readonly description: string | null;
     readonly detail: string | null;
     readonly label: string;
+}
+
+// @public
+export class TmSupportOfflineHarness extends ComponentHarness {
+    getKeys(): Promise<string[]>;
+    getText(): Promise<string>;
+    static hostSelector: string;
 }
 
 // @public

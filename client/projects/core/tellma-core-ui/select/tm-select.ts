@@ -10,7 +10,7 @@ import { Listbox, Option } from '@angular/aria/listbox';
 import { OverlayModule } from '@angular/cdk/overlay';
 
 import type { TmCellEditor } from '@tellma/core-ui/contracts';
-import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { ɵTM_FORM_FIELD_CONTROL as TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/private';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 

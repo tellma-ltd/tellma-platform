@@ -5,7 +5,7 @@
 
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { TmEntities, type TmColumnInput, type TmEntitiesChunk } from '@tellma/core';
+import { TmEntities, type TmColumnInput, type TmColumnPlan, type TmEntitiesChunk } from '@tellma/core';
 import { tmTestEntities } from '@tellma/core-testing';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 
@@ -19,7 +19,7 @@ import {
   type TmFilterDescription,
   type TmFilterSpec,
 } from './tm-filter';
-import { tmSelectPlan, type TmColumnPlan } from './tm-select-plan';
+import { tmSelectPlan } from './tm-select-plan';
 
 // Column filters over the recorded entity model, patched with a date, a
 // date-time and a guid column: the `f.` value read and written, each kind's

@@ -62,13 +62,16 @@ export function tmListFiles(dir: string): string[] {
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 /**
- * The hash in an emitted metadata file's name: the first 12 characters of the
- * SHA-256 of its bytes in Crockford's base32, most significant bit first.
+ * A content hash for a file name: the first characters of the SHA-256 of the
+ * bytes in Crockford's base32, most significant bit first. An emitted
+ * metadata file's name carries 12; a chunk's name carries 8, the length of
+ * the hash the bundler gave it.
  *
  * @param content - The file's bytes.
- * @returns The 12-character hash.
+ * @param length - The characters to keep, at most 51; 12 by default.
+ * @returns The hash.
  */
-export function tmContentHash(content: Uint8Array): string {
+export function tmContentHash(content: Uint8Array, length = 12): string {
   let text = '';
   let buffer = 0;
   let bits = 0;
@@ -79,11 +82,11 @@ export function tmContentHash(content: Uint8Array): string {
       bits -= 5;
       text += CROCKFORD[(buffer >> bits) & 0x1f];
     }
-    if (text.length >= 12) {
+    if (text.length >= length) {
       break;
     }
   }
-  return text.slice(0, 12);
+  return text.slice(0, length);
 }
 
 /** The compressed sizes of some bytes, in bytes, at the levels the budgets are measured at. */

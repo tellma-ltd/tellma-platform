@@ -93,13 +93,8 @@ export interface TmDiagnosticsPage {
  */
 export function tmDiagnosticsText(input: TmDiagnosticsInput, count: number): string {
   const { now, offset } = input;
-  // The local wall time of an instant, as UTC fields shifted by the offset.
-  const local = (at: number): Date => new Date(at + offset(at) * 60_000);
-  const clock = (at: number): string => {
-    const date = local(at);
-    return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
-  };
-  const today = local(now);
+  const clock = (at: number): string => clockOf(at, offset);
+  const today = localOf(now, offset);
   const minutes = offset(now);
   const zone = `${minutes < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(minutes) / 60))}:${pad(Math.abs(minutes) % 60)}`;
 
@@ -138,18 +133,64 @@ export function tmDiagnosticsText(input: TmDiagnosticsInput, count: number): str
     lines.push('No requests');
   }
   for (const request of requests) {
-    const duration =
-      request.durationMs === null
-        ? `pending ${seconds(now - request.startedAt, 1)}`
-        : seconds(request.durationMs, 2);
-    const flag = request.outcome === 'error' ? 'error' : request.outcome === 'cancelled' ? 'cancel' : request.slow ? 'slow' : '';
-    const answer = [request.status, request.code].filter((part) => part !== undefined).join(' ');
-    lines.push(
-      `${clock(request.startedAt)}  ${duration.padEnd(15)}${flag.padEnd(7)}${`${request.method} ${request.route}`.padEnd(24)} ${request.traceId}` +
-        (answer === '' ? '' : `  ${answer}`),
-    );
+    lines.push(requestLine(request, now, offset));
   }
   return tmStripBidiControls(lines.join('\n'));
+}
+
+/**
+ * One request's line of the diagnostics text, as the Diagnostics panel copies
+ * it: its start in the device's local time, its duration (a pending call's
+ * so far), its flag, the call, its trace id, and its status and code.
+ * Internal: the support entry point's panel reads it.
+ *
+ * @param request - The request.
+ * @param now - The time of the reading, in epoch milliseconds.
+ * @returns The line: plain English, Latin digits, no bidi control character.
+ */
+export function tmDiagnosticsLine(request: TmRequestRecord, now: number): string {
+  return tmStripBidiControls(requestLine(request, now, (at) => -new Date(at).getTimezoneOffset()));
+}
+
+/**
+ * One request's line.
+ *
+ * @param request - The request.
+ * @param now - The time of the reading, in epoch milliseconds.
+ * @param offset - The device's offset from UTC at an instant, in minutes east of UTC.
+ * @returns The line.
+ */
+function requestLine(request: TmRequestRecord, now: number, offset: (at: number) => number): string {
+  const duration = request.durationMs === null ? `pending ${seconds(now - request.startedAt, 1)}` : seconds(request.durationMs, 2);
+  const flag = request.outcome === 'error' ? 'error' : request.outcome === 'cancelled' ? 'cancel' : request.slow ? 'slow' : '';
+  const answer = [request.status, request.code].filter((part) => part !== undefined).join(' ');
+  return (
+    `${clockOf(request.startedAt, offset)}  ${duration.padEnd(15)}${flag.padEnd(7)}${`${request.method} ${request.route}`.padEnd(24)} ${request.traceId}` +
+    (answer === '' ? '' : `  ${answer}`)
+  );
+}
+
+/**
+ * The local wall time of an instant, as UTC fields shifted by the offset.
+ *
+ * @param at - The instant, in epoch milliseconds.
+ * @param offset - The device's offset from UTC at an instant, in minutes east of UTC.
+ * @returns A date whose UTC fields read the local time.
+ */
+function localOf(at: number, offset: (at: number) => number): Date {
+  return new Date(at + offset(at) * 60_000);
+}
+
+/**
+ * The local time of day of an instant.
+ *
+ * @param at - The instant, in epoch milliseconds.
+ * @param offset - The device's offset from UTC at an instant, in minutes east of UTC.
+ * @returns The time, such as `14:03:05`.
+ */
+function clockOf(at: number, offset: (at: number) => number): string {
+  const date = localOf(at, offset);
+  return `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())}`;
 }
 
 /**

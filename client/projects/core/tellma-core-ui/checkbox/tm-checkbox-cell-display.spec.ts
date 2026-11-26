@@ -6,10 +6,14 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
-import type { TmCellEditor, TmCellEditorHost } from '@tellma/core-ui/contracts';
+import {
+  TM_CHECKBOX_CELL_DISPLAY,
+  type TmCellEditor,
+  type TmCellEditorHost,
+} from '@tellma/core-ui/contracts';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
 
-import { TM_CHECKBOX_CELL_DISPLAY, TmCheckbox } from './tm-checkbox';
+import { TmCheckbox } from './tm-checkbox';
 
 describe('TM_CHECKBOX_CELL_DISPLAY (§6.3)', () => {
   it('formats as the spreadsheet-interop TRUE/FALSE literals, never localized', () => {

@@ -4,4 +4,111 @@
 
 ```ts
 
+import * as _angular_core from '@angular/core';
+import { InputSignal } from '@angular/core';
+import * as lucide from 'lucide';
+import { OnInit } from '@angular/core';
+import { Signal } from '@angular/core';
+import { TemplateRef } from '@angular/core';
+import { Type } from '@angular/core';
+import { WritableSignal } from '@angular/core';
+
+// @public
+export function injectTmSearch(): TmSearchContext;
+
+// @public
+export abstract class TmSearchCell<V = unknown> {
+    readonly column: InputSignal<TmColumnPlan | undefined>;
+    readonly row: InputSignal<TmPlanRow>;
+    readonly value: InputSignal<V>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmSearchCell<any>, never, never, { "value": { "alias": "value"; "required": true; "isSignal": true; }; "row": { "alias": "row"; "required": true; "isSignal": true; }; "column": { "alias": "column"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchCell<any>, never>;
+}
+
+// @public
+export class TmSearchHost implements OnInit {
+    constructor();
+    protected activate(activation: TmGridRowActivation<TmPlanRow>): void;
+    protected readonly activation: Signal<"none" | "row">;
+    protected readonly body: WritableSignal<Type<unknown> | null>;
+    protected readonly capped: Signal<boolean>;
+    protected cellText(column: TmColumnPlan, row: unknown): string;
+    protected clear(what: 'filters' | 'search'): void;
+    protected readonly compact: Signal<boolean>;
+    protected readonly contentKey: Signal<string>;
+    protected readonly create: Signal<{
+        href: string;
+        label: string;
+        reason: string | null;
+    } | null>;
+    protected readonly createLink: Signal<{
+        href: string;
+        label: string;
+        reason: string | null;
+    } | null>;
+    protected readonly createRefused: Signal<{
+        label: string;
+        reason: string;
+    } | null>;
+    protected displayOf(column: TmSearchGridColumn): Type<unknown> | null;
+    readonly entity: InputSignal<string>;
+    protected readonly firstLoad: Signal<boolean>;
+    protected readonly glyphs: {
+        refresh: lucide.IconNode;
+        create: lucide.IconNode;
+        columns: lucide.IconNode;
+        more: lucide.IconNode;
+    };
+    protected goTo(page: number): void;
+    protected readonly gridColumns: Signal<readonly TmSearchGridColumn[]>;
+    protected readonly gridId: Signal<string>;
+    protected readonly hatched: Signal<boolean>;
+    protected readonly highlight: WritableSignal<TmId | null>;
+    protected hover(event: PointerEvent): void;
+    protected invoke(id: string): Promise<TmActionResult>;
+    protected readonly loading: Signal<boolean>;
+    protected readonly menuActions: Signal<readonly TmMenuItem[]>;
+    ngOnInit(): void;
+    protected readonly openState: Signal<{
+        tmFrom: _tellma_core_memory.TmPageStateKey;
+        tmPage: number;
+    }>;
+    protected orderBy(sort: TmGridSort | null): void;
+    protected readonly paging: Signal<{
+        page: number;
+        size: number;
+        sizes: readonly number[];
+        sizeLabel: "long" | "short";
+        maxPage: number;
+        disabled: boolean;
+    }>;
+    protected readonly primaryActions: Signal<{
+        id: string;
+        icon: string | undefined;
+        label: string;
+    }[]>;
+    protected readonly region: Signal<TmSearchRegionState | null>;
+    protected retry(): void;
+    protected readonly rowId: (row: TmPlanRow) => TmId;
+    protected readonly rows: Signal<readonly TmPlanRow[]>;
+    protected readonly running: Signal<ReadonlySet<string>>;
+    protected selected(ids: ReadonlySet<number | string>): void;
+    protected readonly selection: WritableSignal<ReadonlySet<TmId>>;
+    protected setSize(size: number): void;
+    protected readonly skeletonRows: number[];
+    protected readonly sort: Signal<TmGridSort | null>;
+    protected targetOf(row: unknown): string | null;
+    protected readonly text: {
+        refresh: Signal<string>;
+        more: Signal<string>;
+        moreActions: Signal<string>;
+        chooseColumns: Signal<string>;
+        loading: Signal<string>;
+    };
+    protected readonly title: Signal<string>;
+    protected readonly total: Signal<number | null>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSearchHost, "tm-search-host", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchHost, never>;
+}
+
 ```

@@ -24,19 +24,6 @@ import { TemplateRef } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
 // @public
-export class TmMultiSelect<T> extends TmSelectBase<T, readonly T[]> {
-    protected commitFromListbox(): void;
-    protected readonly defaultPlaceholder: _angular_core.Signal<string>;
-    protected selectedKeys(): readonly unknown[];
-    readonly selectionChange: _angular_core.OutputEmitterRef<readonly T[]>;
-    protected readonly showsPlaceholder: _angular_core.Signal<boolean>;
-    protected readonly triggerLabel: _angular_core.Signal<string>;
-    readonly value: _angular_core.ModelSignal<readonly T[]>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMultiSelect<any>, "tm-multi-select", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "selectionChange": "selectionChange"; }, never, never, true, never>;
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMultiSelect<any>, never>;
-}
-
-// @public
 export class TmOption<T> {
     readonly contentTemplate: _angular_core.Signal<TemplateRef<unknown>>;
     readonly derivedText: _angular_core.WritableSignal<string>;

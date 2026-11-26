@@ -33,7 +33,12 @@
  * that one fails when any chain of static imports reaches its file, whether
  * or not the entry point uses it, because an app's bundler places the code a
  * lazy chunk uses from a file in a chunk the first frame loads whenever the
- * first frame reaches that file.
+ * first frame reaches that file. An excluded name may also be a package
+ * outside the workspace (`@angular/forms`): that one fails when a file of
+ * the library's own on such a chain imports the package or one of its
+ * entry points. Another library's imports of it are that library's to
+ * guard (the component library's primary, which every first frame loads,
+ * imports Signal Forms' validators).
  *
  * The platform also caps some whole entry points (tools/bundle-caps.mjs):
  * the same linked measure at gzip level 9 against the level a spec sets,
@@ -284,16 +289,29 @@ for (const library of discoverLibraries(clientDir)) {
   for (const [id, excluded] of Object.entries(excludes)) {
     const entryFesm = fesmById.get(id);
     // A name of this library's own is a sibling; a name of another workspace
-    // library's is checked by the reach of its file.
+    // library's is checked by the reach of its file; any other name is a
+    // package, checked by the imports of this library's own files.
     const own = excluded.filter((name) => !name.startsWith('@'));
-    const foreign = excluded.filter((name) => name.startsWith('@'));
+    const foreign = excluded.filter((name) => name.startsWith('@') && workspaceFesms.has(name));
+    const packages = excluded.filter((name) => name.startsWith('@') && !workspaceFesms.has(name));
     const banned = new Map(own.map((name) => [fesmById.get(name), name]));
     const bannedFiles = new Map(foreign.map((name) => [workspaceFesms.get(name), name]));
-    if (entryFesm === undefined || banned.has(undefined) || bannedFiles.has(undefined)) {
+    // A package name that resolves to nothing would pass without having looked.
+    const unresolved = packages.filter((name) => {
+      try {
+        require.resolve(`${name}/package.json`);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (entryFesm === undefined || banned.has(undefined) || unresolved.length > 0) {
       console.error(`${library.name}: "tellma".staticGraphExcludes names an entry point that does not exist.`);
       failed = true;
       continue;
     }
+    // This library's own files: its FESMs and their chunks, beside the entry point's.
+    const ownDir = relative(clientDir, dirname(entryFesm)).split(sep).join('/') + '/';
     const result = await esbuild.build({
       entryPoints: [entryFesm],
       absWorkingDir: clientDir,
@@ -305,7 +323,7 @@ for (const library of discoverLibraries(clientDir)) {
       metafile: true,
       logLevel: 'silent',
       external: ['@angular/*', 'rxjs', 'rxjs/*', 'tslib', '@jsverse/*'],
-      plugins: [foreign.length > 0 ? workspace : siblings],
+      plugins: [foreign.length > 0 || packages.length > 0 ? workspace : siblings],
     });
     const outputs = result.metafile.outputs;
     // Walk the entry output's static imports; dynamic ones are the boundary.
@@ -344,10 +362,11 @@ for (const library of discoverLibraries(clientDir)) {
         }
       }
     }
-    // Another library's file: walk the static import statements between the
-    // input files, used or not, from the entry point's FESM, as an app's
-    // bundler does when it decides which chunk holds a file's code.
-    if (foreign.length > 0) {
+    // Another library's file, or a package this library's files import: walk
+    // the static import statements between the input files, used or not,
+    // from the entry point's FESM, as an app's bundler does when it decides
+    // which chunk holds a file's code.
+    if (foreign.length > 0 || packages.length > 0) {
       const inputs = result.metafile.inputs;
       const from = new Map([[entryInput, null]]);
       const files = [entryInput];
@@ -366,6 +385,21 @@ for (const library of discoverLibraries(clientDir)) {
           reached = true;
         }
         for (const imported of inputs[file]?.imports ?? []) {
+          // A package's import by a file of this library's own.
+          const pkg = imported.kind === 'import-statement' && imported.external && file.startsWith(ownDir)
+            ? packages.find((name) => imported.path === name || imported.path.startsWith(`${name}/`))
+            : undefined;
+          if (pkg !== undefined) {
+            const chain = [];
+            for (let at = file; at !== null; at = from.get(at)) {
+              chain.unshift(basename(at));
+            }
+            console.error(
+              `${library.name}: '${id}' reaches '${pkg}' through static imports (${chain.join(' -> ')} -> ${imported.path}), ` +
+                `so the code that loads with it carries that package.`,
+            );
+            reached = true;
+          }
           if (imported.kind === 'import-statement' && !imported.external && !from.has(imported.path)) {
             from.set(imported.path, file);
             files.push(imported.path);

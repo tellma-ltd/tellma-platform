@@ -7,7 +7,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { RouterTestingHarness } from '@angular/router/testing';
-import { TmAppVersion, type TmLanguageDefinition, type TmLaunchDocs, tmEnglish, tmFeature, TmLocalization } from '@tellma/core';
+import { TmAppVersion, type TmLanguageDefinition, type TmLaunchDocs, tmEnglish, tmFeature, TmLocalization, ɵTM_SUPPORT_LOAD } from '@tellma/core';
 import { TmFakeSession, type TmSessionMenuHarness, TmTenantShellHarness, tmTestShellSlot } from '@tellma/core-testing';
 import { type TmBreakpoint, TmBreakpoints, TmTheme } from '@tellma/core-ui';
 import { TmModalHarness } from '@tellma/core-ui-testing';
@@ -24,11 +24,13 @@ import {
   type TmAppRig,
   type TmAppRigOptions,
 } from '../../../src/routes/tm-app.testing.util';
+import { TM_SHELL_SUPPORT, type TmShellSupport } from '../tm-shell-support';
 
 // The session menu through its harness, opened from the tenant shell's
 // session button: its header and avatar tone, the tenant card, the rows and
 // the conditions that show them (two languages, two calendars, the slots
-// below md and none from md up), and what each row does.
+// below md and none from md up), and what each row does, Report a problem
+// opening the support dialog through the primary's facade.
 
 /** Every width class in ascending order. */
 const ORDER: readonly TmBreakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
@@ -79,9 +81,9 @@ describe('the session menu', () => {
     expect(await menu.getAvatarTone()).toBe(tmAvatarTone('core.User:42'));
   });
 
-  it('lists the tenant card, My settings, the theme, the shortcuts, About and Sign out with one language and one calendar', async () => {
+  it('lists the tenant card, My settings, the theme, the shortcuts, About, Report a problem and Sign out with one language and one calendar', async () => {
     const menu = await open();
-    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Sign out']);
+    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Sign out']);
     expect(await menu.getTenantCard()).toEqual({ label: 'Acme', description: 'Tenant 17', detail: 'Switch' });
     expect(await menu.getTenantCardName()).toBe('Acme, Switch tenant');
     expect(await menu.getLinkHref('My settings')).toBe('/17/me');
@@ -122,7 +124,7 @@ describe('the session menu', () => {
       languages: [tmEnglish(), ARABIC],
       strings: { en: { Calendar_gc: 'Gregorian', Calendar_uq: 'Umm al-Qura' } },
     });
-    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'Language', 'Calendar', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Sign out']);
+    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'Language', 'Calendar', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Sign out']);
     const language = await menu.openSubmenu('Language');
     expect(await language.getItemLabels()).toEqual(['English', 'العربية']);
     expect(await language.isChecked('English')).toBe(true);
@@ -139,7 +141,7 @@ describe('the session menu', () => {
     const pending = signal<number | null>(4);
     const feature = tmFeature({ ...tmRouteTestFeature(), appBar: [tmTestShellSlot('acme-approvals', { labelKey: 'Acme_Approvals', count: pending })] });
     const menu = await open({ features: [feature], strings: { en: { Acme_Approvals: 'Approvals' } } }, 'sm');
-    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Approvals', 'Sign out']);
+    expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Approvals', 'Sign out']);
     const [row] = (await menu.getItems()).slice(-2);
     expect(await row.getDetail()).toBe('4');
     await row.click();
@@ -153,7 +155,7 @@ describe('the session menu', () => {
     it(`lists no slot rows at ${widest}, where the app bar shows the slots`, async () => {
       const feature = tmFeature({ ...tmRouteTestFeature(), appBar: [tmTestShellSlot('acme-approvals', { labelKey: 'Acme_Approvals', count: signal(4) })] });
       const menu = await open({ features: [feature], strings: { en: { Acme_Approvals: 'Approvals' } } }, widest);
-      expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Sign out']);
+      expect(await menu.getItemLabels()).toEqual(['Acme', 'My settings', 'System', 'Light', 'Dark', 'Keyboard shortcuts', 'About', 'Report a problem', 'Sign out']);
     });
   }
 
@@ -182,5 +184,28 @@ describe('the session menu', () => {
     await (await shell.openSessionMenu()).clickItem('Keyboard shortcuts');
     await tmSettleUntil(() => document.querySelector('tm-modal-shell tm-shortcuts-dialog') !== null, 'the shortcuts render');
     expect(await (await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmModalHarness)).getTitle()).toBe('Keyboard shortcuts');
+  });
+
+  it('closes the menu, then opens the support dialog from Report a problem', async () => {
+    const opened: boolean[] = [];
+    const support: TmShellSupport = {
+      // Whether focus was back on the session button, the menu closed, when the dialog was asked for.
+      open: () => void opened.push(document.activeElement?.closest('tm-app-bar') !== null && document.activeElement?.closest('.tm-menu__panel') === null),
+      diagnostics: () => new Promise(() => undefined),
+      offline: () => new Promise(() => undefined),
+    };
+    const menu = await open({ providers: [{ provide: TM_SHELL_SUPPORT, useValue: support }] });
+    await menu.clickItem('Report a problem');
+    await tmSettle();
+    expect(opened).toEqual([true]);
+  });
+
+  it("opens the support facade's dialog over its placeholder while the support entry point loads", async () => {
+    const menu = await open({ providers: [{ provide: ɵTM_SUPPORT_LOAD, useValue: () => new Promise(() => undefined) }] });
+    await menu.clickItem('Report a problem');
+    await tmSettleUntil(() => document.querySelector('tm-modal-shell tm-support-host') !== null, 'the support dialog opens');
+    const dialog = await TestbedHarnessEnvironment.documentRootLoader(router.fixture).getHarness(TmModalHarness);
+    expect(await dialog.getTitle()).toBe('Report a problem');
+    expect(document.querySelector('tm-modal-shell tm-support-host [aria-busy="true"]')).not.toBeNull();
   });
 });

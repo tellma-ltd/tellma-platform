@@ -47,5 +47,6 @@ export const TM_ERROR_STRINGS_EN = {
   updating: 'Getting the update…',
   updateFailed: "Couldn't download the update. Check your connection and try again.",
   reloadAnyway: 'Reload anyway',
+  reportProblem: 'Report this problem',
   details: { status: 'Status', code: 'Code', time: 'Time', route: 'Page', version: 'Version', permission: 'Permission' },
 } as const satisfies TmStringTree;

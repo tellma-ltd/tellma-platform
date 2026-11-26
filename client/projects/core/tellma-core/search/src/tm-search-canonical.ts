@@ -4,8 +4,17 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Injector, signal, untracked, type Signal } from '@angular/core';
-import { TmLocalization, TmTelemetry, TmUrls, type TmColumnInput, type TmSearchQuery, type TmTelemetryItem } from '@tellma/core';
-import { tmFilterLeaf, tmFormatFilter, tmParseFilter, tmSelectPlan, type TmColumnPlan, type TmColumnSource } from '@tellma/core/entity';
+import {
+  TmLocalization,
+  TmTelemetry,
+  TmUrls,
+  type TmColumnInput,
+  type TmColumnPlan,
+  type TmColumnSource,
+  type TmSearchQuery,
+  type TmTelemetryItem,
+} from '@tellma/core';
+import { tmFilterLeaf, tmFormatFilter, tmParseFilter, tmSelectPlan } from '@tellma/core/entity';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 
 import {
@@ -85,6 +94,18 @@ export function tmSearchQuiet(setting: TmSearchSetting): TmSearchSetting {
     QUIET_INJECTORS.set(setting.injector, injector);
   }
   return { ...setting, injector };
+}
+
+/**
+ * The code default columns as the user may read them: those the access
+ * drops left out, planned quietly, as their drops are reported where the
+ * columns apply.
+ *
+ * @param setting - The page's setting.
+ * @returns The columns.
+ */
+export function tmSearchShownDefaults(setting: TmSearchSetting): readonly TmColumnInput<string>[] {
+  return tmSearchPlanColumns(tmSearchQuiet(setting), tmSearchDefaultColumns(setting.descriptor, setting.declaration), 'declaration');
 }
 
 /**
@@ -279,8 +300,10 @@ export function tmSearchCanonical(setting: TmSearchSetting, query: TmSearchQuery
   }
 
   // --- The columns, only when they travel ---
+  // The default is compared as the user may read it, so a default column
+  // the user's access drops does not pin the others in the URL.
   const paths = tmSearchPathKeys(columns);
-  if (paths !== null && paths.length > 0 && !tmSearchSameColumns(columns, tmSearchDefaultColumns(descriptor, declaration))) {
+  if (paths !== null && paths.length > 0 && !tmSearchSameColumns(columns, tmSearchShownDefaults(setting))) {
     canonical.cols = paths;
   }
 
@@ -314,7 +337,7 @@ export function tmSearchCanonical(setting: TmSearchSetting, query: TmSearchQuery
  * @returns The URL, such as `/17/centers?q=jed`; empty, for nothing to write, in picker mode and for a list's invalid payload.
  */
 export function tmSearchUrl(setting: TmSearchSetting, state: TmSearchState): string {
-  const urls = setting.injector.get(TmUrls);
+  const urls = setting.urls ?? setting.injector.get(TmUrls);
   if (state.payloadInvalid) {
     return '';
   }

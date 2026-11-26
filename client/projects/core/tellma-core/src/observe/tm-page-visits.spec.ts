@@ -6,10 +6,11 @@
 import { signal, type Type, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NavigationCancel, NavigationCancellationCode, NavigationEnd, NavigationStart, Router, type Event as RouterEvent } from '@angular/router';
-import { TmFakeTelemetry } from '@tellma/core-testing';
+import { TmFakeTelemetry, type TmFakeApiCall } from '@tellma/core-testing';
 import { Subject } from 'rxjs';
 
 import type { TmPageContext } from '../context/tm-page-context';
+import type { TmJsonObject } from '../json/tm-json';
 import { TmPageContexts } from '../context/tm-page-contexts';
 import { TmTestPage, tmAppRig, tmLoadTestPage, tmNavigate, tmSettleUntil, TM_TEST_SUB, tmTestMembership, type TmAppRig } from '../routes/tm-app.testing.util';
 import { TmClientStore } from '../state/store/tm-client-store';
@@ -60,6 +61,12 @@ describe('TmPageVisits', () => {
   beforeEach(async () => {
     rig = await tmAppRig({ tenants: [tmTestMembership(17)] });
     ({ telemetry } = rig);
+    // The centers page is the search host, which is ready once its first read answers: no rows.
+    rig.api.respond('centers/query', (call: TmFakeApiCall) => {
+      const terms = String((call.body as TmJsonObject)['select']).split(',');
+      const columns = terms.map((term) => ({ name: term, type: 'String', nullable: true, groupingKey: false, path: term.split('.') }));
+      return { rows: { columns, rows: [] }, count: 0 };
+    });
   });
 
   afterEach(() => {
