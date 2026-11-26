@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-389 (2026-11-26): PC-129 blocked on spec 0024's 110 KB search route; PC-F112 lands PC-128's pager saving
+
+D-388's placement fix cannot reach 110. PC-129's details kit renders /entity's TmValue and aria tabs in view mode. The modules both lazy routes reach statically (the /entity view side, aria's shared pieces, the l10n-input parsers) must therefore leave the search host's chunk. That splitting costs about 1.5 KB of gzip, and moving TmUploads off the /entity barrel saves only 0.26, which leaves about 111.3.
+
+The 110 KB is spec 0024 §12's own search-route budget, so it is not raised (D-313). PC-129 is blocked and skipped in the release queue (D-319). It keeps pc-4 and its unpushed merge b23ddb2d (D-255), and PC-F110 is released in its place.
+
+The remedy is fix item PC-F112. It lands on its own the pager change PC-128 already had reviewed in R1 and R2: the page-size select loads on demand behind a replaying stand-in, which took about 15 KB off the search route in PC-128's branch. That change is independent of the parked search-field question (D-384), and it unblocks PC-129, so it is a blocking fix and takes pc-f ahead of PC-F107 once a heavy-agent place frees (D-028, D-229).
+
+When PC-F112 lands, PC-129 merges again, moves TmUploads off the barrel, runs the full gates and integrates. PC-128 will later merge PC-F112's identical pager change on top of its own.
+
+Question for Ahmad, non-blocking: spec 0024 §12's 110 KB search route leaves little room once the details kit shares /entity's view side with search. Should the route budget account for that sharing?
+
 ### D-388 (2026-11-26): PC-129 integration over searchRoute; the fix is placement, not a raise
 
 PC-129's merged tree puts Acme searchRoute at 111.54 of 110 (fixture 111.56), so it stopped (D-247). By its own attribution the cause is shared-chunk placement:
