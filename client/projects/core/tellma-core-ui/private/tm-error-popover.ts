@@ -3,8 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { afterRenderEffect, Component, ElementRef, inject, input } from '@angular/core';
-import { CircleAlert } from 'lucide';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
 
 import { TmIcon } from '@tellma/core-ui/icon';
 

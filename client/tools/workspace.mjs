@@ -109,10 +109,13 @@ export function discoverLibraries(clientDir) {
  * ng-packagr. Apps carry no package.json, so they never appear here.
  *
  * A Node package's public entry points are the subpaths of its `exports`
- * map that declare `types`: each one's flattened d.ts is the compiled
- * `dist/<path>.d.ts`, and its source the matching `src/<path>.ts`, whose
- * `@packageDocumentation` header the API goldens restore. A package with no
- * such export (the MCP server ships a bin only) has no entry points.
+ * map that declare compiled `types`: each one's flattened d.ts is the
+ * compiled `dist/<path>.d.ts`, and its source the matching `src/<path>.ts`,
+ * whose `@packageDocumentation` header the API goldens restore. A package
+ * with no such export (the MCP server ships a bin only) has no entry points.
+ * A subpath whose `types` lies outside `dist/` is a preset shipped as it is
+ * written, like the tsconfig preset (`@tellma/core-tools/lucide-icons`, the
+ * declaration of another package's modules), not an entry point.
  *
  * @param {string} clientDir absolute path of the client workspace root
  * @returns {{ name: string, short: string, dir: string, tellma: any, dependsOn: string[], entryPoints: TmEntryPoint[] }[]}
@@ -126,7 +129,8 @@ export function discoverNodePackages(clientDir) {
       const entryPoints = [];
       for (const [id, target] of Object.entries(exports)) {
         const types = typeof target === 'object' && target !== null ? target.types : undefined;
-        if (typeof types !== 'string') {
+        // Only the compiled d.ts are entry points; a preset's own d.ts is not.
+        if (typeof types !== 'string' || !types.startsWith('./dist/')) {
           continue;
         }
         const sub = id === '.' ? undefined : id.replace(/^\.\//, '');

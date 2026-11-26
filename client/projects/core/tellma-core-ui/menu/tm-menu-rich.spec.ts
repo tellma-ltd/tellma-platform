@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   Component,
   computed,
@@ -13,7 +15,7 @@ import {
 } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { Star } from 'lucide';
+import Star from 'lucide/dist/esm/icons/star.mjs';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { provideTellmaIcons } from '@tellma/core-ui/icon';

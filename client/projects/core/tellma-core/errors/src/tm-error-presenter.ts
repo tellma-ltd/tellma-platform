@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   computed,
   createEnvironmentInjector,
@@ -39,7 +41,11 @@ import {
   TmUrls,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { CircleAlert, Clock, Lock, RefreshCw, SearchX } from 'lucide';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import Clock from 'lucide/dist/esm/icons/clock.mjs';
+import Lock from 'lucide/dist/esm/icons/lock.mjs';
+import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
+import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
 
 import { TmErrorState } from './tm-error-state';
 import { TM_ERROR_STRINGS_EN } from './tm-error-strings';

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
@@ -22,7 +24,8 @@ import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import type { ConnectedOverlayPositionChange, ConnectedPosition } from '@angular/cdk/overlay';
-import { ArrowDown, ArrowUp } from 'lucide';
+import ArrowDown from 'lucide/dist/esm/icons/arrow-down.mjs';
+import ArrowUp from 'lucide/dist/esm/icons/arrow-up.mjs';
 
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmMenu } from '@tellma/core-ui/menu';

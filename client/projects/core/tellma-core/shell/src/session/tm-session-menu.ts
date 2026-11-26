@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   ChangeDetectionStrategy,
   Component,
@@ -23,7 +25,12 @@ import {
 } from '@tellma/core';
 import { TmBreakpoints, TmTheme, type TmThemeSetting } from '@tellma/core-ui';
 import { TmMenu, type TmMenuEntry, TmMenuHeaderDef, type TmMenuItem } from '@tellma/core-ui/menu';
-import { Building2, CalendarDays, Globe, Info, Keyboard, UserCog } from 'lucide';
+import BuildingComplex from 'lucide/dist/esm/icons/building-complex.mjs';
+import CalendarDays from 'lucide/dist/esm/icons/calendar-days.mjs';
+import Globe from 'lucide/dist/esm/icons/globe.mjs';
+import Info from 'lucide/dist/esm/icons/info.mjs';
+import Keyboard from 'lucide/dist/esm/icons/keyboard.mjs';
+import UserCog from 'lucide/dist/esm/icons/user-cog.mjs';
 
 import type { TmShellMarker } from '../app-bar/tm-shell-identity';
 import { TmShellIdentity } from '../app-bar/tm-shell-identity';
@@ -286,7 +293,7 @@ export class TmSessionMenu {
       description,
       detail: this.#text('switch'),
       detailLabel: this.#text('switchTenant'),
-      icon: Building2,
+      icon: BuildingComplex,
       // Nothing is cleared, so coming back to the tenant is a warm launch.
       action: () => void this.#router.navigateByUrl(this.#urls.picker()),
     };

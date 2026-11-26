@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { LocationStrategy, NgComponentOutlet } from '@angular/common';
 import {
   afterNextRender,
@@ -40,7 +42,13 @@ import {
   TmTitleStrategy,
   TmUrls,
 } from '@tellma/core';
-import { ChevronDown, CircleCheck, CircleOff, Pencil, Plus, RefreshCw, X } from 'lucide';
+import ChevronDown from 'lucide/dist/esm/icons/chevron-down.mjs';
+import CircleCheck from 'lucide/dist/esm/icons/circle-check.mjs';
+import CircleOff from 'lucide/dist/esm/icons/circle-off.mjs';
+import Pencil from 'lucide/dist/esm/icons/pencil.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TmDetailsController } from './tm-details-controller';
 

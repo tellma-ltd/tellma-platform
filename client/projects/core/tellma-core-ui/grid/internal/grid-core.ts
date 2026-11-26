@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterNextRender,
   afterRenderEffect,
@@ -24,7 +26,13 @@ import {
 } from '@angular/core';
 import type { LiveAnnouncer } from '@angular/cdk/a11y';
 import type { FieldTree, ValidationError } from '@angular/forms/signals';
-import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2 } from 'lucide';
+import ClipboardPaste from 'lucide/dist/esm/icons/clipboard-paste.mjs';
+import Copy from 'lucide/dist/esm/icons/copy.mjs';
+import CopyPlus from 'lucide/dist/esm/icons/copy-plus.mjs';
+import CornerDownRight from 'lucide/dist/esm/icons/corner-down-right.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import Scissors from 'lucide/dist/esm/icons/scissors.mjs';
+import Trash from 'lucide/dist/esm/icons/trash.mjs';
 
 import {
   TM_PARSE_ERROR,
@@ -218,7 +226,7 @@ const GRID_MENU_ICONS = {
   paste: ClipboardPaste,
   insertRows: Plus,
   insertChild: CornerDownRight,
-  deleteRows: Trash2,
+  deleteRows: Trash,
 } as const;
 
 /** Natively-focusable content consumers may project into cells/headers. */

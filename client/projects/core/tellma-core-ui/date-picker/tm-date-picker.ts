@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   Component,
@@ -22,7 +24,8 @@ import {
 import { Directionality } from '@angular/cdk/bidi';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { transformedValue, type ParseResult, type ValidationError } from '@angular/forms/signals';
-import { Calendar, CircleAlert } from 'lucide';
+import Calendar from 'lucide/dist/esm/icons/calendar.mjs';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
 
 import {
   TM_PARSE_ERROR,
