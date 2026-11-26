@@ -108,7 +108,12 @@ No ceiling was raised. The `"."` figure moves by gzip noise from the changed imp
    not `kbd` (`button`, `icon`, `keys`, `tooltip`): code that only matches or labels keys
    imports `keys`. (Added in fix1, R1-2.)
 2. Spec 0023 §3.2 says `tm/no-platform-sniffing` refuses the platform reads "outside `kbd`"; the
-   one platform check now lives in `keys`, so the exemption is `keys/**`.
+   one platform check now lives in `keys`, so the exemption is `keys/**`. Spec 0010 states the
+   same rule in two more places, which this change makes untrue in the same way: the Parts B–E
+   shared rule ("outside `kbd/`", lines 998-999) and Part C's definition of done ("no platform
+   check outside `kbd`", line 2233). In both, the exempt folder is now `keys/`. §C.12's contract
+   comment on `TM_GRID_KEYS`, "kbd imported at runtime" (line 2016), now reads `keys`: the grid
+   imports `@tellma/core-ui/keys` at runtime and no longer reaches `kbd`. (Added in fix2, R2-1.)
 3. Beyond the ledger's `"."`, the guard also covers `./shell` and `./attention`, the rest of the
    initialJs set.
 
@@ -199,3 +204,88 @@ and `copy` no longer reaches `kbd` at all.
   Chromium e2e of `additions-axe.spec.ts` (PR tier: the four registry tests and every story's
   PR-tier scan, 36 tests), `kbd.spec.ts` and `menu-rich.spec.ts` passed 78/78. The `@nightly`
   combinations of the axe battery were not run.
+
+## Review 2
+
+### Findings
+
+**R2-1 (minor): the Deviations cover spec 0023 §3.2's "outside `kbd`", but not spec 0010's
+statements of the same rule, which this change also makes untrue.**
+- `docs/specs/0010-amendments-to-implemented-specs.md:998-999` (the Parts B–E shared rules, "Keys
+  through `kbd`"): `tm/no-platform-sniffing` "refuses `navigator.platform` and
+  `navigator.userAgentData` outside `kbd/`". After this change the rule exempts `keys/**`
+  (`client/eslint.config.mjs:819`) and covers `kbd/`, which
+  `client/tools/tests/no-platform-sniffing.spec.mts:129` now pins.
+- `docs/specs/0010-amendments-to-implemented-specs.md:2233` (Part C's definition of done): "no
+  platform check outside `kbd`".
+- `docs/specs/0010-amendments-to-implemented-specs.md:2016` (§C.12's contract): `TM_GRID_KEYS …
+  // kbd imported at runtime`. The grid now imports `@tellma/core-ui/keys` at runtime and no
+  longer reaches `kbd` at all (`client/projects/core/tellma-core-ui/grid/internal/grid-keymap.ts:21`,
+  `grid/internal/grid-core.ts:47`, `grid/internal/find-bar.ts:20`).
+- R1-2 judged that spec 0010 needs no entry, because "matched through `kbd`" still reads true
+  through the re-export. That holds for §C.10 (the menu still imports `kbd`, for `TmKbd`) and for
+  the prose that names the grammar. It does not hold for these three lines: two state the lint
+  rule's folder scope, and one states the grid's runtime import.
+- Scenario: the spec fix that Deviation 2 sends to Ahmad amends 0023 §3.2 only. Spec 0010's shared
+  rule goes on telling the next implementer that `kbd/` is the exempt folder, which the lint config
+  now contradicts. PLAN.md §7.1 item 5 asks for every spec error to be stated under Deviations.
+- Fix: extend Deviation 2, here and in the next commit message. For example: "Spec 0010's Parts
+  B–E shared rule ('outside `kbd/`') and Part C's definition of done ('no platform check outside
+  `kbd`') likewise: the exempt folder is `keys/`. §C.12's 'kbd imported at runtime' now reads
+  `keys`."
+
+**Checked, no finding.**
+- R1-1 is closed. `keys` is in `OLDER_FOLDERS` (`client/e2e/specs/additions-axe.spec.ts:80`). No
+  other enumeration in the repository needs it:
+  - In `client/`, the only list that names the earlier UI-less splits (`blob-fetcher`, `initials`,
+    `l10n-input`) is `OLDER_FOLDERS`. `ADDITIONS_ENTRY_POINTS`, `library-docs.spec.mts`'s
+    `ADDITIONS` and `ADDITIONS_STORIES` list only the additions entry points that have a component
+    or a story, and `keys` exports only `tm`-prefixed names. `scripts/bundle-size.mjs`, `scripts/api-extractor.mjs`,
+    `tools/docs/extract-components.mts` and `tools/workspace.mjs` discover entry points from
+    `ng-package.json`. The tsconfig `paths` (client, Acme, and the dist mappings of core,
+    core-testing and locale-ar) are wildcards.
+  - The three workflows in `.github/workflows/` name no core-ui folder. No `.csproj`, `.esproj`,
+    `.props`, `.targets` or `.cs` file names `kbd`. The `tm/core-import-boundary` rule and
+    core-tools' budgets list no core-ui entry point.
+- The kbd lint block. I probed it through `eslint --stdin --stdin-filename
+  projects/core/tellma-core-ui/kbd/probe.ts` (no file written). `@tellma/core-ui/icon`, the bare
+  `@tellma/core-ui`, the deep `@tellma/core-ui/keys/tm-keys`, `@tellma/core-ui/keys-extra`,
+  `../keys/tm-keys` and `lucide` are each refused, and `@tellma/core-ui/keys` alone passes. No
+  later block sets `no-restricted-imports` for `kbd/`, so flat config's last-wins replacement does
+  not undo it.
+- The split as built. On a clean `pnpm run build`, `tellma-core-ui-kbd.mjs` imports and
+  re-exports `@tellma/core-ui/keys` and holds none of the matcher (no `Slash`, `BracketLeft` or
+  `AltGraph`). In `dist/core`, only the lazy `tm-shortcuts-dialog` chunk imports `kbd`. The
+  primary's shared chunk, `/shell`'s shared chunk and the expression editor import `keys`.
+- Guards and budgets. `size:check` is green. The guards on `"."`, `./shell` and `./attention`
+  report that `@tellma/core-ui/kbd` is unreachable. `./kbd` is 0.82 of 1, `./keys` 1.56 of 2 and
+  `@tellma/core` `"."` 53.72 of 53.72. The implementer's `size:check` log on the base shows all
+  three guards red, with the chains through `tellma-core-tellma-core-*.mjs`. `./keys` is born at
+  its measure rounded up to the next 0.5 KB, as `./counter` and `./initials` were, and `./kbd`
+  drops to the spec's 1.
+- Acme. A clean `tellma-client build --no-dotnet-build` reproduces initialJs 222.81 in 4 files and
+  corePrimaryFirstFrame 52.04. `tm-kbd__key` is only in `chunk-WJ0E1M4T.js`, which `index.html`
+  prefetches. Neither `main` nor the three modulepreloads import that chunk.
+- D-357's ruling on the `"."` margin stands. `size:check` runs on both Linux and Windows CI,
+  and `.gitattributes` forces LF, so both platforms build from the same source bytes. The
+  integration merge re-measures against PC-154's 54.5.
+- Tests I ran (logs `PC-F92-r2-*.log` in the shared scratchpad):
+  - The whole `additions-axe.spec.ts` on Chromium, the `@nightly` combinations included (132), and
+    `kbd.spec.ts` (8): 140/140.
+  - `ng test core-ui` over `kbd`, `keys` and `copy`: 50/50.
+  - `lint:test`'s `no-platform-sniffing.spec.mts`: 24/24.
+  - `eslint` over every changed source file and the `kbd/` and `keys/` folders: clean.
+  - The clean library build, `size:check`, the clean Acme build, and `api:check` (100 goldens,
+    `core-ui.kbd` and `core-ui.keys` among them, no drift).
+  - The changed grid and shell code's specs that the implementer's list did not name:
+    `tm-grid-context-menu`, `tm-grid`, `tm-grid-lazy-editing`, `grid-keymap-editing`, and
+    grid-editing's `editor-session` and `popup-keys` (75/75); and core's `tm-shell-frame` and
+    `tm-tenant-shell`, the app bar's hosts (44/44).
+
+### Responses
+
+- R2-1: fixed in fix2. Deviation 2 above, and the fix2 commit message, now name spec 0010's three
+  statements: the Parts B–E shared rule (lines 998-999) and Part C's definition of done
+  (line 2233), whose exempt folder is now `keys/`, and §C.12's "kbd imported at runtime"
+  (line 2016), which now reads `keys`. docs/ is not edited. The change is to the review file
+  only, so no gate re-ran.
