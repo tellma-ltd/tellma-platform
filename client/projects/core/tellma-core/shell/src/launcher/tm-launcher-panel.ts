@@ -6,17 +6,24 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  ApplicationRef,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
+  type ComponentRef,
   computed,
+  createComponent,
   DestroyRef,
   DOCUMENT,
   effect,
   type ElementRef,
+  type EnvironmentInjector,
   inject,
+  InjectionToken,
+  Injector,
   signal,
   type TemplateRef,
+  type Type,
   untracked,
   viewChild,
   ViewEncapsulation,
@@ -30,24 +37,23 @@ import {
   TmPreferences,
   tmPinnedBarVisibleKey,
   tmPinsKey,
-  tmRecentPageIcon,
   TmTelemetry,
   TmUrls,
-  type TmLauncherItem,
-  type TmLauncherProvider,
   type TmPin,
+  ɵtmRecentPageIcon,
 } from '@tellma/core';
-import { tmSearchNormalize } from '@tellma/core/search-normalize';
+import type { TmRecents } from '@tellma/core/recents';
 import { TmBreakpoints } from '@tellma/core-ui';
-import { TmIcon } from '@tellma/core-ui/icon';
-import { tmAriaKeyShortcuts } from '@tellma/core-ui/kbd';
+import { TmIcon, TmIconRegistry } from '@tellma/core-ui/icon';
+import { tmAriaKeyShortcuts, tmKeysMatch } from '@tellma/core-ui/kbd';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { tmPushEscapeDismissal, ɵtmOpenModals, ɵtmRaiseTopLayer, ɵtmWatchModals } from '@tellma/core-ui/overlay';
-import { Search, X } from 'lucide';
+import { Search } from 'lucide';
 
 import { tmPinHref, tmPinLabel, tmPinsView } from '../pins/tm-pin-rules';
+import { TM_LAUNCHER_COMMANDS } from './tm-launcher-commands';
 import {
-  type TmLauncherCandidate,
+  tmLauncherCandidates,
   tmLauncherIndex,
   tmLauncherMarks,
   tmLauncherMatch,
@@ -55,7 +61,9 @@ import {
   type TmLauncherSegment,
   tmLauncherTokens,
 } from './tm-launcher-index';
-import { TM_LAUNCHER_RECENTS, TmLauncher, type TmLauncherCloseReason, type TmLauncherSurface, type TmLauncherVia } from './tm-launcher';
+import type { TmLauncherBucket, TmLauncherRuns, TmLauncherRunsHost } from './tm-launcher-runs';
+import type { TmLauncherSheetHost } from './tm-launcher-sheet';
+import { TmLauncher, type TmLauncherCloseReason, type TmLauncherSurface, type TmLauncherVia } from './tm-launcher';
 import { TmNavTermsReader } from './tm-nav-terms';
 
 // The launcher's surface (spec 0027 §9), the deferred chunk TmLauncher
@@ -66,31 +74,34 @@ import { TmNavTermsReader } from './tm-nav-terms';
 //   panel; the app bar's search field is its input;
 // - at md, the same panel with a field of its own at its top;
 // - below md, a TmModal of size lg labelled "Menu", full screen below sm,
-//   with a 44 px field beside Close.
+//   with a 44 px field beside Close: the tm-launcher-sheet chunk, loaded
+//   once the viewport is below md.
 //
 // The panel shows the browse state (the pinned band below md or while the
 // pinned bar is hidden, the recently visited band, the sections as columns)
 // or, with text, the typed state (the matching pages, then each provider's
 // bucket as its answer arrives). One listbox holds a group per band, section
 // and bucket; the input keeps DOM focus and points at the active option
-// (the APG combobox). Pages recompute on every keystroke; the providers run
-// on the edges of a burst of typing, as TmSearch's search output times them,
-// each run aborted when the next one starts.
-
-/** How long a burst of typing waits for its next key before the providers run again. */
-const BURST_MS = 50;
+// (the APG combobox). Pages recompute on every keystroke, synchronously;
+// the providers' runs are the tm-launcher-runs chunk, loaded only when the
+// app registers a provider.
 
 /** How long after the last keystroke the results are announced. */
 const ANNOUNCE_MS = 500;
+
+/** The recent pages, as the surface reads them. Internal: the surface's creation provides them. */
+export const TM_LAUNCHER_RECENTS = new InjectionToken<Pick<TmRecents, 'pages'>>('TM_LAUNCHER_RECENTS');
 
 /** One option of the listbox. */
 interface TmOption {
   /** The element's id, stable for its key. */
   readonly id: string;
-  /** The URL it opens. */
+  /** The URL it opens, or `''` for a command. */
   readonly href: string;
-  /** The URL as a tree, which an unmodified click navigates to. */
-  readonly link: UrlTree;
+  /** The URL as a tree, which an unmodified click navigates to, or `null` for a command. */
+  readonly link: UrlTree | null;
+  /** The command it runs instead of opening a page, or `null`. */
+  readonly run: (() => void) | null;
   /** Its icon's registered name. */
   readonly icon: string;
   /** The label, in runs, a prefix-matched word's start marked. */
@@ -123,14 +134,6 @@ interface TmGroup {
   readonly empty: string | null;
 }
 
-/** A provider's answer, as a bucket shows it. */
-interface TmBucket {
-  /** The provider. */
-  readonly provider: TmLauncherProvider;
-  /** Its items, at most the context's limit. */
-  readonly items: readonly TmLauncherItem[];
-}
-
 /** A URL's path, without its query or fragment. */
 function pathOf(url: string): string {
   return url.split(/[?#]/, 1)[0]!;
@@ -153,7 +156,7 @@ let nextPanel = 0;
 /**
  * The launcher's surface: the overlay panel from md up, the Menu modal below
  * it, their browse and typed states, the combobox keyboard and the provider
- * buckets. TmLauncher creates it once and opens and closes it.
+ * buckets. TmLauncher has it created once and opens and closes it.
  */
 @Component({
   selector: 'tm-launcher-panel',
@@ -187,24 +190,10 @@ let nextPanel = 0;
         </div>
       }
     </div>
-    <!-- Below md: the Menu modal's content, the field beside Close, then the body. -->
-    <ng-template #sheet>
-      <div class="tm-launcher__sheet" (keydown)="sheetKeydown($event)">
-        <div class="tm-launcher__sheet-head">
-          <label class="tm-launcher__field">
-            <tm-icon [svg]="searchIcon" />
-            <input type="text" class="tm-launcher__sheet-input" autocomplete="off" spellcheck="false" dir="auto" [placeholder]="searchLabel()" [attr.aria-label]="searchLabel()" [value]="query()" [attr.aria-activedescendant]="activeId()" [attr.aria-controls]="listboxId" [attr.aria-describedby]="hintId" aria-autocomplete="list" aria-expanded="true" role="combobox" [attr.aria-keyshortcuts]="keyShortcuts" (input)="typed($event)" (keydown)="keydown($event)" (keyup)="keyup()" (compositionstart)="composing.set(true)" (compositionend)="compositionEnd()" />
-          </label>
-          <button type="button" class="tm-launcher__close" [attr.cdkFocusInitial]="sheetVia() === 'menu' ? '' : null" [attr.aria-label]="text('close')" (click)="launcher.close('escape')">
-            <tm-icon [svg]="closeIcon" />
-          </button>
-        </div>
-        <div class="tm-launcher__scroll">
-          <ng-container [ngTemplateOutlet]="body" />
-        </div>
-      </div>
-    </ng-template>
-    <!-- The listbox: a group per band, section and bucket, each labelled by its heading. -->
+    <!--
+      The listbox: a group per band, section and bucket, each labelled by its
+      heading. Below md, the Menu modal's content renders it.
+    -->
     <ng-template #body>
       <div role="listbox" class="tm-launcher__list" [id]="listboxId" [attr.aria-label]="text('results')" [class.tm-launcher__list--typed]="state() === 'typed'">
         @for (group of groups(); track group.id) {
@@ -215,6 +204,7 @@ let nextPanel = 0;
               }
               <span>{{ group.label }}</span>
             </div>
+            <!-- A page's option is a router link; a command's is a link with no href, which a click or Enter runs. -->
             @for (option of group.options; track option.id) {
               <a
                 role="option"
@@ -272,7 +262,7 @@ let nextPanel = 0;
       color: var(--text-body);
     }
 
-    /* The panel: full width, its body scrolling within the viewport. */
+    /* The panel, and the Menu modal's content: a column whose body scrolls. */
     .tm-launcher__panel,
     .tm-launcher__sheet {
       display: flex;
@@ -470,77 +460,6 @@ let nextPanel = 0;
       }
     }
 
-    /* Below md: the modal's content, its own header hidden but naming the dialog. */
-    .tm-launcher-sheet .tm-modal__header {
-      position: absolute;
-      clip-path: inset(50%);
-      inline-size: 1px;
-      block-size: 1px;
-      overflow: hidden;
-    }
-
-    .tm-launcher-sheet .tm-modal__body {
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      overflow: hidden;
-    }
-
-    .tm-launcher__sheet {
-      flex: 1 1 auto;
-      min-block-size: 0;
-    }
-
-    .tm-launcher__sheet-head {
-      display: flex;
-      flex: none;
-      align-items: center;
-      border-block-end: var(--border-width) solid var(--divider);
-    }
-
-    .tm-launcher__sheet-head .tm-launcher__field {
-      block-size: 44px;
-      border: 0;
-    }
-
-    .tm-launcher__close {
-      display: inline-flex;
-      flex: none;
-      align-items: center;
-      justify-content: center;
-      inline-size: 44px;
-      block-size: 44px;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      color: var(--text-secondary);
-      cursor: pointer;
-      --icon-size: var(--modal-icon-size);
-    }
-
-    .tm-launcher__close:focus-visible {
-      outline: var(--focus-ring-width) solid transparent;
-      box-shadow: var(--focus-ring);
-    }
-
-    /* Full screen below sm, its entries 44 px tall. */
-    @media (width < 576px) {
-      .tm-modal-panel.tm-launcher-sheet {
-        inline-size: 100vw;
-        block-size: 100dvh;
-        max-inline-size: 100vw;
-        max-block-size: 100dvh;
-      }
-
-      .tm-modal-panel.tm-launcher-sheet > cdk-dialog-container {
-        border-radius: 0;
-      }
-
-      .tm-launcher__sheet .tm-launcher__option {
-        min-block-size: 44px;
-      }
-    }
-
     @media (forced-colors: active) {
       .tm-launcher__option[aria-selected='true'] {
         outline: 2px solid Highlight;
@@ -548,17 +467,18 @@ let nextPanel = 0;
     }
   `,
 })
-export class TmLauncherPanel implements TmLauncherSurface {
+export class TmLauncherPanel implements TmLauncherSurface, TmLauncherSheetHost {
   readonly #l10n = inject(TmLocalization);
   readonly #navigation = inject(TmNavigation);
   readonly #recents = inject(TM_LAUNCHER_RECENTS);
   readonly #prefs = inject(TmPreferences);
   readonly #urls = inject(TmUrls);
   readonly #router = inject(Router);
-  readonly #modal = inject(TmModal);
+  readonly #injector = inject(Injector);
   readonly #entities = inject(TmEntities);
   readonly #terms = inject(TmNavTermsReader);
   readonly #providers = [...inject(TM_LAUNCHER_PROVIDERS)].sort((a, b) => a.order - b.order);
+  readonly #commands = inject(TM_LAUNCHER_COMMANDS);
   readonly #telemetry = inject(TmTelemetry);
   readonly #announcer = inject(LiveAnnouncer);
   readonly #document = inject(DOCUMENT);
@@ -569,31 +489,30 @@ export class TmLauncherPanel implements TmLauncherSurface {
   readonly #ids = new Map<string, string>();
   readonly #kind = signal<'closed' | 'panel' | 'field' | 'sheet'>('closed');
   readonly #active = signal<{ readonly query: string; readonly id: string } | null>(null);
-  readonly #buckets = signal<readonly TmBucket[]>([]);
+  readonly #buckets = signal<readonly TmLauncherBucket[]>([]);
   readonly #routed = signal(pathOf(this.#router.url));
   readonly #pinsDoc = this.#prefs.get(tmPinsKey);
   readonly #barVisible = this.#prefs.get(tmPinnedBarVisibleKey);
+  readonly #waiting = signal(false);
   /** The scrim layer. */
   private readonly layer = viewChild.required<ElementRef<HTMLElement>>('layer');
   /** The panel, while it renders. */
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
   /** The panel's own field, at md. */
   private readonly ownField = viewChild<ElementRef<HTMLInputElement>>('ownField');
-  /** The modal's content. */
-  private readonly sheet = viewChild.required<TemplateRef<unknown>>('sheet');
   #returnTo: HTMLElement | null = null;
   #sheetRef: TmModalRef<void> | null = null;
+  // The Menu modal's chunk, loading or in; `null` until the viewport is first below md, and after a failed load.
+  #sheetChunk: Promise<typeof import('./tm-launcher-sheet') | null> | null = null;
+  // The providers' runs, once their chunk is in; `null` while no provider is registered.
+  #runs: TmLauncherRuns | null = null;
   #releaseEscape: (() => void) | null = null;
   #modalsAtOpen: ReadonlySet<HTMLElement> = new Set();
-  #abort: AbortController | null = null;
-  #lastRun = '';
-  #trailing: ReturnType<typeof setTimeout> | undefined;
-  #holding = false;
   #announceTimer: ReturnType<typeof setTimeout> | undefined;
   #announced = false;
 
   /** The launcher this surface shows. */
-  protected readonly launcher = inject(TmLauncher);
+  readonly launcher = inject(TmLauncher);
 
   /** The listbox's id. */
   readonly listboxId = `${this.#base}-list`;
@@ -601,26 +520,29 @@ export class TmLauncherPanel implements TmLauncherSurface {
   /** The hidden instructions' id. */
   readonly hintId = `${this.#base}-hint`;
 
+  /** The listbox, which the panel and the Menu modal's content render. */
+  readonly body = viewChild.required<TemplateRef<unknown>>('body');
+
   /** Which surface shows: the panel with the app bar's field, the panel with its own, the modal, or none. */
   protected readonly kind = this.#kind.asReadonly();
 
   /** Whether the app bar's search field is the input: the panel from lg up. */
   readonly usesField = computed(() => this.#kind() === 'panel');
 
+  /** Whether an open waits for the Menu modal's chunk. */
+  readonly waiting = this.#waiting.asReadonly();
+
   /** What opened the modal, which decides whether Close or the field takes focus. */
-  protected readonly sheetVia = signal<TmLauncherVia | null>(null);
+  readonly sheetVia = signal<TmLauncherVia | null>(null);
 
   /** Whether an IME composition is in progress in the input, which holds the providers. */
-  protected readonly composing = signal(false);
+  readonly composing = signal(false);
 
   /** The search glyph. */
   protected readonly searchIcon = Search;
 
-  /** The close glyph. */
-  protected readonly closeIcon = X;
-
   /** The input's `aria-keyshortcuts`. */
-  protected readonly keyShortcuts = tmAriaKeyShortcuts('Mod+K');
+  readonly keyShortcuts = tmAriaKeyShortcuts('Mod+K');
 
   /** The launcher's text. */
   protected readonly query = this.launcher.query;
@@ -629,9 +551,9 @@ export class TmLauncherPanel implements TmLauncherSurface {
   protected readonly state = this.launcher.state;
 
   /** The field's name and placeholder: "Search". */
-  protected readonly searchLabel = this.#l10n.ɵtext('tm.tenantShell.bar.search');
+  readonly searchLabel = this.#l10n.ɵtext('tm.tenantShell.bar.search');
 
-  // --- The candidates and the index: built when the typed state first reads them ---
+  // --- The candidates and the index: built on the first open ---
 
   /** The routed tenant's pins the user may open, each with its URL and label, in the bar's order. */
   readonly #pins = computed(() => {
@@ -649,77 +571,39 @@ export class TmLauncherPanel implements TmLauncherSurface {
   /** The page index: the entries, then the pins and recent pages no entry covers, each of those by label. */
   readonly #index = computed(() => {
     const language = this.#l10n.language();
-    const collator = new Intl.Collator(language);
-    const byLabel = (a: TmLauncherCandidate, b: TmLauncherCandidate): number => collator.compare(a.label, b.label);
-    const sections = new Map(this.#navigation.sections().map((section) => [section.id, section.label]));
-    const entries = this.#navigation.items().map((item): TmLauncherCandidate => {
-      const own = this.#terms.read(item, language);
-      const english = language === 'en' ? null : this.#terms.read(item, 'en');
-      return {
-        kind: 'entry',
-        key: `entry:${item.id}`,
-        href: item.href,
-        label: item.label,
-        icon: item.icon,
-        description: item.section === undefined ? null : (sections.get(item.section) ?? null),
-        terms: [own.label, ...own.synonyms, ...(english === null ? [] : [english.label, ...english.synonyms])],
-        create:
-          item.createHref !== null && item.entity !== undefined
-            ? { href: item.createHref, label: this.text('create', { label: this.#entities.label(item.entity)() }) }
-            : null,
-      };
-    });
-    const pinned = this.text('pinned');
-    const pins = this.#pins()
-      .filter(({ href }) => this.#navigation.byHref(href) === undefined)
-      .map(({ pin, href, label }): TmLauncherCandidate => ({
-        kind: 'pin',
-        key: `pin:${pin.id}`,
-        href,
-        label,
-        icon: this.#navigation.byHref(pathOf(href))?.icon ?? 'pin',
-        description: pinned,
-        terms: [label, pin.title],
-        create: null,
-      }))
-      .sort(byLabel);
-    const pinHrefs = new Set(this.#pins().map(({ href }) => href));
-    const recent = this.text('recent');
-    const recents = this.#recents
-      .pages()
-      .filter((page) => this.#navigation.byHref(page.url) === undefined && !pinHrefs.has(page.url))
-      .map((page): TmLauncherCandidate => {
-        const title = page.title();
-        return {
-          kind: 'recent',
-          key: `recent:${page.url}`,
-          href: page.url,
-          label: title,
-          icon: page.icon ?? tmRecentPageIcon(page.kind),
-          description: recent,
-          terms: [title],
-          create: null,
-        };
-      })
-      .sort(byLabel);
-    return tmLauncherIndex([...entries, ...pins, ...recents]);
+    return tmLauncherIndex(
+      tmLauncherCandidates({
+        language,
+        entries: this.#navigation.items(),
+        sections: new Map(this.#navigation.sections().map((section) => [section.id, section.label])),
+        pins: this.#pins().map(({ pin, href, label }) => ({ id: pin.id, href, label, title: pin.title })),
+        recents: this.#recents.pages().map((page) => ({ url: page.url, title: page.title(), icon: page.icon ?? ɵtmRecentPageIcon(page.kind) })),
+        pinned: this.text('pinned'),
+        recent: this.text('recent'),
+        terms: (entry, of) => this.#terms.read(entry, of),
+        createLabel: (entity) => this.text('create', { label: this.#entities.label(entity)() }),
+        entry: (href) => this.#navigation.byHref(href),
+      }),
+    );
   });
 
   // --- The groups each state shows ---
 
-  /** The browse state: the pinned band below md or while the bar is hidden, the recently visited band, then the sections. */
+  /**
+   * The browse state: the pinned band below md or while the bar is hidden,
+   * its pins then the pins service's commands; the recently visited band;
+   * then the sections.
+   */
   readonly #browse = computed((): readonly TmGroup[] => {
     const groups: TmGroup[] = [];
     const pins = this.#pins();
-    if ((!this.#md() || !this.#barVisible()) && pins.length > 0) {
+    const commands = this.#commands();
+    if ((!this.#md() || !this.#barVisible()) && pins.length + commands.length > 0) {
       groups.push(
-        this.#group(
-          'pinned',
-          'band',
-          this.text('pinned'),
-          null,
-          pins.map(({ pin, href, label }) => this.#option(`pin:${pin.id}`, href, this.#navigation.byHref(pathOf(href))?.icon ?? 'pin', label, 'pinned')),
-        ),
+        this.#group('pinned', 'band', this.text('pinned'), null, [
+          ...pins.map(({ pin, href, label }) => this.#option(`pin:${pin.id}`, href, this.#navigation.byHref(pathOf(href))?.icon ?? 'pin', label, 'pinned')),
+          ...commands.map((command) => this.#option(`command:${command.id}`, '', command.icon, command.label, 'pinned', { run: () => command.run() })),
+        ]),
       );
     }
     const recents = this.#recents.pages();
@@ -730,7 +614,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
           'band',
           this.text('recent'),
           null,
-          recents.map((page) => this.#option(`recent:${page.url}`, page.url, page.icon ?? tmRecentPageIcon(page.kind), page.title(), 'recents')),
+          recents.map((page) => this.#option(`recent:${page.url}`, page.url, page.icon ?? ɵtmRecentPageIcon(page.kind), page.title(), 'recents')),
         ),
       );
     }
@@ -807,16 +691,20 @@ export class TmLauncherPanel implements TmLauncherSurface {
 
   /**
    * The groups the text shows: the browse state's without text, the typed
-   * state's with it. They stay as they were as the launcher closes, so a
-   * choice whose navigation closed it first still reports its position; the
-   * template reads them only while it is open.
+   * state's with it. They stay as they were as the launcher closes, the
+   * buckets included until the next open, so a choice whose navigation
+   * closed it first still reports its position; the template reads them only
+   * while it is open.
    */
   protected readonly groups = computed(() => (this.launcher.query().trim() === '' ? this.#browse() : this.#typed()));
 
   /** Every option, in reading order. */
   readonly #options = computed(() => this.groups().flatMap((group) => group.options));
 
-  /** The active option's id: the one the keys or the pointer chose for this text, else the first row of the typed state. */
+  /**
+   * The active option's id: the one the keys, the pointer or the first
+   * showing chose for this text, else the first row of the typed state.
+   */
   readonly activeId = computed(() => {
     const options = this.#options();
     const chosen = this.#active();
@@ -826,7 +714,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
     return this.state() === 'typed' ? (options[0]?.id ?? null) : null;
   });
 
-  /** Creates the surface, which follows the router and the modals for as long as the app runs. */
+  /** Creates the surface, which follows the router, the modals and the breakpoints for as long as the app runs. */
   constructor() {
     // --- A path change, a dialog opening or a breakpoint crossing closes the launcher ---
     const navigations = this.#router.events.subscribe((event) => {
@@ -837,29 +725,51 @@ export class TmLauncherPanel implements TmLauncherSurface {
       }
     });
     const modals = ɵtmWatchModals(() => {
-      if (untracked(this.#kind) !== 'closed' && ɵtmOpenModals().some((host) => !this.#modalsAtOpen.has(host))) {
+      // While the Menu modal's chunk loads, its own opening is not another dialog's.
+      const loading = untracked(this.#kind) === 'sheet' && this.#sheetRef === null;
+      if (untracked(this.#kind) !== 'closed' && !loading && ɵtmOpenModals().some((host) => !this.#modalsAtOpen.has(host))) {
         this.launcher.close('route');
       }
     });
     effect(() => {
-      const wide = this.#md();
+      const kind = this.#surfaceFor(this.#md(), this.#lg());
       untracked(() => {
-        const kind = this.#kind();
-        if (kind !== 'closed' && (kind === 'sheet') === wide) {
+        // An open surface that the new width would not show closes: the modal from md, the panel's input that hides.
+        const open = this.#kind();
+        if (open !== 'closed' && open !== kind) {
           this.launcher.close('route');
+        }
+        // The Menu modal's chunk loads once the viewport is below md.
+        if (kind === 'sheet') {
+          void this.#loadSheet();
         }
       });
     });
+    // --- The providers' runs, a chunk loaded only when a provider is registered ---
+    if (this.#providers.length > 0) {
+      void this.#loadRuns();
+    }
     // --- Every change of the text: the providers' edges and the announcement ---
     effect(() => {
       const query = this.launcher.query();
       untracked(() => this.#queryChanged(query));
     });
+    // --- The active row stays where it first showed for this text, whatever answers later ---
+    effect(() => {
+      const id = this.activeId();
+      untracked(() => {
+        const query = this.launcher.query();
+        const chosen = this.#active();
+        if (id !== null && this.state() === 'typed' && (chosen?.query !== query || chosen.id !== id)) {
+          this.#active.set({ query, id });
+        }
+      });
+    });
     // --- The active option's page starts loading, however it became active ---
     effect(() => {
       const id = this.activeId();
       const option = id === null ? undefined : untracked(this.#options).find((candidate) => candidate.id === id);
-      if (option !== undefined) {
+      if (option !== undefined && option.run === null) {
         untracked(() => this.#urls.preload(option.href));
       }
     });
@@ -877,7 +787,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
    * @param params - The message's parameters.
    * @returns The text.
    */
-  protected text(key: string, params?: Readonly<Record<string, unknown>>): string {
+  text(key: string, params?: Readonly<Record<string, unknown>>): string {
     return this.#l10n.ɵtext(`tm.launcher.${key}`, params)();
   }
 
@@ -892,36 +802,28 @@ export class TmLauncherPanel implements TmLauncherSurface {
     }
     this.#returnTo = returnTo;
     this.#active.set(null);
-    this.#lastRun = '';
+    this.#buckets.set([]);
+    this.#runs?.restart();
+    this.#modalsAtOpen = new Set(ɵtmOpenModals());
     const field = this.launcher.ɵfield;
-    // --- Below md: the Menu modal ---
-    if (!untracked(this.#md)) {
+    const kind = this.#surfaceFor(untracked(this.#md), untracked(this.#lg));
+    if (kind === 'sheet') {
+      // --- Below md: the Menu modal, once its chunk is in ---
       this.sheetVia.set(via);
-      const ref = this.#modal.open(this.sheet(), {
-        size: 'lg',
-        title: this.#l10n.ɵtext('tm.tenantShell.bar.menu')(),
-        showClose: false,
-        panelClass: 'tm-launcher-sheet',
-      });
-      // Set once the modal is up, so the modal watcher does not count it as another dialog.
       this.#kind.set('sheet');
-      this.#sheetRef = ref;
-      void ref.closed.then((result) => {
-        if (this.#sheetRef === ref) {
-          this.#sheetRef = null;
-          this.launcher.close(result.via === 'backdrop' ? 'outside' : 'escape');
-        }
-      });
+      // Until the modal is up, which then answers Escape itself, Escape closes the launcher.
+      this.#releaseEscape = tmPushEscapeDismissal(() => this.launcher.close('escape'));
+      void this.#openSheet();
     } else {
       // --- From md up: the panel under the shell's rows ---
-      this.#kind.set(untracked(this.#lg) && field !== null ? 'panel' : 'field');
+      this.#kind.set(kind);
       this.#cdr.detectChanges();
       this.layer().nativeElement.showPopover();
       // The toasts stay above the panel.
       ɵtmRaiseTopLayer();
       this.#releaseEscape = tmPushEscapeDismissal(() => this.launcher.close('escape'));
       this.#document.addEventListener('pointerdown', this.#outside, true);
-      if (untracked(this.#kind) === 'panel' && field !== null) {
+      if (kind === 'panel' && field !== null) {
         this.#listen(field, true);
         // A press on the field opened it: the press's release would place the caret over the selection.
         if (via === 'field' && !field.matches(':focus-visible')) {
@@ -932,7 +834,6 @@ export class TmLauncherPanel implements TmLauncherSurface {
       }
       this.#focusInput(true);
     }
-    this.#modalsAtOpen = new Set(ɵtmOpenModals());
     // The page index builds on the first open, so the first keystroke finds it.
     untracked(this.#index);
     if (untracked(this.state) === 'typed') {
@@ -947,6 +848,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
       return;
     }
     this.#kind.set('closed');
+    this.#waiting.set(false);
     // --- Stop what the open started ---
     this.#releaseEscape?.();
     this.#releaseEscape = null;
@@ -955,13 +857,8 @@ export class TmLauncherPanel implements TmLauncherSurface {
     if (field !== null) {
       this.#listen(field, false);
     }
-    this.#abort?.abort();
-    this.#abort = null;
-    this.#buckets.set([]);
-    clearTimeout(this.#trailing);
-    this.#trailing = undefined;
+    this.#runs?.stop();
     clearTimeout(this.#announceTimer);
-    this.#holding = false;
     // --- Hide the surface; focus goes back as spec 0027 §5.3 says ---
     if (kind === 'sheet') {
       // The modal returns focus to what had it before the open.
@@ -977,13 +874,13 @@ export class TmLauncherPanel implements TmLauncherSurface {
     const returnTo = this.#returnTo;
     if (reason === 'escape' || (reason === 'tab' && kind === 'field')) {
       // From the panel's own field, Tab goes on from the control that opened it.
-      returnTo?.focus();
+      this.#restore(returnTo);
     } else if (reason === 'outside') {
       // A press on something focusable keeps its focus; one on the scrim or the page's text gives it back.
       setTimeout(() => {
         const active = this.#document.activeElement;
         if (active === null || active === this.#document.body) {
-          returnTo?.focus();
+          this.#restore(returnTo);
         }
       });
     }
@@ -996,20 +893,20 @@ export class TmLauncherPanel implements TmLauncherSurface {
    *
    * @param event - The input event.
    */
-  protected typed(event: Event): void {
+  typed(event: Event): void {
     const input = event.target as HTMLInputElement;
     this.launcher.setQuery(input.value);
   }
 
   /**
-   * The combobox keys: Down and Up over every option, Right
-   * and Left across a band's chips or between sections with the input
-   * empty, PageDown and PageUp between groups, Home and End in the browse
-   * state, Enter to open (Mod or Shift for a new tab), Tab to close.
+   * The combobox keys: Down and Up over every option, Right and Left across
+   * a band's chips or between sections with the input empty, PageDown and
+   * PageUp between groups, Home and End in the browse state, Enter to open
+   * (Mod or Shift for a new tab) or to run a command, Tab to close.
    *
    * @param event - The key.
    */
-  protected keydown(event: KeyboardEvent): void {
+  keydown(event: KeyboardEvent): void {
     // A composition's keys are the composition's, never commands.
     if (event.isComposing || event.keyCode === 229) {
       return;
@@ -1074,7 +971,9 @@ export class TmLauncherPanel implements TmLauncherSurface {
         return;
       default:
         // A held key's repeats hold the providers until it is released.
-        this.#holding ||= event.repeat;
+        if (event.repeat) {
+          this.#runs?.hold();
+        }
         return;
     }
     event.preventDefault();
@@ -1084,33 +983,31 @@ export class TmLauncherPanel implements TmLauncherSurface {
     }
   }
 
-  /** The release of a held key runs the providers on what the hold typed. */
-  protected keyup(): void {
-    if (this.#holding) {
-      this.#holding = false;
-      this.#flush();
-    }
-  }
-
-  /** The end of a composition is the input it stood for. */
-  protected compositionEnd(): void {
-    this.composing.set(false);
-    this.#queryChanged(untracked(this.launcher.query));
-  }
-
   /**
-   * Mod+K in the modal, where the shortcut registry stands aside: the field's
-   * text is selected.
+   * Mod+K in the Menu modal, where the shortcut registry stands aside: the
+   * field's text is selected. Mod is ⌘ on Apple platforms, where Ctrl+K stays
+   * the field's own.
    *
    * @param event - The key.
    */
-  protected sheetKeydown(event: KeyboardEvent): void {
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.code === 'KeyK') {
+  sheetKeydown(event: KeyboardEvent): void {
+    if (tmKeysMatch(event, 'Mod+K')) {
       event.preventDefault();
       const input = (event.currentTarget as HTMLElement).querySelector('input');
       input?.focus();
       input?.select();
     }
+  }
+
+  /** The release of a held key runs the providers on what the hold typed. */
+  keyup(): void {
+    this.#runs?.release();
+  }
+
+  /** The end of a composition is the input it stood for. */
+  compositionEnd(): void {
+    this.composing.set(false);
+    this.#queryChanged(untracked(this.launcher.query));
   }
 
   // --- The pointer ---
@@ -1129,7 +1026,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
   /**
    * A click on a row: the router opens an unmodified click here, and the
    * browser opens a modified or middle click in a new tab; either closes
-   * the launcher.
+   * the launcher. A command's row runs the command.
    *
    * @param event - The click.
    * @param option - The row.
@@ -1138,25 +1035,65 @@ export class TmLauncherPanel implements TmLauncherSurface {
     if (event.button > 1) {
       return;
     }
+    if (option.run !== null) {
+      // A command runs on a plain click; it has no page to open in a new tab.
+      event.preventDefault();
+      if (event.button === 0) {
+        this.#choose(option, false);
+      }
+      return;
+    }
     const newTab = event.button === 1 || event.ctrlKey || event.metaKey || event.shiftKey;
     this.#report(option, newTab);
     this.launcher.close('chosen');
+    this.#keepFocus(option, newTab);
   }
 
   // --- Choosing, moving and the providers ---
 
-  /** Opens an option here, or in a new tab, and closes the launcher. */
+  /** Runs a command, or opens an option here or in a new tab, and closes the launcher. */
   #choose(option: TmOption, newTab: boolean): void {
-    this.#report(option, newTab);
+    const run = option.run;
+    this.#report(option, newTab && run === null);
     this.launcher.close('chosen');
-    if (newTab) {
+    if (run !== null) {
+      // A command may open a dialog of its own, which takes focus; until then, the opener has it.
+      this.#keepFocus(option, true);
+      run();
+    } else if (newTab) {
       this.#document.defaultView?.open(option.href, '_blank', 'noopener');
+      this.#keepFocus(option, true);
     } else {
-      void this.#router.navigateByUrl(option.link);
+      this.#keepFocus(option, false);
+      if (option.link !== null) {
+        void this.#router.navigateByUrl(option.link);
+      }
     }
   }
 
-  /** Reports a choice: `tm.launcher.chosen`, and for one opened here, `tm.shell.navigated`. */
+  /**
+   * After a choice that leaves the page where it is (a new tab, a command,
+   * the routed page itself), focus goes back to the control that opened the
+   * launcher when the closed surface took it with it.
+   */
+  #keepFocus(option: TmOption, stays: boolean): void {
+    if (!stays && pathOf(option.href) !== pathOf(this.#router.url)) {
+      return;
+    }
+    const active = this.#document.activeElement;
+    if (active === null || active === this.#document.body || this.layer().nativeElement.contains(active)) {
+      this.#restore(this.#returnTo);
+    }
+  }
+
+  /** Gives focus back to a control without the focus opening the launcher again. */
+  #restore(control: HTMLElement | null): void {
+    if (control !== null) {
+      this.launcher.ɵrestore(control);
+    }
+  }
+
+  /** Reports a choice: `tm.launcher.chosen`, and for a page opened here, `tm.shell.navigated`. */
   #report(option: TmOption, newTab: boolean): void {
     const position = untracked(this.#options).findIndex((candidate) => candidate.id === option.id) + 1;
     const query = untracked(this.launcher.query);
@@ -1165,7 +1102,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
       { bucket: option.bucket, position: positionBand(position), queryLength: lengthBand(query), newTab },
       { sampled: true },
     );
-    if (!newTab) {
+    if (!newTab && option.run === null) {
       const source = option.bucket === 'pinned' ? 'pin' : option.bucket === 'recents' ? 'recent' : 'launcher';
       this.#telemetry.event('tm.shell.navigated', { source }, { sampled: true });
     }
@@ -1198,77 +1135,19 @@ export class TmLauncherPanel implements TmLauncherSurface {
   }
 
   /**
-   * Answers a change of the text while open: the providers run at once on
-   * the first change after a pause, then once the burst of typing ends; the
-   * results are announced half a second after the last change.
+   * Answers a change of the text while open: the providers' runs hear of it,
+   * and the results are announced half a second after the last change.
    */
   #queryChanged(query: string): void {
     if (untracked(this.#kind) === 'closed') {
       return;
     }
-    // --- The announcement ---
     clearTimeout(this.#announceTimer);
     this.#announced = false;
     if (query.trim() !== '') {
       this.#announceTimer = setTimeout(() => this.#announce(), ANNOUNCE_MS);
     }
-    // --- The providers' edges, held while a composition or a held key types ---
-    if (this.composing() || this.#holding) {
-      return;
-    }
-    const leading = this.#trailing === undefined;
-    clearTimeout(this.#trailing);
-    this.#trailing = setTimeout(() => {
-      this.#trailing = undefined;
-      this.#flush();
-    }, BURST_MS);
-    if (leading) {
-      this.#flush();
-    }
-  }
-
-  /** Runs the providers on the text, unless they last ran on the same text. */
-  #flush(): void {
-    const query = untracked(this.launcher.query).trim();
-    if (query === this.#lastRun) {
-      return;
-    }
-    this.#lastRun = query;
-    this.#abort?.abort();
-    this.#buckets.set([]);
-    const tenantId = this.#urls.tenantId();
-    const folded = tmSearchNormalize(query).length;
-    if (tenantId === null || query === '') {
-      this.#abort = null;
-      return;
-    }
-    const abort = new AbortController();
-    this.#abort = abort;
-    const context = { tenantId, language: this.#l10n.language(), limit: 5, signal: abort.signal };
-    for (const provider of this.#providers) {
-      if (folded < (provider.minLength ?? 2)) {
-        continue;
-      }
-      // A provider that throws, fails or answers nothing renders no bucket.
-      void Promise.resolve()
-        .then(() => provider.search(query, context))
-        .then(
-          (items) => {
-            if (abort.signal.aborted || items.length === 0) {
-              return;
-            }
-            const bucket = { provider, items: items.slice(0, context.limit) };
-            // Buckets keep the providers' order, so a late answer lands in its place below the rows above it.
-            this.#buckets.update((buckets) =>
-              [...buckets, bucket].sort((a, b) => this.#providers.indexOf(a.provider) - this.#providers.indexOf(b.provider)),
-            );
-            if (this.#announced) {
-              this.#announcer.announce(this.#bucketText(bucket), 'polite');
-            }
-          },
-          () => undefined,
-        );
-    }
+    this.#runs?.changed();
   }
 
   /** Announces the pages that match, then each bucket answered so far; reports a query that matched nothing. */
@@ -1279,16 +1158,90 @@ export class TmLauncherPanel implements TmLauncherSurface {
     if (count === 0) {
       this.#telemetry.event('tm.launcher.no-results', { queryLength: lengthBand(untracked(this.launcher.query)) }, { sampled: true });
     }
-    const parts = [count === 0 ? this.text('nothing') : this.text('count', { count }), ...untracked(this.#buckets).map((bucket) => this.#bucketText(bucket))];
-    this.#announcer.announce(parts.join('. '), 'polite');
+    const runs = this.#runs;
+    const buckets = runs === null ? [] : untracked(this.#buckets).map((bucket) => runs.text(bucket));
+    this.#announcer.announce([count === 0 ? this.text('nothing') : this.text('count', { count }), ...buckets].join('. '), 'polite');
   }
 
-  /** A bucket's announcement: "{bucket}: {n} results". */
-  #bucketText(bucket: TmBucket): string {
-    return this.text('bucketCount', { bucket: this.#l10n.ɵtext(bucket.provider.labelKey)(), count: bucket.items.length });
+  // --- The deferred pieces: the providers' runs and the Menu modal ---
+
+  /** Loads the providers' runs; once they are in, an open typed state runs them on its text. */
+  async #loadRuns(): Promise<void> {
+    try {
+      const { TmLauncherRuns } = await import('./tm-launcher-runs');
+      const host: TmLauncherRunsHost = {
+        query: this.launcher.query,
+        composing: this.composing,
+        buckets: this.#buckets,
+        l10n: this.#l10n,
+        urls: this.#urls,
+        answered: (bucket) => {
+          if (this.#announced) {
+            this.#announcer.announce(this.#runs!.text(bucket), 'polite');
+          }
+        },
+      };
+      this.#runs = new TmLauncherRuns(this.#providers, host);
+      if (untracked(this.#kind) !== 'closed' && untracked(this.state) === 'typed') {
+        this.#runs.changed();
+      }
+    } catch (error: unknown) {
+      // Offline, or after a deploy removed the chunk: the pages still answer, and the buckets stay away.
+      this.#telemetry.error(error, { source: 'tm-launcher' });
+    }
+  }
+
+  /** Loads the Menu modal's chunk once; `null` when it fails, so the next open tries again. */
+  #loadSheet(): Promise<typeof import('./tm-launcher-sheet') | null> {
+    this.#sheetChunk ??= import('./tm-launcher-sheet').then(
+      (chunk) => chunk,
+      (error: unknown) => {
+        this.#telemetry.error(error, { source: 'tm-launcher' });
+        this.#sheetChunk = null;
+        return null;
+      },
+    );
+    return this.#sheetChunk;
+  }
+
+  /** Opens the Menu modal once its chunk is in, the app bar's skeleton showing meanwhile; a failed load closes the launcher. */
+  async #openSheet(): Promise<void> {
+    this.#waiting.set(true);
+    const chunk = await this.#loadSheet();
+    if (untracked(this.#kind) !== 'sheet' || this.#sheetRef !== null) {
+      return;
+    }
+    this.#waiting.set(false);
+    this.#releaseEscape?.();
+    this.#releaseEscape = null;
+    // A dialog that opened while the chunk loaded wins, as it would over the open modal.
+    if (chunk === null || ɵtmOpenModals().some((host) => !this.#modalsAtOpen.has(host))) {
+      this.launcher.close('route');
+      return;
+    }
+    const ref = this.#injector.get(TmModal).open<void>(chunk.TmLauncherSheet, {
+      size: 'lg',
+      title: this.#l10n.ɵtext('tm.tenantShell.bar.menu')(),
+      showClose: false,
+      panelClass: 'tm-launcher-sheet',
+      data: this,
+    });
+    this.#sheetRef = ref;
+    this.#modalsAtOpen = new Set(ɵtmOpenModals());
+    void ref.closed.then((result) => {
+      if (this.#sheetRef === ref) {
+        this.#sheetRef = null;
+        this.launcher.close(result.via === 'backdrop' ? 'outside' : 'escape');
+      }
+    });
   }
 
   // --- The input, the outside press and the model's pieces ---
+
+  /** The surface a width shows: the modal below md, the panel with the app bar's field from lg, else the panel with its own. */
+  #surfaceFor(md: boolean, lg: boolean): 'panel' | 'field' | 'sheet' {
+    return !md ? 'sheet' : lg && this.launcher.ɵfield !== null ? 'panel' : 'field';
+  }
 
   /** Focuses the input and selects its text: the app bar's field, or the panel's own. */
   #focusInput(select: boolean): void {
@@ -1337,7 +1290,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
     return { id: `${this.#base}-${id}`, kind, label, icon, options, empty };
   }
 
-  /** An option; its id stays the same for its key. */
+  /** An option; its id stays the same for its key. A command's has no URL. */
   #option(
     key: string,
     href: string,
@@ -1350,6 +1303,7 @@ export class TmLauncherPanel implements TmLauncherSurface {
       readonly current?: boolean;
       readonly pinned?: boolean;
       readonly name?: string | null;
+      readonly run?: () => void;
     } = {},
   ): TmOption {
     let id = this.#ids.get(key);
@@ -1357,10 +1311,12 @@ export class TmLauncherPanel implements TmLauncherSurface {
       id = `${this.#base}-o${this.#ids.size}`;
       this.#ids.set(key, id);
     }
+    const run = extra.run ?? null;
     return {
       id,
       href,
-      link: this.#router.parseUrl(href),
+      link: run === null ? this.#router.parseUrl(href) : null,
+      run,
       icon,
       segments: extra.segments ?? [{ text: label, mark: false }],
       name: extra.name ?? null,
@@ -1370,4 +1326,29 @@ export class TmLauncherPanel implements TmLauncherSurface {
       pinned: extra.pinned ?? false,
     };
   }
+}
+
+/**
+ * Creates the launcher's surface, closed, at the end of the body, outside
+ * the shell's landmarks, with the icons it draws registered and the recent
+ * pages provided to it.
+ *
+ * @param injector - The app's injector.
+ * @param registerIcons - Registers the icon names it draws that the app has not.
+ * @param recents - The recent pages' service, whose entry point is lazy to the shell's.
+ * @returns The surface's component.
+ */
+export function tmCreateLauncherSurface(
+  injector: EnvironmentInjector,
+  registerIcons: (registry: TmIconRegistry) => void,
+  recents: Type<TmRecents>,
+): ComponentRef<TmLauncherSurface> {
+  registerIcons(injector.get(TmIconRegistry));
+  const elementInjector = Injector.create({ providers: [{ provide: TM_LAUNCHER_RECENTS, useValue: injector.get(recents) }], parent: injector });
+  const ref = createComponent(TmLauncherPanel, { environmentInjector: injector, elementInjector });
+  injector.get(DOCUMENT).body.appendChild(ref.location.nativeElement as HTMLElement);
+  injector.get(ApplicationRef).attachView(ref.hostView);
+  // Renders the surface at once, so the open that waited finds its views.
+  ref.changeDetectorRef.detectChanges();
+  return ref;
 }

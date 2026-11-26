@@ -131,6 +131,17 @@ describe('the launcher page search', () => {
       expect(classes([candidate('a', 'أصول')], 'اصو')).toEqual(['أصول: prefix']);
     });
 
+    it('folds each term on its own, whatever its neighbours hold', () => {
+      const split = candidate('s', 'Sales —', { terms: ['Sales —', '— invoices'] });
+      const odd = candidate('o', 'Odd\u0001name');
+      const centers = candidate('c', 'Centers');
+      // The two terms stay two: no term holds both words.
+      expect(classes([split, odd, centers], 'sales invoices')).toEqual([]);
+      // A term that holds a control character folds alone, and the terms after it keep their own folds.
+      expect(classes([split, odd, centers], 'name')).toEqual(['Odd\u0001name: contains']);
+      expect(classes([split, odd, centers], 'cent')).toEqual(['Centers: prefix']);
+    });
+
     it('finds an Arabic word of four or more letters without its article', () => {
       expect(classes([CUSTOMERS], 'عملاء')).toEqual(['العملاء: prefix']);
       // A word of three letters keeps its article: "الف" is no variant of "ف".

@@ -7,7 +7,7 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { TestKey } from '@angular/cdk/testing';
 import { type HarnessLoader } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, type Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   TM_LAUNCHER_PROVIDERS,
@@ -22,6 +22,7 @@ import {
   tmFeature,
   tmPage,
   type TmFeature,
+  TmUrls,
 } from '@tellma/core';
 import { TmLauncherHarness, TmTenantShellHarness, tmWarmTenant } from '@tellma/core-testing';
 import { TmModal } from '@tellma/core-ui/modal';
@@ -38,6 +39,7 @@ import {
   type TmAppRig,
 } from '../../../src/routes/tm-app.testing.util';
 import { TM_LAUNCHER_LOAD, TmLauncher, type TmLauncherChunk } from './tm-launcher';
+import { TM_LAUNCHER_COMMANDS, type TmLauncherCommand } from './tm-launcher-commands';
 
 // The launcher in a whole test app at /17/credit-review, through the tenant
 // shell's harness and the launcher's: spec 0027 §9.2's transitions, the
@@ -46,7 +48,10 @@ import { TM_LAUNCHER_LOAD, TmLauncher, type TmLauncherChunk } from './tm-launche
 // the providers' buckets in their order with the superseded run aborted,
 // the recent pages that visibleWhen or a lost permission hides, the three
 // surfaces by width, and the deferred chunk: its skeleton, its failure and
-// the first open in the click's frame once it is in.
+// the first open in the click's frame once it is in. Then §5.3's focus
+// rules from lg and at md in both directions, the pinned band's commands,
+// the active row that answers arriving later do not move, and §9.8's
+// preloading.
 
 /** A permission, as the access document grants it. */
 type TmGrant = readonly [resource: string, action: string];
@@ -219,9 +224,7 @@ function gatedLoad(gate: Promise<void>, failing: () => boolean = () => false): (
       }
       return Promise.all([import('./tm-launcher-panel'), import('./tm-launcher-icons'), import('@tellma/core/recents')]).then(
         ([panel, icons, recents]) => ({
-          TmLauncherPanel: panel.TmLauncherPanel,
-          tmRegisterLauncherIcons: icons.tmRegisterLauncherIcons,
-          TmRecents: recents.TmRecents,
+          create: (injector) => panel.tmCreateLauncherSurface(injector, icons.tmRegisterLauncherIcons, recents.TmRecents),
         }),
       );
     });
@@ -267,6 +270,8 @@ describe('the launcher', () => {
     readonly load?: () => Promise<TmLauncherChunk>;
     /** Whether the user works in Arabic, which the tenant offers. */
     readonly arabic?: boolean;
+    /** More providers for the app. */
+    readonly providers?: readonly Provider[];
   }
 
   /** Starts the app at /17/credit-review and waits for the app bar, and for the launcher's chunk unless its loader is the test's. */
@@ -283,6 +288,7 @@ describe('the launcher', () => {
         { provide: TM_LAUNCHER_PROVIDERS, multi: true, useValue: beta },
         { provide: TM_LAUNCHER_PROVIDERS, multi: true, useValue: alpha },
         ...(options.load === undefined ? [] : [{ provide: TM_LAUNCHER_LOAD, useValue: options.load }]),
+        ...(options.providers ?? []),
       ],
     });
     // The distribution document stays absent: its read fails, so the support desk stays hidden.
@@ -507,6 +513,193 @@ describe('the launcher', () => {
     });
   });
 
+  describe('focus', () => {
+    /** The Menu button. */
+    const menu = (): HTMLButtonElement => document.querySelector<HTMLButtonElement>('.tm-app-bar__menu')!;
+
+    /** Waits past the close's own timeout, after which focus has settled. */
+    const settled = async (): Promise<void> => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await tmSettle();
+    };
+
+    /** A button on the page, outside the shell, which the test removes. */
+    function pageButton(): HTMLButtonElement {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'tm-test-page-control';
+      button.textContent = 'A page control';
+      document.body.append(button);
+      return button;
+    }
+
+    afterEach(() => {
+      for (const control of document.querySelectorAll('.tm-test-page-control')) {
+        control.remove();
+      }
+    });
+
+    // Each rule from lg, where the input is the app bar's field, and at md, where it is the panel's own, in both directions.
+    for (const { width, arabic, name } of [
+      { width: 1280, arabic: false, name: 'from lg, in English' },
+      { width: 1280, arabic: true, name: 'from lg, in Arabic' },
+      { width: 900, arabic: false, name: 'at md, in English' },
+      { width: 900, arabic: true, name: 'at md, in Arabic' },
+    ]) {
+      describe(name, () => {
+        const lg = width >= 1280;
+
+        /** The launcher's input: the app bar's field from lg, the panel's own at md. */
+        const input = (): HTMLInputElement => (lg ? field() : document.querySelector<HTMLInputElement>('.tm-launcher__own-input')!);
+
+        /** Opens the launcher from the Menu button, which has focus first, as a press would give it. */
+        async function fromMenu(): Promise<TmLauncherHarness> {
+          menu().focus();
+          return shell.openLauncher('menu');
+        }
+
+        it('gives focus back to a page control after Mod+K and Escape', async () => {
+          await start({ width, arabic });
+          const button = pageButton();
+          button.focus();
+          expect(press(MOD_K, button)).toBe(true);
+          await tmSettle();
+          const harness = await loader.getHarness(TmLauncherHarness);
+          expect(document.activeElement).toBe(input());
+          await harness.close();
+          expect(launcher().state()).toBe('closed');
+          expect(document.activeElement).toBe(button);
+        });
+
+        it('gives focus back to the Menu button after Escape', async () => {
+          await start({ width, arabic });
+          const harness = await fromMenu();
+          expect(document.activeElement).toBe(input());
+          await harness.close();
+          expect(document.activeElement).toBe(menu());
+        });
+
+        it('gives focus back to the opener after a press on the scrim, and leaves it on a focusable control pressed', async () => {
+          await start({ width, arabic });
+          await fromMenu();
+          // A press on the scrim: focus falls to the body, as the press's own default would leave it.
+          const scrim = document.querySelector('.tm-launcher')!;
+          scrim.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          scrim.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          input().blur();
+          await settled();
+          expect(launcher().state()).toBe('closed');
+          expect(document.activeElement).toBe(menu());
+          // A press on a focusable control outside the panel: the control keeps the focus it takes.
+          const button = pageButton();
+          await fromMenu();
+          button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+          button.focus();
+          await settled();
+          expect(launcher().state()).toBe('closed');
+          expect(document.activeElement).toBe(button);
+        });
+
+        it(lg ? 'leaves Tab to move on from the field' : 'gives focus back to the opener on Tab, from which Tab moves on', async () => {
+          await start({ width, arabic });
+          await fromMenu();
+          const from = input();
+          expect(press({ key: 'Tab', code: 'Tab' }, from)).toBe(false);
+          expect(launcher().state()).toBe('closed');
+          expect(document.activeElement).toBe(lg ? from : menu());
+        });
+
+        it('selects all the kept text when the launcher opens again from a click', async () => {
+          await start({ width, arabic });
+          let harness = await fromMenu();
+          await harness.type('cent');
+          await harness.close();
+          if (lg) {
+            // A click in the field: its focus opens the launcher, and the click's release keeps the selection.
+            const target = field();
+            target.focus();
+            target.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            target.click();
+          } else {
+            document.querySelector<HTMLButtonElement>('.tm-app-bar__group-search')!.click();
+          }
+          await tmSettle();
+          harness = await loader.getHarness(TmLauncherHarness);
+          expect(await harness.getState()).toBe('typed');
+          expect([input().value, input().selectionStart, input().selectionEnd]).toEqual(['cent', 0, 4]);
+        });
+
+        it(lg ? 'keeps focus in the field after opening a row in a new tab' : 'gives focus back to the opener after opening a row in a new tab', async () => {
+          await start({ width, arabic });
+          const open = vi.spyOn(window, 'open').mockReturnValue(null);
+          try {
+            const harness = await fromMenu();
+            await harness.type('cent');
+            await harness.pressKey(TestKey.ENTER, { control: true });
+            expect(open).toHaveBeenCalledTimes(1);
+            expect(launcher().state()).toBe('closed');
+            expect(document.activeElement).toBe(lg ? field() : menu());
+          } finally {
+            open.mockRestore();
+          }
+        });
+
+        if (lg) {
+          it('closes on a press outside a launcher opened from the field, and stays closed as the field takes focus back', async () => {
+            await start({ width, arabic });
+            field().focus();
+            await tmSettle();
+            const harness = await loader.getHarness(TmLauncherHarness);
+            await harness.type('cent');
+            const scrim = document.querySelector('.tm-launcher')!;
+            scrim.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            scrim.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            field().blur();
+            await settled();
+            expect(launcher().state()).toBe('closed');
+            expect(await shell.isLauncherOpen()).toBe(false);
+            expect(document.activeElement).toBe(field());
+            expect(events('tm.launcher.opened')).toHaveLength(1);
+          });
+        }
+      });
+    }
+  });
+
+  describe('commands', () => {
+    it("shows the pinned band's commands with no pins, and runs one on Enter or a click, closing the launcher", async () => {
+      const run = vi.fn();
+      const commands: readonly TmLauncherCommand[] = [{ id: 'pin-page', label: 'Pin this page', icon: 'pin', run }];
+      await start({
+        preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' },
+        providers: [{ provide: TM_LAUNCHER_COMMANDS, useValue: signal(commands).asReadonly() }],
+      });
+      let harness = await shell.openLauncher('menu');
+      expect((await outline(harness))[0]).toBe('Pinned: Pin this page');
+      const [chip] = await (await harness.getGroup('Pinned'))!.getOptions();
+      expect(await chip!.getHref()).toBeNull();
+      await harness.pressKey(TestKey.DOWN_ARROW);
+      await harness.pressKey(TestKey.ENTER);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(launcher().state()).toBe('closed');
+      expect(rig.router.url).toBe('/17/credit-review');
+      expect(events('tm.launcher.chosen')).toEqual([{ bucket: 'pinned', position: '1', queryLength: '0', newTab: false }]);
+      expect(events('tm.shell.navigated').filter((props) => (props as { source: string }).source === 'pin')).toEqual([]);
+      harness = await shell.openLauncher('menu');
+      const [again] = await (await harness.getGroup('Pinned'))!.getOptions();
+      await again!.click();
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(launcher().state()).toBe('closed');
+      expect(rig.router.url).toBe('/17/credit-review');
+    });
+
+    it('has no commands by default, so the band hides with no pins', async () => {
+      await start({ preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' } });
+      const harness = await shell.openLauncher('menu');
+      expect(await harness.getGroupLabels()).not.toContain('Pinned');
+    });
+  });
+
   describe('browse state', () => {
     it('shows the recently visited band, then the sections, with the pinned glyphs and the current entry', async () => {
       await start();
@@ -671,6 +864,33 @@ describe('the launcher', () => {
       await harness.close();
       expect(alpha.last().context.signal.aborted).toBe(true);
     });
+
+    it('keeps the active row where it first showed when no page matches and a bucket above answers later', async () => {
+      await start();
+      const harness = await shell.openLauncher('menu');
+      await harness.type('zzz');
+      await tmSettleUntil(() => alpha.calls.length > 0 && beta.calls.length > 0, 'the providers run');
+      beta.last().answer([{ id: 'h1', href: '/17/help/zzz', label: 'About zzz' }]);
+      await tmSettleUntil(() => document.querySelectorAll('.tm-launcher__group--bucket').length === 1, "help's bucket");
+      expect(await (await harness.getActiveOption())?.getLabel()).toBe('About zzz');
+      alpha.last().answer([{ id: '1', href: '/17/centers/1', label: 'Center 1' }]);
+      await tmSettleUntil(() => document.querySelectorAll('.tm-launcher__group--bucket').length === 2, "records' bucket");
+      expect(await harness.getGroupLabels()).toEqual(['Pages', 'Records', 'Help']);
+      expect(await (await harness.getActiveOption())?.getLabel()).toBe('About zzz');
+    });
+
+    it("reports a clicked bucket row's position and bucket", async () => {
+      await start();
+      const harness = await shell.openLauncher('menu');
+      await harness.type('cent');
+      await tmSettleUntil(() => alpha.calls.length > 0, 'the run');
+      alpha.last().answer([{ id: '1', href: '/17/centers/1', label: 'Center 1' }]);
+      await tmSettleUntil(() => document.querySelector('.tm-launcher__group--bucket') !== null, "records' bucket");
+      const [row] = await (await harness.getGroup('Records'))!.getOptions();
+      await row!.click();
+      await tmSettleUntil(() => launcher().state() === 'closed', 'the launcher closes');
+      expect(events('tm.launcher.chosen')).toEqual([{ bucket: 'records', position: '4-10', queryLength: '3-5', newTab: false }]);
+    });
   });
 
   describe('keys', () => {
@@ -780,6 +1000,22 @@ describe('the launcher', () => {
     });
   });
 
+  describe('preloading', () => {
+    it("starts loading the active row's page on Down, on hover and for the typed state's first row", async () => {
+      await start();
+      const preload = vi.spyOn(TestBed.inject(TmUrls), 'preload');
+      const harness = await shell.openLauncher('menu');
+      await harness.pressKey(TestKey.DOWN_ARROW);
+      expect(preload).toHaveBeenLastCalledWith(await (await harness.getActiveOption())!.getHref());
+      const [, currencies] = await (await harness.getGroup('Finance'))!.getOptions();
+      await currencies!.hover();
+      expect(preload).toHaveBeenLastCalledWith(await currencies!.getHref());
+      await harness.type('cent');
+      expect(preload).toHaveBeenLastCalledWith('/17/centers');
+      preload.mockRestore();
+    });
+  });
+
   describe('surfaces', () => {
     it('gives the panel a field of its own at md', async () => {
       await start({ width: 900 });
@@ -819,6 +1055,32 @@ describe('the launcher', () => {
       input.setSelectionRange(4, 4);
       expect(press(MOD_K, input)).toBe(true);
       expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4]);
+    });
+
+    it('closes when the viewport crosses lg while the panel is open', async () => {
+      await start();
+      await shell.openLauncher('menu');
+      await page.viewport(900, 900);
+      await tmSettleUntil(() => launcher().state() === 'closed', 'the launcher closes');
+      expect(await shell.isLauncherOpen()).toBe(false);
+    });
+
+    it('leaves Ctrl+K to the field in the Menu modal on Apple platforms, where Mod is the Command key', async () => {
+      Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: () => ({ platform: 'macOS' }) });
+      try {
+        await start({ width: 420 });
+        const harness = await shell.openLauncher('search');
+        await harness.type('cent');
+        const input = document.activeElement as HTMLInputElement;
+        input.setSelectionRange(4, 4);
+        expect(press(MOD_K, input)).toBe(false);
+        expect([input.selectionStart, input.selectionEnd]).toEqual([4, 4]);
+        expect(press({ key: 'k', code: 'KeyK', metaKey: true }, input)).toBe(true);
+        expect([input.selectionStart, input.selectionEnd]).toEqual([0, 4]);
+      } finally {
+        // The own property shadowed Navigator.prototype's getter; removing it restores the real one.
+        Reflect.deleteProperty(navigator, 'userAgentData');
+      }
     });
   });
 

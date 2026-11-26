@@ -76,7 +76,6 @@ export class TmAppBar {
 export class TmLauncher {
     constructor();
     close(reason: TmLauncherCloseReason): void;
-    enterTenant(tenantId: number): void;
     readonly query: Signal<string>;
     setQuery(text: string): void;
     show(via: TmLauncherVia): void;

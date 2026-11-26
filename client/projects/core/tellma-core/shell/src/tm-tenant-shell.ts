@@ -144,7 +144,7 @@ export class TmTenantShell {
       const tenantId = this.#urls.tenantId();
       untracked(() => {
         if (tenantId !== null) {
-          launcher.enterTenant(tenantId);
+          launcher.ɵenterTenant(tenantId);
         }
         this.#enter(tenantId);
       });

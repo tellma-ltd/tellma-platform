@@ -22,7 +22,7 @@ const ICONS: Readonly<Partial<Record<TmPageKind, string>>> = {
  * The icon a recently visited page shows when no launcher entry gives it
  * one: `list` for a search page, `chart-column` for a report,
  * `layout-dashboard` for a dashboard, `settings` for a settings page, and
- * `file` for any other page.
+ * `file` for any other page. Library wiring with no compatibility promise.
  *
  * @param kind - The page's family.
  * @returns The icon's registered name.

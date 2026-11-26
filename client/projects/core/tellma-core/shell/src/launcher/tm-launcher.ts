@@ -4,25 +4,19 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
-  ApplicationRef,
   type ComponentRef,
   computed,
-  createComponent,
   DestroyRef,
   DOCUMENT,
   EnvironmentInjector,
   inject,
   Injectable,
   InjectionToken,
-  Injector,
   type Signal,
   signal,
-  type Type,
   untracked,
 } from '@angular/core';
 import { TmTelemetry } from '@tellma/core';
-import type { TmRecents } from '@tellma/core/recents';
-import { TmIconRegistry } from '@tellma/core-ui/icon';
 
 // The launcher (spec 0027 §9): the Menu button, the app bar's search field,
 // the search buttons and Mod+K open it, and it keeps its text across close
@@ -52,6 +46,8 @@ export interface TmLauncherSurface {
   readonly activeId: Signal<string | null>;
   /** Whether the app bar's search field is the surface's input, as it is from `lg` up. */
   readonly usesField: Signal<boolean>;
+  /** Whether an open waits for a piece of the surface still loading, so the app bar's skeleton shows. */
+  readonly waiting: Signal<boolean>;
   /**
    * Shows the surface, or, when it is open, answers another open: it focuses
    * the input and selects the text.
@@ -69,33 +65,30 @@ export interface TmLauncherSurface {
   close(reason: TmLauncherCloseReason): void;
 }
 
-/** What the launcher's deferred chunks export. Internal. */
+/** What the launcher's deferred chunks give it. Internal. */
 export interface TmLauncherChunk {
-  /** The surface, created once at the end of the body. */
-  readonly TmLauncherPanel: Type<TmLauncherSurface>;
-  /** Registers the icon names the surface draws that the app has not registered. */
-  readonly tmRegisterLauncherIcons: (registry: TmIconRegistry) => void;
-  /** The recent pages' service, whose entry point the app loads after its first render. */
-  readonly TmRecents: Type<TmRecents>;
+  /**
+   * Creates the surface, closed, at the end of the body, with the icons it
+   * draws registered.
+   *
+   * @param injector - The app's injector.
+   * @returns The surface's component.
+   */
+  create(injector: EnvironmentInjector): ComponentRef<TmLauncherSurface>;
 }
-
-/** The recent pages, as the surface reads them. Internal: the launcher provides it to the surface it creates. */
-export const TM_LAUNCHER_RECENTS = new InjectionToken<Pick<TmRecents, 'pages'>>('TM_LAUNCHER_RECENTS');
 
 /**
  * Loads the launcher's chunks: the panel, and beside it the icons it draws,
- * which are icon data rather than the panel's code, and the
- * recent pages' entry point, which the app has loaded by then. Internal: a
- * test delays the load or makes it fail.
+ * which are icon data rather than the panel's code, and the recent pages'
+ * entry point, which the app has loaded by then. Internal: a test delays the
+ * load or makes it fail.
  */
 export const TM_LAUNCHER_LOAD = new InjectionToken<() => Promise<TmLauncherChunk>>('TM_LAUNCHER_LOAD', {
   providedIn: 'root',
   factory: () => () =>
     Promise.all([import('./tm-launcher-panel'), import('./tm-launcher-icons'), import('@tellma/core/recents')]).then(
       ([panel, icons, recents]) => ({
-        TmLauncherPanel: panel.TmLauncherPanel,
-        tmRegisterLauncherIcons: icons.tmRegisterLauncherIcons,
-        TmRecents: recents.TmRecents,
+        create: (injector) => panel.tmCreateLauncherSurface(injector, icons.tmRegisterLauncherIcons, recents.TmRecents),
       }),
     ),
 });
@@ -124,6 +117,8 @@ export class TmLauncher {
   #chunk: Promise<TmLauncherChunk | null> | null = null;
   #ref: ComponentRef<TmLauncherSurface> | null = null;
   #ended = false;
+  // While the surface gives focus back to a control, a focus there opens nothing.
+  #restoring = false;
   // The open that waits for the chunk: what asked for it, and where focus goes back.
   #pending: { readonly via: TmLauncherVia; readonly returnTo: HTMLElement | null } | null = null;
   // The tenant the text was typed in, or `null` before any.
@@ -140,8 +135,8 @@ export class TmLauncher {
   /** The surface once its chunk is in, else `null`. Internal: the app bar's field reads its ids. */
   readonly ɵsurface: Signal<TmLauncherSurface | null> = this.#surface.asReadonly();
 
-  /** Whether the launcher is open before its chunk is in, so the app bar shows its skeleton. Internal. */
-  readonly ɵpending: Signal<boolean> = computed(() => this.#open() && this.#surface() === null);
+  /** Whether the launcher is open before its surface can show, so the app bar shows its skeleton. Internal. */
+  readonly ɵpending: Signal<boolean> = computed(() => this.#open() && (this.#surface()?.waiting() ?? true));
 
   /** The app bar's search field, the input from `lg` up; `null` before the bar renders. Internal. */
   ɵfield: HTMLInputElement | null = null;
@@ -161,6 +156,9 @@ export class TmLauncher {
    * @param via - What opened it.
    */
   show(via: TmLauncherVia): void {
+    if (this.#restoring) {
+      return;
+    }
     const reopened = untracked(this.#open);
     const active = this.#document.activeElement;
     const returnTo = active instanceof HTMLElement && active !== this.#document.body ? active : null;
@@ -205,11 +203,11 @@ export class TmLauncher {
    * Keeps the text for the tenant it was typed in: entering another tenant
    * closes the launcher and clears it, as the tenant shell asks on each
    * entry. A tenant shell lives for one tenant, so the launcher, which
-   * outlives it, remembers the tenant.
+   * outlives it, remembers the tenant. Internal.
    *
    * @param tenantId - The tenant the shell entered.
    */
-  enterTenant(tenantId: number): void {
+  ɵenterTenant(tenantId: number): void {
     if (this.#tenantId !== null && this.#tenantId !== tenantId) {
       this.close('route');
       this.#query.set('');
@@ -227,6 +225,22 @@ export class TmLauncher {
     void this.#ready();
   }
 
+  /**
+   * Gives focus back to a control as the launcher closes; when the control
+   * is the app bar's field, that focus does not open the launcher again.
+   * Internal: the surface calls it.
+   *
+   * @param control - The control.
+   */
+  ɵrestore(control: HTMLElement): void {
+    this.#restoring = true;
+    try {
+      control.focus();
+    } finally {
+      this.#restoring = false;
+    }
+  }
+
   /** Loads the chunk once; `null` when it fails, so the next gesture tries again. */
   #loadChunk(): Promise<TmLauncherChunk | null> {
     this.#chunk ??= this.#load().then(
@@ -242,9 +256,9 @@ export class TmLauncher {
   }
 
   /**
-   * Loads the chunk and creates the surface at the end of the body, outside
-   * the shell's landmarks, then opens what waits. A failed load closes the
-   * waiting open, if any, so its skeleton goes.
+   * Loads the chunk and has it create the surface at the end of the body,
+   * outside the shell's landmarks, then opens what waits. A failed load
+   * closes the waiting open, if any, so its skeleton goes.
    */
   async #ready(): Promise<void> {
     const chunk = await this.#loadChunk();
@@ -255,17 +269,7 @@ export class TmLauncher {
       this.close('route');
       return;
     }
-    chunk.tmRegisterLauncherIcons(this.#injector.get(TmIconRegistry));
-    // The recent pages reach the surface through its own injector: their entry point is lazy to the shell's.
-    const elementInjector = Injector.create({
-      providers: [{ provide: TM_LAUNCHER_RECENTS, useValue: this.#injector.get(chunk.TmRecents) }],
-      parent: this.#injector,
-    });
-    const ref = createComponent(chunk.TmLauncherPanel, { environmentInjector: this.#injector, elementInjector });
-    this.#document.body.appendChild(ref.location.nativeElement as HTMLElement);
-    this.#injector.get(ApplicationRef).attachView(ref.hostView);
-    // Renders the surface at once, so the open that waited finds its views.
-    ref.changeDetectorRef.detectChanges();
+    const ref = chunk.create(this.#injector);
     this.#ref = ref;
     this.#surface.set(ref.instance);
     const pending = this.#pending;

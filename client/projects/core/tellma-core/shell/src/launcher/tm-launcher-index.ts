@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import type { TmNavItem } from '@tellma/core';
 import { tmSearchNormalize } from '@tellma/core/search-normalize';
 
 // The launcher's page search (spec 0027 §9.4): an index of normalized terms
@@ -36,6 +37,12 @@ const ARTICLE = 'ال';
 
 /** An Arabic letter, after normalization. */
 const ARABIC = /^[ء-ي]+$/;
+
+/**
+ * What the index joins every term with to fold them all at once: a control
+ * character that folding keeps, being no mark, space, punctuation or symbol.
+ */
+const JOINER = '\u0001';
 
 /** Where a word of displayed text ends: the separators normalization turns into spaces. */
 const SEPARATORS = /([\s\p{P}\p{S}]+)/u;
@@ -118,6 +125,114 @@ function variants(word: string): readonly string[] {
   return hasArticle(word) ? [word, word.slice(ARTICLE.length)] : [word];
 }
 
+/** What the candidates are gathered from on the first open: the entries, the pins, the recent pages and the texts around them. */
+export interface TmLauncherSources {
+  /** The active language's code. */
+  readonly language: string;
+  /** The visible entries, in the navigation registry's order. */
+  readonly entries: readonly TmNavItem[];
+  /** Each section's label, by its id. */
+  readonly sections: ReadonlyMap<string, string>;
+  /** The routed tenant's pins the user may open, in the bar's order. */
+  readonly pins: readonly {
+    /** The pin's id. */
+    readonly id: string;
+    /** The URL it opens. */
+    readonly href: string;
+    /** The label it shows. */
+    readonly label: string;
+    /** The page's title when it was pinned. */
+    readonly title: string;
+  }[];
+  /** The recent pages, newest first. */
+  readonly recents: readonly {
+    /** The URL. */
+    readonly url: string;
+    /** The page's title. */
+    readonly title: string;
+    /** The page's icon. */
+    readonly icon: string;
+  }[];
+  /** The description of a pin: "Pinned". */
+  readonly pinned: string;
+  /** The description of a recent page: "Recently visited". */
+  readonly recent: string;
+  /**
+   * An entry's label and synonyms in a language.
+   *
+   * @param entry - The entry.
+   * @param language - The language.
+   * @returns The terms.
+   */
+  terms(entry: TmNavItem, language: string): { readonly label: string; readonly synonyms: readonly string[] };
+  /**
+   * The label of an entity's create row, such as "Center · Create".
+   *
+   * @param entity - The entity's name.
+   * @returns The label.
+   */
+  createLabel(entity: string): string;
+  /**
+   * The entry a URL opens, which then covers it.
+   *
+   * @param href - The URL.
+   * @returns The entry's icon, or `undefined` when no entry opens it.
+   */
+  entry(href: string): { readonly icon: string } | undefined;
+}
+
+/**
+ * Gathers the launcher's candidates in their final order: the entries, with
+ * their terms in the active language and in English, then the pins no entry
+ * covers, then the recent pages neither covers, each of those two by label.
+ *
+ * @param sources - The entries, the pins, the recent pages and their texts.
+ * @returns The candidates.
+ */
+export function tmLauncherCandidates(sources: TmLauncherSources): TmLauncherCandidate[] {
+  const { language } = sources;
+  const collator = new Intl.Collator(language);
+  const byLabel = (a: TmLauncherCandidate, b: TmLauncherCandidate): number => collator.compare(a.label, b.label);
+  const candidates: TmLauncherCandidate[] = [];
+  // --- The entries, in the registry's order ---
+  for (const entry of sources.entries) {
+    const own = sources.terms(entry, language);
+    const terms = [own.label, ...own.synonyms];
+    if (language !== 'en') {
+      const english = sources.terms(entry, 'en');
+      terms.push(english.label, ...english.synonyms);
+    }
+    candidates.push({
+      kind: 'entry',
+      key: `entry:${entry.id}`,
+      href: entry.href,
+      label: entry.label,
+      icon: entry.icon,
+      description: entry.section === undefined ? null : (sources.sections.get(entry.section) ?? null),
+      terms,
+      create: entry.createHref !== null && entry.entity !== undefined ? { href: entry.createHref, label: sources.createLabel(entry.entity) } : null,
+    });
+  }
+  // --- The pins no entry covers, then the recent pages neither covers ---
+  const pins: TmLauncherCandidate[] = [];
+  const pinHrefs = new Set<string>();
+  for (const { id, href, label, title } of sources.pins) {
+    pinHrefs.add(href);
+    if (sources.entry(href) === undefined) {
+      const icon = sources.entry(href.split(/[?#]/, 1)[0]!)?.icon ?? 'pin';
+      pins.push({ kind: 'pin', key: `pin:${id}`, href, label, icon, description: sources.pinned, terms: [label, title], create: null });
+    }
+  }
+  const recents: TmLauncherCandidate[] = [];
+  for (const { url, title, icon } of sources.recents) {
+    if (sources.entry(url) === undefined && !pinHrefs.has(url)) {
+      recents.push({ kind: 'recent', key: `recent:${url}`, href: url, label: title, icon, description: sources.recent, terms: [title], create: null });
+    }
+  }
+  candidates.push(...pins.sort(byLabel), ...recents.sort(byLabel));
+  return candidates;
+}
+
 /**
  * Builds the launcher's page index. The candidates come in their final
  * order: the entries in the navigation registry's order, then the pins, then
@@ -129,11 +244,23 @@ function variants(word: string): readonly string[] {
 export function tmLauncherIndex(candidates: readonly TmLauncherCandidate[]): TmLauncherIndex {
   // Plain loops: the index of a large distribution's launcher builds on the
   // first open, inside the press's frame.
+  // --- Every term folded in one pass ---
+  // A fold's fixed steps cost more than its characters, so the terms fold
+  // joined. Folding acts on each character alone and keeps the joiner, so
+  // each part is its term's fold but for the spaces at its ends. A term
+  // that holds the joiner itself folds alone.
+  const raw = candidates.flatMap((candidate) => candidate.terms);
+  let folded = tmSearchNormalize(raw.join(JOINER)).split(JOINER);
+  if (folded.length !== raw.length) {
+    folded = raw.map((term) => tmSearchNormalize(term));
+  }
+  // --- Each candidate's distinct terms, split into words ---
   const entries: TmIndexed[] = [];
+  let at = 0;
   for (const candidate of candidates) {
     const terms: TmIndexedTerm[] = [];
-    for (const term of candidate.terms) {
-      const text = tmSearchNormalize(term);
+    for (let i = 0; i < candidate.terms.length; i++) {
+      const text = folded[at++]!.trim();
       // A candidate has a handful of terms, so a scan beats a set.
       if (text === '' || terms.some((indexed) => indexed.text === text)) {
         continue;
