@@ -60,8 +60,11 @@ export { default } from '@tellma/core-tools/vitest';
 "test": { "builder": "@angular/build:unit-test", "options": { "runnerConfig": "vitest-base.config.mjs" } }
 ```
 
-The preset names Vitest's default reporters (the default one, and on GitHub Actions the
-annotations one, which naming any reporter would otherwise drop), then `TmVitestWatchdog`.
+The preset names the reporters Vitest picks itself when none is named, since naming any would
+drop them: the agent reporter under a coding agent (as `std-env`, Vitest's own detection, finds
+one), else the default reporter, then on GitHub Actions the annotations reporter. After them comes
+`TmVitestWatchdog`. The unit-test builder's own `reporters` option, or `ng test --reporters`,
+replaces that whole list, the watchdog included.
 Vitest's own limits fail a test or a hook that runs too long, inside the browser, and a browser
 session that does not connect within a minute. Nothing bounds the other phases of a browser-mode
 run: the browser server's start, the import of a test file into the tester frame, the clean-up
@@ -70,13 +73,17 @@ CI step cancelled at its limit leaves no trace of what it waited for.
 
 The watchdog counts progress instead: a test file queued, collected, started or finished, a test
 or a hook starting or finishing, the browser server becoming ready. After 5 minutes without any
-(`stallMs`), or once the run is over, 2 minutes in which the process has not exited (`exitMs`; not
-in watch mode, which keeps the process on purpose), it writes a report to standard error and ends
-the process with exit code 1. It stays off while the inspector is on (the builder's `--debug`),
+(`stallMs`), or once the run is over, 2 minutes in which Vitest has not finished closing
+(`exitMs`; not in watch mode, which keeps Vitest open on purpose), it writes a report to standard
+error and ends the process with exit code 1. Once Vitest has closed, the watchdog disarms: the
+process may go on to other work, as `ng test` over several projects builds and runs each in turn,
+so a process that lingers after a clean close is left to the CI step's own limit. It stays off while the inspector is on (the builder's `--debug`),
 since a debugger paused at a breakpoint makes no progress either. The report lists:
 
 - the latest events with their times, and every test file, test and hook that started and has not
-  finished, with how long it has waited;
+  finished, with how long it has waited, as the workers and pages reported them: a page sends its
+  test events in batches, so when one of its frames does not answer, the report says the page may
+  be running a test it could not report;
 - for each browser project, how many sessions connected to the server, whether the browser is
   launching, launched or gone, and each session's page: its URL, each frame's `document.readyState`
   or that the frame did not answer within 5 seconds (its main thread is blocked), the requests it

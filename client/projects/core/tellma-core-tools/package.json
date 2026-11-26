@@ -47,6 +47,7 @@
     "@typescript-eslint/utils": "catalog:",
     "angular-eslint": "catalog:",
     "parse5": "catalog:",
+    "std-env": "catalog:",
     "tsx": "catalog:",
     "typescript-eslint": "catalog:"
   },

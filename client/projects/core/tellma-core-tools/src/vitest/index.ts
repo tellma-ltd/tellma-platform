@@ -3,15 +3,15 @@
  * that ends a run which stops making progress and writes what was pending.
  *
  * The Angular unit-test builder reads it as its runner configuration. A workspace's
- * `vitest-base.config.mts` re-exports the preset, and each test target names that file:
+ * `vitest-base.config.mjs` re-exports the preset, and each test target names that file:
  *
  * ```js
- * // vitest-base.config.mts
+ * // vitest-base.config.mjs
  * export { default } from '@tellma/core-tools/vitest';
  * ```
  *
  * ```json
- * "test": { "builder": "@angular/build:unit-test", "options": { "runnerConfig": "vitest-base.config.mts" } }
+ * "test": { "builder": "@angular/build:unit-test", "options": { "runnerConfig": "vitest-base.config.mjs" } }
  * ```
  *
  * @packageDocumentation
@@ -22,6 +22,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { isAgent } from 'std-env';
 import type { ViteUserConfig } from 'vitest/config';
 
 import { TmVitestWatchdog, type TmVitestWatchdogOptions } from './watchdog.js';
@@ -37,22 +38,27 @@ export interface TmVitestConfigOptions {
 /**
  * The Vitest preset: Vitest's default reporters, then the watchdog.
  *
- * Naming any reporter replaces Vitest's defaults, so the preset names them again: the default
- * reporter, and on GitHub Actions the annotations reporter, as Vitest picks them itself.
+ * Naming any reporter replaces Vitest's defaults, so the preset names them again as Vitest picks
+ * them itself: the agent reporter under a coding agent (as `std-env` detects one), else the default
+ * reporter, then on GitHub Actions the annotations reporter.
  *
  * @param options - The watchdog's limits.
  * @returns The configuration, for the unit-test builder's `runnerConfig`.
  *
  * @example
- * ```ts
- * // vitest-base.config.mts: a two-minute stall limit
+ * ```js
+ * // vitest-base.config.mjs: a two-minute stall limit
  * import { tmVitestConfig } from '@tellma/core-tools/vitest';
  *
  * export default tmVitestConfig({ watchdog: { stallMs: 120_000 } });
  * ```
  */
 export function tmVitestConfig(options: TmVitestConfigOptions = {}): ViteUserConfig {
-  const defaults = process.env['GITHUB_ACTIONS'] === 'true' ? ['default', 'github-actions'] : ['default'];
+  // Vitest's own choice when no reporter is named, read from the same detection it uses.
+  const defaults = [isAgent ? 'agent' : 'default'];
+  if (process.env['GITHUB_ACTIONS'] === 'true') {
+    defaults.push('github-actions');
+  }
   return {
     test: {
       reporters: [...defaults, new TmVitestWatchdog(options.watchdog)],

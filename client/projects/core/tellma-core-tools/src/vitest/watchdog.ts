@@ -12,15 +12,18 @@ import type { ReportedHookContext, Reporter, TestCase, TestModule, TestProject, 
 // after the run. A run stuck in one of them prints nothing until the CI job
 // is cancelled, and a cancelled step leaves no trace of what it was waiting
 // for. This reporter watches the run's progress instead: when no test file,
-// test or hook starts or finishes for too long, it writes what was still
-// pending (the files, tests and hooks; each browser session's page, frames
-// and open requests; the dependency optimizer; the Node handles) and ends
-// the process with exit code 1.
+// test or hook starts or finishes for too long, or Vitest does not finish
+// closing after the run, it writes what was still pending (the files, tests
+// and hooks; each browser session's page, frames and open requests; the
+// dependency optimizer; the Node handles) and ends the process with exit
+// code 1. Once Vitest has closed it disarms, because the process may go on
+// to other work: `ng test` over several projects builds and runs each in
+// turn in one process.
 
 /** How long a run may go without progress before the watchdog ends it: 5 minutes. */
 export const TM_VITEST_STALL_MS = 300_000;
 
-/** How long a process may live after its run ended, outside watch mode, before the watchdog ends it: 2 minutes. */
+/** How long Vitest may take to close after its run ended, outside watch mode, before the watchdog ends the process: 2 minutes. */
 export const TM_VITEST_EXIT_MS = 120_000;
 
 /** How long the report waits for a browser frame to answer before it calls the frame unresponsive. */
@@ -40,9 +43,9 @@ export interface TmVitestWatchdogOptions {
   /** How long the run may go without progress, in milliseconds, before the watchdog ends it. Defaults to {@link TM_VITEST_STALL_MS}. */
   readonly stallMs?: number;
   /**
-   * How long the process may live after its run ended, in milliseconds, before the watchdog ends
-   * it. Watch mode keeps the process on purpose, so it is not limited there. Defaults to
-   * {@link TM_VITEST_EXIT_MS}.
+   * How long Vitest may take to close after its run ended, in milliseconds, before the watchdog
+   * ends the process. Watch mode keeps Vitest open on purpose, so it is not limited there. Defaults
+   * to {@link TM_VITEST_EXIT_MS}.
    */
   readonly exitMs?: number;
   /** Writes the report, and resolves once it is written. Defaults to standard error, resolved once the stream has flushed it. */
@@ -180,6 +183,9 @@ function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** What the report says of a frame that does not answer in time. */
+const FRAME_SILENT = `did not answer within ${seconds(FRAME_ANSWER_MS)}`;
+
 /** The label of a test file: its path from the root, and its project. */
 function moduleLabel(testModule: TestModule): string {
   return `${testModule.relativeModuleId} [${testModule.project.name}]`;
@@ -214,7 +220,8 @@ function writeToStandardError(text: string): Promise<void> {
  * Progress is a test file, a test or a hook starting or finishing, or the browser server becoming
  * ready. Vitest's own limits fail a test or a hook that runs too long; this one covers the phases
  * they do not: the browser's start, the import of a test file, the clean-up between files and a
- * process that does not exit after its run. The report lists the latest events, what started and
+ * close that does not finish after the run. Once Vitest has closed, the watchdog disarms, so a
+ * process that goes on to other work, such as the next project's build, is left alone. The report lists the latest events, what started and
  * has not finished, each browser session's page with its frames and open requests, the dependency
  * optimizer's pending work and the handles keeping Node alive. The process then ends with exit
  * code 1, so the run fails with evidence rather than waiting for its CI job to be cancelled. It
@@ -229,7 +236,7 @@ function writeToStandardError(text: string): Promise<void> {
 export class TmVitestWatchdog implements Reporter {
   /** How long the run may go without progress. */
   private readonly stallMs: number;
-  /** How long the process may live after its run ended. */
+  /** How long Vitest may take to close after its run ended. */
   private readonly exitMs: number;
   /** Writes the report. */
   private readonly write: (text: string) => Promise<void>;
@@ -255,7 +262,7 @@ export class TmVitestWatchdog implements Reporter {
   private lastProgressAt = 0;
   /** When the watchdog fires unless progress moves it, or undefined while it is disarmed. */
   private deadline: number | undefined;
-  /** Whether the run has ended, so the deadline is the exit limit rather than the stall limit. */
+  /** Whether the run has ended, so the deadline is the exit limit (Vitest's close) rather than the stall limit. */
   private ended = false;
   /** The timer that checks the deadline and looks for new pages. */
   private poller: ReturnType<typeof setInterval> | undefined;
@@ -278,20 +285,46 @@ export class TmVitestWatchdog implements Reporter {
 
   /**
    * Arms the watchdog as the run initialises, unless the inspector is on: a debugger paused at a
-   * breakpoint makes no progress either.
+   * breakpoint makes no progress either. Whatever an earlier Vitest instance left is cleared, and
+   * the watchdog disarms once this instance has closed.
    *
    * @param vitest - The Vitest instance.
    */
   onInit(vitest: Vitest): void {
+    // A reporter that outlives one Vitest instance starts over for the next.
+    this.disarm();
+    this.events.length = 0;
+    this.modules.clear();
+    this.tests.clear();
+    this.hooks.clear();
+    this.browserProjects.clear();
+    this.pages.clear();
+    this.ended = false;
     this.vitest = vitest;
     this.startedAt = Date.now();
-    if (vitest.config.inspector.enabled === true) {
-      this.off = true;
+    this.off = vitest.config.inspector.enabled === true;
+    if (this.off) {
       return;
     }
+    // Vitest calls its close handlers as the close begins, beside the closing of its projects. Its
+    // close() returns the same closing promise once that has begun, so the watchdog disarms when
+    // the whole close has finished, and a close that never finishes still meets the exit limit.
+    // The microtask lets close() store its promise first: calling it from the handler itself,
+    // when nothing before the handlers awaited, would begin a second close.
+    vitest.onClose(() => {
+      queueMicrotask(() => {
+        const disarm = (): void => {
+          if (this.vitest === vitest) {
+            this.record('closed');
+            this.disarm();
+          }
+        };
+        vitest.close().then(disarm, disarm);
+      });
+    });
     this.progress('initialised');
     // One unreferenced timer, so the watchdog never keeps a finished process alive.
-    this.poller ??= setInterval(() => this.poll(), POLL_MS);
+    this.poller = setInterval(() => this.poll(), POLL_MS);
     this.poller.unref();
   }
 
@@ -396,8 +429,8 @@ export class TmVitestWatchdog implements Reporter {
   }
 
   /**
-   * Moves the deadline to the exit limit once the run ends, or disarms it in watch mode, which
-   * keeps the process on purpose; the next run arms it again.
+   * Replaces the stall limit with the exit limit once the run ends, which Vitest's close must meet,
+   * or disarms it in watch mode, which keeps Vitest open on purpose; the next run arms it again.
    *
    * @param _testModules - The run's test files.
    * @param _unhandledErrors - The run's errors outside tests.
@@ -418,6 +451,13 @@ export class TmVitestWatchdog implements Reporter {
   onWatcherRerun(files: readonly string[]): void {
     this.ended = false;
     this.progress(`rerun for ${files.length} changed file(s)`);
+  }
+
+  /** Stops the poller and clears the deadline, so nothing is left to fire. */
+  private disarm(): void {
+    clearInterval(this.poller);
+    this.poller = undefined;
+    this.deadline = undefined;
   }
 
   /** Records an event and moves the stall deadline, unless the run has ended. */
@@ -512,18 +552,33 @@ export class TmVitestWatchdog implements Reporter {
   private headline(): string {
     const quiet = seconds(Date.now() - this.lastProgressAt);
     return this.ended
-      ? `[vitest watchdog] The test run ended ${quiet} ago, but the process has not exited. Ending it with exit code 1; what was still open follows.`
+      ? `[vitest watchdog] The test run ended ${quiet} ago, but Vitest has not finished closing. Ending the process with exit code 1; what was still open follows.`
       : `[vitest watchdog] No test file, test or hook started or finished for ${quiet}. Ending the run with exit code 1; what was pending follows.`;
   }
 
   /** The whole report. */
   private async report(): Promise<string> {
     const now = Date.now();
+    // Each browser project's sessions, pages and dependency optimizer, read first: a frame that
+    // does not answer qualifies the list of tests. A browser project whose server never became
+    // ready is still starting, its optimizer's first run included.
+    const browsers: string[] = [];
+    let silentFrame = false;
+    for (const project of this.browserProjects) {
+      const described = await this.describeBrowser(project, now);
+      silentFrame ||= described.some((line) => line.endsWith(FRAME_SILENT));
+      browsers.push('', ...described);
+    }
+    for (const project of this.vitest?.projects ?? []) {
+      if (project.config.browser.enabled && !this.browserProjects.has(project)) {
+        browsers.push('', `Browser [${project.name}]: its server has not become ready; it is still starting, the dependency optimizer's first run included`);
+      }
+    }
     const lines: string[] = [this.headline(), '', 'Latest events, oldest first:'];
     for (const event of this.events) {
       lines.push(`  +${seconds(event.at - this.startedAt)}  ${event.text}`);
     }
-    // What started and has not finished.
+    // What started and has not finished, as the workers and pages reported it.
     const sections: [string, Map<string, PendingEntry>][] = [
       ['Test files not finished', this.modules],
       ['Tests not finished', this.tests],
@@ -537,18 +592,13 @@ export class TmVitestWatchdog implements Reporter {
       for (const entry of entries.values()) {
         lines.push(`  ${entry.label}: ${entry.state} for ${seconds(now - entry.since)}`);
       }
-    }
-    // Each browser project's sessions, pages and dependency optimizer; a browser project whose
-    // server never became ready is still starting, its optimizer's first run included.
-    for (const project of this.browserProjects) {
-      lines.push('', ...(await this.describeBrowser(project, now)));
-    }
-    for (const project of this.vitest?.projects ?? []) {
-      if (project.config.browser.enabled && !this.browserProjects.has(project)) {
-        lines.push('', `Browser [${project.name}]: its server has not become ready; it is still starting, the dependency optimizer's first run included`);
+      // A page sends its test events in batches, so a blocked one may hold the start of a test it
+      // is running.
+      if (entries === this.tests && silentFrame) {
+        lines.push('  (a frame did not answer: its page may be running a test it could not report)');
       }
     }
-    lines.push('', `Node resources keeping the process alive: ${activeResources()}`, '');
+    lines.push(...browsers, '', `Node resources keeping the process alive: ${activeResources()}`, '');
     return lines.join('\n');
   }
 
@@ -602,7 +652,7 @@ export class TmVitestWatchdog implements Reporter {
           ),
           FRAME_ANSWER_MS,
         );
-        const answer = state === TIMED_OUT ? `did not answer within ${seconds(FRAME_ANSWER_MS)}` : state;
+        const answer = state === TIMED_OUT ? FRAME_SILENT : state;
         lines.push(`    frame ${frame.name() === '' ? '(main)' : `"${frame.name()}"`} at ${frame.url()}: ${answer}`);
       }
     }

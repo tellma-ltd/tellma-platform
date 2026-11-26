@@ -27,7 +27,10 @@
  * Every target it runs must name `vitest-base.config.mjs` as its
  * `runnerConfig`, or the run fails: that file adds the watchdog that ends a
  * run with no progress and writes what was pending, so a target without it
- * could hang silently until its CI job is cancelled.
+ * could hang silently until its CI job is cancelled. For the same reason a
+ * target must not set the builder's `reporters` option, in its options or in
+ * any configuration (the builder then drops the file's reporters, watchdog
+ * included), and no configuration may name another `runnerConfig`.
  *
  * Usage: node scripts/test.mjs
  */
@@ -72,6 +75,30 @@ const CSP_SPEC = '**/*.csp.spec.ts';
 /** The runner configuration every unit-test target names, relative to the workspace root. */
 const RUNNER_CONFIG = 'vitest-base.config.mjs';
 
+/**
+ * Why a unit-test target would run without the runner configuration's
+ * reporters, or null when it runs with them. The builder's own `reporters`
+ * option, wherever it is set, replaces the whole reporter list, watchdog
+ * included, and a configuration may name another runnerConfig.
+ */
+function runnerConfigProblem(target) {
+  if (target.options?.runnerConfig !== RUNNER_CONFIG) {
+    return `it must name '${RUNNER_CONFIG}' as its runnerConfig in angular.json.`;
+  }
+  if (target.options.reporters !== undefined) {
+    return `it must not set reporters in angular.json: they would replace the reporters of '${RUNNER_CONFIG}', its watchdog included.`;
+  }
+  for (const [configuration, options] of Object.entries(target.configurations ?? {})) {
+    if (options.reporters !== undefined) {
+      return `its '${configuration}' configuration must not set reporters: they would replace the reporters of '${RUNNER_CONFIG}', its watchdog included.`;
+    }
+    if (options.runnerConfig !== undefined && options.runnerConfig !== RUNNER_CONFIG) {
+      return `its '${configuration}' configuration must not name a runnerConfig other than '${RUNNER_CONFIG}'.`;
+    }
+  }
+  return null;
+}
+
 const { projects } = JSON.parse(readFileSync(join(clientDir, 'angular.json'), 'utf8'));
 for (const [name, project] of Object.entries(projects)) {
   if (!project.architect?.test) {
@@ -104,8 +131,9 @@ for (const [name, project] of Object.entries(projects)) {
       console.log(`[test] ${label}: no *${suffix} files — skipped`);
       continue;
     }
-    if (project.architect[target].options?.runnerConfig !== RUNNER_CONFIG) {
-      console.error(`[test] ${label} must name '${RUNNER_CONFIG}' as its runnerConfig in angular.json.`);
+    const problem = runnerConfigProblem(project.architect[target]);
+    if (problem !== null) {
+      console.error(`[test] ${label}: ${problem}`);
       process.exit(1);
     }
     console.log(`[test] ${label}`);

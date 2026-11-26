@@ -260,9 +260,13 @@ jobs:
       - run: pnpm run build
       # The unit suites take about 3 minutes. Each run's watchdog (vitest-base.config.mjs) ends a run
       # with no progress for 5 minutes and writes what was pending; this limit is the backstop for a
-      # hang outside it, such as a build, well under the job's.
+      # hang outside it, such as a build, well under the job's. The debug lines time the dependency
+      # optimizer and each session's page (about 210 lines over all the runs), so a hang in the
+      # browser server's start, which the watchdog sees only as a server not ready, names its phase.
       - name: Unit suites
         timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
         run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
@@ -309,9 +313,11 @@ jobs:
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      # The watchdog and the limit as in the client job.
+      # The watchdog, the debug lines and the limit as in the client job.
       - name: Unit suites
         timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
         run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
