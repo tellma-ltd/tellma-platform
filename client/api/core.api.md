@@ -1158,6 +1158,7 @@ export class TmInputIdle {
 
 // @public
 export interface TmJobHandlerMetadata {
+    readonly commitsInSteps: boolean;
     readonly key: string;
     readonly labelFallback?: string;
     readonly labelKey: string;

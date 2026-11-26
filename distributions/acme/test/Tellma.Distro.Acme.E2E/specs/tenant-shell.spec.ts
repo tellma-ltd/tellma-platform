@@ -67,13 +67,21 @@ test.describe('the tenant shell', () => {
   }) => {
     const hold = await holdNetwork(page);
     await page.goto('/1', { waitUntil: 'commit' });
-    const session = page.getByRole('button', { name: SHELL_TEXT[lang].account });
+    const session = page.getByRole('button', {
+      name: SHELL_TEXT[lang].account,
+    });
     await expect(session).toBeVisible();
-    // The tenant's name, never its skeleton, and the reserved boxes of the bell and the tray.
+    // The tenant's name, never its skeleton, and the bell's and the tray's 30 px buttons.
     await expect(page.locator('tm-app-bar .tm-app-bar__tenant')).toHaveCount(1);
     await expect(page.locator('tm-app-bar .tm-app-bar__tenant-skeleton')).toHaveCount(0);
-    await expect(page.locator('tm-app-bar span[data-tm-slot="bell"]')).toHaveCSS('width', '30px');
-    await expect(page.locator('tm-app-bar span[data-tm-slot="tray"]')).toHaveCSS('width', '30px');
+    await expect(page.locator('tm-app-bar [data-tm-slot="bell"] > button')).toHaveCSS(
+      'width',
+      '30px',
+    );
+    await expect(page.locator('tm-app-bar [data-tm-slot="tray"] > button')).toHaveCSS(
+      'width',
+      '30px',
+    );
     await hold.release();
   });
 

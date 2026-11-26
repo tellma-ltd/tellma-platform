@@ -211,6 +211,9 @@ export class TmAttention {
   /** The stored assignments; `undefined` before the first copy. */
   readonly assignments: Signal<TmAssignmentsSummary | undefined> = computed(() => this.#assignmentsCopy()?.data);
 
+  /** When the stored inbox copy was read, in epoch milliseconds; `null` before the first copy. Internal: the bell's status line reads it. */
+  readonly ɵinboxSavedAt: Signal<number | null> = computed(() => this.#inboxCopy()?.savedAt ?? null);
+
   /** The bell's badge. */
   readonly bell: Signal<TmBellBadge> = computed(() => {
     const inbox = this.inbox();

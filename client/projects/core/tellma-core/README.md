@@ -8,7 +8,8 @@ own.
 | Entry point | Holds | Loaded |
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`), the running build's identity (`TmAppVersion`) and the support facade (`TmSupport`: Report a problem, the diagnostic file and the dump's sections); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
-| `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
+| `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the outcome toasts (`TmOutcomeToasts`); and the bell's and the tray's app-bar buttons (`TmAttentionButton`, under `tm-bell-button` and `tm-tray-button`), whose panels load as a chunk of their own on first intent | eager, preloaded with the app |
+| `@tellma/core/attention-rows` | The attention rows the panels, the arrival toasts and the home page share: the server text of notifications, jobs and assignment captions (`TmAttentionText`), the assignment list (`tm-assignment-list`, in its tray and home variants, either party) and `tmIcuArguments` | with the code that imports it |
 | `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button) and its states; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the About and Shortcuts dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
@@ -741,13 +742,35 @@ toasts off. Inside a tenant the toasts' overflow pill reads "{n} more · Open no
 opens the notifications. What arrived and how it toasts, with its strings (`tm.arrivals`), load as
 a chunk with the first copy handed on.
 
-`TmAttentionText` renders server text in the reader's language, following every language switch
+`@tellma/core/attention-rows`' `TmAttentionText` renders server text in the reader's language, following every language switch
 with no request: a notification's title and detail from its type's keys, a job's label (its own key,
 then its handler's, then the handler's fallback, an `entity` argument naming an entity rendering as
 its plural label), a job's message, and an assignment's caption (the title with its code split out
 for an isolate, the detail, and the amount at its own scale with its currency's code).
 `TmOutcomeToasts` raises the outcomes the platform's own pages toast: "Started in the background."
 with Track, and the sticky "Exporting…" with Cancel.
+
+## Attention: the bell, the tray and their panels
+
+The app bar places `tm-bell-button` and `tm-tray-button`, 30 px buttons with the badge's overlay
+counter, its accessible name and `aria-keyshortcuts`, and, on the bell, a ring while a job runs. A
+press, Alt+Shift+U or Alt+Shift+Q toggles the model's panel; pointer hover, focus and the first idle
+moment load the panels' chunk ahead of the press. The panel opens in a popover from lg and in the
+end drawer below it, renders from the stored document with the tab's overlays in the frame it
+opens, focuses its first row, and publishes an overlay page context, `panel:bell` or `panel:tray`,
+with its `attention.*` actions. Each list is one tab stop with roving rows (the arrows, Home and End;
+Delete clears a notification).
+
+The bell's panel holds Mark all as read and More options (the settings and a confirmed Clear read),
+the newest three running jobs with a row by status (a progress bar, Held, Awaiting confirmation
+with Review, Stopping…) and Stop, which asks first for a handler that saves its work in steps, then
+the notification rows: each a link to its open route with its severity's icon, Download for a
+finished export, its time and Clear. Rows that arrive while the list is scrolled down wait under a
+pinned "{n} new" button; a status line with Refresh shows while live updates are paused. A frozen
+tenant shows no verb; offline, each verb stays, disabled with "You're offline". The tray's panel
+lists the open assignments through `tm-assignment-list`, marking those assigned since the tray was
+last opened "New". The panels' chunk also registers the support dump's `attention` section: the open
+panel, the badges and the shown banners.
 
 The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
 `TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
@@ -1095,8 +1118,9 @@ registers `tm.picker` when `TmEntityPickers` is;
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
 the same seam. `@tellma/core/details` registers `tm.details` when its first page is created. `@tellma/core/attention`
-registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
-`tm.arrivals` as it loads. The seam itself costs the primary one method
+registers `tm.attention` when its first service is created, its arrival toasts' chunk registers
+`tm.arrivals` as it loads, and its panels' chunk registers `tm.attentionPanels`;
+`@tellma/core/attention-rows` registers `tm.attentionRows` with its first service or list. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## The search page's query model
@@ -1290,7 +1314,7 @@ client tables until the localization service replaces it. A page's `securable` g
 Static imports between entry points follow one graph, always through `@tellma/core/<entry point>`
 and never a relative path: the primary imports no other entry point, `/attention` only the
 primary, `/shell` the primary and `/attention`, and no eager entry point imports a lazy one. A
-shared entry point (`/private`, `/search-normalize`, `/error-paths`) loads with whichever code imports it: every
+shared entry point (`/private`, `/search-normalize`, `/error-paths`, `/attention-rows`) loads with whichever code imports it: every
 entry point but the primary and the shared ones may import it, so the primary never carries it.
 Dynamic `import()` and `import type` cross any boundary, and a spec may reach another entry
 point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships either. The lint

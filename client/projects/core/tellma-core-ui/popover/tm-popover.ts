@@ -37,6 +37,7 @@ import {
   tmLogicalPositions,
   type TmOverlayAlign,
   type TmOverlaySide,
+  ɵtmOpenModals,
 } from '@tellma/core-ui/overlay';
 
 import { tmPopoverBlockRoom, tmPopoverInlineShift, tmTokenPx } from './internal/fit';
@@ -90,6 +91,9 @@ const FOCUSABLE =
  * On open, focus moves to the first tabbable element inside (else the
  * panel itself). Escape, an outside click, and tabbing past the content
  * close it; focus returns to the anchor only when it was inside the panel.
+ * A modal opened while the popover is open (a confirmation its content
+ * asks) leaves it open beneath: focus in the modal and clicks while it
+ * shows never count as leaving.
  *
  * @tmGroup overlay
  * @tmA11yNotes The panel is a non-modal `role="dialog"` (no focus trap);
@@ -206,6 +210,8 @@ export class TmPopover {
   private destroyed = false;
   /** Host elements of the triggers currently bound to this popover. */
   private readonly triggers = new Set<Element>();
+  /** The modals already open when the popover opened; any other open modal sits above it. */
+  private modalsBelow: ReadonlySet<HTMLElement> = new Set();
 
   /** This instance's stable anchor handler — its identity keys the removal. */
   private readonly onAnchorKeydown = (event: Event): void => {
@@ -236,7 +242,9 @@ export class TmPopover {
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
     onOutsideClick: (event) => {
-      if (event.target instanceof Node && this.ownsClick(event.target)) {
+      // A modal the content opened above the panel (a confirmation) owns
+      // every click while it is open, its backdrop's included.
+      if ((event.target instanceof Node && this.ownsClick(event.target)) || this.modalAbove(null)) {
         return;
       }
       this.close();
@@ -318,6 +326,9 @@ export class TmPopover {
         );
       }
       return;
+    }
+    if (!untracked(this.expanded)) {
+      this.modalsBelow = new Set(ɵtmOpenModals());
     }
     this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
@@ -498,17 +509,31 @@ export class TmPopover {
     });
   }
 
-  /** Closes unless the focus destination is inside the panel or the anchor. */
+  /**
+   * Closes unless the focus destination is inside the panel or the anchor,
+   * or inside a modal opened above the panel: the content's confirmation
+   * takes focus while the panel waits beneath it, and gives it back when it
+   * closes.
+   */
   private closeIfFocusLeft(next: Node | null): void {
     const panel = this.panel()?.nativeElement;
     const anchor = untracked(this.overlayOrigin);
     if (
       panel !== undefined &&
       (next === null || !panel.contains(next)) &&
-      !(anchor instanceof Element && next !== null && anchor.contains(next))
+      !(anchor instanceof Element && next !== null && anchor.contains(next)) &&
+      !(next !== null && this.modalAbove(next))
     ) {
       this.close();
     }
+  }
+
+  /**
+   * Whether a modal opened after the popover is open, holding `node` when
+   * one is given.
+   */
+  private modalAbove(node: Node | null): boolean {
+    return ɵtmOpenModals().some((modal) => !this.modalsBelow.has(modal) && (node === null || modal.contains(node)));
   }
 
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */

@@ -3,12 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal, type OnDestroy } from '@angular/core';
+import { Component, inject, signal, type OnDestroy } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { TmPopoverHarness } from '@tellma/core-ui-testing';
 
 import { TmPopover, TmPopoverContent } from './tm-popover';
@@ -77,6 +78,35 @@ class NoContentHost {}
   `,
 })
 class SharedTriggerHost {}
+
+/** A modal's content: one button. */
+@Component({
+  selector: 'tm-test-modal-content',
+  template: `<button type="button" class="in-modal">Confirm</button>`,
+})
+class ModalContent {}
+
+/** A popover whose content opens a modal above it, as a confirmation does. */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button class="trigger" [tmPopoverTriggerFor]="popover">Filters</button>
+    <tm-popover #popover aria-label="Filters">
+      <ng-template tmPopoverContent>
+        <button type="button" class="ask" (click)="ask()">Clear</button>
+      </ng-template>
+    </tm-popover>
+    <input class="outside-field" />
+  `,
+})
+class AskingHost {
+  readonly #modal = inject(TmModal);
+  ref: TmModalRef<void> | null = null;
+
+  ask(): void {
+    this.ref = this.#modal.open(ModalContent, { title: 'Clear?' });
+  }
+}
 
 /** Two independent popovers — the second attaches on top of the first. */
 @Component({
@@ -306,6 +336,33 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('stays open beneath a modal its content opens, and closes on a later tab-out', async () => {
+    const { fixture, host, root } = await setup(AskingHost);
+    (root.querySelector('.trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    const ask = document.querySelector('.ask') as HTMLButtonElement;
+    ask.focus();
+    ask.click();
+    await settle(fixture);
+    // Focus moved into the modal, and a click inside it is the modal's.
+    const inModal = document.querySelector('.in-modal') as HTMLButtonElement;
+    expect(inModal.closest('[role="dialog"]')?.contains(document.activeElement)).toBe(true);
+    expect(panel()).not.toBeNull();
+    inModal.click();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+
+    // The modal gives focus back to the panel when it closes.
+    host.ref?.close();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.ask'));
+
+    (root.querySelector('.outside-field') as HTMLInputElement).focus();
+    await settle(fixture);
+    expect(panel()).toBeNull();
   });
 
   it('drives the open panel through TmPopoverHarness', async () => {

@@ -27,9 +27,9 @@ import { TmIconRegistry } from '@tellma/core-ui/icon';
 import { type TmToast, type TmToastRef, TmToasts } from '@tellma/core-ui/toast';
 import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
+import { TmAttentionText, tmIcuArguments } from '@tellma/core/attention-rows';
+
 import { TmAttention } from './tm-attention';
-import { TmAttentionText } from './tm-attention-text';
-import { tmIcuArguments } from './tm-icu-arguments';
 
 // The arrival toasts (spec 0028 §8.1): which rows of a copy arrived and the
 // toast each arrival shows. The arrival engine loads this file with import()

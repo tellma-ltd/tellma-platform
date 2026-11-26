@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { TestBed } from '@angular/core/testing';
+import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { type TmFakeApi, tmWarmTenant } from '@tellma/core-testing';
 
@@ -59,12 +59,14 @@ function language(code: string, dir: 'ltr' | 'rtl', tm: TmStringTree = {}): TmLa
 }
 
 /** Arabic's attention strings the specs read: the caption's title puts the code first. */
-const ARABIC_TM: TmStringTree = { attention: { assignment: { title: '{code} · {entity}' } } };
+const ARABIC_TM: TmStringTree = { attentionRows: { assignment: { title: '{code} · {entity}' } } };
 
 /** What an attention spec drives. */
 export interface TmAttentionRig extends TmAppRig {
   /** The fake API. */
   readonly api: TmFakeApi;
+  /** The router harness's fixture, which a harness loader reads the document through. */
+  readonly fixture: ComponentFixture<unknown>;
   /** Stores a copy of one of tenant 17's documents, saved at the given time (now by default). */
   put(name: 'inbox' | 'assignments' | 'tenant', data: unknown, savedAt?: number): Promise<void>;
 }
@@ -99,18 +101,19 @@ export async function tmAttentionRig(docs: Partial<TmLaunchDocs> = {}, metadata:
       ...routed,
       notificationTypes: TM_TEST_NOTIFICATION_TYPES,
       jobHandlers: [
-        { key: 'core.export', schedulable: false, labelKey: 'JobHandler_core_export', labelFallback: 'core.export' },
-        { key: 'core.import', schedulable: false, labelKey: 'JobHandler_core_import' },
+        { key: 'core.export', schedulable: false, commitsInSteps: false, labelKey: 'JobHandler_core_export', labelFallback: 'core.export' },
+        { key: 'core.import', schedulable: false, commitsInSteps: true, labelKey: 'JobHandler_core_import' },
       ],
       ...metadata,
     },
     languages: [tmEnglish(), language('ar', 'rtl', ARABIC_TM), language('fr', 'ltr')],
     strings: STRINGS,
   });
-  await tmNavigate('/17/centers');
+  const router = await tmNavigate('/17/centers');
   await tmSettle();
   return {
     ...rig,
+    fixture: router.fixture,
     put: async (name, data, savedAt = Date.now()) => {
       await rig.store.put(TM_T17, name, { tag: null, savedAt, data });
       TestBed.tick();

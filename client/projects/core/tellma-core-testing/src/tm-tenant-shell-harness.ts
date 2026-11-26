@@ -237,7 +237,7 @@ export class TmTenantShellHarness extends ComponentHarness {
   /**
    * The ids of the boxes the app bar reserves for slots other specs fill.
    *
-   * @returns The ids, such as `['bell', 'tray', 'help', 'assistant']`.
+   * @returns The ids, such as `['help', 'assistant']`.
    */
   async getReservedSlots(): Promise<string[]> {
     return Promise.all((await this.#reserved()).map(async (box) => (await box.getAttribute('data-tm-slot')) ?? ''));

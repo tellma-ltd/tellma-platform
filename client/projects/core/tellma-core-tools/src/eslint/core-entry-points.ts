@@ -34,7 +34,8 @@ export const TM_CORE_PACKAGE = '@tellma/core';
  *   wiring between its entry points and may import the primary;
  *   `/search-normalize` is the text folding the launcher and the lazy pages
  *   match with, and `/error-paths` the walk of the server's error paths
- *   onto a form; neither imports any.
+ *   onto a form; neither imports any. `/attention-rows` is what the
+ *   attention surfaces render inside their rows, and imports the primary.
  * - A lazy entry point may import every eager and shared one, plus the lazy
  *   ones it lists. No eager entry point imports a lazy one.
  */
@@ -53,6 +54,13 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // dialog and the details page's save land errors by them, so they load
   // with whichever imports them first, not with `/entity`'s first frame.
   './error-paths': { load: 'shared', imports: [] },
+  // What spec 0028's attention surfaces render inside their rows: the server
+  // text (TmAttentionText, which spec 0028 §1 places in /attention) and the
+  // assignment list. The bell's and the tray's panels, the arrival toasts
+  // and the attention pages load it, never the first frame; the size gate's
+  // staticGraphExcludes keeps `/attention` and `/shell` from reaching it
+  // statically.
+  './attention-rows': { load: 'shared', imports: ['.'] },
   './realtime': { load: 'lazy', imports: [] },
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },

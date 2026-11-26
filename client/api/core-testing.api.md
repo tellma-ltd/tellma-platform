@@ -28,6 +28,16 @@ export function provideTellmaStateTesting(): EnvironmentProviders;
 export function provideTellmaTesting(): EnvironmentProviders;
 
 // @public
+export abstract class TmAttentionPanelHarness extends ComponentHarness {
+    getEmptyText(): Promise<string | null>;
+    getFocusedText(): Promise<string | null>;
+    getHeading(): Promise<string | null>;
+    getSeeAllHref(): Promise<string | null>;
+    isLoading(): Promise<boolean>;
+    seeAll(): Promise<void>;
+}
+
+// @public
 export class TmBannerHostHarness extends ComponentHarness {
     getAnnouncement(): Promise<string>;
     getBar(): Promise<TmBannerBarHarness | null>;
@@ -35,6 +45,53 @@ export class TmBannerHostHarness extends ComponentHarness {
     static hostSelector: string;
     isEmpty(): Promise<boolean>;
     isOpen(): Promise<boolean>;
+}
+
+// @public
+export class TmBellPanelHarness extends TmAttentionPanelHarness {
+    clearNotification(id: number): Promise<void>;
+    getClearReason(id: number): Promise<string | null>;
+    getFresh(): Promise<string | null>;
+    getHeaderVerbReason(name: string): Promise<string | null>;
+    getHeaderVerbs(): Promise<string[]>;
+    getJobControl(id: number, name: string): Promise<TmButtonHarness>;
+    getJobs(): Promise<TmBellPanelJob[]>;
+    getMoreJobs(): Promise<string | null>;
+    getNotifications(): Promise<TmBellPanelNotification[]>;
+    getStatusLine(): Promise<string | null>;
+    static hostSelector: string;
+    markAllRead(): Promise<void>;
+    openMore(): Promise<TmMenuHarness>;
+    openNotification(id: number): Promise<void>;
+    refresh(): Promise<void>;
+    reviewJob(id: number): Promise<void>;
+    showFresh(): Promise<void>;
+    stopJob(id: number): Promise<void>;
+}
+
+// @public
+export interface TmBellPanelJob {
+    readonly badge: string | null;
+    readonly controls: readonly string[];
+    readonly href: string | null;
+    readonly id: number;
+    readonly line: string;
+    readonly percent: string | null;
+    readonly progress: boolean;
+    readonly title: string;
+}
+
+// @public
+export interface TmBellPanelNotification {
+    readonly clearable: boolean;
+    readonly download: string | null;
+    readonly href: string | null;
+    readonly id: number;
+    readonly label: string;
+    readonly line: string;
+    readonly severity: string | null;
+    readonly title: string;
+    readonly unread: boolean;
 }
 
 // @public
@@ -568,6 +625,24 @@ export interface TmTestShellSlotOptions {
 export class TmTestShellSlotPanel {
     static ɵcmp: i0.ɵɵComponentDeclaration<TmTestShellSlotPanel, "tm-test-shell-slot-panel", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmTestShellSlotPanel, never>;
+}
+
+// @public
+export class TmTrayPanelHarness extends TmAttentionPanelHarness {
+    getOpenCount(): Promise<string | null>;
+    getRows(): Promise<TmTrayPanelRow[]>;
+    static hostSelector: string;
+    openRow(index: number): Promise<void>;
+}
+
+// @public
+export interface TmTrayPanelRow {
+    readonly href: string | null;
+    readonly id: string;
+    readonly label: string;
+    readonly line: string;
+    readonly new: boolean;
+    readonly title: string;
 }
 
 // @public
