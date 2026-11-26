@@ -24,6 +24,11 @@
  * so such a spec can neither leak its policy into the shared run nor be
  * silently skipped.
  *
+ * Every target it runs must name `vitest-base.config.mjs` as its
+ * `runnerConfig`, or the run fails: that file adds the watchdog that ends a
+ * run with no progress and writes what was pending, so a target without it
+ * could hang silently until its CI job is cancelled.
+ *
  * Usage: node scripts/test.mjs
  */
 import { spawnSync } from 'node:child_process';
@@ -64,6 +69,9 @@ function includedSuffix(target) {
 
 const CSP_SPEC = '**/*.csp.spec.ts';
 
+/** The runner configuration every unit-test target names, relative to the workspace root. */
+const RUNNER_CONFIG = 'vitest-base.config.mjs';
+
 const { projects } = JSON.parse(readFileSync(join(clientDir, 'angular.json'), 'utf8'));
 for (const [name, project] of Object.entries(projects)) {
   if (!project.architect?.test) {
@@ -95,6 +103,10 @@ for (const [name, project] of Object.entries(projects)) {
     if (suffix !== null && !hasSpecs(join(clientDir, project.root), suffix)) {
       console.log(`[test] ${label}: no *${suffix} files — skipped`);
       continue;
+    }
+    if (project.architect[target].options?.runnerConfig !== RUNNER_CONFIG) {
+      console.error(`[test] ${label} must name '${RUNNER_CONFIG}' as its runnerConfig in angular.json.`);
+      process.exit(1);
     }
     console.log(`[test] ${label}`);
     const result = spawnSync(process.execPath, [ng, 'run', `${name}:${target}`, '--watch=false'], {

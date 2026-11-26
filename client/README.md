@@ -59,6 +59,12 @@ run the suite again without the variable.
 
 `lint` and `lint:test` first compile `@tellma/core-tools` (`tsc -b`, incremental): the workspace's
 ESLint and stylelint configs load its built presets, as a distribution's would.
+
+Every unit test target in `angular.json` names `vitest-base.config.mjs` as its `runnerConfig`, and
+`test` refuses one that does not. The file re-exports `@tellma/core-tools`' Vitest preset, whose
+watchdog ends a run that makes no progress for 5 minutes, or a process that does not exit 2 minutes
+after its run, with exit code 1 and a report of what was pending: the unfinished files, tests and
+hooks, each browser session's page, frames and open requests, and the dependency optimizer.
 `lint:test` then runs in two groups (`tools/vitest.config.mts`): every other spec file in
 parallel, then the core-tools fixture build spec alone, so its real `ng build` never competes
 with the other specs for the machine.

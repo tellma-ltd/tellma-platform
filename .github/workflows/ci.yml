@@ -258,7 +258,12 @@ jobs:
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      - run: pnpm run test
+      # The unit suites take about 3 minutes. Each run's watchdog (vitest-base.config.mjs) ends a run
+      # with no progress for 5 minutes and writes what was pending; this limit is the backstop for a
+      # hang outside it, such as a build, well under the job's.
+      - name: Unit suites
+        timeout-minutes: 15
+        run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
@@ -304,7 +309,10 @@ jobs:
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      - run: pnpm run test
+      # The watchdog and the limit as in the client job.
+      - name: Unit suites
+        timeout-minutes: 15
+        run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
@@ -372,8 +380,16 @@ jobs:
           if grep -Eo '"(Tellma\.Identity\.Migrations|[A-Za-z0-9.]+\.Design)/' "$publish/Tellma.Distro.Acme.Web.deps.json"; then
             echo "The web host's dependency manifest lists a migrations or design-time package"; exit 1
           fi
-      # The build above wrote generated/, which the app's configuration imports.
-      - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+      # The build above wrote generated/, which the app's configuration imports. The step takes under a
+      # minute. Its watchdog (the app's vitest-base.config.mjs) ends a run with no progress for 5
+      # minutes and writes what was pending, and the debug lines below time the browser's start, each
+      # session's page and the dependency optimizer, so a hang names the phase it stopped in. The limit
+      # is the backstop for a hang outside the watchdog, such as the build, well under the job's.
+      - name: Acme unit tests
+        timeout-minutes: 10
+        env:
+          DEBUG: vitest:browser*,vite:deps
+        run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
       # The browser suite on the Acme e2e host (spec 0024 §13), on Linux: a SQL Server container,
       # the Migrator's migrate, and the web host in Development over the app the publish above
       # built, so no second client build runs. Chromium is the one installed above (one catalog
