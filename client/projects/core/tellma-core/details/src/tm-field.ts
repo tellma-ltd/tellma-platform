@@ -165,6 +165,9 @@ export const ɵtmFieldEditorLoader: {
   readonly loaded: WritableSignal<Type<unknown> | null>;
 } = { load: loadEditor, loaded: signal(null) };
 
+/** The one field that announces a failed load of the edit side, which every editable field shows. */
+const failureVoice = signal<object | null>(null);
+
 /** A multilingual twin's path: the group's name, then its slot. */
 const TWIN = /^(.+?)([23])$/;
 
@@ -369,7 +372,8 @@ const TWIN = /^(.+?)([23])$/;
           @if (failed) {
             <!-- The edit side failed to load: say so, and offer the load again. -->
             <dd class="tm-field__failed">
-              <span role="alert">{{ editorFailedText() }}</span>
+              <!-- The failure is page-wide: one field announces it, the others show it. -->
+              <span [attr.role]="voiced() ? 'alert' : null">{{ editorFailedText() }}</span>
               <button tmButton class="tm-field__retry" type="button" variant="ghost" size="sm" (click)="retryEditor()">{{ retryText() }}</button>
             </dd>
           }
@@ -438,6 +442,9 @@ export class TmField {
   /** Whether the edit side failed to load outside view mode, so the field says so in place of a control. */
   protected readonly editorFailed = signal(false);
 
+  /** Whether this field announces the failed load, so a screen reader hears it once. */
+  protected readonly voiced = computed(() => failureVoice() === this);
+
   /** The failed load's message. */
   protected readonly editorFailedText = computed(() => this.#l10n.ɵtext('tm.details.editorFailed')());
 
@@ -472,6 +479,9 @@ export class TmField {
 
   /** Sets the field up: its registrations, its errors' reports and the editor's load. */
   constructor() {
+    // --- A field that leaves gives up announcing the failed load ---
+    inject(DestroyRef).onDestroy(() => failureVoice.update((voice) => (voice === this ? null : voice)));
+
     // --- Each cell registers with the record and reports its error to the card or tab ---
     effect((onCleanup) => {
       const cells = this.cells();
@@ -522,11 +532,16 @@ export class TmField {
     return ɵtmFieldEditorLoader.load().then(
       (component) => {
         this.editorFailed.set(false);
+        failureVoice.set(null);
         ɵtmFieldEditorLoader.loaded.set(component);
         return true;
       },
       () => {
-        this.editorFailed.set(untracked(this.#record.mode) !== 'view');
+        const failed = untracked(this.#record.mode) !== 'view';
+        this.editorFailed.set(failed);
+        if (failed && untracked(failureVoice) === null) {
+          failureVoice.set(this);
+        }
         return false;
       },
     );
@@ -594,7 +609,6 @@ export class TmField {
    * @param destroyRef - What ends the registrations.
    */
   #register(cell: ɵTmFieldCell, destroyRef: DestroyRef): void {
-    const node = this.#node(cell);
     const ref: TmDetailsFieldRef = {
       labelKey: this.labelKey() ?? cell.labelKey,
       label: cell.label,
@@ -603,8 +617,9 @@ export class TmField {
     };
     this.#record.registerField(cell.key, ref, destroyRef);
     // An error shows once its field is touched or dirty, and only while the record is edited.
+    // The node is looked up inside the computed, so a member that arrives with a later read is followed.
     const shows = computed(() => {
-      const state = node?.();
+      const state = this.#node(cell)?.();
       return this.mode() !== 'view' && state !== undefined && state.invalid() && (state.touched() || state.dirty());
     });
     this.#scope?.hold(shows, destroyRef);
@@ -644,7 +659,7 @@ export class TmField {
    * Whether a cell takes no input in edit mode: a dotted path, the
    * field's `readonly`, a value its ownership keeps from the user, one
    * the form's schema makes read-only, or a member the working copy lacks,
-   * such as a defaulted one a new record leaves for the server to fill.
+   * as before the record lands.
    *
    * @param cell - The cell.
    * @returns Whether it is read-only.

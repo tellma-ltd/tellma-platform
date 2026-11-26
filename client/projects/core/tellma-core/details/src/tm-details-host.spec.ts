@@ -14,7 +14,7 @@ import { Router } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import { TmApiError, type TmJsonObject, TmPageActions } from '@tellma/core';
 import { TmDetailsPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
-import { TmConfirmHarness } from '@tellma/core-ui-testing';
+import { TmCardHarness, TmConfirmHarness } from '@tellma/core-ui-testing';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmLoadTestPage, tmSettle, tmSettleUntil, TmTestPage } from '../../src/routes/tm-app.testing.util';
@@ -84,6 +84,32 @@ class TmTestDetailsLayout {
   `,
 })
 class TmTestKitLayout {}
+
+/** A layout in the kit whose fields sit in a collapsed card and on a tab, which keeps its record for the test. */
+@Component({
+  selector: 'tm-test-dots-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-card id="terms" titleKey="Code" collapsible collapsed><tm-field path="Code" /></tm-details-card>
+    <tm-details-tabs>
+      <tm-details-tab id="general" labelKey="Name">
+        <ng-template tmDetailsTabContent><tm-field path="Name" /></ng-template>
+      </tm-details-tab>
+    </tm-details-tabs>
+  `,
+})
+class TmTestDotsLayout {
+  /** The latest instance. */
+  static latest: TmTestDotsLayout | null = null;
+
+  /** The record. */
+  readonly details = injectTmDetails<TmJsonObject>();
+
+  /** Keeps itself for the test. */
+  constructor() {
+    TmTestDotsLayout.latest = this;
+  }
+}
 
 /** A read the test answers when it chooses. */
 interface TmPendingRead {
@@ -233,6 +259,37 @@ describe('the details host', () => {
     return [...document.querySelectorAll<HTMLButtonElement>('tm-error-state button')].find((button) => button.textContent?.trim() === label)!;
   }
 
+  /**
+   * Opens a record whose read lands after its kit layout renders, empties
+   * the card's field and the tab's, and reads the card's and the tab's
+   * error state.
+   *
+   * @param url - The page's URL: a record's id, or a clone.
+   * @returns Whether the card's dot shows, and the tab's name.
+   */
+  async function lateErrors(url: string): Promise<{ readonly card: boolean; readonly tab: string | null }> {
+    tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestDotsLayout));
+    await start();
+    hold = true;
+    // The held read keeps the page unstable, so the harness must not wait for it.
+    const page = await manualChangeDetection(() => open(url));
+    await tmSettleUntil(() => TmTestDotsLayout.latest !== null && pending.length === 1, 'the layout renders before the read lands');
+    pending[0]!.resolve(5);
+    await tmSettleUntil(() => TmTestDotsLayout.latest!.details.model()['code'] !== undefined, 'the read lands');
+    if (TmTestDotsLayout.latest!.details.mode() === 'view') {
+      await page.click('edit');
+    }
+    await tmSettleUntil(() => document.querySelector('[data-tm-field="Name"] tm-form-field') !== null, 'the controls load');
+    const form = TmTestDotsLayout.latest!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    for (const json of ['code', 'name']) {
+      form[json]!().value.set('');
+      form[json]!().markAsTouched();
+    }
+    await tmSettle();
+    const card = await TestbedHarnessEnvironment.loader(router.fixture).getHarness(TmCardHarness);
+    return { card: await card.isInvalid(), tab: document.querySelector('.tm-details-tabs__name')?.textContent?.trim() ?? null };
+  }
+
   /** What the status strip's notice says, or `null` while it shows none. */
   function notice(): string | null {
     return document.querySelector('.tm-details__notice')?.textContent?.trim() ?? null;
@@ -256,6 +313,7 @@ describe('the details host', () => {
 
   beforeEach(() => {
     TmTestDetailsLayout.instances.length = 0;
+    TmTestDotsLayout.latest = null;
     pending = [];
     hold = false;
     tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestDetailsLayout));
@@ -517,6 +575,45 @@ describe('the details host', () => {
     const body = JSON.stringify(rig.api.calls().find((call) => call.route === 'customers/save')!.body);
     expect(body).not.toContain('customerId');
     expect(JSON.parse(body)).toEqual(expect.objectContaining({ entities: [expect.objectContaining({ contacts: [{ id: -1, name: 'Huda', email: null }] })] }));
+  });
+
+  it("shows the card's and the tab's error state on a record opened at its id that lands after its layout renders", async () => {
+    expect(await lateErrors('/17/customers/5')).toEqual({ card: true, tab: 'Name, has errors' });
+  });
+
+  it("shows the card's and the tab's error state on a clone whose copy lands after its layout renders", async () => {
+    expect(await lateErrors('/17/customers/new?clone=5')).toEqual({ card: true, tab: 'Name, has errors' });
+  });
+
+  it("saves a new record's defaulted member exactly as the body is sent: left out while empty, sent once filled", async () => {
+    await start();
+    const page = await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    const details = latest()!.details;
+    details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail' }));
+    rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    // The raw body, nulls included: the rank is left for the server to fill, and every other empty member is sent as null.
+    const [entity] = (JSON.parse(JSON.stringify(rig.api.calls().find((call) => call.route === 'customers/save')!.body)) as { entities: TmJsonObject[] }).entities;
+    expect(Object.keys(entity!)).not.toContain('rank');
+    expect(entity).toEqual(expect.objectContaining({ code: 'C-009', currencyId: null }));
+  });
+
+  it("sends a new record's defaulted member the user filled", async () => {
+    await start();
+    const page = await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    latest()!.details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail', rank: 'A' }));
+    rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    const body = rig.api.calls().find((call) => call.route === 'customers/save')!.body as { entities: TmJsonObject[] };
+    expect(body.entities[0]!['rank']).toBe('A');
   });
 
   it('keeps Save disabled while the copied record loads', async () => {

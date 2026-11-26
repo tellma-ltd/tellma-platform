@@ -527,7 +527,7 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     this.#busy.set(true);
     try {
       const saved = await record.source.write({
-        model: record.model(),
+        model: record.ɵsaveBody(),
         base: mode === 'create' ? null : record.base(),
         concurrency: 'Check',
         confirmations: [],

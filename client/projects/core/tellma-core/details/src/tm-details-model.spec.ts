@@ -6,7 +6,7 @@
 import type { TmEntityDescriptor, TmJson, TmJsonObject, TmPropertyDescriptor } from '@tellma/core';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
-import { tmDetailsCloneStrip, tmDetailsComplete, tmDetailsCreateModel, tmDetailsRefused, tmDetailsRouteId } from './tm-details-model';
+import { tmDetailsCloneStrip, tmDetailsComplete, tmDetailsCreateModel, tmDetailsRefused, tmDetailsRouteId, tmDetailsSaveBody } from './tm-details-model';
 
 // The record's model rules over the recorded entity model: a new record's
 // values, the strip that turns a copy into a new record, the route's id, and
@@ -115,14 +115,14 @@ describe('the details model rules', () => {
       expect(read).toEqual({ id: 5, name: 'Al Noor', contacts: [{ id: 11, name: 'Huda' }] });
     });
 
-    it('leaves out a member that is not nullable and that the server fills when it is omitted', () => {
-      const descriptor = rewriting(rig.entities.get('acme.Customer'), (property) =>
-        property.name === 'CustomerType' ? { ...property, defaulted: true } : property,
-      );
+    it('adds null for a member that is not nullable and that the server fills when it is omitted, so the user may fill it', () => {
+      const descriptor = rig.entities.get('acme.Customer');
+      const rank = descriptor.property('Rank')!;
       const completed = tmDetailsComplete({ id: 5 }, descriptor, (entity) => rig.entities.get(entity));
 
-      expect(Object.keys(completed)).not.toContain('customerType');
-      expect(completed['code']).toBeNull();
+      // The customer's rank is such a member, written by the client.
+      expect([rank.defaulted, rank.nullable, rank.ownership]).toEqual([true, false, 'editable']);
+      expect(completed['rank']).toBeNull();
     });
 
     it("completes a new record's rows from the defaults, and a restored draft's new rows, without the key to the parent", () => {
@@ -159,6 +159,27 @@ describe('the details model rules', () => {
 
       expect(tmDetailsComplete(once, descriptor, (entity) => rig.entities.get(entity))).toBe(once);
       expect(Object.keys(once)).not.toContain('contacts');
+    });
+  });
+
+  describe("a save's body", () => {
+    it('leaves out a defaulted member that is not nullable while it is empty, in the record and its rows, and keeps one the user filled', () => {
+      // The contact's name is made such a member here, so the rule reaches a row.
+      const child = (entity: string): TmEntityDescriptor =>
+        rewriting(rig.entities.get(entity), (property) => (property.name === 'Name' && entity === 'acme.CustomerContact' ? { ...property, defaulted: true } : property));
+      const descriptor = rig.entities.get('acme.Customer');
+      const model = { id: -1, code: 'C-9', rank: null, currencyId: null, contacts: [{ id: -1, name: null, email: null }, { id: -2, name: 'Huda', email: null }] };
+
+      expect(JSON.stringify(tmDetailsSaveBody(model, descriptor, child))).toBe(
+        '{"id":-1,"code":"C-9","currencyId":null,"contacts":[{"id":-1,"email":null},{"id":-2,"name":"Huda","email":null}]}',
+      );
+      expect(tmDetailsSaveBody({ ...model, rank: 'A' }, descriptor, child)['rank']).toBe('A');
+    });
+
+    it('returns the record itself when it holds no such empty member', () => {
+      const model = { id: 5, rank: 'A', contacts: [{ id: 11, name: 'Huda' }] };
+
+      expect(tmDetailsSaveBody(model, rig.entities.get('acme.Customer'), (entity) => rig.entities.get(entity))).toBe(model);
     });
   });
 

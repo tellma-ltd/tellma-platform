@@ -116,6 +116,14 @@ class TmTestKindsLayout {}
 })
 class TmTestTemplatesLayout {}
 
+/** The customer's rank, a member the server fills when a save leaves it empty. */
+@Component({
+  selector: 'tm-test-rank-layout',
+  imports: [TmDetailsKit],
+  template: `<tm-details-card><tm-field path="Rank" /></tm-details-card>`,
+})
+class TmTestRankLayout {}
+
 /** A collapsed card. */
 @Component({
   selector: 'tm-test-collapsed-layout',
@@ -177,6 +185,40 @@ class TmTestDirectTabsLayout {}
   `,
 })
 class TmTestGridTabsLayout {}
+
+/** A component of the layout's own whose view holds tabs. */
+@Component({
+  selector: 'tm-test-own-tabs',
+  imports: [TmDetailsKit],
+  template: `<tm-details-tabs><tm-details-tab id="a" labelKey="Code" /></tm-details-tabs>`,
+})
+class TmTestOwnTabs {}
+
+/** A card that holds that component among its fields. */
+@Component({
+  selector: 'tm-test-component-tabs-layout',
+  imports: [TmDetailsKit, TmTestOwnTabs],
+  template: `
+    <tm-details-card>
+      <tm-field path="Code" />
+      <tm-test-own-tabs />
+    </tm-details-card>
+  `,
+})
+class TmTestComponentTabsLayout {}
+
+/** A card that holds that component as its section. */
+@Component({
+  selector: 'tm-test-component-section-layout',
+  imports: [TmDetailsKit, TmTestOwnTabs],
+  template: `
+    <tm-details-card>
+      <tm-field path="Code" />
+      <tm-test-own-tabs tmDetailsCardSection />
+    </tm-details-card>
+  `,
+})
+class TmTestComponentSectionLayout {}
 
 /** Tabs whose first tab holds a field and whose second shows the contacts. */
 @Component({
@@ -465,7 +507,10 @@ describe("the details page's layout kit", () => {
         await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('.tm-field__failed') !== null, 'the failure shows');
 
         const code = rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"]') as HTMLElement;
-        expect(code.querySelector('.tm-field__failed [role="alert"]')?.textContent?.trim()).toBe("This field couldn't be loaded for editing.");
+        expect(code.querySelector('.tm-field__failed')?.textContent).toContain("This field couldn't be loaded for editing.");
+        // The failure is the page's: every editable field shows it, and one announces it.
+        expect(rendered.fixture.nativeElement.querySelectorAll('.tm-field__failed').length).toBeGreaterThan(1);
+        expect(rendered.fixture.nativeElement.querySelectorAll('.tm-field__failed [role="alert"]').length).toBe(1);
         expect(code.querySelector('tm-form-field')).toBeNull();
         // A read-only field shows its lock, as it does whenever the edit side loads.
         expect(rendered.fixture.nativeElement.querySelector('[data-tm-field="Rank"] .tm-field__failed')).toBeNull();
@@ -488,6 +533,16 @@ describe("the details page's layout kit", () => {
         await tmSettle();
         expect(rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"]').contains(document.activeElement)).toBe(true);
       });
+    });
+
+    it('lets the user fill a member the server fills when a save leaves it empty, on a new record', async () => {
+      const rendered = await render(TmTestRankLayout, { mode: 'create', record: undefined });
+      await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('[data-tm-field="Rank"] tm-form-field') !== null, 'the controls load');
+      const rank = await rendered.loader.getHarness(TmFieldHarness.with({ path: 'Rank' }));
+
+      expect(await rank.getMode()).toBe('edit');
+      expect(await rank.isLocked()).toBe(false);
+      expect(rendered.record.fields().get('Rank')!.editable()).toBe(true);
     });
 
     it('registers each cell with the record, editable outside view mode', async () => {
@@ -523,6 +578,20 @@ describe("the details page's layout kit", () => {
       await tmSettle();
       expect(await card.isExpanded()).toBe(true);
       expect(rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"]').contains(document.activeElement)).toBe(true);
+    });
+
+    it('shows the error dot of a record that lands after the layout renders', async () => {
+      const rendered = await render(TmTestCollapsedLayout, { record: undefined, id: 5 });
+      rendered.details.land({ entity: CUSTOMER, related: RELATED, extras: { permissions: [] } });
+      await tmSettle();
+      await edit(rendered);
+      const card = await rendered.loader.getHarness(TmCardHarness);
+
+      const code = nodeAt(rendered, 'code');
+      code().value.set('');
+      code().markAsTouched();
+      await tmSettle();
+      expect(await card.isInvalid()).toBe(true);
     });
 
     it('remembers its expanded state in the record by its id', async () => {
@@ -596,6 +665,19 @@ describe("the details page's layout kit", () => {
       const [, contacts] = errorStates(rendered);
       expect(contacts!.dot).toBe(true);
       expect(contacts!.name).toMatch(/, has errors$/);
+    });
+
+    it("shows the error dot and the error name of a field on a record that lands after the layout renders", async () => {
+      const rendered = await render(TmTestErrorTabsLayout, { record: undefined, id: 5 });
+      rendered.details.land({ entity: CUSTOMER, related: RELATED, extras: { permissions: [] } });
+      await tmSettle();
+      await edit(rendered);
+
+      const code = nodeAt(rendered, 'code');
+      code().value.set('');
+      code().markAsTouched();
+      await tmSettle();
+      expect(errorStates(rendered)[0]).toEqual({ name: 'Code, has errors', dot: true });
     });
 
     it('binds its selection both ways: the layout selects a tab, and a click writes the selection back', async () => {
@@ -683,6 +765,11 @@ describe("the details page's layout kit", () => {
   describe('development errors', () => {
     it('refuses tabs in a card’s field grid, inside an element that is not a section, naming the attribute', () => {
       expect(failure(TmTestGridTabsLayout)).toMatch(/tmDetailsCardSection/);
+    });
+
+    it("refuses tabs in a card's field grid inside a component of the layout's own, and takes that component as a section", () => {
+      expect(failure(TmTestComponentTabsLayout)).toMatch(/tmDetailsCardSection/);
+      expect(failure(TmTestComponentSectionLayout)).toBe('');
     });
 
     it('refuses two tabs of one id', () => {

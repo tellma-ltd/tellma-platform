@@ -45,9 +45,8 @@ export function tmDetailsCreateModel(descriptor: TmEntityDescriptor): TmJsonObje
  * The wire omits null members, and a Signal Forms tree has no field, so no
  * validation, for a member the model lacks: the working copy carries every
  * writable property so each one has its field.
- * Two members stay absent, since a `null` for either is one the server
- * refuses: a child row's key to its parent, which the server writes, and a
- * member that is not nullable but that the server fills when it is omitted.
+ * A child row's key to its parent stays absent, since the server writes it
+ * and refuses a `null` for it.
  * A collection the record lacks stays absent, since a save never sends one
  * it did not load. An object that lacks nothing is returned as it is, so a
  * complete record keeps its identity.
@@ -69,10 +68,9 @@ export function tmDetailsComplete(
   let lacks = false;
 
   // --- Every property the client writes that the record omits, as null ---
-  // Not the parent key, nor a defaulted member a null would override: the server writes both.
+  // Not the parent key, which the server writes.
   for (const property of descriptor.properties) {
-    const omittable = property.name === parentKey || (property.defaulted === true && !property.nullable);
-    if (CLIENT_WRITTEN.has(property.ownership) && !omittable && record[property.json] === undefined) {
+    if (CLIENT_WRITTEN.has(property.ownership) && property.name !== parentKey && record[property.json] === undefined) {
       writes[property.json] = null;
       lacks = true;
     }
@@ -100,6 +98,40 @@ export function tmDetailsComplete(
     }
   }
   return lacks ? { ...record, ...writes } : record;
+}
+
+/**
+ * A record as a save sends it: without a `null` on a member that is not
+ * nullable but that the server fills when it is omitted, recursively in
+ * the rows of its child collections, since the server refuses that `null`.
+ * An object that holds none is returned as it is.
+ *
+ * @param record - The working copy, wire-shaped.
+ * @param descriptor - Its entity's descriptor.
+ * @param childDescriptor - The descriptor of a child collection's entity, by name.
+ * @returns The record, or a copy without those members.
+ */
+export function tmDetailsSaveBody(
+  record: TmJsonObject,
+  descriptor: TmEntityDescriptor,
+  childDescriptor: (entity: string) => TmEntityDescriptor | undefined,
+): TmJsonObject {
+  // --- The record's own defaulted members left empty ---
+  const empty = descriptor.properties.filter((property) => property.defaulted === true && !property.nullable && record[property.json] === null);
+  let body = empty.length === 0 ? record : Object.fromEntries(Object.entries(record).filter(([json]) => !empty.some((property) => property.json === json)));
+  // --- Each child collection's rows, by their own entity ---
+  for (const child of descriptor.children) {
+    const rows = body[child.json];
+    const target = Array.isArray(rows) ? childDescriptor(child.entity) : undefined;
+    if (!Array.isArray(rows) || target === undefined) {
+      continue;
+    }
+    const sent = rows.map((row) => (row !== null && typeof row === 'object' && !Array.isArray(row) ? tmDetailsSaveBody(row, target, childDescriptor) : row));
+    if (sent.some((row, index) => row !== rows[index])) {
+      body = { ...body, [child.json]: sent };
+    }
+  }
+  return body;
 }
 
 /**

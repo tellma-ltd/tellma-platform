@@ -5,6 +5,7 @@
 
 import { NgTemplateOutlet } from '@angular/common';
 import {
+  type AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -13,6 +14,7 @@ import {
   DestroyRef,
   Directive,
   effect,
+  ElementRef,
   inject,
   input,
   type InputSignal,
@@ -29,8 +31,8 @@ import { TmCounter } from '@tellma/core-ui/counter';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { type TmJson, TmLocalization } from '@tellma/core';
 
-import { ɵTM_DETAILS_CARD_TABS, TmDetailsCard, TmDetailsCardSection, type ɵTmDetailsCardTabs } from './tm-details-card';
-import { injectTmDetailsRecord } from './tm-details-record';
+import { TmDetailsCard, TmDetailsCardSection } from './tm-details-card';
+import { injectTmDetailsRecord, tmDevMode } from './tm-details-record';
 import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
 
 // The record's tabs (spec 0031 §6.6), on the component library's
@@ -158,7 +160,6 @@ export class TmDetailsTab {
   imports: [NgTemplateOutlet, TmCounter, TmTab, TmTabContent, TmTabGroup, TmTabLabel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-details-tabs' },
-  providers: [{ provide: ɵTM_DETAILS_CARD_TABS, useExisting: TmDetailsTabs }],
   styles: `
     :host {
       display: block;
@@ -228,7 +229,7 @@ export class TmDetailsTab {
     </tm-tab-group>
   `,
 })
-export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
+export class TmDetailsTabs implements OnInit, AfterViewInit {
   readonly #l10n = inject(TmLocalization);
   readonly #record = injectTmDetailsRecord();
   readonly #destroyRef = inject(DestroyRef);
@@ -245,11 +246,14 @@ export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
   /** The tab group. */
   private readonly group = viewChild(TmTabGroup);
 
-  /** The card around the tabs, which refuses them in its field grid. */
-  readonly ɵcard: TmDetailsCard | null = inject(TmDetailsCard, { optional: true });
+  /** The host element. */
+  readonly #element: HTMLElement = inject(ElementRef).nativeElement;
 
-  /** Whether the tabs are, or sit in, one of the card's sections; the card checks the rest. */
-  readonly ɵsectioned: boolean = inject(TmDetailsCardSection, { optional: true })?.card === this.ɵcard && this.ɵcard !== null;
+  /** The card around the tabs, if any. */
+  readonly #card = inject(TmDetailsCard, { optional: true });
+
+  /** Whether the tabs sit in a card but outside its sections, where the card may have projected them into its field grid. */
+  readonly #unsectioned: boolean = this.#card !== null && inject(TmDetailsCardSection, { optional: true })?.card !== this.#card;
 
   /** Remembers the selection. */
   constructor() {
@@ -269,6 +273,21 @@ export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
     const remembered = untracked(this.#record.view.tabs)[id];
     if (this.selected() === undefined && remembered !== undefined) {
       this.selected.set(remembered);
+    }
+  }
+
+  /**
+   * Refuses tabs that render in a card's field grid: inside an element of
+   * the card's content, or inside a component there. Tabs that are the
+   * card's own child render below the grid.
+   */
+  ngAfterViewInit(): void {
+    // The nearest field grid counts only when it is the tabs' own card's, not an outer card's.
+    const grid = this.#element.parentElement?.closest('.tm-details-card__grid');
+    if (this.#unsectioned && tmDevMode() && grid?.closest('tm-details-card') === this.#element.closest('tm-details-card')) {
+      throw new Error(
+        'A tm-details-tabs inside a tm-details-card renders in its field grid: make it a child of the card, or mark the element around it tmDetailsCardSection.',
+      );
     }
   }
 

@@ -4,7 +4,7 @@
 
 ```ts
 
-import { AfterContentInit } from '@angular/core';
+import { AfterViewInit } from '@angular/core';
 import { DestroyableInjector } from '@angular/core';
 import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
@@ -55,7 +55,7 @@ export class TmDetailsAudit {
 }
 
 // @public
-export class TmDetailsCard implements OnInit, AfterContentInit {
+export class TmDetailsCard implements OnInit {
     constructor();
     readonly collapsed: InputSignalWithTransform<boolean, unknown>;
     readonly collapsible: InputSignalWithTransform<boolean, unknown>;
@@ -63,14 +63,13 @@ export class TmDetailsCard implements OnInit, AfterContentInit {
     protected readonly expanded: i0.WritableSignal<boolean>;
     readonly flush: InputSignalWithTransform<boolean, unknown>;
     readonly id: InputSignal<string | undefined>;
-    ngAfterContentInit(): void;
     ngOnInit(): void;
     readonly scope: TmDetailsScope;
     readonly scrollable: InputSignal<number | undefined>;
     protected readonly title: i0.Signal<string | undefined>;
     readonly titleKey: InputSignal<string | undefined>;
     readonly width: InputSignal<'full' | 'half'>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsCard, "tm-details-card", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; "id": { "alias": "id"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "columns": { "alias": "columns"; "required": false; "isSignal": true; }; "collapsible": { "alias": "collapsible"; "required": false; "isSignal": true; }; "collapsed": { "alias": "collapsed"; "required": false; "isSignal": true; }; "scrollable": { "alias": "scrollable"; "required": false; "isSignal": true; }; "flush": { "alias": "flush"; "required": false; "isSignal": true; }; }, {}, ["ownTabs", "allTabs"], ["*", "[tmDetailsCardSection], tm-details-tabs"], true, never>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsCard, "tm-details-card", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; "id": { "alias": "id"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "columns": { "alias": "columns"; "required": false; "isSignal": true; }; "collapsible": { "alias": "collapsible"; "required": false; "isSignal": true; }; "collapsed": { "alias": "collapsed"; "required": false; "isSignal": true; }; "scrollable": { "alias": "scrollable"; "required": false; "isSignal": true; }; "flush": { "alias": "flush"; "required": false; "isSignal": true; }; }, {}, never, ["*", "[tmDetailsCardSection], tm-details-tabs"], true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsCard, never>;
 }
 
@@ -254,10 +253,11 @@ export class TmDetailsTabContent {
 }
 
 // @public
-export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
+export class TmDetailsTabs implements OnInit, AfterViewInit {
     constructor();
     protected errorName(tab: TmDetailsTab): string;
     readonly id: InputSignal<string>;
+    ngAfterViewInit(): void;
     ngOnInit(): void;
     select(id: string): void;
     readonly selected: ModelSignal<string | undefined>;
@@ -305,6 +305,7 @@ export class TmField {
     protected valueOf(cell: ɵTmFieldCell): unknown;
     protected viewContext(cell: ɵTmFieldCell): TmFieldViewContext;
     protected readonly viewTemplate: Signal<TmFieldView | undefined>;
+    protected readonly voiced: Signal<boolean>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmField, "tm-field", never, { "path": { "alias": "path"; "required": true; "isSignal": true; }; "labelKey": { "alias": "labelKey"; "required": false; "isSignal": true; }; "hintKey": { "alias": "hintKey"; "required": false; "isSignal": true; }; "helpKey": { "alias": "helpKey"; "required": false; "isSignal": true; }; "span": { "alias": "span"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "filter": { "alias": "filter"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; }, {}, ["editTemplate", "viewTemplate"], never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmField, never>;
 }

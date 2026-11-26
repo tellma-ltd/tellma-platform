@@ -40,7 +40,7 @@ import {
   type TmDetailsStatus,
   type TmRelated,
 } from './tm-details-context';
-import { tmDetailsComplete, tmDetailsRefused } from './tm-details-model';
+import { tmDetailsComplete, tmDetailsRefused, tmDetailsSaveBody } from './tm-details-model';
 import { type TmDetailsServerError, tmDetailsPlatformSchema } from './tm-details-schema';
 import type { TmDetailsAbilities, TmDetailsRecord, TmDetailsSource } from './tm-details-source';
 import { TM_DETAILS_STRINGS_EN } from './tm-details-strings';
@@ -540,6 +540,16 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
         rules?.(path);
       }),
     );
+  }
+
+  /**
+   * The working copy as a save sends it: a defaulted member left empty is
+   * left out, so the server fills it.
+   *
+   * @returns The body's record.
+   */
+  ɵsaveBody(): T {
+    return tmDetailsSaveBody(untracked(this.model) as TmJsonObject, this.descriptor, (entity) => this.#child(entity)) as T;
   }
 
   /** Ends the record: its form's effects, its registrations and everything rendered in its injector. */
