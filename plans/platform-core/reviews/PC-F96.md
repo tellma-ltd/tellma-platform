@@ -26,8 +26,10 @@ asserted the counts and the log. That was never racy, because `RealtimeTestHost.
 returns only after `ConnectedProbe` (a hub filter wrapping the whole `OnConnectedAsync`) signals
 the end of the connect, and that comes after `TryAdd`, `RecordConnected` and `HubConnected`. The
 poll implied a dependency that does not exist, so it is now a plain `Assert.Equal(1, tracker.Count)`
-with a comment saying why the asserts are safe. The tracker tests already assert `Count == 1`
-right after `ConnectAsync` the same way.
+with a comment saying why the asserts are safe. Two tracker tests already assert `Count == 1`
+right after `ConnectAsync` the same way (HubConnectionTrackerTests lines 216 and 441). A third,
+at line 92, still waits on `Count == 1` after `ConnectAsync`; that wait is redundant and harmless,
+not a race, so it is left as it is.
 
 ### Proof that the race is gone
 
@@ -86,4 +88,51 @@ still holds, since it polls for the measurement itself.
 
 ## Review 1
 ### Findings
+
+None (0 blocking, 0 major, 0 minor).
+
+What I checked, so the next round need not repeat it:
+
+- **D-011.** The close half's -1 predicate is unchanged (value -1, mode `in-process`). It is now
+  polled for itself instead of read once after `Count == 0`. There is no retry, no quarantine and no
+  loosened assertion, and a hang still fails at `Patience.Limit`. The root cause matches the product
+  code: `TellmaHub.OnDisconnectedAsync` (TellmaHub.cs:97-101) runs `tracker.Remove`, then
+  `RecordDisconnected`, then `HubDisconnected`.
+- **Connect-half claim.** `RealtimeTestHost.ConnectAsync` (RealtimeTestHost.cs:108-120) awaits
+  `ConnectedProbe.WaitForTokenAsync`. The probe signals in a `finally` after `await next(context)`
+  (RealtimeTestHost.cs:209-228), and the only hub filter registered anywhere is the probe, plus
+  `ConnectProbe` in one unrelated test. So `next` is the hub's own `OnConnectedAsync`, which runs
+  `TryAdd`, `RecordConnected` and `HubConnected` before it returns. The signal's TCS orders memory.
+  To test the claim, I put a temporary `await Task.Delay(500)` before `RecordConnected` and another
+  before `HubConnected`. The new test's plain asserts at HubConnectTests.cs:45-48 passed 3 out of 3.
+  The claim holds, and switching from a wait to an assert adds no race.
+- **Reproduction.** I added a temporary `Thread.Sleep(500)` between `Remove` and
+  `RecordDisconnected` and ran the pre-fix test file. It failed 3 out of 3 with
+  `Assert.Contains() Failure: Filter not matched in collection` at line 49, CI's failure. The new
+  test, and the whole `Tellma.Core.AspNetCore.Tests.Realtime` namespace (86 tests), passed under the
+  same delay. No sibling depends on the gap. Both edits are reverted, the project is rebuilt clean,
+  and `git status` is clean.
+- **Repeat runs (no delay).** The Realtime namespace passed 7 runs out of 7, 86 tests each. The fixed
+  test alone passed 10 out of 10. `dotnet build` of the test project reported 0 warnings, and
+  `dotnet format --verify-no-changes` on the changed file is clean. The file is LF with no BOM, like
+  its parent.
+- **Sibling sweep, re-checked class by class.**
+  - **Tracker closes.** `Close` (HubConnectionTracker.cs:468-485) aborts, records and logs
+    synchronously at the end of each awaited close method. `CatalogSessionStore.EndAsync` awaits
+    `SessionTerminationNotifier`, which awaits each listener. So the asserts after `ClosedAsync` at
+    HubConnectionTrackerTests.cs:73-76 and 286-289 are ordered. `ClientEventFailed` (:289, :311) and
+    `HubSessionTenantsUnread` (:136) are logged inside the awaited call.
+  - **Tracker counts.** `Close` never removes from the tracker; `OnDisconnectedAsync` does. So a
+    count after an admitted connection's close would be this same race. Every `tracker.Count` assert
+    in the sweep follows only refused connections, which `TryAdd` never added, or `ConnectAsync`
+    admissions: HubConnectionTrackerTests.cs:170, 191, 216, 441 and HubConnectTests.cs:199.
+    HubConnectionTrackerTests.cs:92 still waits on `Count == 1` after `ConnectAsync`. That wait is
+    harmless and not a race. The implementer notes say the tracker tests "already assert Count == 1
+    right after ConnectAsync", which is true of :216 and :441 only.
+  - **Refused invocations, negotiate refusals and the events metric.** Confirmed as stated:
+    TellmaJsonHubProtocol.cs:52-55 counts at parse time, and HubRefusalMiddleware.cs:30-36 counts
+    after `next` but inside the pipeline. Serilog has `writeToProviders: true` and no async sink.
+
 ### Responses
+
+None needed.
