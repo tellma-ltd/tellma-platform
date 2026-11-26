@@ -10,6 +10,7 @@ import type { TmLazyComponent, TmSecurableRef } from '../declarations/tm-declara
 import { tmMarkDeclaration } from '../declarations/tm-declaration-registry';
 import type { TmId, TmJsonObject } from '../json/tm-json';
 import type { TmNavContext } from '../nav/tm-nav-declarations';
+import type { TmSearchContext } from '../search/tm-search-types';
 import type { TmTenantUrls } from '../urls/tm-urls';
 import type { TmDataType } from './tm-entity-metadata';
 import type { TmCheckedOrder, TmCheckedPath, TmEntityType, TmPath } from './tm-entity-types';
@@ -158,7 +159,7 @@ export interface TmSearchPageActionDeclaration {
    * @param ids - The selected rows' ids when `selection` is set, else none.
    * @returns A promise that settles once the action is done.
    */
-  run(search: unknown, ids: readonly TmId[]): Promise<void>;
+  run(search: TmSearchContext, ids: readonly TmId[]): Promise<void>;
 }
 
 // -----------------------------------------------------------------------------

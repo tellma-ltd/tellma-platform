@@ -14,14 +14,18 @@ nightly tier only through the tags below; everything untagged is PR tier.
 Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
 interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.
 
-Across work that may load a chunk with `import()`, a client unit spec waits on the state the work
-produces, never on a number of task turns: the work goes on only once the chunk's first fetch
-lands, and under load the test server can take far longer than any fixed count of turns. The core
-specs wait with `tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
+Across work that may load a chunk with `import()`, or that waits on the browser's own storage
+(CacheStorage, IndexedDB), a client unit spec waits on the state the work produces, never on a
+number of task turns: the work goes on only once the chunk's first fetch or the storage's answer
+lands, and under load either can take far longer than any fixed count of turns. A fake clock does
+not move them either, so under fake timers an advance of any length is still such a count: it
+yields one real task, and one more for each timer it fires. The core specs wait with
+`tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
 vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`.
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
 error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
-such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk.
+such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
+storage.
 
 ### Tags
 

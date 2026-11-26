@@ -13,6 +13,7 @@ import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
 import { ErrorHandler } from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
 import { Observable } from 'rxjs';
@@ -24,6 +25,7 @@ import { TemplateRef } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
+import { WritableSignal } from '@angular/core';
 
 // @public
 export class TmAppBar {

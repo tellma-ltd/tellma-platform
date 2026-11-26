@@ -10,4 +10,5 @@
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
-export { TmFormField, TM_FORM_FIELD_CONTROL } from './tm-form-field';
+export { TmFormField } from './tm-form-field';
+export { ɵTM_FORM_FIELD_CONTROL as TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/private';

@@ -5,17 +5,19 @@
 
 import type { TmStringTree } from '@tellma/core';
 
-// The Arabic of the platform's Queryex tools, which the expression editor
-// and the path picker read under `tm.queryex` and `tm.pathPicker`. It is a
-// table of its own beside the platform's main one, so that table's ceiling
-// holds; `tmArabic()` merges the two under `tm` on the first switch to
-// Arabic. Code stays left to right; only the words around it are Arabic.
+// The Arabic of the platform's Queryex tools and of the search page they
+// serve, which the expression editor, the path picker and the search page
+// read under `tm.queryex`, `tm.pathPicker` and `tm.search`. It is a table of
+// its own beside the platform's main one, so that table's ceiling holds;
+// `tmArabic()` merges the two under `tm` on the first switch to Arabic.
+// Code stays left to right; only the words around it are Arabic.
 
 /**
- * The Arabic of the expression editor and the path picker, under `tm`: the
- * editor's status line, problems list, parameter chips and type names, and
- * the picker's search, count and date parts. The same shape as their
- * English.
+ * The Arabic of the expression editor, the path picker and the search page,
+ * under `tm`: the editor's status line, problems list, parameter chips and
+ * type names; the picker's search, count and date parts; and the search
+ * page's toolbar, result count and the states of its results. The same
+ * shape as their English.
  */
 export const TM_QUERYEX_STRINGS_AR: TmStringTree = {
   queryex: {
@@ -58,5 +60,30 @@ export const TM_QUERYEX_STRINGS_AR: TmStringTree = {
       monthOfYear: 'شهر السنة',
       dayOfWeek: 'يوم الأسبوع',
     },
+  },
+  search: {
+    expressionColumn: 'تعبير',
+    refresh: 'تحديث',
+    more: 'المزيد',
+    moreActions: 'إجراءات أخرى',
+    chooseColumns: 'اختيار الأعمدة',
+    loading: 'جارٍ تحميل النتائج',
+    results: '{count, plural, one {نتيجة واحدة} two {نتيجتان} few {# نتائج} other {# نتيجة}}',
+    resultsAtLeast: '{count}+ نتيجة',
+    offline: 'أنت غير متصل',
+    noData: 'لا يوجد شيء هنا بعد',
+    noDataMessage: 'أضف واحدًا للبدء.',
+    noMatches: 'لا توجد نتائج مطابقة',
+    noMatchesMessage: 'امسح عوامل التصفية أو وسّع البحث.',
+    clearFilters: 'مسح عوامل التصفية',
+    clearSearch: 'مسح البحث',
+    invalidFilter: 'تعبير التصفية هذا غير صالح',
+    invalidLink: 'عامل تصفية هذا الرابط غير صالح',
+    calculation: 'يتعذّر حساب عمود أو عامل تصفية لبعض الصفوف',
+    divideByZero: 'فيه قسمة على صفر.',
+    overflow: 'إحدى النتائج كبيرة جدًا.',
+    failed: 'تعذّر تحميل النتائج.',
+    query: 'بحث',
+    open: 'فتح',
   },
 };

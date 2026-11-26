@@ -319,10 +319,15 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       border-radius: var(--radius-sm);
     }
 
+    /*
+     * The width is the height times the file's ratio, which the shell frame
+     * writes, so the box is final before the file loads; without the ratio
+     * the declaration is invalid at computed-value time, and the width is auto.
+     */
     .tm-app-bar__wordmark img {
       display: block;
       block-size: 14px;
-      inline-size: auto;
+      inline-size: calc(14px * var(--tm-brand-wordmark-on-dark));
     }
 
     /* The 30 px icon buttons. */
@@ -624,6 +629,7 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
 
       .tm-app-bar__wordmark img {
         block-size: 18px;
+        inline-size: calc(18px * var(--tm-brand-mark-on-dark));
       }
 
       .tm-app-bar__group {

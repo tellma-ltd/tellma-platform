@@ -21,8 +21,8 @@ import {
   type TmJsonObject,
 } from '@tellma/core';
 
+import { ɵtmEditable } from './tm-editor-kind';
 import { ɵTM_ENTITY_STRINGS_EN } from './tm-entity-strings';
-import { ɵtmEditable } from './tm-value-editor';
 
 // Entity actions (spec 0031 §10.4): the requests an entity's actions take,
 // built from their metadata so the details page and the search page's bulk

@@ -6,6 +6,7 @@
 import { inject, Injectable, Injector, signal, type Signal, untracked, type WritableSignal } from '@angular/core';
 
 import { TM_NOW } from '../app/tm-now';
+import type { TmErrorRecord } from './tm-error-handler';
 
 // The telemetry API (spec 0026 §3). Code anywhere records events, timings and
 // errors through TmTelemetry, and nothing awaits it. The root service is a
@@ -102,6 +103,17 @@ export abstract class TmTelemetry {
 
   /** Sends what is queued now, as at sign-out. */
   abstract flush(): void;
+
+  /**
+   * The tab's last 50 captured errors, oldest first, redacted as they would
+   * be sent: what the support dump lists. Internal: an implementation that
+   * keeps no records, such as a test's, lists none.
+   *
+   * @returns The records.
+   */
+  ɵerrorRecords(): readonly TmErrorRecord[] {
+    return [];
+  }
 }
 
 /** What a call saw where it was made. Internal. */
@@ -127,6 +139,14 @@ export type TmTelemetryCall = readonly [
   context?: TmTelemetryCallContext,
 ];
 
+/** The started pipeline, as the front reads it. Internal. */
+export interface TmTelemetrySink {
+  /** Takes one call of the front. */
+  readonly take: (call: TmTelemetryCall) => void;
+  /** Reads the tab's last 50 error records, oldest first. */
+  readonly errors: () => readonly TmErrorRecord[];
+}
+
 /** What the pipeline's chunk exports, as far as the front reads it. Internal. */
 export interface TmTelemetryChunk {
   /**
@@ -135,13 +155,9 @@ export interface TmTelemetryChunk {
    * @param injector - The root injector, for the pipeline's dependencies.
    * @param recent - The ring the pipeline fills.
    * @param calls - The calls the front held, oldest first; the pipeline empties it.
-   * @returns What takes every later call.
+   * @returns What takes every later call, and the error records it keeps.
    */
-  tmStartTelemetry(
-    injector: Injector,
-    recent: WritableSignal<readonly TmTelemetryItem[]>,
-    calls: TmTelemetryCall[],
-  ): (call: TmTelemetryCall) => void;
+  tmStartTelemetry(injector: Injector, recent: WritableSignal<readonly TmTelemetryItem[]>, calls: TmTelemetryCall[]): TmTelemetrySink;
 }
 
 /**
@@ -170,6 +186,9 @@ export class TmTelemetryFront extends TmTelemetry {
   /** Takes a call: held until the pipeline starts, then the pipeline's. */
   #sink = (call: TmTelemetryCall): unknown => this.#held.length < HELD_CALLS && this.#held.push(call);
 
+  /** Reads the error records: none until the pipeline starts, then the pipeline's. */
+  #records = (): readonly TmErrorRecord[] => [];
+
   /** {@inheritDoc TmTelemetry.event} */
   override event(...args: Parameters<TmTelemetry['event']>): void {
     this.#take('event', args);
@@ -192,6 +211,11 @@ export class TmTelemetryFront extends TmTelemetry {
     this.#take('flush', []);
   }
 
+  /** {@inheritDoc TmTelemetry.ɵerrorRecords} */
+  override ɵerrorRecords(): readonly TmErrorRecord[] {
+    return this.#records();
+  }
+
   /**
    * Loads the pipeline and hands it the held calls. The app's startup calls
    * it once, at idle after the first render. A chunk that cannot load leaves
@@ -201,7 +225,11 @@ export class TmTelemetryFront extends TmTelemetry {
    */
   start(injector: Injector): void {
     void (import('./tm-telemetry-pipeline') as Promise<TmTelemetryChunk>).then(
-      (chunk) => (this.#sink = chunk.tmStartTelemetry(injector, this.recent as WritableSignal<readonly TmTelemetryItem[]>, this.#held)),
+      (chunk) => {
+        const started = chunk.tmStartTelemetry(injector, this.recent as WritableSignal<readonly TmTelemetryItem[]>, this.#held);
+        this.#sink = started.take;
+        this.#records = started.errors;
+      },
       () => undefined,
     );
   }

@@ -15,20 +15,19 @@ import {
   type OutputEmitterRef,
   type Signal,
 } from '@angular/core';
-import { TmDecimals, TmEntities, TmLocalization, type TmDecimal, type TmId } from '@tellma/core';
+import { TmDecimals, TmEntities, TmLocalization, type TmColumnPlan, type TmDecimal, type TmId } from '@tellma/core';
 import {
   tmFilterLeaf,
   tmFormatFilter,
   tmParseFilter,
   TM_ENUM_PICKER_THRESHOLD,
-  TmEntityMultiField,
   ɵTM_FILTER_OPS,
   ɵTM_FILTER_STRINGS_EN,
   ɵtmParseExact,
-  type TmColumnPlan,
   type TmFilterOp,
   type TmFilterSpec,
 } from '@tellma/core/entity';
+import { TmEntityMultiField } from '@tellma/core/entity-editing';
 import { TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
@@ -38,7 +37,8 @@ import { TmEntityMultiPicker, type TmEntitySearchFn } from '@tellma/core-ui/enti
 import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
-import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 
 
 // The column filter control (spec 0029 §13.3): the content of a column
@@ -452,7 +452,7 @@ export class TmColumnFilter {
       composing ||
       event.defaultPrevented ||
       !(target instanceof HTMLInputElement) ||
-      target.closest('tm-select, tm-multi-select, tm-entity-multi-picker, tm-entity-multi-field') !== null
+      target.closest('tm-select,tm-multi-select,tm-entity-multi-picker,tm-entity-multi-field') !== null
     ) {
       return;
     }

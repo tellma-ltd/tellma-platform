@@ -335,8 +335,8 @@ export class TmUrls implements TmTenantUrls {
   /** The loaders `preload` has called, so each runs once. */
   readonly #preloaded = new Set<() => Promise<unknown>>();
 
-  /** Whether the app has ended, so a preload that waits for idle time runs nothing. */
-  #ended = false;
+  /** Whether the app is destroyed, after which a preload queued at idle runs nothing. */
+  #destroyed = false;
 
   /** The builders of the routed tenant. */
   readonly #routed = new TmTenantUrlBuilders(() => {
@@ -349,7 +349,8 @@ export class TmUrls implements TmTenantUrls {
 
   /** Creates the service, which follows the routed tenant from each navigation's resolution. */
   constructor() {
-    inject(DestroyRef).onDestroy(() => (this.#ended = true));
+    inject(DestroyRef).onDestroy(() => (this.#destroyed = true));
+
     // A navigation's pages are created after its resolution, so their links use its tenant.
     this.#router.events.subscribe((event) => {
       if (event instanceof ResolveEnd) {
@@ -484,7 +485,8 @@ export class TmUrls implements TmTenantUrls {
     const idle = (run: () => void): unknown =>
       this.#window?.requestIdleCallback ? this.#window.requestIdleCallback(run) : setTimeout(run);
     idle(() => {
-      if (this.#ended) {
+      // A preload queued before the app was destroyed runs nothing.
+      if (this.#destroyed) {
         return;
       }
       const match = this.describe(url);

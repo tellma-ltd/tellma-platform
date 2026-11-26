@@ -39,13 +39,8 @@ import {
 } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
 import { TmIcon } from '@tellma/core-ui/icon';
-import {
-  tmDatePlaceholder,
-  tmFormatDate,
-  tmParseDate,
-  type TmCalendar,
-  type TmDateStyle,
-} from '@tellma/core-ui/l10n';
+import { tmFormatDate, type TmCalendar, type TmDateStyle } from '@tellma/core-ui/l10n';
+import { tmDatePlaceholder, tmParseDate } from '@tellma/core-ui/l10n-input';
 import {
   tmCreateAnchoredOverlay,
   tmLogicalPositions,
