@@ -11,6 +11,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `@tellma/core-tools/eslint` | The ESLint preset (default export), `tmEslintConfig(options)` to configure it, and the `tm` plugin (`tmEslintPlugin`) |
 | `@tellma/core-tools/stylelint` | The stylelint preset (default export) and the `tm/allowed-breakpoints` plugin |
 | `@tellma/core-tools/tsconfig.json` | The TypeScript preset: strict type checking and strict templates |
+| `@tellma/core-tools/lucide-icons` | Types only: the declaration of Lucide's per-icon modules (`lucide/dist/esm/icons/<name>.mjs`), which the `lucide` package does not type (below) |
 
 ## The ESLint rules
 
@@ -42,6 +43,23 @@ export { default } from '@tellma/core-tools/stylelint';
 // tsconfig.json
 { "extends": "@tellma/core-tools/tsconfig.json" }
 ```
+
+## Icons, one module each
+
+Import each Lucide icon from its own module, never from the `lucide` index. The index re-exports
+every icon, so once a module the first frame loads imports it, every icon is reachable from the
+first frame, and the bundler puts each icon a lazy chunk draws into a chunk the first frame loads.
+The `lucide` package types only its index; a file that imports icons one module each names this
+package's declaration of those modules once:
+
+```ts
+/// <reference types="@tellma/core-tools/lucide-icons" />
+import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
+```
+
+Each module's default export is the icon's data, the value the index exports under the icon's
+name, so it registers (`provideTellmaIcons`, a feature's `icons`) and draws (`<tm-icon [svg]>`) as
+it is. The declaration resolves `lucide` from the project that references it.
 
 ## The `tellma-client` commands
 

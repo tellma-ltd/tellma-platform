@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   Component,
@@ -13,7 +15,8 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { ChevronDown, ChevronRight } from 'lucide';
+import ChevronDown from 'lucide/dist/esm/icons/chevron-down.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmCounter } from '@tellma/core-ui/counter';

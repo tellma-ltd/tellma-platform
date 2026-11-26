@@ -96,10 +96,15 @@ package name from its one stylesheet):
 
 Icons draw from data, not from a font or a sprite. The library registers no
 icon names: register the ones the application uses once, importing each
-icon's data from `lucide` (a dependency of this package):
+icon's data from its own module of `lucide` (a dependency of this package).
+Never import the `lucide` index: it reaches every icon, so an app whose first
+frame imports it carries in that frame every icon its lazy chunks draw.
+`@tellma/core-tools/lucide-icons` types the per-icon modules:
 
 ```ts
-import { ChevronRight, HandCoins } from 'lucide';
+/// <reference types="@tellma/core-tools/lucide-icons" />
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
 
 providers: [
   provideTellmaIcons({
@@ -165,7 +170,8 @@ the components ship no hardcoded sizes or colors.
 - `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
   point builds on, so they import no other `@tellma` entry point (lint
   enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
-  imported from `lucide`; key combinations are matched and labelled through
+  imported from each icon's own `lucide` module, never the index (lint
+  enforces it too); key combinations are matched and labelled through
   the `kbd` helpers, the library's only platform check.
 - Unit spec files share one browser page per run. A spec that changes the
   page irreversibly (a Content Security Policy, which can never be lifted)

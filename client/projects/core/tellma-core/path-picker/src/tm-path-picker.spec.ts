@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
@@ -10,7 +12,14 @@ import { TmLocalization, type TmEntitiesChunk } from '@tellma/core';
 import { TmPathPickerHarness, tmTestEntities } from '@tellma/core-testing';
 import { TmDragDrop } from '@tellma/core-ui/drag-drop';
 import { tmGregorianCalendar } from '@tellma/core-ui/l10n';
-import { Calendar, Hash, Image, Languages, Link2, Paperclip, ToggleLeft, Type } from 'lucide';
+import Calendar from 'lucide/dist/esm/icons/calendar.mjs';
+import Hash from 'lucide/dist/esm/icons/hash.mjs';
+import Image from 'lucide/dist/esm/icons/image.mjs';
+import Languages from 'lucide/dist/esm/icons/languages.mjs';
+import Link2 from 'lucide/dist/esm/icons/link-2.mjs';
+import Paperclip from 'lucide/dist/esm/icons/paperclip.mjs';
+import ToggleLeft from 'lucide/dist/esm/icons/toggle-left.mjs';
+import Type from 'lucide/dist/esm/icons/type.mjs';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 

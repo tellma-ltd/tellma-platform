@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterRenderEffect,
   booleanAttribute,
@@ -26,7 +28,8 @@ import { Listbox, Option } from '@angular/aria/listbox';
 import { CdkConnectedOverlay } from '@angular/cdk/overlay';
 import type { ConnectedPosition } from '@angular/cdk/overlay';
 import type { ValidationError } from '@angular/forms/signals';
-import { Check, ChevronDown } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import ChevronDown from 'lucide/dist/esm/icons/chevron-down.mjs';
 
 import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import {

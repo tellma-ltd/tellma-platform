@@ -65,13 +65,6 @@ const tmPlugin = {
 };
 
 /**
- * What a calendar pack may import, shared by the two config blocks below
- * (spec files get this list; shipped files get it plus the sibling-climb
- * ban). The bare '@tellma/core-ui' specifier needs its own `paths` entry —
- * a `group` pattern only ever matches subpaths, so without it a pack could
- * pull the whole primary entry point in and still lint clean.
- */
-/**
  * The realtime client's restriction: only @tellma/core/realtime imports
  * @microsoft/signalr. Flat config replaces a rule's whole setting with the
  * last block that matches a file, so every later block that sets
@@ -82,6 +75,22 @@ const SIGNALR_RESTRICTION = {
   message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
 };
 
+/**
+ * The Lucide index restriction: icons come from their own modules, never
+ * from the `lucide` index. The index re-exports every icon, so a module the
+ * first frame loads that imports it makes every icon reachable from the first
+ * frame, and the app's bundler then moves each icon a lazy chunk draws into a
+ * chunk the first frame loads. Every block that sets no-restricted-imports
+ * names it, as it does SIGNALR_RESTRICTION.
+ */
+const LUCIDE_INDEX_RESTRICTION = {
+  name: 'lucide',
+  message:
+    "Import each icon from its own module: `import Check from 'lucide/dist/esm/icons/check.mjs'`, " +
+    'with `/// <reference types="@tellma/core-tools/lucide-icons" />` at the top of the file. ' +
+    "The index reaches every icon, so the first frame would carry the icons lazy chunks draw.",
+};
+
 // The l10n-input boundary: l10n's pure posture, plus l10n itself.
 const L10N_INPUT_BOUNDARY = {
   paths: [
@@ -90,6 +99,7 @@ const L10N_INPUT_BOUNDARY = {
       message: 'The l10n-input entry point may depend on l10n and contracts only.',
     },
     SIGNALR_RESTRICTION,
+    LUCIDE_INDEX_RESTRICTION,
   ],
   patterns: [
     {
@@ -111,6 +121,13 @@ const L10N_INPUT_BOUNDARY = {
   ],
 };
 
+/**
+ * What a calendar pack may import, shared by the two config blocks below
+ * (spec files get this list; shipped files get it plus the sibling-climb
+ * ban). The bare '@tellma/core-ui' specifier needs its own `paths` entry —
+ * a `group` pattern only ever matches subpaths, so without it a pack could
+ * pull the whole primary entry point in and still lint clean.
+ */
 const CALENDAR_BOUNDARY = {
   paths: [
     {
@@ -118,6 +135,7 @@ const CALENDAR_BOUNDARY = {
       message: 'Calendar entry points may depend on l10n and contracts only.',
     },
     SIGNALR_RESTRICTION,
+    LUCIDE_INDEX_RESTRICTION,
   ],
   patterns: [
     {
@@ -288,14 +306,20 @@ export default defineConfig(
   // import() once a tab leads, so no follower tab downloads the client. The
   // size gate's static-graph check (staticGraphExcludes) catches a static
   // path to the entry point; this rule names the mistake where it is made.
+  // The same blocks keep every icon import per icon (LUCIDE_INDEX_RESTRICTION).
   // The narrower blocks below set this rule for their own files, which
   // replaces this setting there, so each of them names SIGNALR_RESTRICTION
-  // in its own list too.
+  // and LUCIDE_INDEX_RESTRICTION in its own list too.
   {
     files: ['projects/**/*.ts'],
-    ignores: ['projects/core/tellma-core/realtime/**'],
     rules: {
-      'no-restricted-imports': ['error', { paths: [SIGNALR_RESTRICTION] }],
+      'no-restricted-imports': ['error', { paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION] }],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core/realtime/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [LUCIDE_INDEX_RESTRICTION] }],
     },
   },
 
@@ -308,7 +332,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
-          paths: [SIGNALR_RESTRICTION],
+          paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION],
           patterns: [
             {
               group: ['@angular/*'],
@@ -343,7 +367,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
-          paths: [SIGNALR_RESTRICTION],
+          paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION],
           patterns: [
             {
               // Covers the bare '@tellma/core-ui' as well as its subpaths.
@@ -558,6 +582,7 @@ export default defineConfig(
               message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
             },
             SIGNALR_RESTRICTION,
+            LUCIDE_INDEX_RESTRICTION,
           ],
           patterns: [
             {
@@ -714,6 +739,7 @@ export default defineConfig(
               message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
             },
             SIGNALR_RESTRICTION,
+            LUCIDE_INDEX_RESTRICTION,
           ],
           patterns: [
             {

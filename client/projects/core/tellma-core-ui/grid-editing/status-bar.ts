@@ -3,8 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, computed, inject, input, type Signal } from '@angular/core';
-import { ChevronLeft, ChevronRight, CircleAlert } from 'lucide';
+import ChevronLeft from 'lucide/dist/esm/icons/chevron-left.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';

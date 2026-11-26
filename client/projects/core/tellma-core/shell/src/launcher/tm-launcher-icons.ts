@@ -3,24 +3,24 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import type { TmIconRegistry, TmIconSource } from '@tellma/core-ui/icon';
-import {
-  Bell,
-  ChartColumn,
-  File,
-  FileText,
-  Globe,
-  LayoutDashboard,
-  Link,
-  List,
-  Pin,
-  Plus,
-  Settings,
-  SquareDashed,
-  SunMoon,
-  User,
-  UserCog,
-} from 'lucide';
+import Bell from 'lucide/dist/esm/icons/bell.mjs';
+import ChartColumn from 'lucide/dist/esm/icons/chart-column.mjs';
+import File from 'lucide/dist/esm/icons/file.mjs';
+import FileText from 'lucide/dist/esm/icons/file-text.mjs';
+import Globe from 'lucide/dist/esm/icons/globe.mjs';
+import LayoutDashboard from 'lucide/dist/esm/icons/layout-dashboard.mjs';
+import Link from 'lucide/dist/esm/icons/link.mjs';
+import List from 'lucide/dist/esm/icons/list.mjs';
+import Pin from 'lucide/dist/esm/icons/pin.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import Settings from 'lucide/dist/esm/icons/settings.mjs';
+import SquareDashed from 'lucide/dist/esm/icons/square-dashed.mjs';
+import SunMoon from 'lucide/dist/esm/icons/sun-moon.mjs';
+import User from 'lucide/dist/esm/icons/user.mjs';
+import UserCog from 'lucide/dist/esm/icons/user-cog.mjs';
 
 // The icon names the launcher draws (spec 0027 §3.2, §9.3, §9.4): the
 // default icon of each entry kind, the core sections' and the core entries'

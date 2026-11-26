@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterRenderEffect,
   Component,
@@ -13,7 +15,9 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { ChevronDown, ChevronUp, X } from 'lucide';
+import ChevronDown from 'lucide/dist/esm/icons/chevron-down.mjs';
+import ChevronUp from 'lucide/dist/esm/icons/chevron-up.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';

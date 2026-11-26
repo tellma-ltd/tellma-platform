@@ -384,6 +384,25 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-374 (orchestrator, 2026-11-26): PC-122 landed; PC-F91 is released; PC-F109 takes pc-3
+
+- PC-122 landed at eac329c5, with CI 45845091482 green on that commit, as a fast-forward over 251bb6bd.
+- PC-F91 is released next. It merges platform-core, converts every lucide index import the merge brings in, and integrates.
+- pc-3 is free. check_deps lists PC-156 (T2) and five T3 items. PC-F109 is an open blocking fix, and blocking fixes come first in any slot (D-229), so PC-F109 takes pc-3, branched at eac329c5. PC-156 waits for the next free checkpoint slot.
+- The release queue after PC-F91 is PC-F92, PC-F95, PC-F96, then PC-129. PC-128 is in fix1.
+- PC-B06 (the batch review after PC-122 and PC-123) waits for PC-123.
+
+### D-373 (orchestrator, 2026-11-26): PC-128 R1 rulings; ./search re-split
+
+- R1 on f2630982..2a52ed80 is 0 blocking, 2 major, 8 minor. Fix1 follows.
+- R1-1 is fixed: tm-select's closed trigger prevents the keys it takes, so they no longer leak to type-to-search after the handover. R1-2's missing rule tests are added.
+- R1-8: ./search going from 18.5 to 22.5 is that ceiling's third raise across the run: 18, then 18.5 in PC-126, then 22.5. D-031 requires a re-split, as PC-126 did for ./grid.
+  - Fix1 splits the weight the first paint does not need into its own entry point or lazy chunk, so ./search is within 18.5 again.
+  - Keys typed before it loads must not be lost. If they would be, PC-128 stops and reports.
+- R1-3, R1-5, R1-6 and R1-9 are fixed. R1-4 is fixed, with spec 0030's §5.2/§5.3 conflict recorded for Ahmad. R1-7 is recorded as a deviation.
+- R1-10: PC-132 gets a carry for §7.2's return highlight.
+- R2 at xhigh follows if fix1 is large (§4.4). The re-split makes that likely.
+
 ### D-372 (orchestrator, 2026-11-26): PC-122's Windows hang is unrelated; it integrates again; PC-F110 opened
 
 - PC-122 could not reproduce the Acme Windows unit hang.

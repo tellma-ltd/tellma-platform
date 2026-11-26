@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgComponentOutlet } from '@angular/common';
 import {
   afterNextRender,
@@ -26,7 +28,11 @@ import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
 import { tmAriaKeyShortcuts, tmFormatKeys } from '@tellma/core-ui/kbd';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
-import { Eye, FlaskConical, Menu, Search, Wrench } from 'lucide';
+import Eye from 'lucide/dist/esm/icons/eye.mjs';
+import FlaskConical from 'lucide/dist/esm/icons/flask-conical.mjs';
+import Menu from 'lucide/dist/esm/icons/menu.mjs';
+import Search from 'lucide/dist/esm/icons/search.mjs';
+import Wrench from 'lucide/dist/esm/icons/wrench.mjs';
 
 import { TmLauncher } from '../launcher/tm-launcher';
 import { tmRegisterTenantShellStrings } from '../tm-tenant-shell-strings';

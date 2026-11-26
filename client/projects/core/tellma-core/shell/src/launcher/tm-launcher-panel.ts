@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { NgTemplateOutlet } from '@angular/common';
 import {
@@ -48,7 +50,7 @@ import { TmIcon, TmIconRegistry } from '@tellma/core-ui/icon';
 import { tmAriaKeyShortcuts, tmKeysMatch } from '@tellma/core-ui/kbd';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { tmPushEscapeDismissal, ɵtmOpenModals, ɵtmRaiseTopLayer, ɵtmWatchModals } from '@tellma/core-ui/overlay';
-import { Search } from 'lucide';
+import Search from 'lucide/dist/esm/icons/search.mjs';
 
 import { tmPinHref, tmPinLabel, tmPinsView } from '../pins/tm-pin-rules';
 import { TM_LAUNCHER_COMMANDS } from './tm-launcher-commands';

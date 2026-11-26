@@ -3,25 +3,25 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideHttpClient } from '@angular/common/http';
 import { form } from '@angular/forms/signals';
-import {
-  Check,
-  ChevronRight,
-  CircleAlert,
-  CircleX,
-  Columns3,
-  Funnel,
-  Inbox,
-  LayoutGrid,
-  Plus,
-  Search,
-  SearchX,
-  Table2,
-} from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
+import Columns3 from 'lucide/dist/esm/icons/columns-3.mjs';
+import Funnel from 'lucide/dist/esm/icons/funnel.mjs';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
+import LayoutGrid from 'lucide/dist/esm/icons/layout-grid.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import Search from 'lucide/dist/esm/icons/search.mjs';
+import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
+import Table2 from 'lucide/dist/esm/icons/table-2.mjs';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
@@ -26,7 +28,8 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { Check, Image } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import Image from 'lucide/dist/esm/icons/image.mjs';
 
 import { TM_BREAKPOINTS, TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmBadge, type TmBadgeTone } from '@tellma/core-ui/badge';

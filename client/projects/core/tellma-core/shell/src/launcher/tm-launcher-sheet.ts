@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -15,7 +17,8 @@ import {
 } from '@angular/core';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TM_MODAL_DATA } from '@tellma/core-ui/modal';
-import { Search, X } from 'lucide';
+import Search from 'lucide/dist/esm/icons/search.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import type { TmLauncher } from './tm-launcher';
 
