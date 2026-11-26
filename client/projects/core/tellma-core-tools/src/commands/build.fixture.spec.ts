@@ -225,15 +225,21 @@ describe('tellma-client build on the fixture app', () => {
     const initial = tmReadInitialFiles(read('index.html'));
     const main = initial.scripts.find((file) => file.startsWith('main-'))!;
     expect([...graph.outputs.values()].some((chunk) => chunk.imports.some((edge) => edge.kind === 'static' && edge.path === main))).toBe(true);
-    expect(first.out).toMatch(/^\[tellma-client\] Named [1-9]\d* chunks by their content$/m);
+    // The optimizer can add back esbuild outputs Rollup did not use; the build deletes those orphans and
+    // lists them, and the checks below show that none is left and the app reaches every chunk.
+    expect(first.out).toMatch(
+      /^\[tellma-client\] Named [1-9]\d* chunks by their content(?:; deleted [1-9]\d* that no import reaches \((?:chunk-[0-9A-Z]+\.js)(?:, chunk-[0-9A-Z]+\.js)*\))?$/m,
+    );
     // The stats list exactly the chunks the output holds, and the app reaches every one of them.
     const chunks = tmListFiles(browser()).filter((file) => file.endsWith('.js') && !['tm-boot.js', 'ngsw-worker.js', 'safety-worker.js'].includes(file));
     expect([...graph.outputs.keys()].sort()).toEqual(chunks);
     expect([...graph.reach(initial.scripts)].sort()).toEqual(chunks);
     for (const chunk of chunks) {
       expect(chunk).toMatch(/^(?:main|chunk)-[0-9A-HJKMNP-TV-Z]{8}\.js$/);
-      // Each chunk's text names exactly the chunks the stats say it imports.
-      const named = chunks.filter((other) => read(chunk).includes(`'./${other}'`) || read(chunk).includes(`"./${other}"`));
+      // Each chunk's text names exactly the chunks the stats say it imports. The text is read once:
+      // reading it again for every other chunk is quadratic in file reads.
+      const text = read(chunk);
+      const named = chunks.filter((other) => text.includes(`'./${other}'`) || text.includes(`"./${other}"`));
       expect(named, chunk).toEqual([...new Set(graph.outputs.get(chunk)!.imports.map((edge) => edge.path))].sort());
     }
   });
