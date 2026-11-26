@@ -384,6 +384,107 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-339 (orchestrator, 2026-11-25): PC-F102 landed; PC-126 is released; PC-F106 fills pc-1
+
+- PC-F102 landed at 21cba2f6, with CI 45735284023 green on that commit. It was a fast-forward over 05ffd4fd. D-065 is reversed: Angular's chunk optimizer is on, and chunks get content-hash names that meet spec 0024 §6. Acme initialJs is 220.52 KB in 3 files on platform-core.
+- PC-126 was blocked only by PC-F102 (D-320). It is released now, the only item integrating (D-087). Its integration:
+  - applies candidate C (D-316);
+  - merges its "./search" staticGraphExcludes with ["./drafts"] into one key;
+  - resolves the 8 known conflicts as in its measure-only merge;
+  - keeps one router member in tm-entity.testing.util.ts;
+  - re-measures the search route under 110 and Acme under 230.
+- D-229 fill for pc-1: blocking fixes come first, so PC-F106 takes it. PC-F105 is in pc-f3.
+- Release order once PC-126 lands:
+  - PC-F105 when held, since PC-F89 and PC-F94 wait on it;
+  - then PC-154;
+  - then PC-F89 and PC-F94.
+  - PC-122 follows when held.
+  - A blocked item is skipped (D-319).
+
+### D-338 (orchestrator, 2026-11-25): PC-F105 review 1, so fix1 with no R2
+
+- R1 found 0 blocking, 0 major and 3 minor on 15bb8960.
+  - R1-1: the About dialog's box has no test.
+  - R1-2: serve measures the ratios once, so a brand-file edit leaves the old box until a restart.
+  - R1-3: the viewBox regex rejects valid SVG number forms.
+- R1 confirmed:
+  - the root cause, which reproduces CI's 0.000617;
+  - the define's coverage: build, serve, Vite's prebundle, and a distribution's own defines, which survive;
+  - the parsing and its fallbacks;
+  - the RTL and breakpoint box, and the failed-load box;
+  - the writer's lifetime.
+- The layout-shift e2e passed 30 of 30 under the harness.
+- All three findings are fixed in fix1. R1-2 re-measures on change if serve allows it cleanly; otherwise it is documented. No R2 runs (§4.4).
+- PC-F105 is the next release after PC-F102 lands: it is blocking, and PC-F89 and PC-F94 wait on it (D-332).
+
+### D-337 (orchestrator, 2026-11-25): PC-122 review 1 rulings; the launcher panel budget goes to Ahmad
+
+- R1 found 1 blocking, 3 major and 10 minor on 950e535f. So fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): the launcher panel is 9.80 KB against spec 0027's 6 KB.
+  - R1 itemized it with the gate's own bundler: stylesheet 1.16, page search 0.60, the English and synonym reader 0.56, keyboard handling 0.53, the below-md modal 0.48, pin rules 0.42, strings 0.32, providers about 0.4, and the rest about 5.3.
+  - Moves that keep the spec give a floor of about 8.5 to 9 KB. Moving page search to the first typed query would break the spec's synchronous results.
+  - Ruling: fix1 makes both moves that keep the spec. Providers load only when one is registered, and the below-md modal moves to its own chunk. The panel's ceiling is then the measured figure, rounded up to the next 0.5, recorded as a deviation with R1's itemization.
+  - The orchestrator does not raise a spec budget (D-313). The ceiling records the floor, and the 6 KB question goes to Ahmad. Nothing waits for it.
+  - **For Ahmad:** spec 0027's 6 KB launcher panel budget is not reachable with the spec's own behaviour. Either raise it, to about 9, or name what may leave the synchronous path.
+- R1-2 (major): an outside press does not close a launcher opened from the search field, because returning focus to the field reopens it. Fixed in fix1, with a test.
+- R1-3 (major): the Pinned band's commands have no seam and no owner.
+  - fix1 adds an internal root token for the band's commands, defaulting to none, and a command option kind.
+  - Its provision is carried to PC-163, which PC-169's e2e step needs.
+- R1-4 (major): spec 0027 §5.3's focus-return rules get tests at md and lg, in en and ar.
+- R1-5: the 0.1 KB of surface-creation code moves into the chunk. The hoisted lucide glyphs stay with PC-F91 (D-301). No icon definitions are copied.
+- R1-6 to R1-11 and R1-14 are fixed.
+- R1-12: TmLauncher.enterTenant and tmRecentPageIcon become internal, so no public API is added.
+- R1-13: two deviation records are corrected.
+- Deviations accepted:
+  - The launcher's icons stay in their own lazy chunk. D-248's carry wording, "in platform-icons.ts", would have put them on the first frame; the carry's intent is kept.
+  - Code that follows §9.4's rule over its "voice" example. **For Ahmad:** that example in spec 0027 §9.4 omits a match its own rule yields ("Invoices to chase" contains "voice").
+  - Acme's gl.Center stand-in, whose removal is carried to PC-F104.
+
+### D-336 (orchestrator, 2026-11-25): PC-F105 confirms the wordmark cause and goes to review 1
+
+- PC-F105's impl, 15bb8960, recorded the layout-shift sources under the harness.
+  - The tenant shell's wordmark img had auto width and was 0 px until its SVG loaded. So the app-bar group moved 49.53 px (14 x 736/208).
+  - That gives a shift of 0.000617225964864095, CI's exact value, in 5 of 8 runs.
+- The fix: the build measures each brand file's viewBox ratio, the frame writes a custom property per file, and each wordmark gets width = height x ratio.
+  - Two new Acme e2e tests hold the brand files on a first visit. Both failed 4 of 4 on the old build.
+  - layout-shift.spec passed 120 of 120 with the harness and 120 of 120 without it, in en and ar, with no retries.
+- Three deviations:
+  - The ratios travel as a build-time define, not in the boot config. The English boot script is at its 3 KB budget, and the boot config pushed it over.
+  - The width is definite rather than aspect-ratio, because aspect-ratio still takes the alt text's width while the file is pending or failed.
+  - The About dialog's wordmark is fixed too.
+- R1 runs at high.
+- Overlaps:
+  - PC-F102 edits the same ng build argument list in build.ts and the same ARCHITECTURE.md row. Whichever lands second merges both.
+  - @tellma/core/shell goes to 8.91 of its 9 ceiling, while PC-122 moves ./shell to 10. The second to land re-measures (D-214).
+
+### D-335 (orchestrator, 2026-11-25): PC-122 to review 1; the launcher panel is over spec 0027's budget
+
+- PC-122's impl, 950e535f, builds the launcher and global search. It lists 14 deviations.
+- The launcher panel is lazy, at 9.80 KB, but spec 0027 gives it 6 KB. Like spec 0024's 110 (D-313), a spec budget is not raised by the orchestrator. The impl's ceiling of 10 is a measured line, not a ruling.
+  - R1 is asked what can move into further lazy pieces, loaded on first need, and whether 6 KB is reachable.
+  - If it is not reachable, the budget goes to Ahmad as a spec question.
+- Acme initialJs is 229.27 KB, 0.73 under 230. About 0.7 KB of that is 12 lucide glyphs hoisted by D-301's lucide-index issue, which PC-F91 owns. PC-F102 lands first and lowers every figure. PC-122 re-measures at integration (D-214).
+- R1 judges the deviations. It looks closest at three:
+  - the Pinned band's pin commands, deferred with no seam;
+  - the icons, registered lazily rather than in platform-icons.ts as D-248's carry says;
+  - §9.4's voice example, which leaves out a match its own rule yields.
+- Known flakes are excluded from R1. The local e2e-network-hold timeout under load gets a watch row.
+
+### D-334 (orchestrator, 2026-11-25): PC-F102 is released to integrate
+
+- PC-F102's fix1, 613a3fca, fixes R1-1 and R1-2. Each new spec fails with its fix removed. The Acme figures are unchanged: initialJs 220.52 KB in 3 files.
+- No other item is integrating. PC-F89 and PC-F94 wait for PC-F105 (D-332), and PC-F102 is blocking (D-320). So PC-F102 is released now, as D-333 set out.
+
+### D-333 (orchestrator, 2026-11-25): PC-F102 review 1, so fix1 with no R2
+
+- R1 found 0 blocking, 0 major and 2 minor on cc258a43.
+  - R1-1: orphans are deleted before three checks that can still fail the build.
+  - R1-2: the collision guard has no test.
+- R1 confirmed that spec 0024 §6 holds. A clean rebuild gives 220.52 KB in 3 files, with 43 chunks named. Every reference form, the ngsw hashes, determinism, SCC naming, orphan safety and the Rolldown pin check out.
+- Under §4.4, with no blocking finding, fewer than four majors and a small fix1, no R2 runs.
+- R1's local e2e failed launch.spec:46 "two live tenants lands on the picker". That is the local-Windows watch row, which R1 reproduced 2 of 4 on a pre-change build as well. Its row now records this.
+- Release order: PC-F102 integrates after fix1 and lands before PC-126 and PC-154 integrate. If PC-F105 has not landed by then, PC-F102 still integrates first, because it is blocking. A red that is only D-327's flake is handled as in D-332.
+
 ### D-332 (orchestrator, 2026-11-25): a third fix slot for the layout-shift flake, and PC-F89 waits for it
 
 - CI 45717312412 on ec9368ca, PC-F89's third integration, failed only on acme-client (ubuntu-latest), on the same test as D-327: the layout-shift cold entry, a 0.000617 shift.
