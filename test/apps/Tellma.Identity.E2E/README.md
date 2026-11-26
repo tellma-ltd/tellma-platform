@@ -44,7 +44,9 @@ Playwright (Chromium):
   asking the browser whether it offers conditional mediation, never by waiting a fixed time and then
   pressing. `PasskeyTests` and `SyncedPasskeyTierTests` hold every script back by a second
   (`HoldBackScriptsAsync`), so a flow that stops waiting fails there on every run; the in-proc and
-  step-up runs keep the full pace.
+  step-up runs keep the full pace. `PasskeyTests` also tells the browser it offers no conditional
+  mediation, so the explicit sign-in press, which the suite's Chromium would otherwise never make,
+  runs under that guard too.
 - Sign-in codes are rate-limited to 10 per IP per hour, and every test here reaches the server
   from the same loopback address, so the whole run shares one budget. The accessibility suite
   therefore signs in once and hands the session to every test that needs one

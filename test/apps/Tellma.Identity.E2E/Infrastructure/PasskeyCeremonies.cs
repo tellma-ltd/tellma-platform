@@ -118,17 +118,18 @@ namespace Tellma.Identity.E2E.Infrastructure
             // starts, and the sign-in fails either way.
             bool conditional = await OffersConditionalMediationAsync(page);
 
-            // How far the navigation waits depends on that answer. When the conditional ceremony
-            // runs, it waits only until it commits: the ceremony may move the browser on before
-            // the login document's events are observed, and nothing below needs them. When it
-            // does not, the button is pressed, and DOMContentLoaded fires only once the page's
-            // scripts have run and wired it.
-            IResponse? response = await page.GotoAsync(
-                url,
-                new() { WaitUntil = conditional ? WaitUntilState.Commit : WaitUntilState.DOMContentLoaded });
+            // The navigation waits only until the login document commits: a conditional ceremony
+            // may move the browser on before that document's events are observed, and nothing
+            // here needs them. Arriving is also what makes the script wait below about the login
+            // page rather than the one being left.
+            IResponse? response = await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.Commit });
             if (!conditional)
             {
-                // No ceremony runs on its own, so the button, now wired, is the only way in.
+                // No ceremony runs on its own, so the button is the only way in, and it does
+                // nothing until the page's scripts have attached its listener. Nothing can move
+                // the browser on meanwhile, so waiting for them is safe here, as it would not be
+                // with a conditional ceremony in flight.
+                await page.WaitForScriptsAsync();
                 await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
             }
 
