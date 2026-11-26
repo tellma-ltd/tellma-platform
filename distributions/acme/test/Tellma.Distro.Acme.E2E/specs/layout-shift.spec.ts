@@ -11,6 +11,40 @@ import { expect, test } from '../support/acme';
 // Stable layout (spec 0024 §14): the skeleton a cold entry holds has the
 // page's final geometry, so the page replaces it with no layout shift.
 
+/** One layout shift the page reported, as the failure message shows it. */
+interface AcmeShift {
+  /** The shift's score. */
+  readonly value: number;
+  /** When it happened, in milliseconds from the document's start. */
+  readonly startTime: number;
+  /** The elements that moved, up to the five the browser names. */
+  readonly sources: readonly {
+    /** A short selector path: the node, then up to three of its ancestors. */
+    readonly node: string;
+    /** Its box before the shift, as `x,y widthxheight`. */
+    readonly previousRect: string;
+    /** Its box after the shift, as `x,y widthxheight`. */
+    readonly currentRect: string;
+  }[];
+}
+
+/**
+ * Lists the shifts, one line per source, so a failure can be read from the
+ * log alone.
+ *
+ * @param shifts - The shifts the page reported.
+ * @returns The failure message.
+ */
+function describeShifts(shifts: readonly AcmeShift[]): string {
+  const lines = shifts.flatMap((shift) => [
+    `shift ${shift.value} at ${shift.startTime.toFixed(1)} ms`,
+    ...shift.sources.map(
+      (source) => `  ${source.node}: ${source.previousRect} -> ${source.currentRect}`,
+    ),
+  ]);
+  return ['the page shifted:', ...lines].join('\n');
+}
+
 test.describe('layout shift', () => {
   test('a cold entry moves from its skeleton to its chrome with zero shift', async ({
     page,
@@ -20,16 +54,46 @@ test.describe('layout shift', () => {
     await signInAs(page, cast.user);
     // The shell and its fonts are on the device; the tenant's launch documents are not.
     await warmUp(page, '/tenants');
-    // Every layout shift of the next document, from its first frame on.
+    // Every layout shift of the next document, from its first frame on, with
+    // the elements that moved and their boxes before and after.
     await page.context().addInitScript(() => {
-      const shifts: number[] = ((window as { __acmeShifts?: number[] }).__acmeShifts = []);
+      // The node's tag, id and first two classes, then its ancestors', up to four in all.
+      const path = (node: Node | null): string => {
+        const names: string[] = node !== null && !(node instanceof Element) ? [node.nodeName] : [];
+        let element = node instanceof Element ? node : (node?.parentElement ?? null);
+        while (element !== null && names.length < 4) {
+          const id = element.id === '' ? '' : `#${element.id}`;
+          const classes = Array.from(element.classList)
+            .slice(0, 2)
+            .map((name) => `.${name}`)
+            .join('');
+          names.push(`${element.localName}${id}${classes}`);
+          element = element.parentElement;
+        }
+        return names.length === 0 ? '(removed node)' : names.join(' < ');
+      };
+      const rect = (box: DOMRectReadOnly): string => `${box.x},${box.y} ${box.width}x${box.height}`;
+      const shifts: AcmeShift[] = ((window as { __acmeShifts?: AcmeShift[] }).__acmeShifts = []);
       new PerformanceObserver((list) => {
         for (const entry of list.getEntries() as (PerformanceEntry & {
           value: number;
           hadRecentInput: boolean;
+          sources?: readonly {
+            node: Node | null;
+            previousRect: DOMRectReadOnly;
+            currentRect: DOMRectReadOnly;
+          }[];
         })[]) {
           if (!entry.hadRecentInput) {
-            shifts.push(entry.value);
+            shifts.push({
+              value: entry.value,
+              startTime: entry.startTime,
+              sources: (entry.sources ?? []).map((source) => ({
+                node: path(source.node),
+                previousRect: rect(source.previousRect),
+                currentRect: rect(source.currentRect),
+              })),
+            });
           }
         }
       }).observe({ type: 'layout-shift', buffered: true });
@@ -44,15 +108,19 @@ test.describe('layout shift', () => {
     // A shift is reported in the frame after it happens: two frames settle the last one.
     const shifts = await page.evaluate(
       () =>
-        new Promise<number[]>((settle) =>
+        new Promise<AcmeShift[]>((settle) =>
           requestAnimationFrame(() =>
             requestAnimationFrame(() =>
-              settle((window as { __acmeShifts?: number[] }).__acmeShifts ?? []),
+              settle((window as { __acmeShifts?: AcmeShift[] }).__acmeShifts ?? []),
             ),
           ),
         ),
     );
-    expect(shifts).toEqual([]);
+    // The scores alone decide; the message names what moved, and from where to where.
+    expect(
+      shifts.map((shift) => shift.value),
+      describeShifts(shifts),
+    ).toEqual([]);
   });
 
   // The wordmark's file loads in its own time, after the bar's first frame on
