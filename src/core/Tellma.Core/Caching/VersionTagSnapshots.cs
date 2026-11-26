@@ -21,8 +21,12 @@ namespace Tellma.Core.Caching
     ///     <para>
     ///         When the cache is full, a new tenant's snapshot is refused while the cache compacts in
     ///         the background, least recently used first; the tenant then reads as absent, which costs
-    ///         loads, never correctness. A replaced tenant's entry is removed before the new one is
-    ///         set, so a full cache can never keep the older snapshot in place of a refused newer one.
+    ///         loads, never correctness. A replacement swaps the entry in one step, so a concurrent
+    ///         reader sees the older snapshot or the newer one, not the tenant as absent; only the
+    ///         runtime's own expiration scan or compaction, removing the older entry in the instant
+    ///         of the swap, can show the tenant as absent, which costs a load, never correctness. The
+    ///         runtime also drops the older entry when it refuses the newer one, so a full cache never
+    ///         keeps a stale snapshot either.
     ///     </para>
     /// </remarks>
     internal sealed class VersionTagSnapshots : IVersionTagSnapshots, IDisposable
@@ -51,8 +55,12 @@ namespace Tellma.Core.Caching
         {
             ArgumentNullException.ThrowIfNull(snapshot);
 
-            // Removed first: a set the full cache refuses must not leave the older snapshot behind.
-            _cache.Remove(snapshot.TenantId);
+            // One swap, never a remove then a set: between the two every concurrent reader would see
+            // the tenant as absent, and each of its caches would load. The swap closes that window
+            // but for a rare race: the runtime's expiration scan or compaction can remove the older
+            // entry in the instant it is being swapped out, which costs one load. The runtime counts the
+            // replaced entry's size out before it checks the limit, and drops that entry when it
+            // refuses the new one, so no older snapshot survives a refusal.
             _ = _cache.Set(snapshot.TenantId, snapshot, new MemoryCacheEntryOptions { Size = 1 });
         }
 
@@ -78,7 +86,10 @@ namespace Tellma.Core.Caching
     /// <remarks>
     ///     Filled only by the executor, after a batch that carried the caller's connect statements. A
     ///     full cache refuses a new user's snapshot while it compacts in the background, least recently
-    ///     used first, and that user then reads as absent until the next batch replaces it.
+    ///     used first, and that user then reads as absent until the next batch replaces it. A
+    ///     replacement swaps the entry in one step, so a concurrent reader does not see the user as
+    ///     absent, outside a rare race with the runtime's expiration scan or compaction that costs a
+    ///     load.
     /// </remarks>
     internal sealed class UserVersionTagSnapshots : IUserVersionTagSnapshots, IDisposable
     {
@@ -104,10 +115,10 @@ namespace Tellma.Core.Caching
         {
             ArgumentNullException.ThrowIfNull(snapshot);
 
-            // Removed first, as the tenant store does: a refused set never leaves an older snapshot.
-            (int TenantId, int UserId) key = (snapshot.TenantId, snapshot.UserId);
-            _cache.Remove(key);
-            _ = _cache.Set(key, snapshot, new MemoryCacheEntryOptions { Size = 1 });
+            // One swap, as the tenant store makes: a concurrent reader does not see the user as absent
+            // (outside the same rare race with the runtime's scan, which costs one load), and a
+            // refused set leaves no older snapshot.
+            _ = _cache.Set((snapshot.TenantId, snapshot.UserId), snapshot, new MemoryCacheEntryOptions { Size = 1 });
         }
 
         /// <inheritdoc />

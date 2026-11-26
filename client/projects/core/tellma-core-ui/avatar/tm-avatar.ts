@@ -10,8 +10,7 @@ import { User } from 'lucide';
 import { TmL10n } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
-
-import { tmAvatarTone, tmInitials } from './tm-initials';
+import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
 
 /** The avatar diameters: 20, 24, 28, 40 and 72 px. */
 export type TmAvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl';

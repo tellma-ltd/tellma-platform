@@ -33,7 +33,10 @@ export const TM_RELOAD_HOST = new InjectionToken<TmReloadHost>('TM_RELOAD_HOST',
   },
 });
 
-/** The error views' Reload and Reload anyway. Internal. */
+/**
+ * The error views' Reload and Reload anyway, which the About dialog's
+ * Reload shares. Internal.
+ */
 @Injectable({ providedIn: 'root' })
 export class TmErrorUpdates {
   readonly #injector = inject(Injector);

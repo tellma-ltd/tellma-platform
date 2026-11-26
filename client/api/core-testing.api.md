@@ -6,15 +6,20 @@
 
 import { BaseHarnessFilters } from '@angular/cdk/testing';
 import { ComponentHarness } from '@angular/cdk/testing';
+import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
+import { FieldTree } from '@angular/forms/signals';
 import { HarnessPredicate } from '@angular/cdk/testing';
 import * as i0 from '@angular/core';
 import { Injector } from '@angular/core';
 import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
+import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
 import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
+import { Type } from '@angular/core';
+import { WritableSignal } from '@angular/core';
 
 // @public
 export function provideTellmaStateTesting(): EnvironmentProviders;
@@ -52,6 +57,29 @@ export class TmColumnFilterHarness extends ComponentHarness {
     isApplyEnabled(): Promise<boolean>;
     pressEnter(): Promise<void>;
     selectOperator(label: string): Promise<void>;
+}
+
+// @public
+export type TmDetailsPageButton = 'actions' | 'cancel' | 'create' | 'edit' | 'refresh' | 'save';
+
+// @public
+export class TmDetailsPageHarness extends ComponentHarness {
+    click(button: TmDetailsPageButton): Promise<void>;
+    getBadges(): Promise<string[]>;
+    getButton(button: TmDetailsPageButton): Promise<TmButtonHarness | null>;
+    getCrumb(): Promise<string | null>;
+    getCrumbHref(): Promise<string | null>;
+    getDisabledReason(button: TmDetailsPageButton): Promise<string | null>;
+    getErrorLink(): Promise<TmButtonHarness | null>;
+    getErrorState(): Promise<TmEmptyStateHarness | null>;
+    getMode(): Promise<'edit' | 'view'>;
+    getStatus(): Promise<string>;
+    getTitle(): Promise<string>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isEnabled(button: TmDetailsPageButton): Promise<boolean>;
+    isProgressShown(): Promise<boolean>;
+    isTitleLoading(): Promise<boolean>;
 }
 
 // @public
@@ -143,6 +171,32 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
 
 // @public
+export interface TmFakeDetails<T> extends TmDetailsContext<T> {
+    readonly busy: WritableSignal<boolean>;
+    readonly calls: Signal<readonly TmFakeDetailsCall[]>;
+    readonly error: WritableSignal<TmApiError | null>;
+    land(record: TmDetailsRecord<T>): void;
+    readonly providers: Provider[];
+    readonly status: WritableSignal<TmDetailsStatus>;
+}
+
+// @public
+export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>): TmFakeDetails<T>;
+
+// @public
+export type TmFakeDetailsCall = 'cancel' | 'edit' | 'refresh' | 'save' | 'update';
+
+// @public
+export interface TmFakeDetailsOptions<T> {
+    readonly can?: Partial<Readonly<Record<'activate' | 'create' | 'delete' | 'edit', boolean>>>;
+    readonly descriptor?: TmEntityDescriptor;
+    readonly entity: string;
+    readonly id?: TmId | null;
+    readonly mode?: TmDetailsMode;
+    readonly record?: TmDetailsRecord<T>;
+}
+
+// @public
 export class TmFakeDiscover {
     constructor();
     fail(kind: TmApiErrorKind | null): void;
@@ -192,6 +246,7 @@ export function tmFakeInboxSummary(members?: Partial<TmInboxSummary>): TmInboxSu
 export class TmFakeLocks extends TmLocks {
     readonly held: Signal<readonly string[]>;
     run<T>(name: string, work: () => Promise<T>): Promise<T>;
+    tryRun(name: string, work: () => Promise<void>): Promise<boolean>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeLocks, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeLocks>;
 }
@@ -293,6 +348,23 @@ export class TmSearchPageHarness extends ComponentHarness {
 }
 
 // @public
+export class TmSessionMenuHarness extends TmMenuHarness {
+    getAvatarTone(): Promise<number | null>;
+    getEmail(): Promise<string>;
+    getTenantCard(): Promise<TmSessionMenuTenantCard>;
+    getTenantCardName(): Promise<string | null>;
+    getUserName(): Promise<string>;
+    static hostSelector: string;
+}
+
+// @public
+export interface TmSessionMenuTenantCard {
+    readonly description: string | null;
+    readonly detail: string | null;
+    readonly label: string;
+}
+
+// @public
 export class TmTenantPickerHarness extends ComponentHarness {
     clickErrorAction(label: string): Promise<void>;
     dismissNotice(): Promise<void>;
@@ -338,6 +410,42 @@ export class TmTenantPickerRowHarness extends ComponentHarness {
 }
 
 // @public
+export class TmTenantShellHarness extends ComponentHarness {
+    back(): Promise<void>;
+    clickErrorAction(label: string): Promise<void>;
+    clickSlot(id: string): Promise<void>;
+    forward(): Promise<void>;
+    getAccountName(): Promise<string | null>;
+    getAvatarTone(): Promise<number | null>;
+    getError(): Promise<string | null>;
+    getHistoryState(): Promise<{
+        readonly back: boolean;
+        readonly forward: boolean;
+    }>;
+    getHomeHref(): Promise<string | null>;
+    getMain(): Promise<TmTenantShellMain>;
+    getMarkers(): Promise<string[]>;
+    getReservedSlots(): Promise<string[]>;
+    getSlots(): Promise<TmTenantShellSlot[]>;
+    getTenantName(): Promise<string | null>;
+    getUserName(): Promise<string>;
+    hasHistoryButtons(): Promise<boolean>;
+    static hostSelector: string;
+    isTenantNameLoading(): Promise<boolean>;
+    openMarker(label: string): Promise<TmPopoverHarness>;
+    openSessionMenu(): Promise<TmSessionMenuHarness>;
+}
+
+// @public
+export type TmTenantShellMain = 'error' | 'page' | 'replaced';
+
+// @public
+export interface TmTenantShellSlot {
+    readonly id: string;
+    readonly name: string | null;
+}
+
+// @public
 export interface TmTestEntities {
     readonly chunk: TmEntitiesChunk;
     readonly summaries: readonly TmEntitySummary[];
@@ -354,6 +462,23 @@ export function tmTestMetadata(patch?: Partial<TmClientMetadata>): TmClientMetad
 
 // @public
 export function tmTestProfile(patch?: Partial<Omit<TmProfile, 'v'>>): TmProfile;
+
+// @public
+export function tmTestShellSlot(id: string, options?: TmTestShellSlotOptions): TmShellSlot;
+
+// @public
+export interface TmTestShellSlotOptions {
+    readonly count?: Signal<number | null>;
+    readonly icon?: string;
+    readonly labelKey?: string;
+    readonly panel?: TmLazyComponent;
+}
+
+// @public
+export class TmTestShellSlotPanel {
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmTestShellSlotPanel, "tm-test-shell-slot-panel", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmTestShellSlotPanel, never>;
+}
 
 // @public
 export function tmWarmTenant(store: TmClientStore, partition: Extract<TmPartition, {

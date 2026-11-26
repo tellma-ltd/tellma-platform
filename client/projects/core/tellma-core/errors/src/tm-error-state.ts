@@ -3,8 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, computed, inject, Injector, input, output, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ChangeDetectionStrategy, Component, computed, inject, Injector, input, output, signal, type Signal } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmReference } from '@tellma/core-ui/copy';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
@@ -15,10 +15,11 @@ import { TM_VIEW_ERRORS, type TmErrorAction, type TmErrorView } from './tm-error
 
 // The inline error state (spec 0024 §11): 0023's empty state with the view's
 // words, the server's items, the reference and the raw permission pair for
-// support, and the view's actions. It runs its actions itself, but Try
-// again, which is its host's: Reload gets the new version first, the
-// way the route's own error views do, sign-in and a step-up's Continue sign
-// in again, and Switch tenant goes to the picker. The tenant-state page that
+// support, and the view's actions after the host's way out, such as a
+// details page's link to its list. It runs its actions itself, but Try
+// again, which is its host's: Reload gets the new version first, the way the
+// route's own error views do, sign-in and a step-up's Continue sign in
+// again, and Switch tenant goes to the picker. The tenant-state page that
 // replaces the shell's main area for a suspended tenant is this state too.
 
 /** The label key of each action the inline state shows. */
@@ -33,7 +34,7 @@ const LABELS: Readonly<Partial<Record<TmErrorAction, string>>> = {
 /** An error, inline where the content would be: for a read that failed, and for a tenant that is suspended. */
 @Component({
   selector: 'tm-error-state',
-  imports: [TmButton, TmEmptyState, TmReference],
+  imports: [RouterLink, TmButton, TmEmptyState, TmReference],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- The words, the server's items, the reference and the permission's raw pair. -->
@@ -60,13 +61,16 @@ const LABELS: Readonly<Partial<Record<TmErrorAction, string>>> = {
       @if (view().traceId; as traceId) {
         <tm-reference class="tm-error-state__reference" [value]="traceId" />
       }
-      <!-- The view's actions, the main one first; Reload anyway after a second failed download. -->
+      <!-- The host's way out, the main action; then the view's, the main one first; Reload anyway after a second failed download. -->
+      @if (link(); as wayOut) {
+        <a tmButton tmEmptyStateActions variant="primary" [routerLink]="wayOut.url">{{ wayOut.label() }}</a>
+      }
       @for (action of actions(); track action; let first = $first) {
         <button
           tmButton
           tmEmptyStateActions
           type="button"
-          [variant]="first ? 'primary' : 'secondary'"
+          [variant]="first && !link() ? 'primary' : 'secondary'"
           [pending]="action === 'reload' && pending()"
           [attr.aria-label]="action === 'reload' && pending() ? updating() : null"
           (click)="act(action)"
@@ -100,6 +104,9 @@ export class TmErrorState {
 
   /** `page` centres the state in the remaining height; `panel` is the compact form. Default `page`. */
   readonly size = input<'page' | 'panel'>('page');
+
+  /** The host's way out, shown first as the main action, such as a details page's link to its list; `null` for none. */
+  readonly link = input<{ readonly label: Signal<string>; readonly url: string } | null>(null);
 
   /** Emits when the user asks to try again. */
   readonly retry = output();

@@ -7,6 +7,7 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   TmClientStore,
+  TmDeviceZone,
   TmLeader,
   TmSession,
   TmStoreRefusedError,
@@ -14,9 +15,10 @@ import {
   type TmBusMessage,
   type TmPartition,
   ɵTM_LEADER_LOAD,
+  ɵTM_ZONE_CHECK_LOAD,
 } from '@tellma/core';
+import { TmDrafts } from '@tellma/core/drafts';
 import { ɵTM_HUB_FACTORY } from '@tellma/core/leader';
-import { TmDrafts } from '@tellma/core/memory';
 
 import { provideTellmaStateTesting } from './provide-tellma-state-testing';
 import { provideTellmaTesting } from './provide-tellma-testing';
@@ -110,6 +112,11 @@ describe('provideTellmaStateTesting', () => {
   it('starts no leader election, so the tab reports a follower', async () => {
     await expect(TestBed.inject(ɵTM_LEADER_LOAD)()).resolves.toBeNull();
     expect(TestBed.inject(TmLeader).isLeader()).toBe(false);
+  });
+
+  it("checks no device time zone, so a test app's prompt never opens", async () => {
+    await expect(TestBed.inject(ɵTM_ZONE_CHECK_LOAD)()).resolves.toBeNull();
+    await expect(TestBed.inject(TmDeviceZone).check()).resolves.toBeUndefined();
   });
 
   it("keeps drafts in a session storage of the test's own, never the browser's", () => {

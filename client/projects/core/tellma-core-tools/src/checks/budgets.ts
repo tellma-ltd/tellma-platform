@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmCompressedSize, type TmCompressedSize } from '../common/files.js';
 import { TmBuildFailure, type TmBuildProblem } from '../common/problems.js';
 import { tmCodeFromSources, tmReadSourceMap } from '../output/source-attribution.js';
-import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, type TmBuildGraph } from '../output/stats.js';
+import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, tmEntryPointRoot, type TmBuildGraph } from '../output/stats.js';
 
 // The application's budgets (spec 0024 §12), measured gzip level 9 on the
 // output, with Brotli reported beside. A distribution raises one in its
@@ -20,6 +20,12 @@ import { tmCorePrimaryModules, tmEchartsModule, tmEntryPointModule, type TmBuild
 // chunk no budget covers, a `@defer` block's or a distribution's route,
 // gets a line of its own with no level: the metafile records a dynamic
 // import, not whether a route or a `@defer` block made it.
+//
+// A route's figure is the static closure of the chunk its host loads with
+// import() and of the distribution's layouts on it, beyond the initial set:
+// what the first visit to the route loads before it renders. A chunk the
+// platform loads on use from there, such as an entity's action dialog, is
+// not on the route: it gets its own lazy line.
 //
 // The `@tellma/core` primary on the first frame: the code its modules
 // contributed to the initial JavaScript, which it shares with the app and
@@ -85,6 +91,18 @@ export const TM_BUDGETS: readonly TmBudgetDefinition[] = Object.freeze([
  */
 export function tmBootScriptBudget(tables: number): number {
   return 3 + 0.4 * Math.max(0, tables - 1);
+}
+
+/**
+ * Whether a module is the platform's: a package's (under `node_modules`) or,
+ * in a workspace, the sources of a Tellma package (`tellma-core/…`,
+ * `tellma-core-ui/…`, `tellma-locale-ar/…`), rather than the distribution's own.
+ *
+ * @param input - The module's path, relative to the project folder with forward slashes.
+ * @returns Whether it is the platform's.
+ */
+function isPlatformModule(input: string): boolean {
+  return /(?:^|\/)node_modules\//.test(input) || /(?:^|\/)tellma-(?:core|locale)(?:-[a-z0-9]+)*\//.test(input);
 }
 
 /** A member of a parsed JSON object, or undefined. */
@@ -210,17 +228,35 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
     }
     return { name, gzip, brotli, files: count };
   };
-  // A route's or engine's figure: the static closure of the chunks holding
-  // its modules, beyond what the initial set already loaded.
-  const beyondInitial = (test: (input: string) => boolean): string[] =>
-    [...inputs.graph.staticClosure(inputs.graph.outputsHolding(test))].filter((file) => !inputs.initialJs.has(file));
-  const entity = tmEntryPointModule('tellma-core', 'entity');
-  const search = tmEntryPointModule('tellma-core', 'search');
-  const details = tmEntryPointModule('tellma-core', 'details');
+  const { graph } = inputs;
+  const beyondInitial = (files: Iterable<string>): string[] => [...files].filter((file) => !inputs.initialJs.has(file));
+  // The engine's figure: the static closure of the chunks holding its modules.
+  const echartsEngine = beyondInitial(graph.staticClosure(graph.outputsHolding(tmEchartsModule)));
+  // --- A route's figure: its host's chunk and the distribution's layouts on it ---
+  const dynamic = graph.dynamicTargets();
+  const route = (entryPoint: 'search' | 'details'): string[] => {
+    const root = tmEntryPointRoot('tellma-core', entryPoint);
+    const used = tmEntryPointModule('tellma-core', entryPoint);
+    // The chunk the host's import() loads starts at the entry point, or holds its built bundle.
+    const hosts = dynamic.filter((file) => {
+      const output = graph.outputs.get(file);
+      return (output?.entryPoint !== undefined && root(output.entryPoint)) || (output?.inputs.some(root) ?? false);
+    });
+    // A layout is a chunk of the distribution's own that the app loads with
+    // import() and that uses the entry point, such as one injecting the
+    // details context; the platform's own on-use chunks are not layouts.
+    const layouts = dynamic.filter((file) => {
+      const output = graph.outputs.get(file);
+      if (output === undefined || hosts.includes(file) || isPlatformModule(output.entryPoint ?? output.inputs[0] ?? '')) {
+        return false;
+      }
+      return [...graph.staticClosure([file])].some((reached) => graph.outputs.get(reached)?.inputs.some(used) ?? false);
+    });
+    return beyondInitial(graph.staticClosure([...hosts, ...layouts]));
+  };
   const reports = inputs.codedReports === undefined ? [] : [inputs.codedReports];
-  const searchRoute = beyondInitial((input) => search(input) || entity(input));
-  const detailsRoute = beyondInitial((input) => details(input) || entity(input));
-  const echartsEngine = beyondInitial(tmEchartsModule);
+  const searchRoute = route('search');
+  const detailsRoute = route('details');
 
   const figures = [
     sum('initialJs', inputs.initialJs),
@@ -236,10 +272,10 @@ export function tmMeasureBudgets(inputs: TmBudgetInputs): TmBudgetFigure[] {
 
   // --- Each other lazily loaded chunk: its static closure beyond the initial set ---
   const covered = new Set([...inputs.initialJs, ...searchRoute, ...detailsRoute, ...echartsEngine]);
-  for (const root of inputs.graph.dynamicTargets()) {
+  for (const root of dynamic) {
     if (!covered.has(root)) {
-      const files = [...inputs.graph.staticClosure([root])].filter((file) => !inputs.initialJs.has(file));
-      figures.push(sum(`${TM_LAZY_BUDGET_PREFIX}${inputs.graph.outputs.get(root)?.entryPoint ?? root}`, files));
+      const files = beyondInitial(graph.staticClosure([root]));
+      figures.push(sum(`${TM_LAZY_BUDGET_PREFIX}${graph.outputs.get(root)?.entryPoint ?? root}`, files));
     }
   }
   return figures;

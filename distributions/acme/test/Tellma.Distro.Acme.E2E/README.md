@@ -74,7 +74,10 @@ sources with the client's Prettier settings.
    development certificate, which the host creates. The web host's sign-in fetches the identity
    engine's discovery document from its own origin, so .NET must trust that certificate: on Linux
    the host runs `dotnet dev-certs https --trust`, which needs no prompt there; on Windows,
-   where trusting asks, trust it once yourself with the same command. The browsers need no trust:
+   where trusting asks, trust it once yourself with the same command. The nightly tier's Windows
+   leg has nobody to answer that prompt, so a step of its own adds the certificate to
+   `LocalMachine\Root` before the suite starts, which an administrator can do without one (see
+   `.github/workflows/nightly-tier.yml`). The browsers need no trust:
    the config ignores certificate errors per context and launches Chromium with
    `--ignore-certificate-errors`, without which Chromium refuses to register the service worker
    on Linux, where its own certificate store does not hold the development certificate.
@@ -103,6 +106,11 @@ the development host on `ACME_WEB` or with another worktree.
   representative and the center reader (every tenant), and the sandbox tester (tenant 2 alone).
 - Wait on observable state (a heading, the boot result, the store, a held request), never on the
   clock. `warmUp` waits for the service worker's shell cache and the stored launch documents.
+- A flow that moves the browser's time zone does it per tab, with the DevTools protocol's
+  `Emulation.setTimezoneOverride`, and brings the tab into view, as the device-zone flows do. A
+  flow that changes a user's stored preferences runs its tests serially, and starts and ends with
+  the preference cleared (the device-zone flows reset the time zone through the page, as My
+  settings does), so a later run starts from the same state even after one was killed.
 - A CPU-bound timing budget is a quiet machine's, times `ACME_PERF_MULTIPLIER`
   (`TM_PERF_MULTIPLIER`, a positive number, else 2 on CI), and judges the `median` of
   `ACME_TIMING_SAMPLES` measurements. The cold launch's network-bound budget takes no multiplier.

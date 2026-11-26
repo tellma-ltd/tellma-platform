@@ -169,10 +169,10 @@ export interface TmEntityRig {
   readonly telemetry: TmFakeTelemetry;
   /** The client store. */
   readonly store: TmClientStore;
-  /** The router harness the app renders in, routed to tenant 17's home; a spec navigates it to a page. */
-  readonly router: RouterTestingHarness;
   /** Tenant 17's launch documents as stored. */
   readonly docs: TmLaunchDocs;
+  /** The router harness the app is rendered in, routed at `/17`; a test navigates it further, since a test makes one harness. */
+  readonly router: RouterTestingHarness;
   /**
    * Stores new launch documents for tenant 17, as a sync does, and settles.
    *
@@ -288,8 +288,8 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
     api,
     telemetry: TestBed.inject(TmFakeTelemetry),
     store,
-    router,
     docs,
+    router,
     move: async (moved, entityTags) => {
       await tmWarmTenant(store, TM_T17, moved, { ...(entityTags && { entityTags }) });
       await tmSettle();

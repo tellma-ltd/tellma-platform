@@ -10,7 +10,7 @@ disabled/readonly/required).
 | Import | Contents |
 |---|---|
 | `@tellma/core-ui` | `provideTellmaUi()` / `provideTellmaForms()` (with the translations loader, the theme seed and a live root `Directionality`), the `TM_UI_TRANSLATE` i18n seam + `TM_UI_MESSAGE_CONTEXT`, `TM_ACTIVE_LOCALE`, the `TmL10n` formatting facade (numbers, dates, instants with zone labels, relative times, month and weekday names), `TM_CALENDAR` + `provideTmCalendar()`, the display and device time zones (`TM_TIME_ZONE`, `TM_DEVICE_TIME_ZONE`) and the clock (`TM_NOW`), `TmBreakpoints` + `TM_BREAKPOINTS`, `TmTheme`, `TmClientCache`, the `tmMinDate`/`tmMaxDate` validators, field-error resolution, self-hosted Latin/Mono fonts (`fonts/fonts.css`) |
-| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces |
+| `@tellma/core-ui/contracts` | Dependency-free contracts: `SignalLike`, `TmFormFieldControl`, the grid cell interfaces, and `TM_GRID_KEYS`, the grid's key combinations as plain data, which `./grid` re-exports |
 | `@tellma/core-ui/l10n` | Framework-free number and date formats (`tmFormatNumber`, `tmFormatDate`, …), the instant formats in an explicit time zone (`tmFormatDateTime`, `tmFormatTime`, `tmFormatRelativeTime`, `tmFormatZoneOffset`, `tmFormatZoneName`), month and weekday names, `tmStripBidiControls` (no formatter writes a bidirectional control character), and the `TmCalendar` seam with the Gregorian default |
 | `@tellma/core-ui/l10n-input` | The input side of l10n: `tmParseNumber` and `tmParseDate` (which read back what the formats write), the numeric precision helpers (`TM_NUMBER_MAX_DIGITS`, `tmNumberDigitCount`), `tmDatePlaceholder` and `tmFirstDayOfWeek`; its own entry point so a page that only displays values never loads the parsers |
 | `@tellma/core-ui/calendar-umalqura` | `tmUmalquraCalendar()` — the Umm al-Qura (Hijri) calendar pack |
@@ -49,8 +49,10 @@ disabled/readonly/required).
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
 | `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
-| `@tellma/core-ui/badge` | `tm-badge` — a status label in a colour tone, with an optional leading dot or icon; `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+") |
-| `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; `tmInitials` and `tmAvatarTone` |
+| `@tellma/core-ui/badge` | `tm-badge` — a status label in a colour tone, with an optional leading dot or icon; `tm-counter`, re-exported from `@tellma/core-ui/counter` |
+| `@tellma/core-ui/counter` | `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+"); its own entry point so a first-frame surface paints counts without `tm-badge` |
+| `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; re-exports `tmInitials` and `tmAvatarTone` |
+| `@tellma/core-ui/initials` | `tmInitials` and `tmAvatarTone` — the initials a name gives and the tone a stable key picks; their own entry point so a first-frame surface paints an avatar's face without reaching `tm-image` (`@tellma/core-ui/avatar` re-exports them) |
 | `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring` — the same as a ring around an icon button |
 | `@tellma/core-ui/skeleton` | `tm-skeleton` — static line, block, circle and table placeholders with the final geometry of what replaces them |
 | `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |

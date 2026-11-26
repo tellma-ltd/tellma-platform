@@ -96,7 +96,7 @@ import { TmTreeGrid } from '@tellma/core-ui/tree-grid';
 import * as alertExamples from './alert/tm-alert.examples';
 import * as avatarExamples from './avatar/tm-avatar.examples';
 import * as badgeExamples from './badge/tm-badge.examples';
-import * as counterExamples from './badge/tm-counter.examples';
+import * as counterExamples from './counter/tm-counter.examples';
 import * as bannerBarExamples from './banner/tm-banner-bar.examples';
 import * as buttonExamples from './button/tm-button.examples';
 import * as cardExamples from './card/tm-card.examples';
@@ -1008,7 +1008,7 @@ const SUITES = [
   { source: 'multi-select/tm-multi-select.examples.ts', examples: multiSelectExamples },
   { source: 'spinner/tm-spinner.examples.ts', examples: spinnerExamples },
   { source: 'badge/tm-badge.examples.ts', examples: badgeExamples },
-  { source: 'badge/tm-counter.examples.ts', examples: counterExamples },
+  { source: 'counter/tm-counter.examples.ts', examples: counterExamples },
   { source: 'chip/tm-chip.examples.ts', examples: chipExamples },
   { source: 'chip/tm-chip-set.examples.ts', examples: chipSetExamples },
   { source: 'banner/tm-banner-bar.examples.ts', examples: bannerBarExamples },

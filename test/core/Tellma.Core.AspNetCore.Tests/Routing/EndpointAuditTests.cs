@@ -60,6 +60,7 @@ namespace Tellma.Core.AspNetCore.Tests.Routing
                 .Select(static endpoint => "/" + endpoint.RoutePattern.RawText!.TrimStart('/'))];
 
             Assert.Contains("/api/distribution-info", routes);
+            Assert.Contains("/api/client-telemetry", routes);
             Assert.Contains("/health/live", routes);
             Assert.Contains("/health/ready", routes);
             Assert.Contains("/.well-known/oauth-protected-resource/{tenantId:int:min(1)}/mcp", routes);

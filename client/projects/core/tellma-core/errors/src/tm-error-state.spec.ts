@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TmFakeSession } from '@tellma/core-testing';
 import { TmApiError } from '@tellma/core';
@@ -88,6 +89,22 @@ describe('TmErrorState', () => {
     fixture.componentInstance.retry.subscribe(retried);
     button(fixture, 'Try again').click();
     expect(retried).toHaveBeenCalledOnce();
+  });
+
+  it("shows the host's way out first as the main action, and drops the view's first action to secondary beside it", async () => {
+    const rig = await setUp();
+    const fixture = await render(rig, new TmApiError({ kind: 'unavailable', status: 503 }));
+    const element = fixture.nativeElement as HTMLElement;
+    expect(button(fixture, 'Try again').classList).toContain('tm-button--primary');
+
+    fixture.componentRef.setInput('link', { label: signal('Centers'), url: '/17/centers' });
+    await tmSettle();
+    const link = element.querySelector<HTMLAnchorElement>('a[tmButton]')!;
+    expect([link.textContent?.trim(), link.getAttribute('href')]).toEqual(['Centers', '/17/centers']);
+    expect(link.classList).toContain('tm-button--primary');
+    expect(element.querySelector('[tmEmptyStateActions]')).toBe(link);
+    expect(button(fixture, 'Try again').classList).toContain('tm-button--secondary');
+    expect(button(fixture, 'Try again').classList).not.toContain('tm-button--primary');
   });
 
   it('gets the update on Reload, keeps the state on a failed download, and offers Reload anyway from the second failure', async () => {

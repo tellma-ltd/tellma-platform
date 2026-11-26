@@ -52,7 +52,7 @@ describe('the @tellma/core entry-point table', () => {
   });
 
   it("lets the page hosts import the tab's memory, and the home page's the recent pages", () => {
-    for (const host of ['./search', './details', './admin', './reports', './report-studio']) {
+    for (const host of ['./search', './details', './reports']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./memory')).toBe(true);
     }
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './dashboards').has('./recents')).toBe(true);
@@ -60,6 +60,16 @@ describe('the @tellma/core entry-point table', () => {
     for (const eager of ['.', './attention', './shell']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./memory')).toBe(false);
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, eager).has('./recents')).toBe(false);
+    }
+  });
+
+  it('lets only the hosts that edit records import the drafts, never the search page', () => {
+    expect(TM_CORE_ENTRY_POINTS['./drafts']).toEqual({ load: 'lazy', imports: [] });
+    for (const host of ['./details', './admin', './report-studio']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./drafts')).toBe(true);
+    }
+    for (const other of ['.', './attention', './shell', './search', './memory', './entity', './reports']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./drafts')).toBe(false);
     }
   });
 

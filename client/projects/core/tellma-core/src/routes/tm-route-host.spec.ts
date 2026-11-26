@@ -187,9 +187,11 @@ describe('the route host', () => {
     expect(harness.fixture.debugElement.query(By.css('tm-tenant-shell')).componentInstance).toBe(shell);
   });
 
-  it('moves focus after a host is left while its failed cold entry waits', async () => {
+  it('moves focus after a host is left while its cold entry waits', async () => {
     rig = await tmAppRig({ cold: true });
-    rig.api.respond('client/sync', () => Promise.reject(new TypeError('Failed to fetch')));
+    // A cold sync that never answers keeps the host on its skeleton; a failed
+    // one would replace the outlet with the tenant shell's own failure.
+    rig.api.respond('client/sync', () => new Promise<never>(() => undefined));
     const harness = await tmNavigate('/tenants');
     await tmSettle();
     await rig.router.navigateByUrl('/17/credit-review');

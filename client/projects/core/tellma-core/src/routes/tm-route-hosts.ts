@@ -8,9 +8,10 @@ import type { Type } from '@angular/core';
 import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 
 // The components the route table loads from other entry points: the shells,
-// and the hosts of the page families (spec 0024 §9.2, §4.4). The search
-// family's host is `@tellma/core/search`'s; until each other family's entry
-// point lands, its host is the shell's placeholder page.
+// and the hosts of the page families (spec 0024 §9.2, §4.4). Until each
+// family's entry point lands, its host is the shell's placeholder page; the
+// search family's is @tellma/core/search and the details family's is
+// @tellma/core/details (spec 0031 §1).
 
 /**
  * The components the primary entry point loads from `@tellma/core/shell`,
@@ -90,6 +91,22 @@ interface TmSearchModule {
 /** The search host, from its own entry point, which the app's build splits into a chunk of its own. */
 const search: TmLazyComponent = () => (import('@tellma/core/search' as string) as Promise<TmSearchModule>).then((module) => module.TmSearchHost);
 
+/** The details entry point's module, as far as the primary reads it. */
+interface TmDetailsModule {
+  /** The routed details host. */
+  readonly TmDetailsHost: Type<unknown>;
+}
+
+/**
+ * Loads the details host from `@tellma/core/details`, whose specifier is
+ * cast for the reason {@link tmShellComponent} gives: the details entry
+ * point imports this one.
+ *
+ * @returns The host's component.
+ */
+const details: TmLazyComponent = () =>
+  (import('@tellma/core/details' as string) as Promise<TmDetailsModule>).then((module) => module.TmDetailsHost);
+
 /** The host of each route family whose component the route data does not name. */
 export const TM_ROUTE_HOSTS = {
   /** The tenant home's host, which picks the `home` hatch or the default home. */
@@ -97,7 +114,7 @@ export const TM_ROUTE_HOSTS = {
   /** The search host: an entity's search page and a drill-through list, which hosts the entity's `search` hatch. */
   search,
   /** The details host, which hosts an entity's `details` page, for create and view. */
-  details: placeholder,
+  details,
   /** The coded report host. */
   report: placeholder,
   /** The settings page. */

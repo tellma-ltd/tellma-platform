@@ -103,6 +103,7 @@ namespace Tellma.Core.Abstractions.Tests.Api
         [InlineData(typeof(ImportOutcome))]
         [InlineData(typeof(ImportError))]
         [InlineData(typeof(RowRange))]
+        [InlineData(typeof(ClientTelemetryBatch))]
         [InlineData(typeof(long))]
         [InlineData(typeof(decimal))]
         [InlineData(typeof(DateTimeOffset))]

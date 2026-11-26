@@ -16,6 +16,7 @@
     "updates/public-api.ts",
     "errors/public-api.ts",
     "search/public-api.ts",
-    "entity-editing/public-api.ts"
+    "entity-editing/public-api.ts",
+    "details/public-api.ts"
   ]
 }

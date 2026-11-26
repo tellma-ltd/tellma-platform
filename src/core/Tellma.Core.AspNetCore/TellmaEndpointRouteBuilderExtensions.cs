@@ -21,6 +21,7 @@ using Tellma.Core.AspNetCore.Bff;
 using Tellma.Core.AspNetCore.Blobs;
 using Tellma.Core.AspNetCore.Hosting;
 using Tellma.Core.AspNetCore.Limits;
+using Tellma.Core.AspNetCore.Observability;
 using Tellma.Core.AspNetCore.OpenApi;
 using Tellma.Core.AspNetCore.Realtime;
 using Tellma.Core.AspNetCore.Routing;
@@ -41,8 +42,9 @@ namespace Tellma.Core.AspNetCore
 
         /// <summary>
         ///     Maps the platform's tenantless routes (the information document, the health probes, the
-        ///     admin surface when enabled, the protected-resource metadata and the SPA), the tenant
-        ///     route groups, the web API and the blob upload and download, then audits what it mapped. A distribution maps its own endpoints onto the
+        ///     admin surface when enabled, the protected-resource metadata, the BFF, the client telemetry
+        ///     relay and the SPA), the tenant route groups, the web API and the blob upload and download,
+        ///     then audits what it mapped. A distribution maps its own endpoints onto the
         ///     groups returned, inheriting their policies, filters and metadata; the startup gate audits
         ///     those too.
         /// </summary>
@@ -111,6 +113,15 @@ namespace Tellma.Core.AspNetCore
                     .AsTenantlessEndpoint(BffEndpoints.TenantlessReason)
                     .WithMetadata(PlatformEndpointMetadata.Instance);
             }
+
+            // --- The client telemetry relay: the user needs a session; its own rate and body limit ---
+            // Never traced and never renewing the session: the tracing filter and the session's
+            // background rule name its path.
+            _ = ClientTelemetryRelay.Map(app)
+                .RequireAuthorization(TellmaPolicies.Web)
+                .AsTenantlessEndpoint(ClientTelemetryRelay.TenantlessReason)
+                .RequireRatePolicy(TellmaRatePolicies.Telemetry)
+                .WithMetadata(new JsonBodySizeMetadata(ClientTelemetryRules.MaxBodyBytes), PlatformEndpointMetadata.Instance);
 
             // --- The in-proc identity server's controllers and pages, under its path base ---
             if (InProcIdentity.IsInProc(app.Configuration))

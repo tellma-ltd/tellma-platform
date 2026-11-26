@@ -45,7 +45,7 @@ namespace Tellma.Identity.IntegrationTests
             foreach (string expected in (string[])
                 ["AspNetUsers", "AspNetUserPasskeys", "AspNetUserLogins", "AspNetUserTokens",
                  "OpenIddictApplications", "OpenIddictAuthorizations", "OpenIddictScopes", "OpenIddictTokens",
-                 "Sessions", "SessionClients", "SingleUseCodes", "TemporaryAccessPasses", "AuditEvents", "SsoTickets"])
+                 "Sessions", "SessionClients", "SessionClientAuthorizations", "SingleUseCodes", "TemporaryAccessPasses", "AuditEvents", "SsoTickets"])
             {
                 Assert.Contains(expected, tables);
             }
