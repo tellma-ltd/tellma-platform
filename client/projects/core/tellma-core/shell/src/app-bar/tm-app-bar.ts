@@ -6,10 +6,12 @@
 import { NgComponentOutlet } from '@angular/common';
 import {
   afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  type ElementRef,
   inject,
   signal,
   type Type,
@@ -22,7 +24,7 @@ import { TmLocalization, type TmShellSlot, TmTelemetry, TmUrls } from '@tellma/c
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
-import { tmFormatKeys } from '@tellma/core-ui/kbd';
+import { tmAriaKeyShortcuts, tmFormatKeys } from '@tellma/core-ui/kbd';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { Eye, FlaskConical, Menu, Search, Wrench } from 'lucide';
 
@@ -45,9 +47,11 @@ import { TmShellSlots, type TmShellSlotView } from './tm-shell-slots';
 // panels. The session button paints its initials here, on the same tone as
 // tm-avatar's, and the chunk's avatar, which can show the user's photo,
 // replaces them once it loads. The Menu button, the search field and the
-// search button call the launcher. In installed mode the bar reserves Back
-// and Forward's box and fills it from a chunk of their own, which a browser
-// tab never loads.
+// search buttons open the launcher, whose panel is a deferred chunk of its
+// own; from lg up the field is the launcher's combobox input, and an open
+// that beats the chunk shows a skeleton in the panel's place. In installed
+// mode the bar reserves Back and Forward's box and fills it from a chunk of
+// their own, which a browser tab never loads.
 
 /** The icon of each marker. */
 const MARKER_ICONS = { sandbox: FlaskConical, readOnly: Eye, maintenance: Wrench } as const;
@@ -85,15 +89,18 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
         <img src="brand/wordmark-on-dark.svg" [alt]="homeLabel()" />
       </picture>
     </a>
-    <!-- Menu and search, grouped from md; the field from lg, its keycap from xl. -->
-    <div class="tm-app-bar__group">
+    <!--
+      Menu and search, grouped from md; the field from lg, its keycap from xl.
+      A press inside the group is the launcher's own, never an outside press.
+    -->
+    <div class="tm-app-bar__group" data-tm-launcher-trigger (pointerenter)="prefetchLauncher()" (focusin)="prefetchLauncher()">
       <button
         type="button"
         class="tm-app-bar__menu"
         aria-haspopup="dialog"
         [attr.aria-expanded]="launcherOpen()"
         [attr.aria-label]="menuLabel()"
-        (click)="launcher.show('menu')"
+        (click)="toggleLauncher()"
       >
         <tm-icon [svg]="menuIcon" />
         <span class="tm-app-bar__wide" aria-hidden="true">{{ menuLabel() }}</span>
@@ -110,12 +117,21 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       </button>
       <label class="tm-app-bar__field">
         <tm-icon [svg]="searchIcon" />
+        <!-- The launcher's combobox input from lg up: its listbox and active option are the panel's. -->
         <input
+          #field
           type="text"
+          role="combobox"
           autocomplete="off"
           spellcheck="false"
+          aria-autocomplete="list"
           [placeholder]="searchLabel()"
           [attr.aria-label]="searchLabel()"
+          [attr.aria-expanded]="launcherOpen()"
+          [attr.aria-controls]="launcherListbox()"
+          [attr.aria-activedescendant]="launcherActive()"
+          [attr.aria-describedby]="launcherHint()"
+          [attr.aria-keyshortcuts]="keyShortcuts"
           [value]="launcher.query()"
           (focus)="launcher.show('field')"
           (click)="launcher.show('field')"
@@ -138,8 +154,11 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       type="button"
       class="tm-app-bar__icon-button tm-app-bar__narrow-search"
       aria-haspopup="dialog"
+      data-tm-launcher-trigger
       [attr.aria-expanded]="launcherOpen()"
       [attr.aria-label]="searchLabel()"
+      (pointerenter)="prefetchLauncher()"
+      (focus)="prefetchLauncher()"
       (click)="launcher.show('icon')"
     >
       <tm-icon [svg]="searchIcon" />
@@ -232,6 +251,12 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
     </button>
     <!-- The overlays' host, where their deferred chunk renders. -->
     <ng-container #overlayHost />
+    <!-- The launcher's skeleton, in its panel's place, while an open waits for its chunk. -->
+    @if (launcherPending()) {
+      <div #launcherSkeleton popover="manual" class="tm-app-bar__launcher-skeleton" aria-busy="true">
+        <tm-skeleton [lines]="6" />
+      </div>
+    }
   `,
   styles: `
     /* The ink bar, the same in both themes, padded clear of the window's safe areas. */
@@ -638,6 +663,39 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
       }
     }
 
+    /*
+     * The launcher's skeleton: the panel's place under the shell's rows from
+     * md up, the Menu modal's below it, full screen below sm.
+     */
+    .tm-app-bar__launcher-skeleton {
+      position: fixed;
+      inset: var(--tm-shell-top) 0 auto;
+      inline-size: auto;
+      block-size: 16rem;
+      margin: 0;
+      padding: var(--space-4);
+      border: 0;
+      border-block-end: var(--border-width) solid var(--divider);
+      background: var(--surface-card);
+      box-shadow: var(--shadow-lg);
+      color: var(--text-body);
+    }
+
+    @media (width < 768px) {
+      .tm-app-bar__launcher-skeleton {
+        inset: var(--modal-lg-margin);
+        block-size: auto;
+        border-radius: var(--modal-radius);
+      }
+    }
+
+    @media (width < 576px) {
+      .tm-app-bar__launcher-skeleton {
+        inset: 0;
+        border-radius: 0;
+      }
+    }
+
     @media (forced-colors: active) {
       .tm-app-bar__group,
       .tm-app-bar__marker {
@@ -652,6 +710,10 @@ export class TmAppBar {
   readonly #telemetry = inject(TmTelemetry);
   /** Where the overlays' chunk renders its host. */
   private readonly overlayHost = viewChild.required('overlayHost', { read: ViewContainerRef });
+  /** The search field, the launcher's input from lg up. */
+  private readonly field = viewChild.required<ElementRef<HTMLInputElement>>('field');
+  /** The launcher's skeleton, while it shows. */
+  private readonly launcherSkeleton = viewChild<ElementRef<HTMLElement>>('launcherSkeleton');
 
   /** The launcher the Menu button and the search open. */
   protected readonly launcher = inject(TmLauncher);
@@ -688,6 +750,9 @@ export class TmAppBar {
   /** The search field's keycap, labelled for the platform: `Ctrl K` or `⌘ K`. */
   protected readonly keycap = tmFormatKeys('Mod+K').join(' ');
 
+  /** The search field's `aria-keyshortcuts`. */
+  protected readonly keyShortcuts = tmAriaKeyShortcuts('Mod+K');
+
   /** The distribution's slots, each with its badge's count. */
   protected readonly slots = inject(TmShellSlots).items;
 
@@ -705,6 +770,24 @@ export class TmAppBar {
 
   /** Whether the launcher is open, which the buttons that open it report. */
   protected readonly launcherOpen = computed(() => this.launcher.state() !== 'closed');
+
+  /** The launcher's listbox, which the field controls while it is the launcher's input, else `null`. */
+  protected readonly launcherListbox = computed(() => {
+    const surface = this.launcher.ɵsurface();
+    return surface?.usesField() ? surface.listboxId : null;
+  });
+
+  /** The launcher's active option, which the field points at while it is the launcher's input, else `null`. */
+  protected readonly launcherActive = computed(() => {
+    const surface = this.launcher.ɵsurface();
+    return surface?.usesField() ? surface.activeId() : null;
+  });
+
+  /** The launcher's hidden instructions, which describe the field once its chunk is in, else `null`. */
+  protected readonly launcherHint = computed(() => this.launcher.ɵsurface()?.hintId ?? null);
+
+  /** Whether an open waits for the launcher's chunk, so its skeleton shows. */
+  protected readonly launcherPending = this.launcher.ɵpending;
 
   /** The markers that show. */
   protected readonly markers = this.identity.markers;
@@ -732,10 +815,23 @@ export class TmAppBar {
     return key === null ? null : tmAvatarTone(key);
   });
 
-  /** Creates the bar, which hands the overlays their host after its first render. */
+  /**
+   * Creates the bar, which hands the overlays their host and the launcher
+   * its field after its first render, and loads the launcher's chunk once the
+   * browser is idle.
+   */
   constructor() {
     tmRegisterTenantShellStrings(this.#l10n);
-    afterNextRender(() => this.overlays.attach(this.overlayHost()));
+    afterNextRender(() => {
+      this.overlays.attach(this.overlayHost());
+      const field = this.field().nativeElement;
+      this.launcher.ɵfield = field;
+      const view = field.ownerDocument.defaultView;
+      const idle = (run: () => void): unknown => (view?.requestIdleCallback ? view.requestIdleCallback(run) : setTimeout(run));
+      idle(() => this.launcher.ɵprefetch());
+    });
+    // The skeleton shows in the top layer, above the page, as the panel would.
+    afterRenderEffect(() => this.launcherSkeleton()?.nativeElement.showPopover());
 
     // --- The history buttons' chunk, loaded once the app runs installed ---
     // A failed load (offline, or after a deploy removed the chunk) leaves the
@@ -781,6 +877,20 @@ export class TmAppBar {
    */
   protected markerLabel(marker: TmShellMarker): string {
     return this.#l10n.ɵtext(`tm.tenantShell.bar.markers.${marker}`)();
+  }
+
+  /** Starts loading the launcher's chunk, as a hover or focus on a control that opens it does. */
+  protected prefetchLauncher(): void {
+    this.launcher.ɵprefetch();
+  }
+
+  /** The Menu button: opens the launcher, or closes it when it is open. */
+  protected toggleLauncher(): void {
+    if (this.launcher.state() === 'closed') {
+      this.launcher.show('menu');
+    } else {
+      this.launcher.close('outside');
+    }
   }
 
   /**

@@ -1792,6 +1792,9 @@ export interface TmReadOptions {
 }
 
 // @public
+export function tmRecentPageIcon(kind: TmPageKind): string;
+
+// @public
 export type TmReportArgs = Readonly<Record<string, TmJson>>;
 
 // @public

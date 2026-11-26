@@ -193,7 +193,8 @@ export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
 
-// The navigation registry, the pins model's keys and the launcher's provider seam.
+// The navigation registry, the pins model's keys, the launcher's provider
+// seam and the icon of a recently visited page by its family.
 export { TmNavigation, type TmNavItem, type TmNavSectionView } from './src/nav/tm-navigation';
 export { tmPinnedBarVisibleKey, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from './src/nav/tm-pins';
 export {
@@ -202,6 +203,7 @@ export {
   type TmLauncherProvider,
   type TmLauncherSearchContext,
 } from './src/nav/tm-launcher-providers';
+export { tmRecentPageIcon } from './src/nav/tm-recent-icon';
 
 // App-level keyboard shortcuts and the shell frame's seams.
 export {

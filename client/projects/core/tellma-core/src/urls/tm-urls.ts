@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DOCUMENT, inject, Injectable, Injector, signal, type Signal, untracked } from '@angular/core';
+import { DestroyRef, DOCUMENT, inject, Injectable, Injector, signal, type Signal, untracked } from '@angular/core';
 import { NavigationCancel, NavigationEnd, NavigationError, ResolveEnd, Router } from '@angular/router';
 
 import { TM_APP_DECLARATIONS } from '../app/tm-app-declarations';
@@ -335,6 +335,9 @@ export class TmUrls implements TmTenantUrls {
   /** The loaders `preload` has called, so each runs once. */
   readonly #preloaded = new Set<() => Promise<unknown>>();
 
+  /** Whether the app has ended, so a preload that waits for idle time runs nothing. */
+  #ended = false;
+
   /** The builders of the routed tenant. */
   readonly #routed = new TmTenantUrlBuilders(() => {
     const tenantId = this.#tenant();
@@ -346,6 +349,7 @@ export class TmUrls implements TmTenantUrls {
 
   /** Creates the service, which follows the routed tenant from each navigation's resolution. */
   constructor() {
+    inject(DestroyRef).onDestroy(() => (this.#ended = true));
     // A navigation's pages are created after its resolution, so their links use its tenant.
     this.#router.events.subscribe((event) => {
       if (event instanceof ResolveEnd) {
@@ -480,6 +484,9 @@ export class TmUrls implements TmTenantUrls {
     const idle = (run: () => void): unknown =>
       this.#window?.requestIdleCallback ? this.#window.requestIdleCallback(run) : setTimeout(run);
     idle(() => {
+      if (this.#ended) {
+        return;
+      }
       const match = this.describe(url);
       for (const load of match ? this.#loadersOf(match) : []) {
         if (!this.#preloaded.has(load)) {

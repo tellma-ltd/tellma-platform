@@ -116,13 +116,6 @@ export const TM_STRINGS_AR: TmStringTree = {
       notifications: 'الإشعارات',
     },
   },
-  launcher: {
-    synonyms: {
-      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
-      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
-      meDisplay: 'السمة، الشريط المثبت',
-    },
-  },
   entity: {
     permission: '{resource}: {action}',
     tenantReadOnly: '{tenant} للقراءة فقط.',
