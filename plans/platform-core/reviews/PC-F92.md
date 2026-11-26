@@ -104,7 +104,9 @@ No ceiling was raised. The `"."` figure moves by gzip noise from the changed imp
 1. Spec 0023 §1's table gives `kbd` all the grammar's exports and no dependency. `kbd` keeps every
    export, but now depends on a new `keys` entry point that holds the grammar and that it
    re-exports. A public API addition (`@tellma/core-ui/keys`), flagged for Ahmad as the
-   blob-fetcher and counter entry points were.
+   blob-fetcher and counter entry points were. The `copy` row likewise now depends on `keys`,
+   not `kbd` (`button`, `icon`, `keys`, `tooltip`): code that only matches or labels keys
+   imports `keys`. (Added in fix1, R1-2.)
 2. Spec 0023 §3.2 says `tm/no-platform-sniffing` refuses the platform reads "outside `kbd`"; the
    one platform check now lives in `keys`, so the exemption is `keys/**`.
 3. Beyond the ledger's `"."`, the guard also covers `./shell` and `./attention`, the rest of the
@@ -134,4 +136,66 @@ No ceiling was raised. The `"."` figure moves by gzip noise from the changed imp
 
 ### Findings
 
+**R1-1 (blocking): the new `keys` library folder is unclassified, so the additions axe battery's
+registry test fails.** `client/e2e/specs/additions-axe.spec.ts:54` (`OLDER_FOLDERS`) and
+`client/e2e/support/additions-stories.ts:93` (`ADDITIONS_ENTRY_POINTS`) are the two lists every
+`projects/core/tellma-core-ui/*` folder must be in exactly once
+(`additions-axe.spec.ts:128`, "every library folder is either an additions entry point or an
+older folder"). The commit adds `tellma-core-ui/keys/` and puts it in neither list.
+- Failure, reproduced on a86e609f: `node scripts/e2e.mjs --project=chromium
+  e2e/specs/additions-axe.spec.ts --grep registry` gives 1 failed and 3 passed: "the library
+  folder keys is classified exactly once". The test has no `@nightly` tag, so it is PR tier. The
+  pc/PC-F92 integration CI would go red on it. The pc/PC-F92 push run 45796165809 was skipped, so
+  CI has not caught it yet.
+- Test-list gap (PLAN §7.1 item 4): the commit ran only `kbd.spec.ts` and `menu-rich.spec.ts`.
+  A new library folder touches this registry spec too.
+- Fix: add `'keys'` to `OLDER_FOLDERS`, in sort order after `'input'`. In the list's TSDoc (lines 42-53), name it with the other UI-less splits, for example: "the keys grammar, split
+  out of kbd's entry point with no UI of its own (the kbd story draws and matches what it
+  defines)". The `initials` and `blob-fetcher` splits were handled the same way. Then re-run the
+  registry tests.
+
+**R1-2 (minor): the `copy` row of spec 0023 §1 no longer matches its dependencies, and the
+Deviations do not say so.** `docs/specs/0023-component-library-additions.md:100` gives `copy` the
+dependencies `button`, `icon`, `kbd`, `tooltip`. After this change,
+`client/projects/core/tellma-core-ui/copy/tm-copy-button.ts:27` imports `@tellma/core-ui/keys`,
+and `copy` no longer reaches `kbd` at all.
+- Deviations 1 and 2 (commit message, and lines 104-109 of this file) cover the `kbd` row and
+  §3.2. The `copy` row's change is a consequence of the same re-pointing, but it is not recorded.
+  So the spec fix that goes to Ahmad would miss it.
+- Spec 0010's "matched through `kbd`" wording (§C.10's "gains imports of … `@tellma/core-ui/kbd`",
+  §C.12) still reads true through the re-export, so it needs no entry. The dependency table is a
+  factual list, so it does.
+- Fix: extend Deviation 1, in the commit message and in this file. Something like: "the `copy` row
+  likewise now depends on `keys`, not `kbd`; code that only matches or labels keys imports
+  `keys`."
+
 ### Responses
+
+- R1-1: fixed in fix1. `keys` joins `OLDER_FOLDERS` in `client/e2e/specs/additions-axe.spec.ts`,
+  after `input`, and the list's TSDoc names it with the other UI-less splits (the kbd story draws
+  and matches what it defines). The whole `additions-axe.spec.ts` was run on Chromium. The other
+  registries, allowlists and folder enumerations in `client/` were checked for a missing `keys`
+  entry, and none needs one:
+  - `e2e/support/additions-stories.ts` (`ADDITIONS_ENTRY_POINTS`, the stories): `keys` has no
+    UI and no story, so it belongs in `OLDER_FOLDERS`, as `initials` and `blob-fetcher` do.
+  - `tools/tests/library-docs.spec.mts` (`ADDITIONS`, the documented components and their
+    harnesses): it lists only entry points with components; `initials` and `blob-fetcher` are
+    absent too, and its examples walk reads the folders itself.
+  - `tools/docs/extract-components.mts`, `scripts/api-extractor.mjs`, `scripts/bundle-size.mjs`
+    and `tools/workspace.mjs` discover entry points from the `ng-package.json` files. The docs
+    build changed nothing, the keys golden was generated, and size:check measures `./keys`.
+  - `@tellma/core-ui` package.json: `budgetsInKb` and `budgetNotes` have `./keys`. Its
+    `lazyChunkBudgetsInKb`, `treeShakes`, `staticGraphExcludes`, `apiGoldens` and
+    `docs.globalStyles` maps name no foundation entry point, and `keys` ships no stylesheet.
+  - The tsconfig `paths` (client, Acme) map `@tellma/core-ui/*` by wildcard. `angular.json`, the
+    vitest configs and the CI workflows (`ci.yml`, `nightly.yml`, `nightly-tier.yml`) name no
+    core-ui entry point.
+  - ESLint: the foundation and platform-sniffing blocks were updated in commit 1. No other block
+    enumerates the core-ui folders.
+- R1-2: fixed in fix1. Deviation 1 above, and the fix1 commit message, now cover the `copy` row.
+- The "." figure (53.7197 of 53.72): R1 found the 0.28 B margin is hash noise from the shared
+  chunk's re-hash, not growth. No action, per the ruling.
+- Fix1 gates: `typecheck`, `lint`, `lint:test` (534/534) and `api:check` (no drift) are green. The
+  Chromium e2e of `additions-axe.spec.ts` (PR tier: the four registry tests and every story's
+  PR-tier scan, 36 tests), `kbd.spec.ts` and `menu-rich.spec.ts` passed 78/78. The `@nightly`
+  combinations of the axe battery were not run.
