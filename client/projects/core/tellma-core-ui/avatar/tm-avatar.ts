@@ -3,9 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgTemplateOutlet } from '@angular/common';
 import { booleanAttribute, Component, computed, inject, input } from '@angular/core';
-import { User } from 'lucide';
+import User from 'lucide/dist/esm/icons/user.mjs';
 
 import { TmL10n } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';

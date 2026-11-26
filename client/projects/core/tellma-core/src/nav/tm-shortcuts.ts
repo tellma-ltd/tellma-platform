@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { DestroyRef, DOCUMENT, inject, Injectable, InjectionToken, signal, type Signal } from '@angular/core';
-import { tmIsApplePlatform, tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform, tmKeysMatch } from '@tellma/core-ui/keys';
 import { ɵtmIsBusy, ɵtmOpenModals } from '@tellma/core-ui/overlay';
 
 import { TM_DEV_MODE } from '../app/tm-dev-mode';

@@ -134,21 +134,21 @@ describe('TmErrorPresenter', () => {
 
     it('names a refused path from the query root, else shows it raw', async () => {
       const { presenter } = await setUp();
-      const refusal = forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Name' });
+      const refusal = forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Image' });
       const resource = TestBed.inject(TmPermissions).label('core.User')();
       const raw = presenter.describe(refusal, { kind: 'read' });
-      expect(raw.title()).toBe("You can't see Manager.Name here");
+      expect(raw.title()).toBe("You can't see Manager.Image here");
       expect(raw.message()).toBe(`It needs full “${resource}: Read” access. Ask your administrator to grant it.`);
       expect(raw.permission).toBe('core.User · Read');
 
-      // With the call's entity and the entity model loaded, the path reads as its labels.
+      // With the call's entity and the entity model loaded, the path reads as its labels: the
+      // center's manager (a user) and the user's image (a blob), two navigations deep.
       await TestBed.inject(TmEntities).load();
-      const named = presenter.describe(
-        forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Manager' }),
-        { kind: 'read', entity: 'gl.Center' },
-      );
-      expect(named.title()).toBe(`You can't see ${TestBed.inject(TmEntities).resolve('gl.Center', 'Manager.Manager')!.label()} here`);
-      expect(named.title()).not.toContain('Manager.Manager');
+      const named = presenter.describe(refusal, { kind: 'read', entity: 'gl.Center' });
+      const path = TestBed.inject(TmEntities).resolve('gl.Center', 'Manager.Image');
+      expect(path).not.toBeNull();
+      expect(named.title()).toBe(`You can't see ${path!.label()} here`);
+      expect(named.title()).not.toContain('Manager.Image');
     });
 
     it('names the tenant of a read-only or frozen refusal as the shell shows it', async () => {

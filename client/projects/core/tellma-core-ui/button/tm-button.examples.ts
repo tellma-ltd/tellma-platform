@@ -34,8 +34,9 @@ export const PendingSave = {
 
 /**
  * An icon-only button must carry an accessible name. The glyph is a
- * `tm-icon`, sized by the button; `searchIcon` is the `Search` data from
- * `lucide` (or use `name` with a registered icon).
+ * `tm-icon`, sized by the button; `searchIcon` is the default export of the
+ * icon's own module, `lucide/dist/esm/icons/search.mjs` (or use `name` with a
+ * registered icon).
  */
 export const IconOnly = {
   template: `

@@ -8,7 +8,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
-import { tmKeysText } from '@tellma/core-ui/kbd';
+import { tmKeysText } from '@tellma/core-ui/keys';
 import { TmCopyButtonHarness, TmReferenceHarness } from '@tellma/core-ui-testing';
 
 import { TmCopyButton } from './tm-copy-button';

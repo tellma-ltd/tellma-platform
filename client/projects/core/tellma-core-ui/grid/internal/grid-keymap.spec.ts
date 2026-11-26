@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TM_UI_STRINGS_EN } from '@tellma/core-ui';
-import { tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmKeysMatch } from '@tellma/core-ui/keys';
 
 import { TM_GRID_KEYS } from '@tellma/core-ui/contracts';
 import {

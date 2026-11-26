@@ -12,7 +12,7 @@
 /** One key combination the grid handles, with the label of its help row. */
 export interface TmGridKeyEntry {
   /**
-   * The key combination, in `@tellma/core-ui/kbd`'s grammar: render it with
+   * The key combination, in `@tellma/core-ui/keys`'s grammar: render it with
    * `tm-kbd` or `tmFormatKeys`, which label it for the platform.
    */
   readonly keys: string;

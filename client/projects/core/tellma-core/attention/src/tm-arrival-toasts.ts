@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { DOCUMENT, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import {
@@ -23,7 +25,7 @@ import {
 } from '@tellma/core';
 import { TmIconRegistry } from '@tellma/core-ui/icon';
 import { type TmToast, type TmToastRef, TmToasts } from '@tellma/core-ui/toast';
-import { Inbox } from 'lucide';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
 import { TmAttention } from './tm-attention';
 import { TmAttentionText } from './tm-attention-text';

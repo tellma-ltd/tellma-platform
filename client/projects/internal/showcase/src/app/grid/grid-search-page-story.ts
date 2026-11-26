@@ -3,8 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, computed, signal } from '@angular/core';
-import { Columns3, Funnel } from 'lucide';
+import Columns3 from 'lucide/dist/esm/icons/columns-3.mjs';
+import Funnel from 'lucide/dist/esm/icons/funnel.mjs';
 
 import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import type { TmRowId } from '@tellma/core-ui/contracts';

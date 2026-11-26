@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { NgTemplateOutlet } from '@angular/common';
 import {
@@ -22,7 +24,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { GripVertical } from 'lucide';
+import GripVertical from 'lucide/dist/esm/icons/grip-vertical.mjs';
 
 import { TM_UI_TRANSLATE, type TmControlSize, ɵtmControlSize } from '@tellma/core-ui';
 import {

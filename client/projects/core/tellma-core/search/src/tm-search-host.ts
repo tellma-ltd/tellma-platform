@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Location, NgComponentOutlet } from '@angular/common';
 import {
@@ -28,7 +30,13 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink } from '@angular/router';
-import { CircleAlert, Columns3, Ellipsis, Inbox, Plus, RefreshCw, SearchX } from 'lucide';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import Columns3 from 'lucide/dist/esm/icons/columns-3.mjs';
+import Ellipsis from 'lucide/dist/esm/icons/ellipsis.mjs';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
+import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
 import {
   TmApi,
   TmApiError,

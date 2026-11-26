@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { tmFormatKeys, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmFormatKeys, type TmKeys } from '@tellma/core-ui/keys';
 
 // The shortcut registry's contract and its rules (spec 0027 §4.1, §4.3,
 // Appendix A). The platform and pages draw their keys from disjoint families,
@@ -33,7 +33,7 @@ import { tmFormatKeys, type TmKeys } from '@tellma/core-ui/kbd';
 export interface TmShortcut {
   /** The shortcut's id, such as `tm.launcher.open`, `details.save` or `acme.credit-review.approve-next`. */
   readonly id: string;
-  /** The key combination, in `@tellma/core-ui/kbd`'s grammar: `'Mod+K'`, `'Alt+Shift+P'`, `'F2'`. */
+  /** The key combination, in `@tellma/core-ui/keys`'s grammar: `'Mod+K'`, `'Alt+Shift+P'`, `'F2'`. */
   readonly keys: TmKeys;
   /** The string key of the shortcut's row in the keyboard shortcuts dialog. */
   readonly labelKey: string;
@@ -147,10 +147,10 @@ export class TmShortcutConflictError extends Error {
   }
 }
 
-// Section: the internal model of a combination. The kbd grammar validates and
+// Section: the internal model of a combination. The keys grammar validates and
 // matches a combination; the families need its modifiers by name and its key.
 
-/** A combination's parts: the modifiers as written, and the key as kbd compares it. */
+/** A combination's parts: the modifiers as written, and the key as the keys grammar compares it. */
 export interface TmKeyParts {
   /** `Mod` was written. */
   readonly mod: boolean;
