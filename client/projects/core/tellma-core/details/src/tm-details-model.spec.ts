@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmEntityDescriptor, TmJson, TmJsonObject } from '@tellma/core';
+import type { TmEntityDescriptor, TmJson, TmJsonObject, TmPropertyDescriptor } from '@tellma/core';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmDetailsCloneStrip, tmDetailsComplete, tmDetailsCreateModel, tmDetailsRefused, tmDetailsRouteId } from './tm-details-model';
@@ -21,6 +21,17 @@ import { tmDetailsCloneStrip, tmDetailsComplete, tmDetailsCreateModel, tmDetails
  */
 function declaring(descriptor: TmEntityDescriptor, members: Record<string, unknown>): TmEntityDescriptor {
   return Object.create(descriptor, { declaration: { value: { ...descriptor.declaration, ...members } } }) as TmEntityDescriptor;
+}
+
+/**
+ * A descriptor whose properties are rewritten.
+ *
+ * @param descriptor - The descriptor.
+ * @param rewrite - Rewrites one property.
+ * @returns The descriptor, its properties rewritten.
+ */
+function rewriting(descriptor: TmEntityDescriptor, rewrite: (property: TmPropertyDescriptor) => TmPropertyDescriptor): TmEntityDescriptor {
+  return Object.create(descriptor, { properties: { value: descriptor.properties.map(rewrite) } }) as TmEntityDescriptor;
 }
 
 /**
@@ -92,15 +103,54 @@ describe('the details model rules', () => {
   });
 
   describe("a record's completion", () => {
-    it('adds null for each member the client writes and the read omitted, in the record and its loaded child rows', () => {
+    it('adds null for each member the client writes and the read omitted, in the record and its loaded child rows, never for the key to the parent', () => {
       const descriptor = rig.entities.get('acme.Customer');
       const read = { id: 5, name: 'Al Noor', contacts: [{ id: 11, name: 'Huda' }] };
       const completed = tmDetailsComplete(read, descriptor, (entity) => rig.entities.get(entity));
 
       expect(completed).toEqual(expect.objectContaining({ id: 5, name: 'Al Noor', code: null, currencyId: null }));
       expect(Object.keys(completed)).not.toContain('isActive');
-      expect(completed['contacts']).toEqual([{ id: 11, name: 'Huda', customerId: null, email: null }]);
+      // The row's own members, exactly: the server writes the contact's customerId, so a null there is refused.
+      expect(completed['contacts']).toStrictEqual([{ id: 11, name: 'Huda', email: null }]);
       expect(read).toEqual({ id: 5, name: 'Al Noor', contacts: [{ id: 11, name: 'Huda' }] });
+    });
+
+    it('leaves out a member that is not nullable and that the server fills when it is omitted', () => {
+      const descriptor = rewriting(rig.entities.get('acme.Customer'), (property) =>
+        property.name === 'CustomerType' ? { ...property, defaulted: true } : property,
+      );
+      const completed = tmDetailsComplete({ id: 5 }, descriptor, (entity) => rig.entities.get(entity));
+
+      expect(Object.keys(completed)).not.toContain('customerType');
+      expect(completed['code']).toBeNull();
+    });
+
+    it("completes a new record's rows from the defaults, and a restored draft's new rows, without the key to the parent", () => {
+      const descriptor = declaring(rig.entities.get('acme.Customer'), { defaults: () => ({ contacts: [{ id: -1, name: 'Huda' }] }) });
+      const child = (entity: string): TmEntityDescriptor => rig.entities.get(entity);
+      // The record completes a new record's start, a clone and a restored draft alike, with the child descriptors.
+      const created = tmDetailsComplete(tmDetailsCreateModel(descriptor), descriptor, child);
+      const restored = tmDetailsComplete({ id: 5, code: 'C-005', contacts: [{ id: 11, name: 'Huda' }, { id: -1, name: 'Omar' }] }, descriptor, child);
+
+      expect(created['contacts']).toStrictEqual([{ id: -1, name: 'Huda', email: null }]);
+      expect(JSON.stringify(restored['contacts'])).not.toContain('customerId');
+      expect(restored['contacts']).toStrictEqual([
+        { id: 11, name: 'Huda', email: null },
+        { id: -1, name: 'Omar', email: null },
+      ]);
+    });
+
+    it("completes a clone's child rows without putting back the key to the parent the strip removed", () => {
+      const descriptor = rig.entities.get('acme.Customer');
+      const child = (entity: string): TmEntityDescriptor => rig.entities.get(entity);
+      const completed = tmDetailsComplete(tmDetailsCloneStrip(customer(), descriptor, child), descriptor, child);
+
+      // The serialized rows, as a save sends them: nulls included, and no customerId at all.
+      expect(JSON.stringify(completed['contacts'])).not.toContain('customerId');
+      expect(completed['contacts']).toStrictEqual([
+        { id: -1, name: 'Huda', email: 'huda@example.com' },
+        { id: -2, name: 'Omar', email: null },
+      ]);
     });
 
     it('returns the record itself when it lacks nothing, and never adds a collection the read left out', () => {

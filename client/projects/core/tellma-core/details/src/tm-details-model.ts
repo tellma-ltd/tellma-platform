@@ -45,6 +45,9 @@ export function tmDetailsCreateModel(descriptor: TmEntityDescriptor): TmJsonObje
  * The wire omits null members, and a Signal Forms tree has no field, so no
  * validation, for a member the model lacks: the working copy carries every
  * writable property so each one has its field.
+ * Two members stay absent, since a `null` for either is one the server
+ * refuses: a child row's key to its parent, which the server writes, and a
+ * member that is not nullable but that the server fills when it is omitted.
  * A collection the record lacks stays absent, since a save never sends one
  * it did not load. An object that lacks nothing is returned as it is, so a
  * complete record keeps its identity.
@@ -52,20 +55,24 @@ export function tmDetailsCreateModel(descriptor: TmEntityDescriptor): TmJsonObje
  * @param record - The record, wire-shaped.
  * @param descriptor - Its entity's descriptor.
  * @param childDescriptor - The descriptor of a child collection's entity, by name; `undefined` leaves the collection's rows as they are.
+ * @param parentKey - The property, by name, that keys a child row to its parent; omitted on the record itself.
  * @returns The record, or a completed copy of it.
  */
 export function tmDetailsComplete(
   record: TmJsonObject,
   descriptor: TmEntityDescriptor,
   childDescriptor: (entity: string) => TmEntityDescriptor | undefined,
+  parentKey?: string,
 ): TmJsonObject {
   // The members to write over the record; empty while it lacks nothing.
   const writes: Record<string, TmJson> = {};
   let lacks = false;
 
   // --- Every property the client writes that the record omits, as null ---
+  // Not the parent key, nor a defaulted member a null would override: the server writes both.
   for (const property of descriptor.properties) {
-    if (CLIENT_WRITTEN.has(property.ownership) && record[property.json] === undefined) {
+    const omittable = property.name === parentKey || (property.defaulted === true && !property.nullable);
+    if (CLIENT_WRITTEN.has(property.ownership) && !omittable && record[property.json] === undefined) {
       writes[property.json] = null;
       lacks = true;
     }
@@ -83,7 +90,7 @@ export function tmDetailsComplete(
       if (row === null || typeof row !== 'object' || Array.isArray(row)) {
         return row;
       }
-      const next = tmDetailsComplete(row, target, childDescriptor);
+      const next = tmDetailsComplete(row, target, childDescriptor, child.parentKey);
       changed ||= next !== row;
       return next;
     });

@@ -6,6 +6,7 @@
 import { Location } from '@angular/common';
 import { Component, computed, type ElementRef, signal, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { type FieldTree, required, type SchemaPath, type SchemaPathTree } from '@angular/forms/signals';
 import { manualChangeDetection } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Title } from '@angular/platform-browser';
@@ -15,7 +16,7 @@ import { TmApiError, type TmJsonObject, TmPageActions } from '@tellma/core';
 import { TmDetailsPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
 import { TmConfirmHarness } from '@tellma/core-ui-testing';
 
-import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
+import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmLoadTestPage, tmSettle, tmSettleUntil, TmTestPage } from '../../src/routes/tm-app.testing.util';
 import { injectTmDetails } from './tm-details-context';
 import { TmDetailsKit } from './tm-details-kit';
@@ -132,6 +133,15 @@ function valued(model: TmJsonObject): unknown {
   return JSON.parse(JSON.stringify(model, (_key, value: unknown) => (value === null ? undefined : value)));
 }
 
+/**
+ * A declaration's own rule: the currency, which is nullable, is required.
+ *
+ * @param p - The customer form's schema path tree.
+ */
+function currencyRule(p: SchemaPathTree<TmJsonObject>): void {
+  required((p as unknown as Readonly<Record<string, SchemaPath<unknown>>>)['currencyId']!);
+}
+
 /** An offline failure, as the API client raises it. */
 function offline(): never {
   throw new TmApiError({ kind: 'offline' });
@@ -154,9 +164,10 @@ describe('the details host', () => {
    * Starts the app with the customer permissions given.
    *
    * @param actions - The customer actions granted.
+   * @param declaration - More of the customer's declaration.
    */
-  async function start(actions: readonly string[] = ['Read', 'Save']): Promise<void> {
-    rig = await tmEntityRig({ access: { securables: actions.map(grant) } });
+  async function start(actions: readonly string[] = ['Read', 'Save'], declaration: TmEntityRigOptions['customer'] = {}): Promise<void> {
+    rig = await tmEntityRig({ access: { securables: actions.map(grant) }, customer: declaration });
     rig.api.respond('customers/get', (call: TmFakeApiCall) => {
       const id = (call.body as { readonly id: number }).id;
       if (!hold) {
@@ -490,6 +501,24 @@ describe('the details host', () => {
     expect(valued(details.model())).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
   });
 
+  it("saves a clone's child rows without a key to the parent, exactly as the body is sent", async () => {
+    await start();
+    const page = await open('/17/customers/new?clone=5');
+    await tmSettleUntil(() => latest()?.details.model()['name'] !== undefined, 'the copy lands');
+    const details = latest()!.details;
+    // The copied customer has no type, which the platform's rules require before a save writes.
+    details.update((model) => ({ ...model, customerType: 'Retail' }));
+    rig.api.respond('customers/save', () => saved(6, 'Customer 5'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    // The raw body, nulls included: a null for the contact's customerId is a value the server refuses.
+    const body = JSON.stringify(rig.api.calls().find((call) => call.route === 'customers/save')!.body);
+    expect(body).not.toContain('customerId');
+    expect(JSON.parse(body)).toEqual(expect.objectContaining({ entities: [expect.objectContaining({ contacts: [{ id: -1, name: 'Huda', email: null }] })] }));
+  });
+
   it('keeps Save disabled while the copied record loads', async () => {
     await start();
     hold = true;
@@ -615,6 +644,37 @@ describe('the details host', () => {
     expect(aside.getAttribute('aria-label')).toBe('Code');
     expect(document.querySelector('tm-test-kit-layout .tm-test-layout__aside')).toBeNull();
     expect(document.querySelector('[tmpagetitleextra] .tm-test-layout__extra, .tm-details__badge .tm-test-layout__extra')).not.toBeNull();
+  });
+
+  it("applies the declaration's own rules, which load with the layout, after the platform's: the layout renders once both are in hand", async () => {
+    let answer!: (rules: { readonly default: typeof currencyRule }) => void;
+    await start(undefined, { validate: () => new Promise((resolve) => (answer = resolve as never)) });
+    await open('/17/customers/5');
+    await tmSettle();
+    expect(latest()).toBeUndefined();
+
+    answer({ default: currencyRule });
+    await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout renders');
+    const form = latest()!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    // The currency is nullable, so only the declaration's rule requires it; the code keeps the platform's.
+    expect(form['currencyId']!().errors().map((error) => error.kind)).toEqual(['required']);
+    expect(form['code']!().errors()).toEqual([]);
+  });
+
+  it("shows the offline state when the declaration's rules fail to load, and loads both on Try again", async () => {
+    let fail = true;
+    await start(undefined, {
+      validate: () => (fail ? Promise.reject(new Error('The chunk failed to load.')) : Promise.resolve({ default: currencyRule as never })),
+    });
+    await open('/17/customers/5');
+    await errorState('the error state renders');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+
+    fail = false;
+    errorButton('Try again').click();
+    await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
+    const form = latest()!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    expect(form['currencyId']!().errors().map((error) => error.kind)).toEqual(['required']);
   });
 
   it('ends Save cleanly when the page is left while the write runs', async () => {

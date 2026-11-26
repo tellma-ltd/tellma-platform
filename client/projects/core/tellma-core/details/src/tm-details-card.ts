@@ -6,14 +6,17 @@
 import {
   afterNextRender,
   booleanAttribute,
+  type AfterContentInit,
   ChangeDetectionStrategy,
   Component,
   computed,
+  contentChildren,
   DestroyRef,
   Directive,
   effect,
   ElementRef,
   inject,
+  InjectionToken,
   Injector,
   input,
   type InputSignal,
@@ -29,6 +32,17 @@ import { TmLocalization } from '@tellma/core';
 
 import { injectTmDetailsRecord, tmDevMode } from './tm-details-record';
 import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
+
+/** A `tm-details-tabs` in a card's content, as the card checks where it renders. */
+export interface ɵTmDetailsCardTabs {
+  /** The card around the tabs, or `null` outside one. */
+  readonly ɵcard: unknown;
+  /** Whether the tabs are, or sit in, one of that card's sections. */
+  readonly ɵsectioned: boolean;
+}
+
+/** The token every `tm-details-tabs` provides itself under, so a card queries them without importing them. */
+export const ɵTM_DETAILS_CARD_TABS = new InjectionToken<ɵTmDetailsCardTabs>('ɵTM_DETAILS_CARD_TABS');
 
 // A card of the details band (spec 0031 §6.1), on the component library's
 // tm-card: a grid of fields, then the sections below it, such as tabs. It
@@ -118,6 +132,16 @@ import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
     .tm-details-card__grid:empty + .tm-details-card__section {
       border-block-start: none;
     }
+
+    /* Tabs that are the card's own child are a section too, unmarked. */
+    .tm-details-card__body > tm-details-tabs {
+      display: block;
+      border-block-start: var(--border-width) solid var(--divider);
+    }
+
+    .tm-details-card__grid:empty + tm-details-tabs {
+      border-block-start: none;
+    }
   `,
   template: `
     <tm-card
@@ -143,12 +167,13 @@ import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
         >
           <ng-content />
         </div>
-        <ng-content select="[tmDetailsCardSection]" />
+        <!-- The sections: marked ones, and tabs that are the card's own child. -->
+        <ng-content select="[tmDetailsCardSection], tm-details-tabs" />
       </div>
     </tm-card>
   `,
 })
-export class TmDetailsCard implements OnInit {
+export class TmDetailsCard implements OnInit, AfterContentInit {
   readonly #l10n = inject(TmLocalization);
   readonly #record = injectTmDetailsRecord();
   readonly #destroyRef = inject(DestroyRef);
@@ -187,6 +212,12 @@ export class TmDetailsCard implements OnInit {
     return key === undefined ? undefined : this.#l10n.ɵtext(key)();
   });
 
+  /** The tabs that are the card's own child, which render as a section. */
+  private readonly ownTabs = contentChildren(ɵTM_DETAILS_CARD_TABS);
+
+  /** Every tabs in the card's content, however deep. */
+  private readonly allTabs = contentChildren(ɵTM_DETAILS_CARD_TABS, { descendants: true });
+
   /** The body, which scrolls when the card is scrollable. */
   private readonly body = viewChild.required<ElementRef<HTMLElement>>('body');
 
@@ -220,6 +251,17 @@ export class TmDetailsCard implements OnInit {
     }
     if (id !== undefined && this.scrollable() !== undefined) {
       afterNextRender(() => this.#record.registerScroller(id, this.body().nativeElement, this.#destroyRef), { injector: this.#injector });
+    }
+  }
+
+  /** Refuses tabs that would render in the field grid: inside another element of the card's content, outside a section. */
+  ngAfterContentInit(): void {
+    const own = this.ownTabs();
+    const misplaced = this.allTabs().some((tabs) => tabs.ɵcard === this && !tabs.ɵsectioned && !own.includes(tabs));
+    if (misplaced && tmDevMode()) {
+      throw new Error(
+        'A tm-details-tabs inside a tm-details-card renders in its field grid: make it a child of the card, or mark the element around it tmDetailsCardSection.',
+      );
     }
   }
 }

@@ -1062,11 +1062,16 @@ export default class CustomerDetails {
   before it, else to the search page. `new?clone={id}` reads that record and starts from its
   copy, stripped of its key, the members the server writes and its blobs, its child rows numbered
   as new rows, then passed through the declaration's `clone(copy, source)`.
+- **The form's own rules.** The declaration's `validate` is a loader, such as
+  `() => import('./customer-rules')`, of a Signal Forms schema function. The page loads it beside
+  the layout and renders the layout once both are in hand; the form applies it after the
+  platform's rules, so it adds rules and never weakens one, and its imports of
+  `@angular/forms/signals` stay out of the first load. A failed load is the layout's failure.
 - **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
   over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
 - **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
   mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
-  state over a fake host, with `providers` to give the layout.
+  state over a fake host, with `providers` to give the layout and `rules` for the form's own rules.
 
 ### Strings of a lazy entry point
 

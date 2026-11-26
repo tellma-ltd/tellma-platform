@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, Injector, input, type Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, input, signal, type Type } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import type { HarnessLoader } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
@@ -17,12 +17,14 @@ import { tmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmDetailsKit } from './tm-details-kit';
 import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-record';
+import { ɵtmFieldEditorLoader } from './tm-field';
 
 // The layout kit over the recorded customer model, rendered in a fake
 // details context: each kind of field in view and edit mode with the same
 // geometry, the two-state skeleton rule, a collapsed card's error dot and a
-// field's focus() opening it, tabs in a card's section, the development
-// errors, and Acme's customer layout with its messages on touch.
+// field's focus() opening it, tabs, extras, the audit card, a failed load
+// of the edit side, and the development errors. Acme's own layout has its
+// spec in the distribution.
 
 /** A customer as `customers/get` returns it. */
 const CUSTOMER: TmJsonObject = {
@@ -146,17 +148,106 @@ class TmTestCollapsedLayout {}
 })
 class TmTestSectionLayout {}
 
-/** Tabs in a card's field grid. */
+/** Tabs that are a card's own child, unmarked, as the invoice's lines and attachments are. */
+@Component({
+  selector: 'tm-test-direct-tabs-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-card flush>
+      <tm-details-tabs>
+        <tm-details-tab id="contacts" collection="Contacts">
+          <ng-template tmDetailsTabContent><p class="tm-test-contacts">The contacts</p></ng-template>
+        </tm-details-tab>
+      </tm-details-tabs>
+    </tm-details-card>
+  `,
+})
+class TmTestDirectTabsLayout {}
+
+/** Tabs in a card's field grid, inside an element that is not a section. */
 @Component({
   selector: 'tm-test-grid-tabs-layout',
   imports: [TmDetailsKit],
   template: `
     <tm-details-card>
-      <tm-details-tabs><tm-details-tab id="a" labelKey="Code" /></tm-details-tabs>
+      <div>
+        <tm-details-tabs><tm-details-tab id="a" labelKey="Code" /></tm-details-tabs>
+      </div>
     </tm-details-card>
   `,
 })
 class TmTestGridTabsLayout {}
+
+/** Tabs whose first tab holds a field and whose second shows the contacts. */
+@Component({
+  selector: 'tm-test-error-tabs-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-tabs>
+      <tm-details-tab id="general" labelKey="Code">
+        <ng-template tmDetailsTabContent><tm-field path="Code" /></ng-template>
+      </tm-details-tab>
+      <tm-details-tab id="contacts" collection="Contacts">
+        <ng-template tmDetailsTabContent><p class="tm-test-contacts">The contacts</p></ng-template>
+      </tm-details-tab>
+    </tm-details-tabs>
+  `,
+})
+class TmTestErrorTabsLayout {}
+
+/** Tabs whose selection a layout binds both ways. */
+@Component({
+  selector: 'tm-test-selected-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-tabs [(selected)]="selected">
+      <tm-details-tab id="contacts" collection="Contacts">
+        <ng-template tmDetailsTabContent><p class="tm-test-contacts">The contacts</p></ng-template>
+      </tm-details-tab>
+      <tm-details-tab id="notes" labelKey="Name">
+        <ng-template tmDetailsTabContent><p class="tm-test-notes">The notes</p></ng-template>
+      </tm-details-tab>
+    </tm-details-tabs>
+  `,
+})
+class TmTestSelectedLayout {
+  /** The latest instance. */
+  static latest: TmTestSelectedLayout | null = null;
+
+  /** The selected tab, which the tabs write back. */
+  readonly selected = signal<string | undefined>('notes');
+
+  /** Keeps the instance for the test. */
+  constructor() {
+    TmTestSelectedLayout.latest = this;
+  }
+}
+
+/** One of the record's extras, as its template receives it. */
+@Component({
+  selector: 'tm-test-extra-layout',
+  imports: [TmDetailsKit],
+  template: `<p class="tm-test-extra" *tmDetailsExtra="'permissions'; let rows">{{ text(rows) }}</p>`,
+})
+class TmTestExtraLayout {
+  /**
+   * The extra's value as text.
+   *
+   * @param rows - What the template receives.
+   * @returns Its JSON.
+   */
+  protected text(rows: unknown): string {
+    return JSON.stringify(rows);
+  }
+}
+
+/** The audit card alone. */
+@Component({
+  selector: 'tm-test-audit-layout',
+  imports: [TmDetailsKit],
+  template: `<tm-details-audit />`,
+})
+class TmTestAuditLayout {}
 
 /** Two tabs of one id. */
 @Component({
@@ -187,23 +278,6 @@ class TmTestTwinAsidesLayout {}
   template: `<p *tmDetailsExtra="'related-documents'; let rows">{{ rows }}</p>`,
 })
 class TmTestUndeclaredExtraLayout {}
-
-/** Acme's customer layout, as the distribution writes it. */
-@Component({
-  selector: 'tm-test-customer-layout',
-  imports: [TmDetailsKit],
-  template: `
-    <tm-details-card>
-      <tm-field path="Name" />
-      <tm-field path="Code" />
-      <tm-field path="CustomerType" />
-      <tm-field path="Currency" />
-      <tm-field path="CreditLimit" />
-    </tm-details-card>
-    <tm-details-audit />
-  `,
-})
-class TmTestCustomerLayout {}
 
 /** A rendered layout. */
 interface TmTestRendered {
@@ -283,6 +357,20 @@ describe("the details page's layout kit", () => {
   }
 
   /**
+   * A node of the form, by its json names and row indices.
+   *
+   * @param rendered - The rendering.
+   * @param path - The path.
+   * @returns The node.
+   */
+  function nodeAt(rendered: TmTestRendered, ...path: readonly (string | number)[]): () => { readonly value: { set(value: unknown): void }; markAsTouched(): void } {
+    return path.reduce<unknown>((node, segment) => (node as Readonly<Record<string | number, unknown>>)[segment], rendered.details.form) as () => {
+      readonly value: { set(value: unknown): void };
+      markAsTouched(): void;
+    };
+  }
+
+  /**
    * Enters edit mode and waits for the edit controls to load.
    *
    * @param rendered - The rendering.
@@ -346,6 +434,62 @@ describe("the details page's layout kit", () => {
       expect(TmTestCounted.made).toEqual(['view', 'edit']);
     });
 
+    describe('when the edit side fails to load', () => {
+      const load = ɵtmFieldEditorLoader.load;
+
+      afterEach(() => {
+        ɵtmFieldEditorLoader.load = load;
+      });
+
+      /** Makes every load of the edit side fail, as a chunk that is gone after a deploy does. */
+      function failLoads(): void {
+        ɵtmFieldEditorLoader.load = () => Promise.reject(new Error('The chunk failed to load.'));
+        ɵtmFieldEditorLoader.loaded.set(null);
+      }
+
+      it('loads it again on the mode change after a failed prefetch', async () => {
+        failLoads();
+        const rendered = await render(TmTestKindsLayout);
+        await tmSettle();
+        ɵtmFieldEditorLoader.load = load;
+
+        await edit(rendered);
+        const code = await rendered.loader.getHarness(TmFieldHarness.with({ path: 'Code' }));
+        expect(await code.getMode()).toBe('edit');
+      });
+
+      it('says so in each editable field with Try again, and Try again loads the controls', async () => {
+        failLoads();
+        const rendered = await render(TmTestKindsLayout);
+        rendered.details.edit();
+        await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('.tm-field__failed') !== null, 'the failure shows');
+
+        const code = rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"]') as HTMLElement;
+        expect(code.querySelector('.tm-field__failed [role="alert"]')?.textContent?.trim()).toBe("This field couldn't be loaded for editing.");
+        expect(code.querySelector('tm-form-field')).toBeNull();
+        // A read-only field shows its lock, as it does whenever the edit side loads.
+        expect(rendered.fixture.nativeElement.querySelector('[data-tm-field="Rank"] .tm-field__failed')).toBeNull();
+
+        ɵtmFieldEditorLoader.load = load;
+        code.querySelector<HTMLButtonElement>('.tm-field__retry')!.click();
+        await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"] tm-form-field') !== null, 'the controls load');
+        expect(rendered.fixture.nativeElement.querySelector('.tm-field__failed')).toBeNull();
+      });
+
+      it("loads it on a field's focus() after a failed load, and focuses the control", async () => {
+        failLoads();
+        const rendered = await render(TmTestKindsLayout);
+        rendered.details.edit();
+        await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('.tm-field__failed') !== null, 'the failure shows');
+
+        ɵtmFieldEditorLoader.load = load;
+        rendered.record.fields().get('Code')!.focus();
+        await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"] tm-form-field') !== null, 'the controls load');
+        await tmSettle();
+        expect(rendered.fixture.nativeElement.querySelector('[data-tm-field="Code"]').contains(document.activeElement)).toBe(true);
+      });
+    });
+
     it('registers each cell with the record, editable outside view mode', async () => {
       const rendered = await render(TmTestKindsLayout);
       const fields = rendered.record.fields();
@@ -403,10 +547,141 @@ describe("the details page's layout kit", () => {
       await tabs.selectTab(labels[1]!);
       expect(rendered.record.view.tabs()).toEqual({ main: 'notes' });
     });
+
+    it('renders tabs that are its own child as its section, unmarked', async () => {
+      const rendered = await render(TmTestDirectTabsLayout);
+      const tabs = await rendered.loader.getHarness(TmTabGroupHarness);
+
+      expect(rendered.fixture.nativeElement.querySelector('.tm-details-card__body > tm-details-tabs')).not.toBeNull();
+      expect(rendered.fixture.nativeElement.querySelector('.tm-details-card__grid tm-details-tabs')).toBeNull();
+      expect(await tabs.getActivePanelText()).toContain('The contacts');
+    });
+  });
+
+  describe('tabs', () => {
+    /**
+     * Each tab's error name, or `null` while it holds no error, and whether its dot shows.
+     *
+     * @param rendered - The rendering.
+     * @returns The states, in tab order.
+     */
+    function errorStates(rendered: TmTestRendered): { readonly name: string | null; readonly dot: boolean }[] {
+      const labels = [...(rendered.fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.tm-details-tabs__label')];
+      return labels.map((label) => ({
+        name: label.querySelector('.tm-details-tabs__name')?.textContent?.trim() ?? null,
+        dot: label.querySelector('.tm-details-tabs__dot--on') !== null,
+      }));
+    }
+
+    it('shows the error dot and the error name on a tab whose field shows an error, and on one whose collection holds an error, selected or not', async () => {
+      const rendered = await render(TmTestErrorTabsLayout);
+      await edit(rendered);
+      expect(errorStates(rendered)).toEqual([
+        { name: null, dot: false },
+        { name: null, dot: false },
+      ]);
+
+      // A field on the selected tab, touched and empty.
+      const code = nodeAt(rendered, 'code');
+      code().value.set('');
+      code().markAsTouched();
+      await tmSettle();
+      expect(errorStates(rendered)[0]).toEqual({ name: 'Code, has errors', dot: true });
+
+      // A row of the unselected tab's collection, touched and empty.
+      const contact = nodeAt(rendered, 'contacts', 0, 'name');
+      contact().value.set('');
+      contact().markAsTouched();
+      await tmSettle();
+      const [, contacts] = errorStates(rendered);
+      expect(contacts!.dot).toBe(true);
+      expect(contacts!.name).toMatch(/, has errors$/);
+    });
+
+    it('binds its selection both ways: the layout selects a tab, and a click writes the selection back', async () => {
+      const rendered = await render(TmTestSelectedLayout);
+      const tabs = await rendered.loader.getHarness(TmTabGroupHarness);
+      expect(await tabs.getActivePanelText()).toContain('The notes');
+
+      TmTestSelectedLayout.latest!.selected.set('contacts');
+      await tmSettle();
+      expect(await tabs.getActivePanelText()).toContain('The contacts');
+
+      const labels = await Promise.all((await tabs.getTabs()).map((tab) => tab.getLabel()));
+      await tabs.selectTab(labels[1]!);
+      await tmSettle();
+      expect(TmTestSelectedLayout.latest!.selected()).toBe('notes');
+      expect(rendered.record.view.tabs()).toEqual({ main: 'notes' });
+    });
+  });
+
+  describe('extras', () => {
+    /**
+     * The extra's rendered text.
+     *
+     * @param rendered - The rendering.
+     * @returns The text, or `null` while nothing renders.
+     */
+    function shown(rendered: TmTestRendered): string | null {
+      return (rendered.fixture.nativeElement as HTMLElement).querySelector('.tm-test-extra')?.textContent ?? null;
+    }
+
+    it('holds three skeleton lines while the record loads with nothing held, then renders the value', async () => {
+      const rendered = await render(TmTestExtraLayout, { record: undefined, id: 5 });
+      const skeleton = (rendered.fixture.nativeElement as HTMLElement).querySelector('tm-skeleton');
+
+      expect(skeleton?.querySelectorAll('.tm-skeleton__bar')).toHaveLength(3);
+      expect(shown(rendered)).toBeNull();
+
+      rendered.details.land({ entity: CUSTOMER, extras: { permissions: [{ id: 5 }] } });
+      await tmSettle();
+      expect((rendered.fixture.nativeElement as HTMLElement).querySelector('tm-skeleton')).toBeNull();
+      expect(shown(rendered)).toBe('[{"id":5}]');
+    });
+
+    it('renders nothing when the read returned no such extra', async () => {
+      const rendered = await render(TmTestExtraLayout, { record: { entity: CUSTOMER, extras: {} } });
+
+      expect(shown(rendered)).toBeNull();
+      expect((rendered.fixture.nativeElement as HTMLElement).querySelector('tm-skeleton')).toBeNull();
+    });
+
+    it("gives a query row set's rows as objects keyed by column name, and renders again when the value changes", async () => {
+      const rowSet = { columns: [{ name: 'id' }, { name: 'refused' }], rows: [[5, null], [6]] };
+      const rendered = await render(TmTestExtraLayout, { record: { entity: CUSTOMER, extras: { permissions: rowSet } } });
+
+      expect(shown(rendered)).toBe('[{"id":5,"refused":null},{"id":6,"refused":null}]');
+
+      rendered.details.land({ entity: CUSTOMER, extras: { permissions: { columns: [{ name: 'id' }], rows: [[7]] } } });
+      await tmSettle();
+      expect(shown(rendered)).toBe('[{"id":7}]');
+    });
+  });
+
+  describe('the audit card', () => {
+    it('shows who created and last modified the record and when, in a collapsed card', async () => {
+      const rendered = await render(TmTestAuditLayout);
+      const card = await rendered.loader.getHarness(TmCardHarness);
+      expect(await card.isExpanded()).toBe(false);
+      await card.toggle();
+      const cells = await rendered.loader.getAllHarnesses(TmFieldHarness);
+
+      expect(await Promise.all(cells.map((cell) => cell.getPath()))).toEqual(['CreatedById', 'CreatedAt', 'ModifiedById', 'ModifiedAt']);
+      expect(await cells[0]!.getValueText()).toMatch(/Admin$/);
+      expect(await cells[2]!.getValueText()).toMatch(/Admin$/);
+      expect(await cells[1]!.getValueText()).toMatch(/2026/);
+      expect(await cells[3]!.getValueText()).toMatch(/2026/);
+    });
+
+    it('renders nothing for an entity without audit columns', async () => {
+      const rendered = await render(TmTestAuditLayout, { entity: 'acme.CustomerContact', record: { entity: { id: 11, customerId: 5, name: 'Huda' } } });
+
+      expect((rendered.fixture.nativeElement as HTMLElement).querySelector('tm-details-card')).toBeNull();
+    });
   });
 
   describe('development errors', () => {
-    it('refuses tabs in a card’s field grid, naming the attribute', () => {
+    it('refuses tabs in a card’s field grid, inside an element that is not a section, naming the attribute', () => {
       expect(failure(TmTestGridTabsLayout)).toMatch(/tmDetailsCardSection/);
     });
 
@@ -420,30 +695,6 @@ describe("the details page's layout kit", () => {
 
     it('refuses an extra the entity does not declare', () => {
       expect(failure(TmTestUndeclaredExtraLayout)).toMatch(/'related-documents' is not one acme\.Customer declares/);
-    });
-  });
-
-  describe("Acme's customer layout", () => {
-    it('renders in view mode with the collapsed audit card, and in edit mode shows a message once a field is touched', async () => {
-      const rendered = await render(TmTestCustomerLayout);
-      const cards = await rendered.loader.getAllHarnesses(TmCardHarness);
-
-      expect(await cards[1]!.getHeading()).toBe('Audit info');
-      expect(await cards[1]!.isExpanded()).toBe(false);
-      expect(await (await rendered.loader.getHarness(TmFieldHarness.with({ path: 'Code' }))).getValueText()).toBe('C-005');
-
-      await edit(rendered);
-      const code = await rendered.loader.getHarness(TmFieldHarness.with({ path: 'Code' }));
-      expect(await code.getMode()).toBe('edit');
-
-      const form = rendered.details.form as unknown as Readonly<Record<string, () => { value: { set(value: string): void } }>>;
-      form['code']!().value.set('');
-      await tmSettle();
-      expect(await code.getErrors()).toEqual([]);
-
-      await code.blur();
-      await tmSettle();
-      expect(await code.getErrors()).toEqual(['This field is required']);
     });
   });
 });

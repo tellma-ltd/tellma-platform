@@ -99,7 +99,8 @@ describe("the details page's platform schema", () => {
 
   describe('required', () => {
     it('requires what is not nullable, and leaves a nullable member, a twin and a defaulted member optional', () => {
-      const { tree } = customerForm({});
+      // The read holds a defaulted member's value; a working copy never adds one, which the server fills.
+      const { tree } = customerForm({ rank: null });
 
       expect(kinds(tree.at('code'))).toContain('required');
       expect(kinds(tree.at('name'))).toContain('required');
@@ -196,16 +197,11 @@ describe("the details page's platform schema", () => {
   });
 
   describe('the recorded errors', () => {
-    it("shows each on the node its path reaches while the node keeps the value it had, and on the nearest node a path's end lacks", () => {
-      const errors = signal<readonly TmDetailsServerError[]>([
-        { segments: ['code'], value: 'C-1', error: { kind: 'server', message: 'The code is taken.' } },
-        { segments: ['contacts', 0, 'phone'], value: undefined, error: { kind: 'server', message: 'The phone is missing.' } },
-      ]);
-      const { tree } = customerForm({ code: 'C-1', contacts: [{ id: 1, name: 'Huda' }] }, { errors });
-      const contact = tree.at('contacts', 0);
+    it('shows each on the node its path reaches while the node keeps the value it had', () => {
+      const errors = signal<readonly TmDetailsServerError[]>([{ segments: ['code'], value: 'C-1', error: { kind: 'server', message: 'The code is taken.' } }]);
+      const { tree } = customerForm({ code: 'C-1' }, { errors });
 
       expect(tree.at('code')().errors()).toEqual([expect.objectContaining({ kind: 'server', message: 'The code is taken.' })]);
-      expect(contact().errors()).toEqual([]);
 
       tree.at('code')().value.set('C-2');
       expect(kinds(tree.at('code'))).toEqual([]);
@@ -213,11 +209,27 @@ describe("the details page's platform schema", () => {
       tree.at('code')().value.set('C-1');
       expect(kinds(tree.at('code'))).toEqual(['server']);
     });
+
+    it("shows one whose path's end the form lacks on the nearest node, while that node keeps the value it had", () => {
+      const errors = signal<readonly TmDetailsServerError[]>([]);
+      const { tree, model } = customerForm({ code: 'C-1', contacts: [{ id: 1, name: 'Huda' }] }, { errors });
+      const contact = tree.at('contacts', 0);
+      // The row has no phone member: the walk stops at the row, whose value the error records.
+      const row = (model()['contacts'] as readonly TmJsonObject[])[0];
+      errors.set([{ segments: ['contacts', 0, 'phone'], value: row, error: { kind: 'server', message: 'The phone is missing.' } }]);
+
+      expect(contact().errors()).toEqual([expect.objectContaining({ kind: 'server', message: 'The phone is missing.' })]);
+
+      // An edit of the row replaces its value, so the error no longer shows.
+      tree.at('contacts', 0, 'name')().value.set('Omar');
+      expect(kinds(contact)).toEqual([]);
+    });
   });
 
   describe('the child rows', () => {
     it("gives every row its entity's rules, and the key to the parent none, since the server writes it", () => {
-      const { tree } = customerForm({ contacts: [{ id: 1, name: '' }] });
+      // The read holds the key, which the working copy never adds to a row.
+      const { tree } = customerForm({ contacts: [{ id: 1, customerId: 5, name: '' }] });
 
       expect(kinds(tree.at('contacts', 0, 'name'))).toEqual(['required']);
       expect(kinds(tree.at('contacts', 0, 'customerId'))).toEqual([]);

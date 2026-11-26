@@ -169,6 +169,7 @@ export {
   type TmEntityActionDeclaration,
   type TmEntityDeclaration,
   type TmEntityDeclarationInput,
+  type TmEntityRules,
   type TmFilterSource,
   type TmOrderInput,
   type TmPickerDeclaration,

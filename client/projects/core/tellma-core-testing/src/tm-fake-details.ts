@@ -8,6 +8,7 @@ import {
   type TmApiError,
   TmEntities,
   type TmEntityDescriptor,
+  type TmEntityRules,
   type TmId,
   type TmJsonObject,
   type TmPageAction,
@@ -49,6 +50,12 @@ export interface TmFakeDetailsOptions<T> {
   readonly id?: TmId | null;
   /** The abilities, all `true` by default. */
   readonly can?: Partial<Readonly<Record<'edit' | 'create' | 'delete' | 'activate', boolean>>>;
+  /**
+   * The declaration's rules, as its `validate` loader resolves them: the
+   * form applies them after the platform's. The fake builds the form at
+   * once, so it never loads them itself.
+   */
+  readonly rules?: TmEntityRules<T>;
 }
 
 /**
@@ -235,6 +242,7 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
     descriptor,
     host,
     parent: injector,
+    rules: options.rules,
   });
   host.record = record;
   if (created) {

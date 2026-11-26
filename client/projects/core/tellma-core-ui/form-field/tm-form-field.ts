@@ -224,7 +224,7 @@ export class TmFormField {
    *
    * All of them, not the first: the popover has room, and a field that
    * reports one problem, gets corrected, then reports the next reads as the
-   * form moving the goalposts.
+   * form moving the goalposts. A message two rules report shows once.
    */
   protected readonly errorTexts = computed<readonly string[]>(() => {
     const control = this.control();
@@ -238,7 +238,8 @@ export class TmFormField {
       }) &&
       control.localizedErrors().length > 0
     ) {
-      return control.localizedErrors().map((error) => error.message);
+      // Two rules that report the same message, such as the platform's and a form's own required, show it once.
+      return [...new Set(control.localizedErrors().map((error) => error.message))];
     }
     return this.error() === '' ? [] : [this.error()];
   });

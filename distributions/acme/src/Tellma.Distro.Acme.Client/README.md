@@ -7,8 +7,10 @@ and one theme delta. Everything else, from the routes to the service worker, the
 | Path | Holds |
 |---|---|
 | `src/app.config.ts` | `appConfig`: one `provideTellma` call with the emitted metadata, the languages (`tmEnglish()`, the default, then `tmArabic()`) and the features, Acme's last |
-| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`): `acme.Customer`'s details page so far |
+| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`): `acme.Customer`'s details page so far, with its layout and its form's own rules, each loaded on demand |
 | `src/app/customers/customer-details.ts` | The customer details layout, the body of `/{t}/customers/{id}`: one card of the name (a field per tenant language), code, type, currency and credit limit in the platform's layout kit, then the collapsed audit card; each field labels, formats and edits its value from the descriptors, and the host owns the record's lifecycle, modes, header and errors |
+| `src/app/customers/customer-details.spec.ts` | The layout's unit test over a fake details context: its fields and collapsed audit card in view mode, a touched empty field's message once in edit mode, and the corporate credit-limit rule |
+| `src/app/customers/customer-rules.ts` | The customer form's own rules, which the page applies after the platform's: a corporate customer needs a credit limit; it loads with the layout, so Signal Forms stays out of the first load |
 | `src/main.ts` | The entry point: `bootstrapTellma(appConfig)`, which starts the framework's root component in `<tm-app>` |
 | `src/index.html` | `<base href="/">`, the manifest, the colour-scheme meta and `tm-boot.js` as the first script |
 | `src/styles.css` | The platform's stylesheets and Arabic's fonts, by import, then Acme's one theme delta, `--color-primary` in `@layer tm.theme` |

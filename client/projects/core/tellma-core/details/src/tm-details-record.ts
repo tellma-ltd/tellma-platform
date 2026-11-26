@@ -21,6 +21,7 @@ import { type FieldTree, form, type SchemaPathTree } from '@angular/forms/signal
 import {
   type TmApiError,
   type TmEntityDescriptor,
+  type TmEntityRules,
   type TmEntities,
   type TmId,
   type TmJson,
@@ -96,6 +97,8 @@ export interface TmDetailsRecordInit<T> {
   readonly host: TmDetailsHostView<T>;
   /** The injector the record's own injector descends from. */
   readonly parent: Injector;
+  /** The declaration's rules, once loaded; a record that starts without them takes them with {@link TmDetailsRecordState.ɵrules}. */
+  readonly rules?: TmEntityRules<T>;
 }
 
 /** The layout's aside, as the kit registers it for the frame to render. */
@@ -228,8 +231,11 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
   /** The base: the server copy when edit began, or the new record's start in create mode. */
   readonly base = signal<T | null>(null);
 
-  /** The Signal Forms tree over the working copy. */
-  readonly form: FieldTree<T>;
+  /** The Signal Forms tree over the working copy; rebuilt once when the declaration's rules arrive after the record started. */
+  form: FieldTree<T>;
+
+  /** Whether the form carries the declaration's rules, or the declaration has none to wait for. */
+  #ruled = false;
 
   /** Whether the record's data has landed: a read or a save filled it, or it is a new record. */
   readonly landed: WritableSignal<boolean>;
@@ -310,15 +316,8 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
     this.injector.get(TmLocalization).ɵregisterStrings('details', TM_DETAILS_STRINGS_EN);
 
     // --- The form: one tree per record, the platform's schema first, then the declaration's (spec 0031 §4.2, §7) ---
-    const descriptor = init.descriptor;
-    const validate = descriptor.declaration['validate'] as ((path: SchemaPathTree<T>) => void) | undefined;
-    const options = { mode: this.mode, uploads: this.uploads, errors: this.errors, child: (entity: string) => this.#child(entity) };
-    this.form = runInInjectionContext(this.injector, () =>
-      form(this.model, (path) => {
-        tmDetailsPlatformSchema(path, descriptor, options);
-        validate?.(path as SchemaPathTree<T>);
-      }),
-    );
+    this.form = this.#build(init.rules);
+    this.#ruled = init.rules !== undefined;
 
     // --- Dirty by reference: a write copies the objects on its path, never the base ---
     this.dirty = computed(() => this.mode() !== 'view' && this.model() !== this.base());
@@ -509,6 +508,38 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
   registerScroller(id: string, element: HTMLElement, destroyRef: DestroyRef): void {
     this.view.scrollers.update((scrollers) => new Map(scrollers).set(id, element));
     destroyRef.onDestroy(() => this.view.scrollers.update((scrollers) => (scrollers.get(id) === element ? without(scrollers, id) : scrollers)));
+  }
+
+  /**
+   * Takes the declaration's rules, which load with the layout: a record
+   * that started before they loaded rebuilds its form with them once,
+   * before the layout renders, so nothing has read the form without them.
+   *
+   * @param rules - The rules.
+   */
+  ɵrules(rules: TmEntityRules<T>): void {
+    if (this.#ruled) {
+      return;
+    }
+    this.#ruled = true;
+    this.form = this.#build(rules);
+  }
+
+  /**
+   * Builds the form over the working copy: the platform's rules, then the declaration's.
+   *
+   * @param rules - The declaration's rules, if any.
+   * @returns The form.
+   */
+  #build(rules: TmEntityRules<T> | undefined): FieldTree<T> {
+    const descriptor = this.descriptor;
+    const options = { mode: this.mode, uploads: this.uploads, errors: this.errors, child: (entity: string) => this.#child(entity) };
+    return runInInjectionContext(this.injector, () =>
+      form(this.model, (path: SchemaPathTree<T>) => {
+        tmDetailsPlatformSchema(path, descriptor, options);
+        rules?.(path);
+      }),
+    );
   }
 
   /** Ends the record: its form's effects, its registrations and everything rendered in its injector. */

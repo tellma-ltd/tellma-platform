@@ -15,6 +15,7 @@ import { Injector } from '@angular/core';
 import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
@@ -194,6 +195,7 @@ export interface TmFakeDetailsOptions<T> {
     readonly id?: TmId | null;
     readonly mode?: TmDetailsMode;
     readonly record?: TmDetailsRecord<T>;
+    readonly rules?: TmEntityRules<T>;
 }
 
 // @public

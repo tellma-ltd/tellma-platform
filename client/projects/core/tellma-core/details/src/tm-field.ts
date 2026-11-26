@@ -25,9 +25,11 @@ import {
   TemplateRef,
   type Type,
   untracked,
+  type WritableSignal,
 } from '@angular/core';
 import type { FieldTree } from '@angular/forms/signals';
 import { ɵtmControlSize } from '@tellma/core-ui';
+import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import {
@@ -144,13 +146,24 @@ function loadEditor(): Promise<Type<unknown>> {
   editorType ??= import('@tellma/core/entity-editing').then(
     ({ ɵTmFieldEditor }) => ɵTmFieldEditor,
     (error: unknown) => {
-      // A failed load tries again on the next mode change.
+      // A failed load is forgotten, so the next attempt downloads it again.
       editorType = null;
       throw error;
     },
   );
   return editorType;
 }
+
+/**
+ * The edit side's loader, which a test may replace to fail or delay it, and
+ * the editor once any field has loaded it, which every field then shows.
+ */
+export const ɵtmFieldEditorLoader: {
+  /** Loads the edit side and resolves its editor's component. */
+  load: () => Promise<Type<unknown>>;
+  /** The editor's component once a load succeeds, so one field's Try again or focus() serves them all. */
+  readonly loaded: WritableSignal<Type<unknown> | null>;
+} = { load: loadEditor, loaded: signal(null) };
 
 /** A multilingual twin's path: the group's name, then its slot. */
 const TWIN = /^(.+?)([23])$/;
@@ -173,7 +186,7 @@ const TWIN = /^(.+?)([23])$/;
  */
 @Component({
   selector: 'tm-field',
-  imports: [NgComponentOutlet, NgTemplateOutlet, TmIcon, TmSkeleton, TmValue],
+  imports: [NgComponentOutlet, NgTemplateOutlet, TmButton, TmIcon, TmSkeleton, TmValue],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-field' },
   styles: `
@@ -284,6 +297,18 @@ const TWIN = /^(.+?)([23])$/;
       font-size: var(--field-hint-font-size);
       line-height: var(--leading-snug);
     }
+
+    /* The edit side's failed load: the message in the error colour, then Try again. */
+    .tm-field__failed {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+      margin: 0;
+      color: var(--error);
+      font-size: var(--field-hint-font-size);
+      line-height: var(--leading-snug);
+    }
   `,
   template: `
     @for (cell of cells(); track cell.key) {
@@ -312,7 +337,7 @@ const TWIN = /^(.+?)([23])$/;
           @if (editor(); as component) {
             <ng-container *ngComponentOutlet="component; inputs: editorInputs(cell)" />
           } @else {
-            <ng-container [ngTemplateOutlet]="valueCell" [ngTemplateOutletContext]="{ $implicit: cell, locked: false }" />
+            <ng-container [ngTemplateOutlet]="valueCell" [ngTemplateOutletContext]="{ $implicit: cell, locked: false, failed: editorFailed() }" />
           }
         } @else {
           <!-- View mode, and a read-only field in edit mode, which shows its lock. -->
@@ -322,7 +347,7 @@ const TWIN = /^(.+?)([23])$/;
     }
 
     <!-- A cell's value: the term, the value box with the layout's own view or tm-value, and the hint. -->
-    <ng-template #valueCell let-cell let-locked="locked">
+    <ng-template #valueCell let-cell let-locked="locked" let-failed="failed">
       <dl class="tm-field__view">
         <div class="tm-field__item">
           <dt class="tm-field__label">{{ cell.label() }}</dt>
@@ -340,6 +365,13 @@ const TWIN = /^(.+?)([23])$/;
           </dd>
           @if (hint()) {
             <dd class="tm-field__hint">{{ hint() }}</dd>
+          }
+          @if (failed) {
+            <!-- The edit side failed to load: say so, and offer the load again. -->
+            <dd class="tm-field__failed">
+              <span role="alert">{{ editorFailedText() }}</span>
+              <button tmButton class="tm-field__retry" type="button" variant="ghost" size="sm" (click)="retryEditor()">{{ retryText() }}</button>
+            </dd>
           }
         </div>
       </dl>
@@ -400,8 +432,17 @@ export class TmField {
   /** Whether the record loads with nothing held: skeletons, and no template. */
   protected readonly loading = computed(() => this.#record.status() === 'loading' && !this.#record.landed());
 
-  /** The editor's component, once loaded. */
-  protected readonly editor = signal<Type<unknown> | null>(null);
+  /** The editor's component, once any field has loaded it. */
+  protected readonly editor: Signal<Type<unknown> | null> = ɵtmFieldEditorLoader.loaded.asReadonly();
+
+  /** Whether the edit side failed to load outside view mode, so the field says so in place of a control. */
+  protected readonly editorFailed = signal(false);
+
+  /** The failed load's message. */
+  protected readonly editorFailedText = computed(() => this.#l10n.ɵtext('tm.details.editorFailed')());
+
+  /** The failed load's retry label. */
+  protected readonly retryText = computed(() => this.#l10n.ɵtext('tm.details.retry')());
 
   /** The accessible text of the lock. */
   protected readonly readOnlyText = computed(() => this.#l10n.ɵtext('tm.details.readOnly')());
@@ -445,13 +486,12 @@ export class TmField {
     });
 
     // --- The editor loads once the record may be edited, so Edit finds it ready ---
+    // Both signals are read on every run, so a failed prefetch loads again when the mode changes.
     effect(() => {
-      const wanted = this.#record.can.edit() || this.#record.mode() !== 'view';
-      if (wanted && this.editor() === null) {
-        loadEditor().then(
-          (component) => this.editor.set(component),
-          () => undefined,
-        );
+      const editable = this.#record.can.edit();
+      const mode = this.#record.mode();
+      if ((editable || mode !== 'view') && this.editor() === null) {
+        untracked(() => void this.#loadEditor());
       }
     });
   }
@@ -464,6 +504,32 @@ export class TmField {
    */
   protected editing(cell: ɵTmFieldCell): boolean {
     return this.mode() !== 'view' && !this.#locked(cell);
+  }
+
+  /** Loads the edit side again after a failed load: the failed load's Try again. */
+  protected retryEditor(): void {
+    void this.#loadEditor();
+  }
+
+  /**
+   * Loads the edit side and takes its editor. A failure outside view mode
+   * shows the failed load's message, which the next mode change, focus or
+   * Try again loads past; a failed prefetch in view mode shows nothing.
+   *
+   * @returns Whether the editor loaded.
+   */
+  #loadEditor(): Promise<boolean> {
+    return ɵtmFieldEditorLoader.load().then(
+      (component) => {
+        this.editorFailed.set(false);
+        ɵtmFieldEditorLoader.loaded.set(component);
+        return true;
+      },
+      () => {
+        this.editorFailed.set(untracked(this.#record.mode) !== 'view');
+        return false;
+      },
+    );
   }
 
   /**
@@ -557,13 +623,13 @@ export class TmField {
         () => {
           const box = this.#element.querySelector<HTMLElement>(`[data-tm-field="${CSS.escape(cell.key)}"]`);
           const control = box?.querySelector<HTMLElement>(
-            'input:not([type="hidden"]), textarea, select, button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            'input:not([type="hidden"]), textarea, select, button:not([disabled]):not(.tm-field__retry), [tabindex]:not([tabindex="-1"])',
           );
           if (control) {
             control.focus();
           } else if (retry && this.editing(cell) && this.editor() === null) {
-            // The edit side is still loading: focus once it renders.
-            void loadEditor().then(() => attempt(false));
+            // The edit side is still loading, or failed: load it, then focus once it renders.
+            void this.#loadEditor().then((loaded) => loaded && attempt(false));
           } else {
             box?.querySelector<HTMLElement>('.tm-field__box')?.focus();
           }
@@ -576,8 +642,9 @@ export class TmField {
 
   /**
    * Whether a cell takes no input in edit mode: a dotted path, the
-   * field's `readonly`, a value its ownership keeps from the user, or one
-   * the form's schema makes read-only.
+   * field's `readonly`, a value its ownership keeps from the user, one
+   * the form's schema makes read-only, or a member the working copy lacks,
+   * such as a defaulted one a new record leaves for the server to fill.
    *
    * @param cell - The cell.
    * @returns Whether it is read-only.
@@ -590,7 +657,7 @@ export class TmField {
     if (ownership !== 'editable' && !(ownership === 'write-once' && this.mode() === 'create')) {
       return true;
     }
-    return this.#node(cell)?.().readonly() ?? false;
+    return this.#node(cell)?.().readonly() ?? true;
   }
 
   /**

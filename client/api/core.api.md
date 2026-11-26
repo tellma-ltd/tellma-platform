@@ -868,7 +868,9 @@ export interface TmEntityDeclarationInput<N extends string = string> {
     readonly synonymsKey?: string;
     readonly tabs?: readonly TmTabDeclaration[];
     readonly tile?: TmTileDeclaration<N>;
-    readonly validate?: (path: SchemaPathTree<TmEntityType<N>>) => void;
+    readonly validate?: () => Promise<TmEntityRules<TmEntityType<N>> | {
+        readonly default: TmEntityRules<TmEntityType<N>>;
+    }>;
     readonly visibleWhen?: (context: TmNavContext) => boolean;
 }
 
@@ -926,6 +928,9 @@ export interface TmEntityMetadata extends TmEntitySummary {
 
 // @public
 export type TmEntityOperation = 'delete' | 'details' | 'export' | 'import' | 'query' | 'save';
+
+// @public
+export type TmEntityRules<T> = (path: SchemaPathTree<T>) => void;
 
 // @public
 export interface TmEntityShapes {

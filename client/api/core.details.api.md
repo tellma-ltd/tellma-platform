@@ -4,6 +4,7 @@
 
 ```ts
 
+import { AfterContentInit } from '@angular/core';
 import { DestroyableInjector } from '@angular/core';
 import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
@@ -54,7 +55,7 @@ export class TmDetailsAudit {
 }
 
 // @public
-export class TmDetailsCard implements OnInit {
+export class TmDetailsCard implements OnInit, AfterContentInit {
     constructor();
     readonly collapsed: InputSignalWithTransform<boolean, unknown>;
     readonly collapsible: InputSignalWithTransform<boolean, unknown>;
@@ -62,13 +63,14 @@ export class TmDetailsCard implements OnInit {
     protected readonly expanded: i0.WritableSignal<boolean>;
     readonly flush: InputSignalWithTransform<boolean, unknown>;
     readonly id: InputSignal<string | undefined>;
+    ngAfterContentInit(): void;
     ngOnInit(): void;
     readonly scope: TmDetailsScope;
     readonly scrollable: InputSignal<number | undefined>;
     protected readonly title: i0.Signal<string | undefined>;
     readonly titleKey: InputSignal<string | undefined>;
     readonly width: InputSignal<'full' | 'half'>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsCard, "tm-details-card", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; "id": { "alias": "id"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "columns": { "alias": "columns"; "required": false; "isSignal": true; }; "collapsible": { "alias": "collapsible"; "required": false; "isSignal": true; }; "collapsed": { "alias": "collapsed"; "required": false; "isSignal": true; }; "scrollable": { "alias": "scrollable"; "required": false; "isSignal": true; }; "flush": { "alias": "flush"; "required": false; "isSignal": true; }; }, {}, never, ["*", "[tmDetailsCardSection]"], true, never>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsCard, "tm-details-card", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; "id": { "alias": "id"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "columns": { "alias": "columns"; "required": false; "isSignal": true; }; "collapsible": { "alias": "collapsible"; "required": false; "isSignal": true; }; "collapsed": { "alias": "collapsed"; "required": false; "isSignal": true; }; "scrollable": { "alias": "scrollable"; "required": false; "isSignal": true; }; "flush": { "alias": "flush"; "required": false; "isSignal": true; }; }, {}, ["ownTabs", "allTabs"], ["*", "[tmDetailsCardSection], tm-details-tabs"], true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsCard, never>;
 }
 
@@ -252,7 +254,7 @@ export class TmDetailsTabContent {
 }
 
 // @public
-export class TmDetailsTabs implements OnInit {
+export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
     constructor();
     protected errorName(tab: TmDetailsTab): string;
     readonly id: InputSignal<string>;
@@ -280,7 +282,9 @@ export class TmField {
     protected readonly cells: Signal<readonly ɵTmFieldCell[]>;
     readonly create: InputSignalWithTransform<boolean, unknown>;
     protected editing(cell: ɵTmFieldCell): boolean;
-    protected readonly editor: i0.WritableSignal<Type<unknown> | null>;
+    protected readonly editor: Signal<Type<unknown> | null>;
+    protected readonly editorFailed: WritableSignal<boolean>;
+    protected readonly editorFailedText: Signal<string>;
     protected editorInputs(cell: ɵTmFieldCell): Readonly<Record<string, unknown>>;
     protected readonly editTemplate: Signal<TmFieldEdit | undefined>;
     readonly filter: InputSignal<string | null>;
@@ -290,10 +294,12 @@ export class TmField {
     readonly labelKey: InputSignal<string | undefined>;
     protected readonly loading: Signal<boolean>;
     protected readonly lockIcon: lucide.IconNode;
-    protected readonly mode: i0.WritableSignal<_tellma_core_details.TmDetailsMode>;
+    protected readonly mode: WritableSignal<_tellma_core_details.TmDetailsMode>;
     readonly path: InputSignal<string>;
     readonly readonly: InputSignalWithTransform<boolean, unknown>;
     protected readonly readOnlyText: Signal<string>;
+    protected retryEditor(): void;
+    protected readonly retryText: Signal<string>;
     protected readonly size: Signal<_tellma_core_ui.TmControlSize>;
     readonly span: InputSignal<1 | 2 | undefined>;
     protected valueOf(cell: ɵTmFieldCell): unknown;

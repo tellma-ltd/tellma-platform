@@ -36,4 +36,5 @@ export const TM_DETAILS_STRINGS_EN = {
   hasErrors: '{label}, has errors',
   audit: 'Audit info',
   aside: 'Related information',
+  editorFailed: "This field couldn't be loaded for editing.",
 } as const satisfies TmStringTree;

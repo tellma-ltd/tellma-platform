@@ -29,8 +29,8 @@ import { TmCounter } from '@tellma/core-ui/counter';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { type TmJson, TmLocalization } from '@tellma/core';
 
-import { TmDetailsCard, TmDetailsCardSection } from './tm-details-card';
-import { injectTmDetailsRecord, tmDevMode } from './tm-details-record';
+import { ɵTM_DETAILS_CARD_TABS, TmDetailsCard, TmDetailsCardSection, type ɵTmDetailsCardTabs } from './tm-details-card';
+import { injectTmDetailsRecord } from './tm-details-record';
 import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
 
 // The record's tabs (spec 0031 §6.6), on the component library's
@@ -139,13 +139,14 @@ export class TmDetailsTab {
 
 /**
  * The record's tabs: `tm-details-tab`s on the component library's tab
- * group. Unique by `id` within a layout; inside a `tm-details-card` it
- * needs `tmDetailsCardSection`, which renders it below the field grid.
+ * group. Unique by `id` within a layout; inside a `tm-details-card` it is
+ * the card's own child, or sits in a `tmDetailsCardSection`, and renders
+ * below the field grid.
  *
  * @example
  * ```html
  * <tm-details-card flush>
- *   <tm-details-tabs tmDetailsCardSection>
+ *   <tm-details-tabs>
  *     <tm-details-tab id="lines" collection="Lines"><ng-template tmDetailsTabContent>…</ng-template></tm-details-tab>
  *     <tm-details-tab id="attachments" collection="Attachments"><ng-template tmDetailsTabContent>…</ng-template></tm-details-tab>
  *   </tm-details-tabs>
@@ -157,6 +158,7 @@ export class TmDetailsTab {
   imports: [NgTemplateOutlet, TmCounter, TmTab, TmTabContent, TmTabGroup, TmTabLabel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-details-tabs' },
+  providers: [{ provide: ɵTM_DETAILS_CARD_TABS, useExisting: TmDetailsTabs }],
   styles: `
     :host {
       display: block;
@@ -226,7 +228,7 @@ export class TmDetailsTab {
     </tm-tab-group>
   `,
 })
-export class TmDetailsTabs implements OnInit {
+export class TmDetailsTabs implements OnInit, ɵTmDetailsCardTabs {
   readonly #l10n = inject(TmLocalization);
   readonly #record = injectTmDetailsRecord();
   readonly #destroyRef = inject(DestroyRef);
@@ -243,15 +245,14 @@ export class TmDetailsTabs implements OnInit {
   /** The tab group. */
   private readonly group = viewChild(TmTabGroup);
 
-  /** Refuses tabs in a card's field grid, and remembers the selection. */
+  /** The card around the tabs, which refuses them in its field grid. */
+  readonly ɵcard: TmDetailsCard | null = inject(TmDetailsCard, { optional: true });
+
+  /** Whether the tabs are, or sit in, one of the card's sections; the card checks the rest. */
+  readonly ɵsectioned: boolean = inject(TmDetailsCardSection, { optional: true })?.card === this.ɵcard && this.ɵcard !== null;
+
+  /** Remembers the selection. */
   constructor() {
-    const card = inject(TmDetailsCard, { optional: true });
-    const section = inject(TmDetailsCardSection, { optional: true });
-    if (card !== null && section?.card !== card && tmDevMode()) {
-      throw new Error(
-        'A tm-details-tabs inside a tm-details-card renders in its field grid: mark it, or the element around it, tmDetailsCardSection.',
-      );
-    }
     effect(() => {
       const selected = this.selected();
       const id = this.id();
