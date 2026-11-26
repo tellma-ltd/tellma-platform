@@ -29,7 +29,7 @@ import { ChevronDown, ChevronRight } from 'lucide';
 import { TM_FORM_FIELD_DEFAULTS, TM_UI_TRANSLATE, ɵtmRegisterUiStrings, type TmControlSize } from '@tellma/core-ui';
 import { tmComputeAxisWindow, type TmAxisWindow } from '@tellma/core-ui/grid-engine';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { tmIsApplePlatform, tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform, tmKeysMatch } from '@tellma/core-ui/keys';
 import { ɵTmTooltipController } from '@tellma/core-ui/tooltip';
 
 import {

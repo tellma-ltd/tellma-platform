@@ -6,7 +6,7 @@
 import { afterRenderEffect, ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, untracked, viewChild } from '@angular/core';
 import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2 } from 'lucide';
 
-import { tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmKeysText, type TmKeys } from '@tellma/core-ui/keys';
 import { TmMenu, type TmMenuEntry } from '@tellma/core-ui/menu';
 
 import type { ɵTmGridMenuState, ɵTmGridViewCore } from './grid-core';

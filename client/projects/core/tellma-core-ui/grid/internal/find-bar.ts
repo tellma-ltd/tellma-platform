@@ -17,7 +17,7 @@ import { ChevronDown, ChevronUp, X } from 'lucide';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmKeysMatch } from '@tellma/core-ui/keys';
 
 import type { ɵTmGridViewCore } from './grid-core';
 import { TM_GRID_FIND_KEYS } from './grid-keymap';

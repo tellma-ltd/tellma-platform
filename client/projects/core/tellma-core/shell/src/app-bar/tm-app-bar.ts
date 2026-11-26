@@ -22,7 +22,7 @@ import { TmLocalization, type TmShellSlot, TmTelemetry, TmUrls } from '@tellma/c
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
-import { tmFormatKeys } from '@tellma/core-ui/kbd';
+import { tmFormatKeys } from '@tellma/core-ui/keys';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { Eye, FlaskConical, Menu, Search, Wrench } from 'lucide';
 

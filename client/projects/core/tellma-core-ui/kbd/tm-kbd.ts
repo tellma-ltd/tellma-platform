@@ -5,7 +5,7 @@
 
 import { Component, computed, input } from '@angular/core';
 
-import { tmFormatKeys, tmIsApplePlatform, type TmKeys } from './tm-keys';
+import { tmFormatKeys, tmIsApplePlatform, type TmKeys } from '@tellma/core-ui/keys';
 
 /**
  * Shows a key combination as key caps: one `<kbd>` per key, modifiers

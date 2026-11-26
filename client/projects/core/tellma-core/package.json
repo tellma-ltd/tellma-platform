@@ -103,9 +103,9 @@
       "./shell": { "tm-tenantless": 8.5, "tm-session-panels": 6, "tm-about-dialog": 3, "tm-shortcuts-dialog": 2, "tm-tenant-names": 0.5, "tm-shell-history": 1.5 }
     },
     "staticGraphExcludes": {
-      ".": ["./shell", "./memory", "./recents", "./search-normalize", "./error-paths", "./leader", "./realtime", "./entity", "./entity-editing", "./page-snapshot", "./updates", "./errors", "./expression-editor", "./path-picker", "@tellma/core-ui/menu", "@tellma/core-ui/image", "@tellma/core-ui/l10n-input", "./search", "./drafts", "./details"],
-      "./shell": ["./recents", "./search-normalize", "./error-paths", "./page-snapshot", "./realtime", "@tellma/core-ui/menu", "@tellma/core-ui/image", "@tellma/core-ui/badge"],
-      "./attention": ["./search-normalize", "./error-paths", "./page-snapshot", "./realtime"],
+      ".": ["./shell", "./memory", "./recents", "./search-normalize", "./error-paths", "./leader", "./realtime", "./entity", "./entity-editing", "./page-snapshot", "./updates", "./errors", "./expression-editor", "./path-picker", "@tellma/core-ui/menu", "@tellma/core-ui/image", "@tellma/core-ui/l10n-input", "@tellma/core-ui/kbd", "./search", "./drafts", "./details"],
+      "./shell": ["./recents", "./search-normalize", "./error-paths", "./page-snapshot", "./realtime", "@tellma/core-ui/menu", "@tellma/core-ui/image", "@tellma/core-ui/badge", "@tellma/core-ui/kbd"],
+      "./attention": ["./search-normalize", "./error-paths", "./page-snapshot", "./realtime", "@tellma/core-ui/kbd"],
       "./entity": ["./entity-editing", "./column-filter", "./expression-editor", "./path-picker", "@tellma/core-ui/entity-picker", "@tellma/core-ui/select", "@tellma/core-ui/multi-select", "@tellma/core-ui/date-picker", "@tellma/core-ui/number", "@tellma/core-ui/input", "@tellma/core-ui/form-field", "@angular/forms"],
       "./search": ["./entity-editing", "@tellma/core-ui/entity-picker", "@tellma/core-ui/date-picker", "@tellma/core-ui/number", "@tellma/core-ui/input", "@tellma/core-ui/multi-select", "@angular/forms", "./drafts"],
       "./leader": ["./realtime"]

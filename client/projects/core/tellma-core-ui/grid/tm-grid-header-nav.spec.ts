@@ -15,7 +15,7 @@ import type {} from '@vitest/browser-playwright';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { provideTellmaUi } from '@tellma/core-ui';
 import { TmGridHarness } from '@tellma/core-ui-testing';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 
 import { TmGrid } from './tm-grid';
 import { TmGridColumn } from './tm-grid-column';

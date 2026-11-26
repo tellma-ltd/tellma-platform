@@ -35,7 +35,7 @@ describe('tm/no-platform-sniffing', () => {
         // A computed key the rule cannot read statically.
         'const value = navigator[key];',
         // The supported way.
-        "import { tmIsApplePlatform } from '@tellma/core-ui/kbd';\nconst apple = tmIsApplePlatform();",
+        "import { tmIsApplePlatform } from '@tellma/core-ui/keys';\nconst apple = tmIsApplePlatform();",
       ],
       invalid: [
         {
@@ -125,6 +125,8 @@ describe('tm/no-platform-sniffing scope', { timeout: 120_000 }, () => {
     for (const filePath of [
       'projects/core/tellma-core-ui/grid/internal/x.ts',
       'projects/core/tellma-core-ui/menu/x.spec.ts',
+      // The key caps' entry point reads the platform through the keys grammar too.
+      'projects/core/tellma-core-ui/kbd/x.ts',
       'projects/core/tellma-core/src/app/tm-app-config.ts',
       'projects/module/tellma-module-x/src/x.ts',
     ]) {
@@ -137,10 +139,10 @@ describe('tm/no-platform-sniffing scope', { timeout: 120_000 }, () => {
     }
   });
 
-  it('exempts kbd, which holds the one platform check', async () => {
+  it('exempts keys, which holds the one platform check', async () => {
     for (const filePath of [
-      'projects/core/tellma-core-ui/kbd/x.ts',
-      'projects/core/tellma-core-ui/kbd/x.spec.ts',
+      'projects/core/tellma-core-ui/keys/x.ts',
+      'projects/core/tellma-core-ui/keys/x.spec.ts',
     ]) {
       const ids = await ruleIds(filePath);
       expect(ids, filePath).not.toContainEqual(expect.stringMatching(/^fatal: /));

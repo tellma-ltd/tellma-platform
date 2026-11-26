@@ -44,7 +44,7 @@ import {
   type TmErrorDisplayState,
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
-import { tmIsApplePlatform, tmKeysMatch, tmKeysText } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform, tmKeysMatch, tmKeysText } from '@tellma/core-ui/keys';
 import type {
   TmEntityId,
   TmEntityPickerPage,
