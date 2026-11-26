@@ -312,13 +312,26 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         }
       </span>
 
-      <!-- Refresh re-reads the query; the pager ends the toolbar. -->
-      <button tmButton tmPageToolbarEnd type="button" variant="ghost" data-tm-refresh [attr.aria-label]="text.refresh()" [title]="text.refresh()" (click)="invoke('search.refresh')">
+      <!-- Refresh re-reads the query; the pager ends the toolbar. Both stay hidden, in their boxes, while the
+           first load's skeleton shows: the pager's status takes its width only once the total is known, which
+           moves Refresh, so the pair appears with the first answer in its final geometry. -->
+      <button
+        tmButton
+        tmPageToolbarEnd
+        type="button"
+        variant="ghost"
+        data-tm-refresh
+        [class.tm-search-host__held]="firstLoad()"
+        [attr.aria-label]="text.refresh()"
+        [title]="text.refresh()"
+        (click)="invoke('search.refresh')"
+      >
         <tm-icon [svg]="glyphs.refresh" />
       </button>
       <tm-pager
         tmPageToolbarEnd
         mode="range"
+        [class.tm-search-host__held]="firstLoad()"
         [page]="paging().page"
         [pageSize]="paging().size"
         [pageSizes]="paging().sizes"

@@ -274,6 +274,28 @@ describe('TmSearchHost', () => {
       ]);
     });
 
+    it('holds Refresh and the pager hidden in their boxes until the first read answers', async () => {
+      // The first read waits, so the trailing group is seen while the total is unknown.
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER });
+      const respond = answer(customers(3));
+      rig.api.respond('customers/query', async (call: TmFakeApiCall) => {
+        await held;
+        return respond(call);
+      });
+      await rig.router.navigateByUrl('/17/customers');
+      await tmSettleUntil(() => host()?.querySelector('[data-tm-skeleton]') != null, 'the skeleton shows');
+      const trailing = (): string[] =>
+        [host()!.querySelector('[data-tm-refresh]')!, host()!.querySelector('tm-pager')!].map((element) => getComputedStyle(element).visibility);
+      expect(trailing()).toEqual(['hidden', 'hidden']);
+      expect(host()!.querySelector<HTMLElement>('tm-pager')!.offsetWidth).toBeGreaterThan(0);
+
+      release();
+      await resettle();
+      expect(trailing()).toEqual(['visible', 'visible']);
+    });
+
     it('links the first shown column of the display name to the row’s details page, and opens a row there with its way back', async () => {
       const { page, location } = await open();
       const links = host()!.querySelectorAll<HTMLAnchorElement>('a.tm-search-host__link');
