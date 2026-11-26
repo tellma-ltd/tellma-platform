@@ -13,6 +13,12 @@ namespace Tellma.Identity.E2E
     ///     authenticator: email-code sign-in (code read from the in-process sink), enrollment in
     ///     Account &amp; Security — where the credential must be classified device-bound — sign
     ///     out, then sign back in with the passkey.
+    ///     <para>
+    ///         Every page here arrives with its scripts late, as on a loaded runner, so each press
+    ///         of a passkey button lands before the button is wired unless the flow waits for the
+    ///         page's scripts. The in-proc run of the same ceremony stays at full speed, so the
+    ///         pair covers both paces.
+    ///     </para>
     /// </summary>
     [Collection(E2ECollectionDefinition.Name)]
     [Trait("Category", "E2E")]
@@ -30,6 +36,7 @@ namespace Tellma.Identity.E2E
             {
                 IPage page = await context.NewPageAsync();
                 await using VirtualAuthenticator _ = await VirtualAuthenticator.AttachAsync(context, page);
+                await page.HoldBackScriptsAsync();
 
                 await PasskeyCeremonies.RegisterThenSignInAsync(server, page, prefix: string.Empty, "passkey-user@example.com");
             });

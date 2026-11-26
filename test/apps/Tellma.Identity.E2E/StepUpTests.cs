@@ -53,9 +53,7 @@ namespace Tellma.Identity.E2E
                     // ordering is the point: the session reaches the base tier only, so the request
                     // below genuinely has to step it up rather than being satisfied on arrival.
                     await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, email);
-                    await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
-                    await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-                    await page.WaitForPathAsync("/Identity/Manage/Passkeys");
+                    await PasskeyCeremonies.EnrollPasskeyAsync(page, string.Empty);
 
                     // Enrolling signs the passkey into the session, which would satisfy the tier
                     // without any step-up at all. Signing out and back in with the email code alone
@@ -75,8 +73,11 @@ namespace Tellma.Identity.E2E
 
                     // The response the assertion below is served from is the document carrying the
                     // form, and a browser checks form-action against that document's policy — so
-                    // this is the policy that decides whether the sign-in can complete.
-                    IResponse stepUpResponse = (await page.GotoAsync(AuthorizeUrl(callbackUri)))!;
+                    // this is the policy that decides whether the sign-in can complete. The
+                    // authorization endpoint redirects to the login page, which runs whichever
+                    // passkey ceremony the browser supports.
+                    IResponse stepUpResponse =
+                        (await PasskeyCeremonies.StartPasskeySignInAsync(page, AuthorizeUrl(callbackUri)))!;
 
                     // Read off the response, not the live address. The conditional ceremony starts
                     // on load and a virtual authenticator answers it instantly, so once the policy
@@ -86,9 +87,9 @@ namespace Tellma.Identity.E2E
                     Assert.Contains("/Identity/Account/Login", stepUpResponse.Url, StringComparison.Ordinal);
                     Assert.Contains("stepUp=true", stepUpResponse.Url, StringComparison.Ordinal);
 
-                    await DriveCeremonyAsync(page);
-
-                    if (!await page.ReachedUrlAsync(new Regex("^" + Regex.Escape(callbackUri)), 10000))
+                    // The submission travels through the authorization endpoint to the callback.
+                    // Staying put means the policy refused the navigation, reported below.
+                    if (!await page.ReachedUrlAsync(new Regex("^" + Regex.Escape(callbackUri)), 15000))
                     {
                         stepUpResponse.Headers.TryGetValue("content-security-policy", out string? policy);
                         Assert.Fail(
@@ -101,26 +102,6 @@ namespace Tellma.Identity.E2E
                     Assert.Contains("code=", page.Url, StringComparison.Ordinal);
                     Assert.Empty(await ViolationsAsync(page));
                 });
-        }
-
-        /// <summary>
-        ///     Runs whichever passkey ceremony the page offers. The conditional one starts on load
-        ///     and a virtual authenticator answers it with no prompt, so it usually wins; where
-        ///     conditional mediation is unavailable the explicit button drives the same ceremony.
-        /// </summary>
-        /// <param name="page">The sign-in page.</param>
-        /// <returns>A task that completes once an assertion has been submitted.</returns>
-        private static async Task DriveCeremonyAsync(IPage page)
-        {
-            // The submission navigates away, so leaving the page is itself the signal that the
-            // conditional ceremony ran. Staying put means it never fired — or that the policy
-            // refused the navigation, which the caller reports either way.
-            if (await page.ReachedUrlAsync(new Regex("/connect/authorize|/e2e/callback"), 5000))
-            {
-                return;
-            }
-
-            await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
         }
 
         /// <summary>Signs in with an email code and nothing else, leaving the session at the base tier.</summary>

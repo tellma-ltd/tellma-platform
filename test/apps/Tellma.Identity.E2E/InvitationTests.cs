@@ -38,7 +38,7 @@ namespace Tellma.Identity.E2E
 
                 // One button, and pressing it runs the ceremony rather than navigating to another
                 // page offering the same button again.
-                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await PasskeyCeremonies.CreatePasskeyAsync(page);
 
                 // Enrollment signs the user in, so it lands on the signed-in passkey list.
                 await page.WaitForPathAsync("/Identity/Manage/Passkeys", 15000);
@@ -82,12 +82,10 @@ namespace Tellma.Identity.E2E
                 // wrong user makes the authenticator refuse the ceremony outright — which is the
                 // shape the failure actually takes in a browser.
                 await page.GotoAsync("/Identity/Manage/Passkeys");
-                await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
-                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-                await page.WaitForPathAsync("/Identity/Manage/Passkeys");
+                await PasskeyCeremonies.EnrollPasskeyAsync(page, string.Empty);
 
                 await page.GotoAsync("/Identity/Account/Invitation?code=" + Uri.EscapeDataString(token));
-                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await PasskeyCeremonies.CreatePasskeyAsync(page);
                 await page.WaitForPathAsync("/Identity/Manage/Passkeys", 15000);
 
                 // The link named one account and the session named another. The credential — and
@@ -131,7 +129,7 @@ namespace Tellma.Identity.E2E
                     request => request.Url.StartsWith(destination, StringComparison.Ordinal),
                     new PageWaitForRequestOptions { Timeout = 15000 });
 
-                await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
+                await PasskeyCeremonies.CreatePasskeyAsync(page);
                 await arrival;
             });
         }
