@@ -795,7 +795,7 @@ Two artifacts, authored by different parties:
 
 ### Features and edges
 
-A **feature** is the composable unit and a node in the dependency graph. It owns *contribution items* — entity leaves (with UDTT opt-in), services, securables, provisioning steps, job handlers, notification types and channels, client events — that are **data**, realised by Core in topological order; a feature never touches the container directly. Dependencies are `Requires` edges only: an edge whose target was not added is an error, non-waivable. Structural foreign-key edges between entities are derived from the EF model, not hand-declared.
+A **feature** is the composable unit and a node in the dependency graph. It owns *contribution items* — entity leaves (with UDTT opt-in), services, securables, provisioning steps, job handlers, notification types and channels, client events, dashboard widget types — that are **data**, realised by Core in topological order; a feature never touches the container directly. Dependencies are `Requires` edges only: an edge whose target was not added is an error, non-waivable. Structural foreign-key edges between entities are derived from the EF model, not hand-declared.
 
 **Deferred**, each with a named seam so it can be added without reshaping what exists: `Recommends` and `Excludes` edges, slots and providers with cardinality, the manifest source generator (features are added explicitly, not discovered), the bypass analyzer, and the Builder Tool GUI. Compile-time enforcement of type-shaped constraints still comes for free from generic constraints on capability interfaces, as before.
 

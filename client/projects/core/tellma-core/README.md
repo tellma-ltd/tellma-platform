@@ -17,6 +17,7 @@ own.
 | `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
 | `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
 | `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); and the record's context a layout reads with `injectTmDetails()` | lazy, with the first details route |
+| `@tellma/core/dashboards` | The dashboard grid (`tm-dashboard-grid`, `TmDashboardGrid`) with its tiles (`TmDashboardTile`) and its layout (`tmPackDashboard`); the tenant home: the host the home route renders (`TmHomeHost`), which renders a feature's `home` hatch in place of the platform's home page (`TmHomePage`), its greeting and date line (`TmHomeGreeting`) and its widgets (`TM_HOME_WIDGETS`); and the bodies of the core widget types, which their declarations load | lazy, with the home route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
 | `@tellma/core/path-picker` | `tm-path-picker`, a root entity's fields as a tree: column keys or Queryex paths, navigations as branches, the multilingual twins, image and file navigations, date parts in the active calendar, a search three navigation steps deep, `tm.path` drags whose text is valid Queryex, activation and selection; paths the user cannot reach never show | lazy, with the search page's column chooser and advanced filter, the role editor and the report studio |
@@ -39,7 +40,10 @@ shell frame's root variables and grid, and `styles/tm-boot-page.css`, the boot p
 `brand/{wordmark,mark}-on-{dark,light}.svg`.
 
 The platform's icon names live in `src/icons/platform-icons.ts`, which `provideTellma` registers
-before each feature's `icons`: a platform surface that draws a new name adds it there.
+before each feature's `icons`: a platform surface that draws a new name adds it there. A lazy
+entry point whose names the first frame never draws registers them from its own chunk instead,
+each name only when the app has not registered it, so a feature's own icon wins: the launcher's
+in `/shell`, and the tiles' states and the recent pages' launcher icons in `/dashboards`.
 
 The brand files are the Tellma logo: the wordmark, and the mark (the wordmark's round "a" with its
 teal dot), each in ink for light backgrounds and in white for dark ones. They are cleaned from the
@@ -1092,10 +1096,39 @@ registers `tm.picker` when `TmEntityPickers` is;
 `TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
-the same seam. `@tellma/core/details` registers `tm.details` when its first page is created. `@tellma/core/attention`
+the same seam. `@tellma/core/details` registers `tm.details` when its first page is created, and
+`@tellma/core/dashboards` registers `tm.dashboard` and its keys of `tm.home` (the greeting and the
+grid's label, beside the title the route reads from the primary) when its first component is. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, and its arrival toasts' chunk registers
 `tm.arrivals` as it loads. The seam itself costs the primary one method
 and a set of the scopes registered.
+
+## Dashboards and the home page
+
+A widget type is a `tmWidget(key, …)` declaration in a feature's `widgets`: its label, icon, body
+(a lazy component), default and minimum sizes, and the permission its tiles require. The core
+feature declares `core.recents`, the recently visited pages. The app's configuration check holds
+the declarations to the server's emitted widget types, so a type the server does not register
+fails the check. A widget (`TmDashboardWidgetModel`) places one type on a dashboard: its key, its
+title, its box on twelve columns of 30 px rows, and its settings.
+
+`tm-dashboard-grid` lays its widgets out once per set, in reading order, with `tmPackDashboard`:
+it moves each tile up into the first free rows, groups the tiles that share rows into bands, and
+reads each band left to right, so Tab, a screen reader and the narrow layout share one order. From
+768 px of its own width the grid keeps the stored columns; below, it stacks the tiles in one
+column at their stored heights; printing keeps the wide layout. A resize runs no script, since
+the geometry is the global stylesheet's `styles/tm-dashboard.css`, which the home skeleton shares.
+A tile is a labelled section on a flush card whose body fills it and scrolls inside it. A type no
+declaration knows renders "This widget isn't available."; a type whose permission the user lacks
+leaves the grid, or shows its lock with `denied="show"`, and never loads its body; a body loads
+behind five skeleton rows, and one whose chunk fails offers to try again.
+
+The home route renders `TmHomeHost`, which renders the last `home` hatch a feature sets, else
+`TmHomePage`: the greeting by the hour in the display zone with the user's name, today's date in
+the user's calendar, and the grid of `TM_HOME_WIDGETS` whose types the app declares. A hatch
+loads behind the home skeleton, and one whose chunk fails leaves the platform's home page in its
+place. Hovering or focusing a recent page preloads it; preloading the home route preloads the
+hatch.
 
 ## The search page's query model
 
@@ -1295,7 +1328,7 @@ point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
 points.
 
-The primary reaches `/shell`, `/recents`, `/leader`, `/updates`, `/errors`, `/page-snapshot` and `/support` only through `import()` with a specifier TypeScript
+The primary reaches `/shell`, `/recents`, `/leader`, `/updates`, `/errors`, `/page-snapshot`, `/support` and `/dashboards` only through `import()` with a specifier TypeScript
 does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
 from the shell are named in an internal contract that the shell's component map `satisfies`, so
 either side's rename fails the build. A build or test that compiles the primary from sources in

@@ -600,7 +600,7 @@ export class TmUrls implements TmTenantUrls {
         case 'page':
           return [match.page?.component];
         case 'home':
-          return [TM_ROUTE_HOSTS.home];
+          return [TM_ROUTE_HOSTS.home, this.#injector.get(TM_APP_DECLARATIONS, null)?.home ?? undefined];
         case 'report':
           return [TM_ROUTE_HOSTS.report];
         case 'core':

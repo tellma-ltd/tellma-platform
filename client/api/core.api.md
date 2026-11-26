@@ -595,6 +595,22 @@ export type TmCustomFilterDeclaration = ({
 };
 
 // @public
+export interface TmDashboardWidgetModel {
+    readonly description?: TmTextSlots;
+    readonly descriptionKey?: string;
+    readonly h: number;
+    readonly key: string;
+    readonly refreshMinutes?: number | null;
+    readonly settings?: TmJson;
+    readonly title?: TmTextSlots;
+    readonly titleKey?: string;
+    readonly type: string;
+    readonly w: number;
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
 export type TmDataType = 'binary' | 'bool' | 'date' | 'datetime' | 'decimal' | 'enum' | 'float' | 'guid' | 'instant' | 'integer' | 'json' | 'string' | 'time';
 
 // @public
@@ -2390,6 +2406,9 @@ export interface TmTenantUrls {
     search(entity: string, query?: TmSearchQuery): string;
     target(resource: string, id: TmId): string | null;
 }
+
+// @public
+export type TmTextSlots = readonly [string | null, string | null, string | null];
 
 // @public
 export type TmTileDeclaration<N extends string> = {
