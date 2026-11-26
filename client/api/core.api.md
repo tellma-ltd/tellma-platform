@@ -964,6 +964,7 @@ export interface TmErrorRecord {
     readonly source: TmErrorSource;
     readonly stack: string;
     readonly status?: number;
+    readonly tenantId: number | null;
     readonly traceId?: string;
 }
 
@@ -2211,7 +2212,6 @@ export type TmStringTree = {
 
 // @public
 export class TmSupport {
-    constructor();
     readonly canSend: Signal<boolean>;
     copyDiagnostics(trigger?: TmDiagnosticsTrigger): void;
     downloadDump(): Promise<void>;

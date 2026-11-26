@@ -7,19 +7,36 @@ import { Component, signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { TM_NOW, TmAppVersion, TmRequestLog, TmSupport, TmTabBus, ɵtmDiagnosticsLine, type ɵTmSupportSnapshot } from '@tellma/core';
+import {
+  TM_NOW,
+  TmAppVersion,
+  type TmLanguageDefinition,
+  type TmLaunchDocs,
+  TmLocalization,
+  tmEnglish,
+  TmRequestLog,
+  TmSupport,
+  TmTabBus,
+  ɵtmDiagnosticsLine,
+  type ɵTmSupportSnapshot,
+} from '@tellma/core';
 import { TmDiagnosticsPanelHarness } from '@tellma/core-testing';
 import type { TmPageContextSnapshot } from '@tellma/core/page-snapshot';
+import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
+import { TmModal } from '@tellma/core-ui/modal';
 import { TmToasts } from '@tellma/core-ui/toast';
 import { page } from 'vitest/browser';
 
-import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
+import { TM_T17_DOCS, tmAppRig, type TmAppRigOptions, tmNavigate, tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmDiagnosticsPanel } from './tm-diagnostics-panel';
 
 // The Diagnostics panel as a user meets it in the About dialog: the header,
 // the request grid newest first with the slow and failed switch, a row's
 // line copied on activation, a pending request's duration ticking, the
-// narrow layout's folded cells, and the three buttons.
+// narrow layout's folded cells, and the three buttons; and the panel in a
+// md dialog at a desktop's and a phone's width, in English and in Arabic,
+// where the grid keeps to the dialog's body and Reference is in reach of
+// the grid's own scroller.
 
 /** The panel in a page of its own. */
 @Component({
@@ -44,10 +61,25 @@ interface TmPanelRig {
   readonly fixture: ComponentFixture<TmPanelHost>;
 }
 
-/** Starts the app in tenant 17 with three requests in the log, and renders the panel. */
-async function setUp(): Promise<TmPanelRig> {
+/** Arabic, offered beside English, with no strings of its own. */
+const ARABIC: TmLanguageDefinition = { code: 'ar', dir: 'rtl', strings: () => Promise.resolve({ tm: {}, tmUi: {} }) };
+
+/** Tenant 17 in English and Arabic. */
+const BILINGUAL: TmLaunchDocs = {
+  ...TM_T17_DOCS,
+  settings: {
+    ...TM_T17_DOCS.settings,
+    languages: [
+      { code: 'en', nativeName: 'English', symbol: 'En', isRightToLeft: false },
+      { code: 'ar', nativeName: 'العربية', symbol: 'ع', isRightToLeft: true },
+    ],
+  },
+};
+
+/** Starts the app in tenant 17 with three requests in the log. */
+async function startApp(options: TmAppRigOptions = {}): Promise<void> {
   clock = Date.parse('2026-10-20T11:02:40Z');
-  await tmAppRig({ providers: [{ provide: TM_NOW, useValue: () => clock }] });
+  await tmAppRig({ ...options, providers: [{ provide: TM_NOW, useValue: () => clock }] });
   await tmNavigate('/17');
   await tmSettle();
   // --- The log, oldest first: a quick call, a slow failure, a pending save ---
@@ -63,6 +95,11 @@ async function setUp(): Promise<TmPanelRig> {
   failed.end({ outcome: 'error', status: 500, code: 'server.internal' });
   begin('4bf92f3577b34da6a3ce929d0e0e4736', 'centers/save');
   clock += 6200;
+}
+
+/** Starts the app in tenant 17 with three requests in the log, and renders the panel. */
+async function setUp(): Promise<TmPanelRig> {
+  await startApp();
   const fixture = TestBed.createComponent(TmPanelHost);
   await tmSettleUntil(() => fixture.nativeElement.querySelector('tm-grid') !== null);
   const panel = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmDiagnosticsPanelHarness);
@@ -183,4 +220,71 @@ describe('TmDiagnosticsPanel', () => {
     expect(clicks[0]).toMatch(/-diagnostics-\d{8}-\d{6}\.json$/);
     expect(download).toHaveBeenCalledTimes(1);
   });
+});
+
+describe('TmDiagnosticsPanel in a md dialog', () => {
+  let tokens: HTMLStyleElement;
+
+  // The design tokens, which size the dialog and the grid's tracks.
+  beforeEach(() => {
+    tokens = document.createElement('style');
+    tokens.textContent = tmEmitCss(tmTokensDefault);
+    document.head.appendChild(tokens);
+  });
+
+  afterEach(async () => {
+    tokens.remove();
+    await page.viewport(1440, 900);
+  });
+
+  for (const language of ['en', 'ar'] as const) {
+    for (const [width, height] of [
+      [1440, 900],
+      [390, 844],
+    ] as const) {
+      it(`keeps the grid inside the dialog's body at ${width} px in ${language}, with Reference in reach of the grid's own scroller`, async () => {
+        await page.viewport(width, height);
+        await startApp({ docs: BILINGUAL, languages: [tmEnglish(), ARABIC] });
+        if (language === 'ar') {
+          const l10n = TestBed.inject(TmLocalization);
+          l10n.setLanguage('ar');
+          await tmSettleUntil(() => l10n.language() === 'ar' && document.documentElement.dir === 'rtl', 'the language switches');
+        }
+        TestBed.inject(TmModal).open(TmDiagnosticsPanel, { size: 'md', title: 'Diagnostics' });
+        await tmSettleUntil(() => document.querySelector('.tm-modal__body tm-grid [role="columnheader"]') !== null, 'the grid renders');
+        await tmSettle();
+
+        // --- The grid takes the body's width, and the body never scrolls sideways ---
+        const body = document.querySelector<HTMLElement>('.tm-modal__body')!;
+        const grid = body.querySelector<HTMLElement>('tm-grid')!;
+        const padding = getComputedStyle(body);
+        const content = body.clientWidth - parseFloat(padding.paddingInlineStart) - parseFloat(padding.paddingInlineEnd);
+        expect(grid.getBoundingClientRect().width).toBeLessThanOrEqual(content + 0.5);
+        expect(body.scrollWidth).toBe(body.clientWidth);
+
+        // --- Reference, the last column, lies inside the grid's scroller once it scrolls to its end ---
+        const scroller = grid.querySelector<HTMLElement>('.tm-grid__scroller')!;
+        const headers = [...scroller.querySelectorAll<HTMLElement>('[role="columnheader"]')];
+        const reference = headers.at(-1)!;
+        expect(reference.textContent?.trim()).toBe('Reference');
+        if (width >= 576) {
+          // At the dialog's md width the narrow columns fit, so nothing scrolls.
+          expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth);
+        }
+        scroller.scrollTo({ left: language === 'ar' ? -scroller.scrollWidth : scroller.scrollWidth, behavior: 'instant' });
+        await tmSettle();
+        // The scroller inside its borders (a headless browser's scrollbars take no room), less the row
+        // headers' width, which the body's rows keep at its inline start.
+        const box = scroller.getBoundingClientRect();
+        const border = parseFloat(getComputedStyle(scroller).borderInlineStartWidth);
+        const rowHeaders = headers[0]!.getBoundingClientRect().width;
+        const [start, end] = [box.left + border, box.right - border];
+        const [left, right] = language === 'ar' ? [start, end - rowHeaders] : [start + rowHeaders, end];
+        const cell = reference.getBoundingClientRect();
+        expect(cell.left).toBeGreaterThanOrEqual(left - 0.5);
+        expect(cell.right).toBeLessThanOrEqual(right + 0.5);
+        expect(body.scrollLeft).toBe(0);
+      });
+    }
+  }
 });

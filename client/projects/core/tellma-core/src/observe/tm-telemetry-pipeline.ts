@@ -383,7 +383,7 @@ export class TmTelemetryPipeline {
     }
     // The caller's context is guarded before anything is kept.
     const contextProps = this.#props('tm.error.captured', {}, rest);
-    const captured = this.#capture.capture(error, source, at, this.#page()?.route ?? '', this.#traceIds());
+    const captured = this.#capture.capture(error, source, at, this.#page()?.route ?? '', this.#traceIds(), this.#tenantId());
     if (captured === 'filtered') {
       return;
     }

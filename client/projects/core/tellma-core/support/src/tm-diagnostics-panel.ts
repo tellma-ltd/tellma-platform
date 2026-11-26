@@ -4,12 +4,15 @@
 // LICENSE file in the root directory of this source tree.
 
 import {
+  afterNextRender,
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   DOCUMENT,
   effect,
+  ElementRef,
   inject,
   Injector,
   input,
@@ -35,7 +38,6 @@ import {
   type ɵTmSupportSnapshot,
 } from '@tellma/core';
 import type { TmPageContextSnapshot } from '@tellma/core/page-snapshot';
-import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { TmCopyButton, TmReference } from '@tellma/core-ui/copy';
@@ -53,8 +55,14 @@ import { TM_SUPPORT_STRINGS_EN } from './tm-support-strings';
 // grid lists the request log, newest first, with a switch that keeps only
 // the slow and failed requests; Enter or a click on a row copies that
 // request's line of the diagnostics text, in the gesture. A pending
-// request's duration ticks each second while one is pending. Below `md`,
-// the Time and Outcome columns fold into the Duration cell's second line.
+// request's duration ticks each second while one is pending. The panel's
+// own width picks the columns, as a container query would: the About
+// dialog's md width never fits all five, so below WIDE_MIN the Time and
+// Outcome columns fold into the Duration cell's second line, and Request
+// takes what is left and truncates. Narrower than the narrow columns (a
+// phone's full-screen dialog), the grid scrolls inside its own viewport,
+// never the dialog's body, and Reference narrows to that viewport, its chip
+// cut short before its copy button, so the whole column can scroll into view.
 // The buttons copy the whole diagnostics text, download the diagnostic
 // file (without page data) and open the support dialog.
 
@@ -82,6 +90,31 @@ const TOAST_KEY = 'tm.support.request-copied';
 /** How often a pending request's duration ticks, in milliseconds. */
 const TICK_MS = 1000;
 
+/** The row headers' track, in px (the grid's `--grid-row-header-width`). */
+const ROW_HEADER_WIDTH = 34;
+
+/** The grid's own frame, in px: its two borders and room for its vertical scrollbar. */
+const GRID_FRAME = 2 + 17;
+
+/**
+ * The columns' widths, in px. Request takes the rest, from its minimum;
+ * Reference fits a whole trace id and narrows to the grid's viewport, down
+ * to `referenceMin`.
+ */
+const WIDTHS = {
+  time: 96,
+  duration: 104,
+  durationFolded: 136,
+  outcome: 104,
+  request: 160,
+  requestFolded: 96,
+  reference: 320,
+  referenceMin: 160,
+} as const;
+
+/** The panel's width from which every column shows: the five columns, the row headers and the grid's frame. */
+const WIDE_MIN = ROW_HEADER_WIDTH + WIDTHS.time + WIDTHS.duration + WIDTHS.outcome + WIDTHS.request + WIDTHS.reference + GRID_FRAME;
+
 /** The next panel's number, for its heading's id. */
 let nextId = 0;
 
@@ -101,8 +134,10 @@ let nextId = 0;
   imports: [TmButton, TmCopyButton, TmDescriptionList, TmGrid, TmGridColumn, TmGridDisplayDef, TmGridEmptyDef, TmReference, TmSwitch],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
+    /* One column at the panel's width: an item's min-content (the grid's columns) never widens it. */
     :host {
       display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: var(--space-4);
       min-inline-size: 0;
     }
@@ -131,6 +166,7 @@ let nextId = 0;
     /* A fixed height, so the dialog does not grow as requests arrive. */
     .tm-diagnostics__grid {
       block-size: 16rem;
+      min-inline-size: 0;
     }
     .tm-diagnostics__second {
       display: block;
@@ -201,9 +237,9 @@ let nextId = 0;
     <div class="tm-diagnostics__grid" role="group" [attr.aria-labelledby]="titleId">
       <tm-grid gridId="tm-diagnostics" readonly [data]="rows()" [rowId]="rowId" rowActivation="row" (rowActivate)="copyRow($event)">
         @if (wide()) {
-          <tm-grid-column key="time" [header]="text.requests.time()" [width]="96" />
+          <tm-grid-column key="time" [header]="text.requests.time()" [width]="widths.time" />
         }
-        <tm-grid-column key="duration" [header]="text.requests.duration()" [width]="wide() ? 104 : 136">
+        <tm-grid-column key="duration" [header]="text.requests.duration()" [width]="wide() ? widths.duration : widths.durationFolded">
           <span *tmGridDisplay="let value; rowId as id">
             @let row = rowOf(id);
             <span [class.tm-diagnostics__flagged]="row.flagged">{{ row.duration }}</span>
@@ -214,14 +250,15 @@ let nextId = 0;
           </span>
         </tm-grid-column>
         @if (wide()) {
-          <tm-grid-column key="outcome" [header]="text.requests.outcome()" [width]="104">
+          <tm-grid-column key="outcome" [header]="text.requests.outcome()" [width]="widths.outcome">
             <span *tmGridDisplay="let value; rowId as id" [class.tm-diagnostics__flagged]="rowOf(id).flagged">{{ rowOf(id).outcome }}</span>
           </tm-grid-column>
         }
-        <tm-grid-column key="request" [header]="text.requests.request()" [width]="220">
+        <!-- Request takes the width the others leave, and truncates. -->
+        <tm-grid-column key="request" [header]="text.requests.request()" [minWidth]="wide() ? widths.request : widths.requestFolded">
           <bdi *tmGridDisplay="let value; rowId as id" class="tm-diagnostics__code" dir="ltr">{{ rowOf(id).request }}</bdi>
         </tm-grid-column>
-        <tm-grid-column key="id" [header]="text.requests.reference()" [width]="320">
+        <tm-grid-column key="id" [header]="text.requests.reference()" [width]="referenceWidth()">
           <tm-reference *tmGridDisplay="let value; rowId as id" [value]="rowOf(id).id" />
         </tm-grid-column>
         <span *tmGridEmpty>{{ flaggedOnly() ? text.requests.emptyFiltered() : text.requests.empty() }}</span>
@@ -296,8 +333,19 @@ export class TmDiagnosticsPanel {
   /** Whether the grid keeps only the slow and failed requests. */
   protected readonly flaggedOnly = signal(false);
 
-  /** Whether the viewport reaches `md`, where every column shows. */
-  protected readonly wide = inject(TmBreakpoints).atLeast('md');
+  /** The panel's width, in px; 0 until it first renders, so a first frame takes the narrow columns. */
+  readonly #width = signal(0);
+
+  /** Whether the panel is wide enough for every column. */
+  protected readonly wide: Signal<boolean> = computed(() => this.#width() >= WIDE_MIN);
+
+  /** The columns' widths. */
+  protected readonly widths = WIDTHS;
+
+  /** Reference's width: a whole trace id, or the grid's viewport beside the row headers where that is narrower. */
+  protected readonly referenceWidth: Signal<number> = computed(() =>
+    Math.max(WIDTHS.referenceMin, Math.min(WIDTHS.reference, this.#width() - GRID_FRAME - ROW_HEADER_WIDTH)),
+  );
 
   /** Whether the diagnostic file is being built. */
   protected readonly downloading = signal(false);
@@ -351,8 +399,18 @@ export class TmDiagnosticsPanel {
     return this.#byId().get(id)!;
   }
 
-  /** Registers the strings, loads the worker's version and ticks while a request is pending. */
+  /** Registers the strings, follows the panel's width, loads the worker's version and ticks while a request is pending. */
   constructor() {
+    // --- The panel's own width picks the columns, as a container query would ---
+    const element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      // Read once at once, so a wide panel's first check already has every column.
+      this.#width.set(element.clientWidth);
+      const observer = new ResizeObserver(([entry]) => this.#width.set(entry?.contentRect.width ?? element.clientWidth));
+      observer.observe(element);
+      destroyRef.onDestroy(() => observer.disconnect());
+    });
     // --- The worker's version, once the update service has loaded ---
     const injector = this.#injector;
     void injector

@@ -28,7 +28,7 @@ import type { TmMeResult, TmPreferencesResult, TmTenantFacts } from '../launch/t
 import { TmClientStore } from '../store/tm-client-store';
 import type { TmTenantPartition } from '../store/tm-store-layout';
 import { TmCacheRefresher } from '../sync/tm-cache-refresher';
-import { TM_STATE_PARTS } from '../tm-state-dump';
+import { TM_STATE_PARTS } from '../tm-state-parts';
 import type { TmPreferenceKey, TmPreferenceKind } from './tm-preference-key';
 
 // The user's preferences (spec 0025 §9). The server's bag, `me.preferences`,

@@ -25,6 +25,7 @@ export class TmDiagnosticsPanel {
     protected readonly hub: Signal<string>;
     protected readonly leader: Signal<boolean>;
     protected readonly online: Signal<boolean>;
+    protected readonly referenceWidth: Signal<number>;
     protected report(): void;
     readonly reportable: _angular_core.InputSignalWithTransform<boolean, unknown>;
     protected readonly rowId: (row: TmDiagnosticsRow) => string;
@@ -89,6 +90,16 @@ export class TmDiagnosticsPanel {
     protected readonly titleId: string;
     protected readonly ui: string;
     protected readonly wide: Signal<boolean>;
+    protected readonly widths: {
+        readonly time: 96;
+        readonly duration: 104;
+        readonly durationFolded: 136;
+        readonly outcome: 104;
+        readonly request: 160;
+        readonly requestFolded: 96;
+        readonly reference: 320;
+        readonly referenceMin: 160;
+    };
     protected readonly worker: Signal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDiagnosticsPanel, "tm-diagnostics", never, { "snapshot": { "alias": "snapshot"; "required": false; "isSignal": true; }; "reportable": { "alias": "reportable"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDiagnosticsPanel, never>;

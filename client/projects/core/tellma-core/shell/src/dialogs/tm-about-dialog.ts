@@ -26,7 +26,9 @@ import type { TmShellSupport } from '../tm-shell-support';
 // from @tellma/core/support on its first selection (spec 0026 §8.4), and when
 // that entry point cannot load it shows the offline line that names Copy
 // diagnostics' shortcut, from the support host's chunk, which the startup
-// preloads at idle; a later selection tries the panel again. The tabs' code
+// preloads at idle; a later selection tries the panel again. Until the panel
+// is in, its place keeps the panel's height, so the first selection grows
+// the dialog only once. The tabs' code
 // is a static import of this chunk, not a deferred block of its own: a
 // dynamic entry reaching only part of the CDK would split the CDK's code in
 // the first frame into smaller chunks, each paying its own compression
@@ -81,15 +83,19 @@ const OFFLINE_INPUTS: Readonly<Record<string, unknown>> = { kind: 'diagnostics' 
       </tm-tab>
       <tm-tab id="diagnostics" [label]="diagnosticsLabel()">
         <ng-template tmTabContent>
-          <!-- The panel once loaded; else the offline line once the panel failed; else the loading status. -->
+          <!-- The panel once loaded; else, as tall as the panel, the offline line once it failed, or the loading status. -->
           @if (diagnostics(); as diagnostics) {
             <ng-container [ngComponentOutlet]="diagnostics" />
-          } @else if (offline(); as offline) {
-            <ng-container [ngComponentOutlet]="offline" [ngComponentOutletInputs]="offlineInputs" />
-          } @else if (failed()) {
-            <p class="tm-about-dialog__status" role="alert">{{ failedLabel() }}</p>
           } @else {
-            <p class="tm-about-dialog__status" role="status">{{ loadingLabel() }}</p>
+            <div class="tm-about-dialog__pending">
+              @if (offline(); as offline) {
+                <ng-container [ngComponentOutlet]="offline" [ngComponentOutletInputs]="offlineInputs" />
+              } @else if (failed()) {
+                <p class="tm-about-dialog__status" role="alert">{{ failedLabel() }}</p>
+              } @else {
+                <p class="tm-about-dialog__status" role="status">{{ loadingLabel() }}</p>
+              }
+            </div>
           }
         </ng-template>
       </tm-tab>
@@ -220,6 +226,13 @@ const OFFLINE_INPUTS: Readonly<Record<string, unknown>> = { kind: 'diagnostics' 
     .tm-about-dialog__status {
       margin: 0;
       color: var(--text-muted);
+    }
+
+    /* The Diagnostics tab before its panel: the panel's height, which the
+       opener sets for the width and the language, so the first selection
+       grows the dialog only once. */
+    .tm-about-dialog__pending {
+      min-block-size: var(--tm-about-dialog-diagnostics-height, auto);
     }
   `,
 })

@@ -48,6 +48,8 @@ export interface TmErrorRecord {
   readonly message?: string;
   /** When the error was captured, in epoch milliseconds. */
   readonly at: number;
+  /** The routed tenant when the error was captured, or `null` off a tenant's routes. */
+  readonly tenantId: number | null;
   /** The trace ids of the three most recent requests, newest first. */
   readonly recentTraceIds: readonly string[];
 }

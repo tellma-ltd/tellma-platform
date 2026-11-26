@@ -36,7 +36,12 @@ import { TmTheme } from '@tellma/core-ui';
 // name or e-mail, storage contents, launch documents, drafts, or request
 // and response bodies: the contexts come from the page-snapshot entry
 // point, the sections hold names and counts, and the request log holds
-// none of them. Over 2 MiB, it sheds what it can in a fixed order.
+// none of them. On a tenant's routes, the request log's records, the
+// telemetry items and the captured errors of the tab's other tenants are
+// left out, and so are the client state's draft and page-state keys (in its
+// own section): the dump may go into the routed tenant's support request,
+// which that tenant's administrators read. Records with no tenant stay.
+// Over 2 MiB, it sheds what it can in a fixed order.
 
 /** The largest dump, in UTF-8 bytes of its compact JSON: 2 MiB. */
 export const TM_SUPPORT_DUMP_MAX_BYTES = 2_097_152;
@@ -118,11 +123,11 @@ export interface TmSupportDump {
   readonly page: { readonly url: string; readonly routeTemplate: string; readonly historyLength: number };
   /** The page contexts. */
   readonly contexts: TmSupportDumpContexts;
-  /** The last requests, newest first: at most 100. */
+  /** The last requests, newest first: at most 100; on a tenant's routes, that tenant's and those of no tenant. */
   readonly requests: readonly TmRequestRecord[];
-  /** The last captured errors, oldest first: at most 50. */
+  /** The last captured errors, oldest first: at most 50; on a tenant's routes, that tenant's and those of no tenant. */
   readonly errors: readonly TmErrorRecord[];
-  /** The last telemetry items, sent or not: at most 100. */
+  /** The last telemetry items, sent or not: at most 100; on a tenant's routes, that tenant's and those of no tenant. */
   readonly telemetry: readonly TmTelemetryItem[];
   /** The contributed sections, by name. */
   readonly sections: Readonly<Record<string, TmJson>>;
@@ -171,6 +176,17 @@ function localIso(at: number): string {
   const local = new Date(at + offset * 60_000).toISOString().slice(0, -1);
   const pad = (value: number): string => String(value).padStart(2, '0');
   return `${local}${offset < 0 ? '-' : '+'}${pad(Math.floor(Math.abs(offset) / 60))}:${pad(Math.abs(offset) % 60)}`;
+}
+
+/**
+ * The records of the routed tenant and those of no tenant; every record off a tenant's routes.
+ *
+ * @param records - The records, each tagged with the tenant it happened on.
+ * @param tenantId - The routed tenant, or `null` off a tenant's routes.
+ * @returns The records the dump keeps, in their order.
+ */
+function ofTenant<T extends { readonly tenantId: number | null }>(records: readonly T[], tenantId: number | null): readonly T[] {
+  return tenantId === null ? records : records.filter((record) => record.tenantId === null || record.tenantId === tenantId);
 }
 
 /** An identifier, which an error's name must be to be shown. */
@@ -279,6 +295,7 @@ export async function tmBuildSupportDump(
     const telemetry = injector.get(TmTelemetry);
     const distribution = injector.get(ɵTmClientMetadataStore).peek()?.distribution;
     const media = (query: string): boolean => window?.matchMedia?.(query).matches ?? false;
+    const tenantId = injector.get(TmUrls).tenantId();
     const truncated: string[] = [];
     const sections: Record<string, TmJson> = {};
     for (const section of injector.get(TmSupport).ɵsections()) {
@@ -294,7 +311,7 @@ export async function tmBuildSupportDump(
       distribution: { slug: distribution?.slug ?? '', displayName: distribution?.displayName ?? '' },
       session: {
         sub: injector.get(TmSession).profile()?.sub ?? null,
-        tenantId: injector.get(TmUrls).tenantId(),
+        tenantId,
         tabId: injector.get(TmTabBus).tabId,
         state: injector.get(TmSession).state(),
         online: injector.get(TmApi).online(),
@@ -320,9 +337,9 @@ export async function tmBuildSupportDump(
         reducedMotion: media('(prefers-reduced-motion: reduce)'),
         cookies: navigator?.cookieEnabled ?? false,
       },
-      requests: injector.get(TmRequestLog).recent(),
-      errors: telemetry.ɵerrorRecords(),
-      telemetry: telemetry.recent(),
+      requests: ofTenant(injector.get(TmRequestLog).recent(), tenantId),
+      errors: ofTenant(telemetry.ɵerrorRecords(), tenantId),
+      telemetry: ofTenant(telemetry.recent(), tenantId),
       sections,
     };
   });

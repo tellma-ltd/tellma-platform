@@ -395,12 +395,10 @@ export {
   tmRemoveDrafts as ɵtmRemoveDrafts,
   tmStorageKeys as ɵtmStorageKeys,
 } from './src/state/memory/tm-draft-keys';
-export {
-  TM_STATE_PARTS as ɵTM_STATE_PARTS,
-  TmStateDump as ɵTmStateDump,
-  type TmStateDumpSection as ɵTmStateDumpSection,
-  type TmStateParts as ɵTmStateParts,
-} from './src/state/tm-state-dump';
+// The client state's dump section, as a type: its builder is the support host chunk's alone, so the
+// first frame does not carry it.
+export type { TmStateDumpSection as ɵTmStateDumpSection } from './src/state/tm-state-dump';
+export { TM_STATE_PARTS as ɵTM_STATE_PARTS, type TmStateParts as ɵTmStateParts } from './src/state/tm-state-parts';
 export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
 
 // The launch: the single-membership rule and the automatic-entry mark.

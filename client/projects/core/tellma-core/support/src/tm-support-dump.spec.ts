@@ -7,24 +7,29 @@ import { Injector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import {
+  TmClientStore,
   type TmErrorRecord,
   type TmJson,
   TmPageContexts,
   TmRequestLog,
   TmSupport,
   TmTelemetry,
+  type TmTelemetryItem,
+  ɵTM_DRAFTS_STORAGE,
+  type ɵTmStateDumpSection,
   type ɵTmSupportSnapshot,
 } from '@tellma/core';
-import { TmFakeTelemetry } from '@tellma/core-testing';
+import { TmFakeTelemetry, tmWarmTenant } from '@tellma/core-testing';
 import { type TmPageContextSnapshot, tmSerializePageContext } from '@tellma/core/page-snapshot';
 
-import { TM_T17_DOCS, tmAppRig, tmNavigate, tmSettle } from '../../src/routes/tm-app.testing.util';
+import { TM_T17, TM_T17_DOCS, tmAppRig, tmNavigate, tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TM_SUPPORT_DUMP_MAX_BYTES, tmBuildSupportDump, tmDownloadSupportDump, tmSupportDumpFileName, type TmSupportDump } from './tm-support-dump';
 
-// The support dump: what it holds, the contributed sections' failures and
-// cap, the four truncation steps in their order, what it never holds, the
-// page's URL with and without page data, the storage estimate's time box,
-// and the diagnostic file's name and download.
+// The support dump: what it holds, the routed tenant's records alone after
+// a tenant switch, the contributed sections' failures and cap, the four
+// truncation steps in their order, what it never holds, the page's URL with
+// and without page data, the storage estimate's time box, and the
+// diagnostic file's name and download.
 
 /** A string of a given length in bytes. */
 function filler(bytes: number): string {
@@ -83,10 +88,13 @@ function listSnapshot(rows: string, state: TmJson = {}): ɵTmSupportSnapshot<TmP
   };
 }
 
-/** Starts the app in tenant 17 on a page, and gives the injector. */
+/** Starts the app in tenant 17 on a page with the support host landed, as before any dump, and gives the injector. */
 async function setUp(url = '/17/credit-review?q=al%20faris'): Promise<Injector> {
   await tmAppRig();
   await tmNavigate(url);
+  const support = TestBed.inject(TmSupport);
+  support.ɵstart();
+  await tmSettleUntil(() => support.ɵsections().some((section) => section.name === 'state'), 'the support host lands');
   await tmSettle();
   return TestBed.inject(Injector);
 }
@@ -96,7 +104,7 @@ describe('tmBuildSupportDump', () => {
     const injector = await setUp();
     const log = TestBed.inject(TmRequestLog);
     log.begin({ traceId: '4bf92f3577b34da6a3ce929d0e0e4736', route: 'centers/save', tenantId: 17, method: 'POST', background: false }).end({ outcome: 'error', status: 422, code: 'validation' });
-    const record: TmErrorRecord = { source: 'render', errorClass: 'TypeError', fingerprint: 'TypeError@main.js:1:2', routeTemplate: '/:t/credit-review', stack: '', at: 1, recentTraceIds: [] };
+    const record: TmErrorRecord = { source: 'render', errorClass: 'TypeError', fingerprint: 'TypeError@main.js:1:2', routeTemplate: '/:t/credit-review', stack: '', at: 1, tenantId: 17, recentTraceIds: [] };
     vi.spyOn(TestBed.inject(TmTelemetry), 'ɵerrorRecords').mockReturnValue([record]);
     TestBed.inject(TmTelemetry).event('acme.test.ping', { n: 1 });
 
@@ -138,6 +146,58 @@ describe('tmBuildSupportDump', () => {
     expect(dump.requests[0]).toMatchObject({ traceId: '4bf92f3577b34da6a3ce929d0e0e4736', route: 'centers/save', outcome: 'error', status: 422 });
     expect(dump.telemetry.map((item) => item.name)).toContain('acme.test.ping');
     expect(dump.environment.storage === null || typeof dump.environment.storage.quota === 'number').toBe(true);
+  });
+
+  it("holds only the routed tenant's requests, errors, telemetry, draft keys and page-state keys after a tenant switch, and those of no tenant", async () => {
+    const injector = await setUp('/17/centers');
+    // --- Tenant 18 warm beside tenant 17 ---
+    const beta = { ...TM_T17_DOCS, settings: { ...TM_T17_DOCS.settings, tenantId: 18, names: ['Beta', null] as const }, tenant: { ...TM_T17_DOCS.tenant, id: 18 } };
+    await tmWarmTenant(TestBed.inject(TmClientStore), { ...TM_T17, tenantId: 18 }, beta);
+
+    // --- Each tenant's records, and some of none ---
+    const log = TestBed.inject(TmRequestLog);
+    const request = (traceId: string, tenantId: number | null): void =>
+      log.begin({ traceId, route: 'centers/query', tenantId, method: 'GET', background: false }).end({ outcome: 'ok', status: 200 });
+    request('17'.repeat(16), 17);
+    request('18'.repeat(16), 18);
+    request('00'.repeat(15) + '01', null);
+    const error = (fingerprint: string, tenantId: number | null): TmErrorRecord => ({
+      source: 'render',
+      errorClass: 'TypeError',
+      fingerprint,
+      routeTemplate: '/:t/centers',
+      stack: '',
+      at: 1,
+      tenantId,
+      recentTraceIds: [],
+    });
+    const telemetry = TestBed.inject(TmTelemetry);
+    vi.spyOn(telemetry, 'ɵerrorRecords').mockReturnValue([error('TypeError@17', 17), error('TypeError@18', 18), error('TypeError@none', null)]);
+    const item = (name: string, tenantId: number | null): TmTelemetryItem => ({ kind: 'event', name, at: 1, tenantId, props: {} });
+    vi.spyOn(telemetry, 'recent').mockReturnValue([item('acme.seventeen', 17), item('acme.eighteen', 18), item('acme.none', null)]);
+    const drafts = TestBed.inject(ɵTM_DRAFTS_STORAGE)!;
+    drafts.setItem('tm.draft:test-user:17:gl.Center:5', '{}');
+    drafts.setItem('tm.draft:test-user:18:gl.Center:6', '{}');
+    const { TmPageState, tmPageStateKey } = await import('@tellma/core/memory');
+    const pages = TestBed.inject(TmPageState);
+    pages.remember(tmPageStateKey('/17/centers'), { rows: [] });
+    pages.remember(tmPageStateKey('/18/centers'), { rows: [] });
+
+    // --- The switch, then a dump on tenant 18 ---
+    await TestBed.inject(Router).navigateByUrl('/18');
+    await tmSettleUntil(() => TestBed.inject(Router).url === '/18', 'the tenant switches');
+    const dump = await tmBuildSupportDump(snapshotNow(), { includeData: false, injector });
+
+    expect(dump.session.tenantId).toBe(18);
+    expect(dump.requests.map((record) => record.tenantId)).toEqual([null, 18]);
+    expect(dump.errors.map((record) => record.fingerprint)).toEqual(['TypeError@18', 'TypeError@none']);
+    expect(dump.telemetry.map((record) => record.name)).toEqual(['acme.eighteen', 'acme.none']);
+    const state = dump.sections['state'] as unknown as ɵTmStateDumpSection;
+    expect(state.drafts).toEqual(['18:gl.Center:6']);
+    expect(state.pageState).toEqual(['/18/centers']);
+    expect(JSON.stringify(dump)).not.toContain('17'.repeat(16));
+    drafts.removeItem('tm.draft:test-user:17:gl.Center:5');
+    drafts.removeItem('tm.draft:test-user:18:gl.Center:6');
   });
 
   it("keeps the URL's query with page data and the path alone without", async () => {

@@ -324,10 +324,12 @@ stored page takes the title and icon of the launcher entry at its URL from `TmNa
 list keeps only the pages whose URL `TmNavigation.resolve` finds `ok`; the access filter runs on
 read.
 
-**The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
-mirrored documents' partition kinds, stored names and tags, the last sync, the unsaved
-preference, draft and page-state keys, never a value, and whether the tab leads with the hub's
-status as it sees it. The preferences, the drafts and the page
+**The dump.** The support host chunk builds the state's support-dump section (`state`, typed
+`ɵTmStateDumpSection`): the mirrored documents' partition kinds, stored names and tags, the last
+sync, the unsaved preference, draft and page-state keys, never a value, and whether the tab leads
+with the hub's status as it sees it. On a tenant's routes, the keys are that tenant's and those of
+no tenant. The builder lives in that lazy chunk alone, so the first frame does not carry it. The
+preferences, the drafts and the page
 state report their keys to it through `ɵTM_STATE_PARTS` when they are created, so reading the
 section creates none of them, and a tab that never loaded `@tellma/core/drafts` reports no drafts.
 
@@ -1240,14 +1242,17 @@ idle, so even the first press opens the dialog in its own frame.
 
 The dump is one JSON document, at most 2 MB: the builds and the browser, the tenant, the page's
 address and its contexts (with page data only when the user includes it), the storage estimate,
-the last requests, telemetry events and errors, and the registered sections. Over the cap it
+the last requests, telemetry events and errors, and the registered sections. Built on a tenant's
+routes, it keeps that tenant's requests, telemetry, errors, draft keys and page-state keys, and
+those that name no tenant, so a tab that visited another tenant never hands its records over. Over the cap it
 drops, in order, the visible rows, the telemetry, the page data and the sections, each only while
 the dump is still over, and names each step that dropped something. It never holds the stored documents, cookies, web storage or the user's
 profile. A feature adds a section with `registerDumpSection(name, read, destroyRef)`: a short
 lowercase name, a read that returns plain JSON within 64 KB, which the dump calls once (a read
 that throws is recorded as `{ "error": "<class>" }` under the section's name, and one over 64 KB as
 `{ "truncated": true }`), and the `DestroyRef` that ends it; without one, the section lasts as long as the
-app. The client state's section, `state`, is the platform's.
+app. The client state's section, `state`, is the platform's: the facade adds it when the host
+chunk lands, and no feature may take its name.
 
 ## Seams
 

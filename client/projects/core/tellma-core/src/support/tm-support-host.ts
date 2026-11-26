@@ -25,10 +25,12 @@ import type { TmApiError } from '../api/tm-api-error';
 import { TM_NOW } from '../app/tm-now';
 import type { TmPageContext } from '../context/tm-page-context';
 import { TmPageContexts } from '../context/tm-page-contexts';
-import type { TmJsonObject } from '../json/tm-json';
+import type { TmJson, TmJsonObject } from '../json/tm-json';
 import { TmLocalization } from '../l10n/tm-localization';
 import { TmTelemetry } from '../observe/tm-telemetry';
-import { TM_SUPPORT_LOAD, type TmPageSnapshotModule, type TmSupportContexts, type TmSupportSnapshot } from './tm-support';
+import { TmStateDump } from '../state/tm-state-dump';
+import { TmUrls } from '../urls/tm-urls';
+import { TM_SUPPORT_LOAD, type TmPageSnapshotModule, type TmSupportContexts, type TmSupportSection, type TmSupportSnapshot } from './tm-support';
 import { ɵTmSupportOffline, tmRegisterSupportHostStrings } from './tm-support-offline';
 
 // The support host (spec 0026 §10.4, §12.1), a lazy chunk of the primary
@@ -38,7 +40,9 @@ import { ɵTmSupportOffline, tmRegisterSupportHostStrings } from './tm-support-o
 // that entry point cannot load, the dialog shows the line that names Copy
 // diagnostics' shortcut. A download goes the same way without a dialog.
 // The chunk also hands that line to the About dialog's Diagnostics tab,
-// which shows it when the entry point cannot load there (spec 0026 §8.4).
+// which shows it when the entry point cannot load there (spec 0026 §8.4),
+// and the client state's dump section to the facade, which registers it
+// when the chunk lands (spec 0025 §15).
 
 export { ɵTmSupportOffline };
 
@@ -208,4 +212,16 @@ export async function ɵtmDownloadSupport(injector: Injector, pages: TmPageSnaps
   const taken = snapshot(injector, pages, undefined);
   const support = await injector.get(TM_SUPPORT_LOAD)();
   support.tmDownloadSupportDump(await support.tmBuildSupportDump(taken, { includeData: false, injector }), injector);
+}
+
+/**
+ * The client state's section of the dump. Internal: the support facade
+ * registers it when this chunk lands.
+ *
+ * @param injector - The root injector, which the section reads the state's services from.
+ * @returns The section, named `state`.
+ */
+export function ɵtmStateSection(injector: Injector): TmSupportSection {
+  // On a tenant's routes, the section lists that tenant's keys alone.
+  return { name: 'state', read: () => injector.get(TmStateDump).read(injector.get(TmUrls).tenantId()) as unknown as TmJson };
 }

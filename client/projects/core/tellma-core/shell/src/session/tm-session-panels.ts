@@ -42,7 +42,8 @@ import { tmRegisterShellOverlaysStrings } from './tm-shell-overlays-strings';
 //   menu's rows, a slot opens its panel in an end drawer instead;
 // - the About and Shortcuts dialogs, TmModal dialogs of size md (full screen
 //   below sm), each in a deferred chunk of its own, which open at once with
-//   a placeholder in their final geometry.
+//   a placeholder in their final geometry; About's heights differ by width
+//   and language, so these styles set them on its modal's pane.
 //
 // Every overlay closes on Escape or an outside click and returns focus to
 // its button. A slot's panel loads on first open, or on the first hover or
@@ -65,10 +66,13 @@ export const TM_SHELL_DIALOGS_LOAD = new InjectionToken<Readonly<Record<TmShellD
 
 /**
  * Each dialog's height, which its placeholder takes so nothing moves when it
- * arrives. About's is its About tab's content (22rem) and the tab strip above
- * it: the 34 px strip, its 1 px border and the panel's 12 px.
+ * arrives. About's differs by width and language, so it is a custom property
+ * that the rules below set on its modal's pane, with that pane's class.
  */
-const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = { about: '25rem', shortcuts: '30rem' };
+const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = { about: 'var(--tm-session-panels-about-height)', shortcuts: '30rem' };
+
+/** Each dialog's modal pane class, which About's heights hang on. */
+const DIALOG_PANES: Readonly<Record<TmShellDialog, string | undefined>> = { about: 'tm-session-panels__about', shortcuts: undefined };
 
 /** A slot panel's loaded component. */
 async function slotComponent(slot: TmShellSlot): Promise<Type<unknown>> {
@@ -149,6 +153,36 @@ async function slotComponent(slot: TmShellSlot): Promise<Type<unknown>> {
       margin-block-start: var(--space-2);
       color: var(--text-link);
       font-weight: var(--weight-semibold);
+    }
+
+    /* About's heights, on its modal's pane: the About tab with its strip, which
+       the placeholder takes, and the Diagnostics panel, which the tab keeps
+       before the panel is in. Chromium lays out the Acme distribution's About
+       with the bundled fonts at these heights, at 1280 and 390 px wide, in
+       English and Arabic (the Acme tenant-shell e2e pins them within 8 px).
+       Arabic sets taller lines, and below sm the dialog is full width, so its
+       text wraps more. */
+    .tm-session-panels__about {
+      --tm-session-panels-about-height: 21.38rem;
+      --tm-about-dialog-diagnostics-height: 37.85rem;
+    }
+
+    .tm-session-panels__about:lang(ar) {
+      --tm-session-panels-about-height: 23.48rem;
+      --tm-about-dialog-diagnostics-height: 40.29rem;
+    }
+
+    /* Below sm, where the modal goes full width (a literal: custom properties do not resolve in media queries). */
+    @media (width < 576px) {
+      .tm-session-panels__about {
+        --tm-session-panels-about-height: 26.58rem;
+        --tm-about-dialog-diagnostics-height: 59.89rem;
+      }
+
+      .tm-session-panels__about:lang(ar) {
+        --tm-session-panels-about-height: 29.66rem;
+        --tm-about-dialog-diagnostics-height: 64.46rem;
+      }
     }
   `,
 })
@@ -306,7 +340,7 @@ export class TmSessionPanels implements TmShellPanels {
     const title =
       dialog === 'about' ? this.#l10n.ɵtext('tm.shellOverlays.dialogs.about')() : this.#l10n.ɵtext('tm.shellOverlays.dialogs.shortcuts')();
     const data: TmShellLazyContentData = { load: this.#dialogs[dialog], inputs, height: DIALOG_HEIGHTS[dialog] };
-    this.#track(this.#modal.open(TmShellLazyContent, { size: 'md', title, data }));
+    this.#track(this.#modal.open(TmShellLazyContent, { size: 'md', title, data, panelClass: DIALOG_PANES[dialog] }));
   }
 
   /** {@inheritDoc TmShellPanels.isOpenFor} */

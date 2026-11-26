@@ -24,7 +24,6 @@ import { TmTelemetry } from '../observe/tm-telemetry';
 import { type TmDiagnosticsTrigger, TmRequestLog } from '../requests/tm-request-log';
 import { TmSession } from '../session/tm-session';
 import { TmLaunchCache } from '../state/launch/tm-launch-cache';
-import { TmStateDump } from '../state/tm-state-dump';
 import { TmUrls } from '../urls/tm-urls';
 
 // The support facade (spec 0026 §12.1): what the session menu, the About
@@ -40,7 +39,9 @@ import { TmUrls } from '../urls/tm-urls';
 // Presses that come before they land collapse to one per kind, the last,
 // which runs the moment they do; a load that fails is tried again on the
 // next press. The facade also keeps the
-// dump's contributed sections, among them the client state's (spec 0025 §15).
+// dump's contributed sections. The client state's (spec 0025 §15) comes from
+// the support host's chunk when it lands, so its builder is not in the first
+// frame, and its name is reserved for it until then.
 
 /** The error the support dialog opened from, as the dump records it. */
 export interface TmSupportReported {
@@ -124,6 +125,13 @@ export interface TmSupportHostChunk {
    */
   ɵtmDownloadSupport(injector: Injector, pages: TmPageSnapshotModule): Promise<void>;
   /**
+   * The client state's section of the dump, named `state`.
+   *
+   * @param injector - The root injector, which the section reads the state's services from.
+   * @returns The section.
+   */
+  ɵtmStateSection(injector: Injector): TmSupportSection;
+  /**
    * The line the support dialog and the About dialog's Diagnostics tab show
    * when the support entry point cannot load, whose `kind` input names which.
    */
@@ -197,8 +205,11 @@ export const TM_SUPPORT_LOAD = new InjectionToken<() => Promise<TmSupportModule>
 /** A contributed section's name: lowercase, a letter first, at most 32 characters. */
 const SECTION_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 
-/** The names the dump's truncation steps use, which a section's name may not take. */
-const RESERVED: ReadonlySet<string> = new Set(['telemetry', 'sections']);
+/**
+ * The names a contributed section may not take: those the dump's truncation
+ * steps use, and the client state's, which the support host's chunk adds.
+ */
+const RESERVED: ReadonlySet<string> = new Set(['telemetry', 'sections', 'state']);
 
 /**
  * The support facade: Report a problem, Copy diagnostics, the diagnostic
@@ -232,6 +243,9 @@ export class TmSupport {
   /** The contributed sections by name, in registration order. */
   readonly #sections = new Map<string, TmSupportSection>();
 
+  /** The client state's section, once the support host's chunk has landed. */
+  #state: TmSupportSection | null = null;
+
   /** The tools' load, while it runs or once it succeeded; `null` before the first and after a failure. */
   #tools: Promise<TmSupportTools> | null = null;
 
@@ -255,11 +269,6 @@ export class TmSupport {
       launch.tenants()?.find((tenant) => tenant.id === tenantId)?.isActive !== false;
     return member && this.#injector.get(TmApi).online() && launch.docs.tenant()?.state === 'Active';
   });
-
-  /** Registers the client state's section. */
-  constructor() {
-    this.registerDumpSection('state', () => this.#injector.get(TmStateDump).read() as unknown as TmJson);
-  }
 
   /**
    * Preloads the support host and the page snapshot, so that a first press
@@ -306,8 +315,8 @@ export class TmSupport {
    * Adds a section to every dump, until the owner is destroyed.
    *
    * @param name - The section's name, its key under `sections`: matching
-   *   `^[a-z][a-z0-9-]{0,31}$`, other than `telemetry` and `sections`, and
-   *   unused.
+   *   `^[a-z][a-z0-9-]{0,31}$`, other than `telemetry`, `sections` and
+   *   `state`, and unused.
    * @param read - Reads the section's JSON, synchronously.
    * @param destroyRef - The owner, whose end removes the section; without
    *   one, the section lasts as long as the app.
@@ -328,13 +337,14 @@ export class TmSupport {
   }
 
   /**
-   * The contributed sections, in registration order. Internal: the dump's
-   * builder reads them.
+   * The contributed sections: the client state's first, once the support
+   * host's chunk has landed, then the others in registration order.
+   * Internal: the dump's builder reads them.
    *
    * @returns The sections.
    */
   ɵsections(): readonly TmSupportSection[] {
-    return [...this.#sections.values()];
+    return this.#state === null ? [...this.#sections.values()] : [this.#state, ...this.#sections.values()];
   }
 
   /**
@@ -344,7 +354,11 @@ export class TmSupport {
    */
   #load(): Promise<TmSupportTools> {
     this.#tools ??= this.#loadTools().then(
-      (tools) => (this.#loaded = tools),
+      (tools) => {
+        // The client state's section comes with the host's chunk.
+        this.#state ??= tools.host.ɵtmStateSection(this.#injector);
+        return (this.#loaded = tools);
+      },
       (error: unknown) => {
         this.#tools = null;
         throw error;

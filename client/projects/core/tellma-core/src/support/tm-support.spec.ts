@@ -106,10 +106,16 @@ async function setUp(options: TmRigOptions = {}): Promise<TmSupport> {
 
 describe('TmSupport', () => {
   describe('the dump sections', () => {
-    it("registers the client state's section", async () => {
-      const support = await setUp();
-      const state = support.ɵsections().find((section) => section.name === 'state');
+    it("adds the client state's section, first, once the support host lands", async () => {
+      const support = await setUp({ dev: false });
+      support.registerDumpSection('acme', () => 'acme');
+      expect(support.ɵsections().map((section) => section.name)).toEqual(['acme']);
+      support.ɵstart();
+      await tmSettleUntil(() => support.ɵsections().length === 2, 'the host lands');
+      const [state, acme] = support.ɵsections();
+      expect(state?.name).toBe('state');
       expect(state?.read()).toMatchObject({ store: { mode: 'memory' }, leader: { isLeader: false }, drafts: [] });
+      expect(acme?.name).toBe('acme');
     });
 
     it('refuses a malformed, reserved or taken name in development', async () => {
@@ -119,16 +125,21 @@ describe('TmSupport', () => {
       }
       support.registerDumpSection(`a${'b'.repeat(31)}`, () => 1);
       support.registerDumpSection('acme-exposure-2', () => 2);
-      expect(support.ɵsections().map((section) => section.name)).toEqual(['state', `a${'b'.repeat(31)}`, 'acme-exposure-2']);
+      expect(support.ɵsections().map((section) => section.name)).toEqual([`a${'b'.repeat(31)}`, 'acme-exposure-2']);
     });
 
-    it('keeps the first registration of a name in production', async () => {
+    it('keeps the first registration of a name in production, and the client state its own', async () => {
       const support = await setUp({ dev: false });
       support.registerDumpSection('acme', () => 'first');
       support.registerDumpSection('acme', () => 'second');
       support.registerDumpSection('Bad Name', () => 'bad');
+      // Before the host lands, a feature cannot take the client state's name.
+      support.registerDumpSection('state', () => 'taken');
+      expect(support.ɵsections().map((section) => [section.name, section.read()])).toEqual([['acme', 'first']]);
+      support.ɵstart();
+      await tmSettleUntil(() => support.ɵsections().length === 2, 'the host lands');
       expect(support.ɵsections().map((section) => [section.name, section.read()])).toEqual([
-        ['state', expect.anything()],
+        ['state', expect.objectContaining({ store: expect.anything() })],
         ['acme', 'first'],
       ]);
     });
@@ -138,13 +149,13 @@ describe('TmSupport', () => {
       const first = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
       support.registerDumpSection('acme', () => 'first', first.get(DestroyRef));
       first.destroy();
-      expect(support.ɵsections().map((section) => section.name)).toEqual(['state']);
+      expect(support.ɵsections().map((section) => section.name)).toEqual([]);
 
       const second = createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
       support.registerDumpSection('acme', () => 'second', second.get(DestroyRef));
       expect(support.ɵsections().find((section) => section.name === 'acme')?.read()).toBe('second');
       second.destroy();
-      expect(support.ɵsections().map((section) => section.name)).toEqual(['state']);
+      expect(support.ɵsections().map((section) => section.name)).toEqual([]);
     });
   });
 
