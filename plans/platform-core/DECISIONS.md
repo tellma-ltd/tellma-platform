@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-379 (2026-11-26): PC-F92 landed; PC-F95 released; PC-156 in pc-1
+
+PC-F92 landed at 9836ce03 on green CI 45877621966, with a plans-only merge on top. No ceiling was raised. Acme initialJs is 224.70 and searchRoute 109.79 of 110. PC-F95 is the next held item, so it is released to integrate. Its ci.yml and nightly-tier.yml edits meet PC-F110's ci.yml edit later; PC-F110, the later lander, merges them. No T1 item is ready, so the freed slot pc-1 takes the first ready T2, PC-156, with PC-155's carry (D-229).
+
+### D-378 (2026-11-26): PC-F110 R1 rulings; PC-F111 opened
+
+PC-F110's R1 found 0/1/7. All of R1-1 to R1-7 are fixed in fix1. R1-1 is the major one: the watchdog's exit deadline outlives a run, so a multi-project ng test in one process could end a healthy later run.
+
+R1-8 is split into fix item PC-F111: Acme loads two vitest/vite module instances through two pnpm peer variants. It is a cheap candidate cause, separate from the fail-fast work.
+
+PC-F110 is done once its fail-fast evidence lands, because the local root-cause hunt (30 cold runs, no repro) is exhausted. The flaky row stays open, tracked by PC-F111 and by the report the watchdog prints on the next hang. That is the evidence-first route D-011 asks for, and it is not a quarantine.
+
 ### D-377 (2026-11-26): PC-F109 landed; PC-F92 released; PC-123 in pc-3
 
 PC-F109 landed at 7e0e13d6 on green CI 45865466176, with a plans-only merge on top. The passkey E2E flake (SyncedPasskeyTierTests) is closed by it. PC-F92 is the next held item (D-087), so it is released to integrate. The freed T1 slot pc-3 takes PC-123, the T1 item check_deps listed ready (D-229), with PC-115's carry. Its brief records the thin headroom so the home page stays lazy.
