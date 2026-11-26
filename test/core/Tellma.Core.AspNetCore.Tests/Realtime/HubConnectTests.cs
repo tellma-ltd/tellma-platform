@@ -35,18 +35,25 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             using MetricCollector<long> connects = Collect(host, RealtimeTelemetryNames.Connects);
             using MetricCollector<long> connections = Collect(host, RealtimeTelemetryNames.Connections);
 
+            HubConnectionTracker tracker = host.Services.GetRequiredService<HubConnectionTracker>();
+
             await using HubClient client = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, host.Cookie());
 
+            // --- The connect: tracked, counted, logged ---
+            // The client is handed back once the hub finished its connect, so all three are already in.
             Assert.Equal(HubConnectionState.Connected, client.Connection.State);
-            await WaitUntilAsync(() => host.Services.GetRequiredService<HubConnectionTracker>().Count == 1);
+            Assert.Equal(1, tracker.Count);
             Assert.Contains(connects.GetMeasurementSnapshot(), static m => m.Value == 1 && Equals(m.Tags[RealtimeTelemetryNames.OutcomeTag], RealtimeMetrics.ConnectedOutcome));
             Assert.Contains(connections.GetMeasurementSnapshot(), static m => m.Value == 1 && Equals(m.Tags[RealtimeTelemetryNames.ModeTag], "in-process"));
             Assert.Contains(logs.Events, static e => e.EventName == "HubConnected" && e.Level == LogLevel.Debug);
 
             // --- The close: forgotten, counted down, logged ---
+            // The hub runs the disconnect on its own threads after the client stopped, and forgets the
+            // connection before it counts and logs it: each is awaited in its own right, since an
+            // empty tracker says nothing of the count or the log that follow it.
             await client.Connection.StopAsync(TestContext.Current.CancellationToken);
-            await WaitUntilAsync(() => host.Services.GetRequiredService<HubConnectionTracker>().Count == 0);
-            Assert.Contains(connections.GetMeasurementSnapshot(), static m => m.Value == -1 && Equals(m.Tags[RealtimeTelemetryNames.ModeTag], "in-process"));
+            await WaitUntilAsync(() => tracker.Count == 0);
+            await WaitUntilAsync(() => connections.GetMeasurementSnapshot().Any(static m => m.Value == -1 && Equals(m.Tags[RealtimeTelemetryNames.ModeTag], "in-process")));
             await WaitUntilAsync(() => logs.Events.Any(static e => e.EventName == "HubDisconnected" && e.Level == LogLevel.Debug));
         }
 
