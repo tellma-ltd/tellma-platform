@@ -384,6 +384,280 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-351 (orchestrator, 2026-11-26): PC-F105 landed; PC-126 is released; PC-F91 fills pc-f3
+
+- PC-F105 landed at e742b04d, with CI 45760757525 green on that commit, as a fast-forward over e7bd09c4.
+  - The flaky rows it tracked are marked fixed: the layout-shift cold entry, from D-327 and D-332.
+  - The commit message's "initialJs 188.94 KB gzip" is corrected in D-349: it is 220.71 gzip.
+- PC-126 is released. It merges PC-F105 and integrates again (D-348). If the cold-entry test still fails, the new failure message names the shift's source, and it is PC-126's own.
+- D-229 fill for pc-f3, a fix slot (D-332):
+  - No blocking fix is unassigned; PC-F106 is held in pc-1.
+  - T1 items do not go in fix slots.
+  - So the first non-blocking fix in ledger order, PC-F91, takes it. PC-F91 is the lucide-index hoisting that PC-122's R1-5 left to it, about 0.7 KB of first-frame glyphs.
+- PC-129 (T1) is ready, but no checkpoint slot is free. All four hold items in the release queue (D-255).
+
+### D-350 (orchestrator, 2026-11-26): PC-122 fix2 is held; the cold first build goes to Ahmad
+
+- PC-122's fix2, ecaaa602, fixes R2-1 to R2-9 as D-346 ruled. It was the last implementer round.
+  - The benchmark split is deviation 19, which replaces 13.
+    - The PR tier counts the work, with spies on normalize, TmNavTermsReader.read and Intl.Collator.
+    - A nightly @perf spec does the timing.
+  - A pending open now honours every close gesture, and its keystrokes go to the launcher.
+  - fix2's commit message carries both rounds' Tests and Deviations lines.
+- The ./shell ceiling goes from 10 to 11, at 10.79, with +0.88 measured. That is its second raise since D-291's re-split, within D-031's cap.
+- Acme initialJs is 230.67, over the 230 warn level, measured before PC-F102's chunk optimizer is merged. The integration gate (no warning) decides. PC-F105 also changes ./shell, so whichever of the two lands second re-measures it (D-214).
+- Spec 0027 §9.8's "builds on first open, at most 5 ms" is met warm, at about 2.1 ms, but not on a page's true first open, at 15.6 ms.
+  - About 8 ms of the 15.6 is ICU's one-time start-up, the page's first normalize and first Intl.Collator. About 4 ms is unoptimised first-run code.
+  - The @perf spec asserts the warm figures and reports the cold one.
+  - **For Ahmad:** should the 5 ms apply warm, or should the index be built at idle before the first open? The second loads the panel chunk early. No follow-up opens until he decides.
+- Release order:
+  1. PC-F105, in CI;
+  2. PC-126, which merges PC-F105 (D-348);
+  3. PC-F106;
+  4. PC-154;
+  5. PC-F89 and PC-F94;
+  6. PC-122.
+
+### D-349 (orchestrator, 2026-11-26): PC-F105's initialJs figure is explained before it lands
+
+- PC-F105 integrated as e742b04d.
+  - The merge, e51e42ed, keeps both PC-F102's ng build env and PC-F105's brand-ratio define.
+  - The layout-shift spec's failure message now lists each shift's sources. Run against the pre-fix build, it names the app-bar group's 49.5 px move.
+  - Every gate passes, and layout-shift passes 30 of 30 with and without the harness.
+- It reports Acme initialJs at 188.94 KB in 3 files. platform-core measured 220.52 right after PC-F102 landed, and PC-126's merge measured 222.9. PC-F105's change does not explain a 31 KB drop.
+- A gate that silently stops counting eager files would hide every later first-frame regression. So PC-F105 does not land until the figure is explained: it lists the initial files of both builds against index.html's eager loads. CI 45760757525 runs meanwhile.
+- If the gate under-counts, the fix goes in PC-F105's integration. If the figure is real, its cause is recorded.
+- Resolved: the 188.94 was the budget table's Brotli column, read as gzip. A clean rebuild of the merge gives initialJs 220.71 KB gzip in 3 files (main 204.68, two modulepreloads 14.88 and 1.15). That is +0.19 over 21cba2f6, in line with the brand-ratio code. The gate counts exactly index.html's eager files, so nothing needed fixing.
+- The pushed e742b04d commit message says "initialJs 188.94 KB gzip". It should read 220.71 KB gzip (188.94 Brotli). Published history is not rewritten, so this entry is the correction.
+
+
+### D-348 (orchestrator, 2026-11-26): PC-126 is held and PC-F105 lands first, with a diagnostic
+
+- CI 45753999668 on a59efd3b failed only on acme-client (ubuntu-latest), layout-shift.spec:14 cold entry.
+  - It failed in chromium on the run and the retry, with the same 0.0005696614583333333 as D-344. chromium-ar passed.
+  - The search host's Refresh source is gone. This value is not the wordmark's 0.000617, so D-347's rule does not apply as written.
+- Why the source cannot be named from here:
+  - The two values differ by about 1,100 px² of impact area at 1280x720. That fits the same 49.5 px app-bar move with a narrower group, or a different source of PC-126's own.
+  - Locally the only source is the wordmark, and the log does not say which one CI saw.
+  - Integrating again would not tell them apart.
+- So PC-126 is held. Without PC-F105 it cannot make progress, and D-319 skips a blocked item rather than waiting on it.
+- PC-F105 is released ahead of PC-126.
+  - It removes the one known source in this test.
+  - It also makes the layout-shift spec's failure message list each shift's sources (node, previousRect and currentRect). The assertion is unchanged, but a CI failure can then be read from the log.
+- After PC-F105 lands, PC-126 merges it and integrates again. If 0.00057 persists, it is PC-126's own, and the log names its source.
+
+### D-347 (orchestrator, 2026-11-26): PC-126's CI fixes; if only the wordmark flake reds it, PC-F105 goes first
+
+- PC-126's CI fixes, 22a0a8b0, fix both of D-344's failures in product and test code.
+  - The additions registry classifies l10n-input and also multi-select, which the merge had left unclassified.
+  - The cold-entry shift had a real source: the search host's Refresh moved when the pager's status took its width at the first total.
+    - Refresh and the pager now stay hidden in their boxes until the first read answers.
+    - A failed first read shows them at once, so Refresh stays the retry.
+    - A unit test covers it. It is a stated deviation.
+- After the fix, the only recorded shift source locally is the app-bar group's 49.5 px move, the wordmark's 0.000617. That is 2 of 10 runs without the delay and 8 of 10 with it, and PC-F105 owns it. CI's exact 0.00057 could not be traced locally, because the values depend on the viewport.
+- PC-126 merged platform-core e7bd09c4 (plans only) as a59efd3b. CI 45753999668 runs.
+- If that CI is red only on the layout-shift test at the wordmark's 0.000617, PC-126 is held, and PC-F105 is released and lands first, ahead of the one-at-a-time order (D-319: a blocked item is skipped). PC-126 then merges and integrates again. Any other value is PC-126's own.
+- **For Ahmad:** spec 0023 §8.1 hides the pager's status and reserves nothing while the total is null. Spec 0024 §4.4 and 0030's stable layout promise zero shift from skeleton to page. They fit only if the trailing group is held through the first read. Spec 0030 §14 should say so, or name another mechanism.
+
+### D-346 (orchestrator, 2026-11-26): PC-122 review 2 rulings
+
+- R2 at xhigh found 0 blocking, 2 major and 7 minor on 950e535f and a76373f8.
+  - Unit tests passed 101 of 101 plain and 142 of 142 under the delay harness.
+  - A property test of the joined fold found 0 mismatches over 200,000 cases.
+  - fix2 is PC-122's last implementer round (§4.4).
+- R2-1 (major): the launcher index and nav-terms wall-clock benchmarks do not belong in the PR tier (D-011, D-245), and WATCHLIST 0027 names them for a perf trait.
+  - They move to a nightly @perf spec.
+  - The PR tier keeps deterministic work-count checks.
+  - The change is a deviation that replaces deviation 13. R1-10's pushback is rejected.
+- R2-2 (major): a launcher open still waiting for its panel chunk ignores an outside press and Tab, lets keystrokes reach the page, and then selects the typed text and takes focus when the chunk lands.
+  - Ruling: a pending open honours every close gesture.
+  - Its keystrokes go to the launcher.
+  - It never takes focus after a cancel, or once another surface has focus.
+- R2-4: the loaders get an internal seam a test can gate, and the pending window gets tests.
+- R2-3, R2-5, R2-6, R2-7 and R2-8 are fixed, with tests.
+- R2-9: commits are not rewritten. fix2's message carries the Tests and Deviations lines for both rounds.
+- Carried to PC-163: provide the commands by overriding TM_LAUNCHER_COMMANDS's root factory from inside ./shell, with no new export; register the command icons; and test R2-7 with real commands.
+
+### D-345 (orchestrator, 2026-11-26): PC-122 fix1 goes to review 2 at xhigh
+
+- PC-122's fix1, a76373f8, handles R1-1 to R1-14 as D-337 ruled.
+- The launcher panel did not shrink.
+  - The two moves that keep the spec took out about 0.7 KB, into the new lazy tm-launcher-sheet (1.38) and tm-launcher-runs (0.68).
+  - fix1's own code added about 0.9: the command seam, the guarded focus restore, the loaders, the surface factory, and the modal's open and Mod+K match.
+  - The panel is 10.00 KB, and its ceiling goes from 10 to 10.5. That is its second raise, within D-031's cap. The 6 KB question stays with Ahmad (D-337).
+- Acme initialJs is 229.75, measured before PC-F102's merge. An earlier split went to 230.27, and moving code into the panel brought it back.
+- Four new deviations (15 to 18):
+  - the panel budget;
+  - two lazy-chunk races on a first open;
+  - the internal TM_LAUNCHER_COMMANDS seam that PC-163 provides.
+- R2 runs at xhigh on 950e535f and a76373f8, because R1 had a blocking finding (§4.4). It looks hardest at four things:
+  - R1-10's wall-clock benchmark, which the implementer says can still flake on a loaded runner (D-011);
+  - the first-open races;
+  - whether PC-163 can provide the seam without a public API change;
+  - the joined-fold index.
+
+### D-344 (orchestrator, 2026-11-26): PC-126's CI is red on its own changes
+
+- CI 45747759513 on 18443c55 failed two jobs. Both failures are PC-126's own.
+  - client, additions-axe.spec:124: the new core-ui l10n-input folder is not classified exactly once in the additions registry. This is the same class of gap as PC-118's counter and initials folders (D-323).
+  - acme-client (ubuntu-latest), layout-shift.spec:14 cold entry: it fails on the first run and the retry, in chromium and chromium-ar, with 0.0005696614583333333.
+    - That is not D-327's wordmark value, 0.000617, and it is deterministic, so it is a new shift source.
+    - The most likely source is the real TmSearchHost now on /17/centers. No other job saw it.
+- PC-126's agent fixes both in "PC-126: CI fixes (...)" and integrates again. It records the shift sources and fixes the cause in product code (D-011). If only the wordmark's shift remains, PC-F105 owns it.
+- Releases stay one at a time (D-087). PC-F105 is next once PC-126 pushes platform-core.
+
+### D-343 (orchestrator, 2026-11-25): PC-F106 review 1, so a records-only fix1
+
+- R1 found 0 blocking, 0 major and 1 minor on b167a7c9.
+- R1 confirmed:
+  - the cause, from vitest 4.1.9's fake-timers source: only TmClientCache.clearAll waits on real storage;
+  - that the new wait can neither pass vacuously nor hang;
+  - that no other core test has the pattern.
+- Its full core run passed 2,649 of 2,649.
+- R1-1: the package-level lint and full test runs (PLAN.md §7.1 item 4) were not recorded. fix1 runs and records them, with no code change unless a check fails. No R2 runs.
+- PC-F106 then queues for release after PC-F105 (D-339). It is blocking, so it goes ahead of PC-154 and the held fixes.
+
+### D-342 (orchestrator, 2026-11-25): PC-126's integration rulings
+
+- PC-126 integrated as 18443c55 on platform-core 21cba2f6.
+  - The merge had 14 conflicts, not 8. They were resolved on their content, and every package.json map keeps one key per entry.
+  - Candidate C is in bf1715f3 (D-316).
+- Figures: the search route is 104.15 KB against spec 0024's 110, Acme initialJs 222.91 and fixture 222.24, both under 230. Every gate passes.
+- Rulings:
+  - The "." ceiling goes from 53.69 to 53.72 (+32 B). This is the search route's existing weight on the merged tree, re-based, and within D-031's cap.
+  - build.fixture.spec is fixed for the merge. The optimizer's 6 orphans, which PC-F102's R1 predicted, change the log line, and a per-chunk read loop was quadratic. Accepted: its assertions still prove no orphan remains and every chunk is reachable.
+  - tm-page-visits.spec answers centers/query with no rows, because /17/centers is now the real TmSearchHost. Accepted: the pages it times are unchanged.
+- The local dotnet build crashed once with MSB4166 while lint:test ran beside it, as in pc-f3's warm-up. The rerun alone succeeded. This is laptop load, not a code fault.
+
+### D-341 (orchestrator, 2026-11-25): PC-F106 finds the session-flows cause; PC-F107 opens
+
+- PC-F106's impl, b167a7c9, found the cause of D-329's failure.
+  - After the confirm, the sign-out leave awaits the real TmClientCache.clearAll (caches.keys and indexedDB.databases), which no fake clock moves.
+  - vi.advanceTimersByTimeAsync(100) yields one real task at its start and one per timer it fires. That left about two real tasks, 19.6 ms measured, before the assertion. Storage slower than about 20 ms on a loaded Windows runner fails it.
+  - A temporary 20 ms storage delay reproduces CI's exact message.
+- The fix is test-only. The test waits with tmWaitUntil on a zero advance, which is stricter than before because no fake time may pass. A mutation check proves the wait.
+- CONTRIBUTING.md's wait rule now covers browser storage as well as import().
+- The spec file passed 50 of 50 runs with the PC-F86 harness and 50 of 50 without it.
+- R1 runs at high.
+- PC-F107 opens, non-blocking. The impl suggests the core testing providers use an in-memory TmClientCache, so session clean-ups no longer sweep the shared test page's real storage. That changes a shared composition, so it is its own item.
+
+### D-340 (orchestrator, 2026-11-25): PC-154 fix2 is held; it queues behind PC-126 and PC-F105
+
+- PC-154's fix2, 38059de4, fixes R2-1 to R2-4 as D-331 ruled.
+  - The Diagnostics grid is contained, and its layout is keyed to the panel's own width. The md-dialog tests fail on 670d05e9.
+  - The state section loads from the support host chunk, so "." goes from 54.42 to 54.25.
+  - The About and Diagnostics heights are measured per breakpoint and per language, and an Acme e2e checks them within 8 px.
+  - A dump keeps only the routed tenant's records and those with no tenant tag.
+- The ./support ceiling goes from 6.5 to 7, at 6.58. That is its first raise, within D-031. tm-support-host is at 2.47 of 2.5.
+- Tests: 667 of 667 with the delay harness, and the Acme tenant-shell e2e 10 of 10.
+  - One plain-run failure, the shell frame's skip-link focus test, ran while api-extractor ran and passed 8 of 8 alone. It gets a local watch row.
+- PC-154 is held. It integrates after PC-126 lands and after PC-F105 (D-339). At integration it merges PC-F102's chunk optimizer and re-measures Acme initialJs (235.00 before PC-F102) and the fixture's 230 line.
+- **For Ahmad:**
+  - Spec 0026 §8.4's "below md" for the Diagnostics panel's narrow layout should say the panel's own width.
+  - Spec 0026 §10.1's error record should gain tenantId.
+  - §10.1 should also say that a dump holds only the routed tenant's records (D-331).
+
+### D-339 (orchestrator, 2026-11-25): PC-F102 landed; PC-126 is released; PC-F106 fills pc-1
+
+- PC-F102 landed at 21cba2f6, with CI 45735284023 green on that commit. It was a fast-forward over 05ffd4fd. D-065 is reversed: Angular's chunk optimizer is on, and chunks get content-hash names that meet spec 0024 §6. Acme initialJs is 220.52 KB in 3 files on platform-core.
+- PC-126 was blocked only by PC-F102 (D-320). It is released now, the only item integrating (D-087). Its integration:
+  - applies candidate C (D-316);
+  - merges its "./search" staticGraphExcludes with ["./drafts"] into one key;
+  - resolves the 8 known conflicts as in its measure-only merge;
+  - keeps one router member in tm-entity.testing.util.ts;
+  - re-measures the search route under 110 and Acme under 230.
+- D-229 fill for pc-1: blocking fixes come first, so PC-F106 takes it. PC-F105 is in pc-f3.
+- Release order once PC-126 lands:
+  - PC-F105 when held, since PC-F89 and PC-F94 wait on it;
+  - then PC-154;
+  - then PC-F89 and PC-F94.
+  - PC-122 follows when held.
+  - A blocked item is skipped (D-319).
+
+### D-338 (orchestrator, 2026-11-25): PC-F105 review 1, so fix1 with no R2
+
+- R1 found 0 blocking, 0 major and 3 minor on 15bb8960.
+  - R1-1: the About dialog's box has no test.
+  - R1-2: serve measures the ratios once, so a brand-file edit leaves the old box until a restart.
+  - R1-3: the viewBox regex rejects valid SVG number forms.
+- R1 confirmed:
+  - the root cause, which reproduces CI's 0.000617;
+  - the define's coverage: build, serve, Vite's prebundle, and a distribution's own defines, which survive;
+  - the parsing and its fallbacks;
+  - the RTL and breakpoint box, and the failed-load box;
+  - the writer's lifetime.
+- The layout-shift e2e passed 30 of 30 under the harness.
+- All three findings are fixed in fix1. R1-2 re-measures on change if serve allows it cleanly; otherwise it is documented. No R2 runs (§4.4).
+- PC-F105 is the next release after PC-F102 lands: it is blocking, and PC-F89 and PC-F94 wait on it (D-332).
+
+### D-337 (orchestrator, 2026-11-25): PC-122 review 1 rulings; the launcher panel budget goes to Ahmad
+
+- R1 found 1 blocking, 3 major and 10 minor on 950e535f. So fix1 is followed by R2 at xhigh (§4.4).
+- R1-1 (blocking): the launcher panel is 9.80 KB against spec 0027's 6 KB.
+  - R1 itemized it with the gate's own bundler: stylesheet 1.16, page search 0.60, the English and synonym reader 0.56, keyboard handling 0.53, the below-md modal 0.48, pin rules 0.42, strings 0.32, providers about 0.4, and the rest about 5.3.
+  - Moves that keep the spec give a floor of about 8.5 to 9 KB. Moving page search to the first typed query would break the spec's synchronous results.
+  - Ruling: fix1 makes both moves that keep the spec. Providers load only when one is registered, and the below-md modal moves to its own chunk. The panel's ceiling is then the measured figure, rounded up to the next 0.5, recorded as a deviation with R1's itemization.
+  - The orchestrator does not raise a spec budget (D-313). The ceiling records the floor, and the 6 KB question goes to Ahmad. Nothing waits for it.
+  - **For Ahmad:** spec 0027's 6 KB launcher panel budget is not reachable with the spec's own behaviour. Either raise it, to about 9, or name what may leave the synchronous path.
+- R1-2 (major): an outside press does not close a launcher opened from the search field, because returning focus to the field reopens it. Fixed in fix1, with a test.
+- R1-3 (major): the Pinned band's commands have no seam and no owner.
+  - fix1 adds an internal root token for the band's commands, defaulting to none, and a command option kind.
+  - Its provision is carried to PC-163, which PC-169's e2e step needs.
+- R1-4 (major): spec 0027 §5.3's focus-return rules get tests at md and lg, in en and ar.
+- R1-5: the 0.1 KB of surface-creation code moves into the chunk. The hoisted lucide glyphs stay with PC-F91 (D-301). No icon definitions are copied.
+- R1-6 to R1-11 and R1-14 are fixed.
+- R1-12: TmLauncher.enterTenant and tmRecentPageIcon become internal, so no public API is added.
+- R1-13: two deviation records are corrected.
+- Deviations accepted:
+  - The launcher's icons stay in their own lazy chunk. D-248's carry wording, "in platform-icons.ts", would have put them on the first frame; the carry's intent is kept.
+  - Code that follows §9.4's rule over its "voice" example. **For Ahmad:** that example in spec 0027 §9.4 omits a match its own rule yields ("Invoices to chase" contains "voice").
+  - Acme's gl.Center stand-in, whose removal is carried to PC-F104.
+
+### D-336 (orchestrator, 2026-11-25): PC-F105 confirms the wordmark cause and goes to review 1
+
+- PC-F105's impl, 15bb8960, recorded the layout-shift sources under the harness.
+  - The tenant shell's wordmark img had auto width and was 0 px until its SVG loaded. So the app-bar group moved 49.53 px (14 x 736/208).
+  - That gives a shift of 0.000617225964864095, CI's exact value, in 5 of 8 runs.
+- The fix: the build measures each brand file's viewBox ratio, the frame writes a custom property per file, and each wordmark gets width = height x ratio.
+  - Two new Acme e2e tests hold the brand files on a first visit. Both failed 4 of 4 on the old build.
+  - layout-shift.spec passed 120 of 120 with the harness and 120 of 120 without it, in en and ar, with no retries.
+- Three deviations:
+  - The ratios travel as a build-time define, not in the boot config. The English boot script is at its 3 KB budget, and the boot config pushed it over.
+  - The width is definite rather than aspect-ratio, because aspect-ratio still takes the alt text's width while the file is pending or failed.
+  - The About dialog's wordmark is fixed too.
+- R1 runs at high.
+- Overlaps:
+  - PC-F102 edits the same ng build argument list in build.ts and the same ARCHITECTURE.md row. Whichever lands second merges both.
+  - @tellma/core/shell goes to 8.91 of its 9 ceiling, while PC-122 moves ./shell to 10. The second to land re-measures (D-214).
+
+### D-335 (orchestrator, 2026-11-25): PC-122 to review 1; the launcher panel is over spec 0027's budget
+
+- PC-122's impl, 950e535f, builds the launcher and global search. It lists 14 deviations.
+- The launcher panel is lazy, at 9.80 KB, but spec 0027 gives it 6 KB. Like spec 0024's 110 (D-313), a spec budget is not raised by the orchestrator. The impl's ceiling of 10 is a measured line, not a ruling.
+  - R1 is asked what can move into further lazy pieces, loaded on first need, and whether 6 KB is reachable.
+  - If it is not reachable, the budget goes to Ahmad as a spec question.
+- Acme initialJs is 229.27 KB, 0.73 under 230. About 0.7 KB of that is 12 lucide glyphs hoisted by D-301's lucide-index issue, which PC-F91 owns. PC-F102 lands first and lowers every figure. PC-122 re-measures at integration (D-214).
+- R1 judges the deviations. It looks closest at three:
+  - the Pinned band's pin commands, deferred with no seam;
+  - the icons, registered lazily rather than in platform-icons.ts as D-248's carry says;
+  - §9.4's voice example, which leaves out a match its own rule yields.
+- Known flakes are excluded from R1. The local e2e-network-hold timeout under load gets a watch row.
+
+### D-334 (orchestrator, 2026-11-25): PC-F102 is released to integrate
+
+- PC-F102's fix1, 613a3fca, fixes R1-1 and R1-2. Each new spec fails with its fix removed. The Acme figures are unchanged: initialJs 220.52 KB in 3 files.
+- No other item is integrating. PC-F89 and PC-F94 wait for PC-F105 (D-332), and PC-F102 is blocking (D-320). So PC-F102 is released now, as D-333 set out.
+
+### D-333 (orchestrator, 2026-11-25): PC-F102 review 1, so fix1 with no R2
+
+- R1 found 0 blocking, 0 major and 2 minor on cc258a43.
+  - R1-1: orphans are deleted before three checks that can still fail the build.
+  - R1-2: the collision guard has no test.
+- R1 confirmed that spec 0024 §6 holds. A clean rebuild gives 220.52 KB in 3 files, with 43 chunks named. Every reference form, the ngsw hashes, determinism, SCC naming, orphan safety and the Rolldown pin check out.
+- Under §4.4, with no blocking finding, fewer than four majors and a small fix1, no R2 runs.
+- R1's local e2e failed launch.spec:46 "two live tenants lands on the picker". That is the local-Windows watch row, which R1 reproduced 2 of 4 on a pre-change build as well. Its row now records this.
+- Release order: PC-F102 integrates after fix1 and lands before PC-126 and PC-154 integrate. If PC-F105 has not landed by then, PC-F102 still integrates first, because it is blocking. A red that is only D-327's flake is handled as in D-332.
+
 ### D-332 (orchestrator, 2026-11-25): a third fix slot for the layout-shift flake, and PC-F89 waits for it
 
 - CI 45717312412 on ec9368ca, PC-F89's third integration, failed only on acme-client (ubuntu-latest), on the same test as D-327: the layout-shift cold entry, a 0.000617 shift.

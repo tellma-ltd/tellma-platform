@@ -95,8 +95,15 @@ describe('the @tellma/core entry-point table', () => {
     }
   });
 
+  it('keeps the edit side out of the entity entry point and the page hosts, for an editing page or dialog to load', () => {
+    expect(TM_CORE_ENTRY_POINTS['./entity-editing']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    for (const other of ['.', './attention', './shell', './entity', './search', './details']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./entity-editing')).toBe(false);
+    }
+  });
+
   it('keeps the column filter control out of the entity entry point, for the search page to load', () => {
-    expect(TM_CORE_ENTRY_POINTS['./column-filter']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    expect(TM_CORE_ENTRY_POINTS['./column-filter']).toEqual({ load: 'lazy', imports: ['./entity', './entity-editing'] });
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './search').has('./column-filter')).toBe(true);
     expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, './entity').has('./column-filter')).toBe(false);
     for (const eager of ['.', './attention', './shell']) {

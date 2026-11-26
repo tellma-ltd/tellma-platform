@@ -1,8 +1,9 @@
 /*
- * The entry points of @tellma/core that the primary entry point loads with
- * import() through a specifier the compiler does not follow (the shell's
- * import of the primary would otherwise make the package build report a
- * cycle). A build or test that compiles @tellma/core from its sources
+ * The entry points of @tellma/core that another entry point loads with
+ * import() through a specifier the compiler does not follow (the primary
+ * loads the shell and the page hosts, and /entity's action dialog the edit
+ * side; the shell's import of the primary, and the edit side's of /entity,
+ * would otherwise make the package build report a cycle). A build or test that compiles @tellma/core from its sources
  * compiles only what its program holds, so every such tsconfig in this
  * repository extends this one beside its own base. A lazily loaded entry
  * point is one line here. An app over the installed package needs none of it.
@@ -14,6 +15,8 @@
     "leader/public-api.ts",
     "updates/public-api.ts",
     "errors/public-api.ts",
+    "search/public-api.ts",
+    "entity-editing/public-api.ts",
     "details/public-api.ts"
   ]
 }

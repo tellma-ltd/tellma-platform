@@ -45,11 +45,11 @@ import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 import { TmImage, type TmImageEdit } from '@tellma/core-ui/image';
 import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
-import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
+import { ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, type ɵTmEditorKind } from '@tellma/core/entity';
 
-import { ɵtmCropCoverSquare, tmCheckBlobFile } from './tm-blob-check';
-import { TmFormats } from './tm-formats';
-import { ɵTmExactBinding, ɵtmParseExact } from './tm-exact-number';
+import { ɵTmExactBinding } from './tm-exact-binding';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
 import { TmEntityField } from './tm-entity-field';
 import { TmEntityMultiField } from './tm-entity-multi-field';
@@ -63,28 +63,8 @@ import { TmUploads } from './tm-uploads';
 // path listed in the nearest `TmUploads` until the upload settles, and the
 // staged blob's id becomes the value.
 
-/** The control a value takes. */
-type TmEditorKind =
-  | 'readonly'
-  | 'text'
-  | 'textarea'
-  | 'plain'
-  | 'integer'
-  | 'exact'
-  | 'bool'
-  | 'date'
-  | 'enum'
-  | 'enums'
-  | 'image'
-  | 'file'
-  | 'entity'
-  | 'entities';
-
 /** What an editor knows of the property it edits. */
 type TmEditedProperty = TmValueDescriptor | TmPropertyDescriptor | TmNavigationDescriptor;
-
-/** The longest text a single-line input takes; longer, or unbounded, text takes a textarea. */
-const SINGLE_LINE_MAX = 255;
 
 /** The largest original a cropped image is picked from: the crop is what uploads. */
 const LARGEST_PICK = 20 * 1024 * 1024;
@@ -103,51 +83,6 @@ const SIZES = new Map<string, Intl.NumberFormat>();
  */
 function valueOf(property: TmEditedProperty): TmValueDescriptor {
   return 'foreignKey' in property ? { type: 'integer', nullable: property.nullable, target: property.target } : property;
-}
-
-/**
- * The control a writable value takes by its type facts: a reference takes
- * the entity field, and each type its control.
- *
- * @param of - The value's type facts.
- * @returns The control; `readonly` for a type with none.
- */
-function kindOf(of: TmValueDescriptor): TmEditorKind {
-  if (of.target !== undefined) {
-    return of.array ? 'entities' : 'entity';
-  }
-  switch (of.type) {
-    case 'string':
-      return of.maxLength !== undefined && of.maxLength <= SINGLE_LINE_MAX ? 'text' : 'textarea';
-    case 'guid':
-    case 'time':
-      return 'plain';
-    case 'integer':
-      return of.long ? 'exact' : 'integer';
-    case 'decimal':
-      return 'exact';
-    case 'bool':
-      return 'bool';
-    case 'date':
-      return 'date';
-    case 'enum':
-      return of.array ? 'enums' : 'enum';
-    default:
-      // Instants and date-times are read-only here; floats, JSON and binary have no control.
-      return 'readonly';
-  }
-}
-
-/**
- * Whether `tm-value-editor` edits a value of these type facts, rather than
- * showing it as read-only text. Internal: an action's generated dialog
- * needs a control for each argument.
- *
- * @param of - The value's type facts.
- * @returns Whether the value takes a control.
- */
-export function ɵtmEditable(of: TmValueDescriptor): boolean {
-  return kindOf(of) !== 'readonly';
 }
 
 /**
@@ -429,7 +364,7 @@ export class TmValueEditor {
   });
 
   /** The control the value takes. */
-  protected readonly kind = computed<TmEditorKind>(() => {
+  protected readonly kind = computed<ɵTmEditorKind>(() => {
     const property = this.property();
     const of = this.descriptor();
     const policy = this.policy();
@@ -442,7 +377,7 @@ export class TmValueEditor {
     if (!this.#owned() || keyOf !== undefined) {
       return 'readonly';
     }
-    return kindOf(of);
+    return ɵtmEditorKind(of);
   });
 
   /** A read-only value's text. */

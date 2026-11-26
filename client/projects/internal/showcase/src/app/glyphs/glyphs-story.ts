@@ -9,7 +9,8 @@ import { TmCheckbox } from '@tellma/core-ui/checkbox';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmGrid, TmGridColumn } from '@tellma/core-ui/grid';
 import { TmInput } from '@tellma/core-ui/input';
-import { TmMultiSelect, TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 
 /** One row of the selectable grid the checkbox glyphs are compared against. */
 interface GlyphRow {

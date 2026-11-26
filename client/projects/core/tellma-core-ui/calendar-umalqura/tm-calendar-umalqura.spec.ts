@@ -8,8 +8,8 @@ import {
   tmFormatDateTime,
   tmFormatMonthName,
   tmFormatRelativeTime,
-  tmParseDate,
 } from '@tellma/core-ui/l10n';
+import { tmParseDate } from '@tellma/core-ui/l10n-input';
 
 import { tmUmalquraCalendar } from './tm-calendar-umalqura';
 // Generated from the server's calendar, whose own suite checks the same

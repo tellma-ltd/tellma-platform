@@ -125,6 +125,11 @@ describe('serve', () => {
       join(certificates, 'fixture.key'),
       '--proxy-config',
     ]);
+    // The brand files' ratios, defined for the app's code as the build defines them: the fixture's 120 by 24 wordmark and 24 px mark.
+    expect(served[0]!.slice(11)).toEqual([
+      '--define',
+      'TM_BRAND_RATIOS={"wordmark-on-dark":5,"wordmark-on-light":5,"mark-on-dark":1,"mark-on-light":1}',
+    ]);
     expect(runner.calls.at(-1)!.cwd).toBe(app);
     const routing = (JSON.parse(readFileSync(join(FIXTURES_DIR, 'migrator', 'core.json'), 'utf8')) as { routing: typeof ROUTING }).routing;
     expect(proxy).toEqual(tmProxyConfig(routing, TM_DEFAULT_WEB_PORT));

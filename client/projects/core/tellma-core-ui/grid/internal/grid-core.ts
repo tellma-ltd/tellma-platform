@@ -24,9 +24,9 @@ import {
 } from '@angular/core';
 import type { LiveAnnouncer } from '@angular/cdk/a11y';
 import type { FieldTree, ValidationError } from '@angular/forms/signals';
-import { ClipboardPaste, Copy, CopyPlus, CornerDownRight, Plus, Scissors, Trash2 } from 'lucide';
 
 import {
+  TM_CHECKBOX_CELL_DISPLAY,
   TM_PARSE_ERROR,
   type SignalLike,
   type TmGridContentState,
@@ -44,8 +44,7 @@ import {
   type TmErrorDisplayState,
   type TmUiTranslateFn,
 } from '@tellma/core-ui';
-import { TM_CHECKBOX_CELL_DISPLAY } from '@tellma/core-ui/checkbox';
-import { tmIsApplePlatform, tmKeysMatch, tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform, tmKeysMatch, tmKeysText } from '@tellma/core-ui/kbd';
 import type {
   TmEntityId,
   TmEntityPickerPage,
@@ -63,16 +62,23 @@ import {
   type TmRowCol,
 } from '@tellma/core-ui/grid-engine';
 import {
-  TM_NUMBER_MAX_DIGITS,
   tmFormatDate,
   tmFormatNumber,
   tmGregorianCalendar,
+  type TmCalendar,
+} from '@tellma/core-ui/l10n';
+import {
+  TM_NUMBER_MAX_DIGITS,
   tmNumberDigitCount,
   tmParseDate,
   tmParseNumber,
-  type TmCalendar,
-} from '@tellma/core-ui/l10n';
-import { type TmMenu, type TmMenuEntry, type TmMenuItem } from '@tellma/core-ui/menu';
+} from '@tellma/core-ui/l10n-input';
+import {
+  type TmMenu,
+  type TmMenuAnchor,
+  type TmMenuItem,
+  type TmMenuOpenOptions,
+} from '@tellma/core-ui/menu';
 import { ɵtmObserveLongPress } from '@tellma/core-ui/overlay';
 // Types only: the editing code itself arrives through import() (loadEditing).
 import type {
@@ -193,33 +199,42 @@ const BUILT_IN_EDIT_TYPES: ReadonlySet<TmGridColumnType> = new Set([
   'enum',
 ]);
 
-/**
- * Context-menu shortcut hints (display only) as key combinations;
- * the menu labels them for the platform (Ctrl+X, or ⌘X on Apple). The keys
- * mirror the keymap: cut/copy/paste are the native Mod+X/C/V; row ops are
- * the Alt-modified Mod+Alt+±.
- */
-const GRID_MENU_SHORTCUTS = {
-  cut: 'Mod+X',
-  copy: 'Mod+C',
-  paste: 'Mod+V',
-  insertAbove: 'Mod+Alt+Plus',
-  deleteRows: 'Mod+Alt+Minus',
-} satisfies Record<string, TmKeys>;
+/** A built-in context-menu action, which the deferred menu runs through the core. */
+export type ɵTmGridMenuAction =
+  | 'cut'
+  | 'copy'
+  | 'copyWithHeaders'
+  | 'paste'
+  | 'insertAbove'
+  | 'insertBelow'
+  | 'insertChild'
+  | 'deleteRows';
 
 /**
- * The context menu's built-in glyphs: Lucide data the menu draws through
- * `tm-icon`. None is directional, so none mirrors in right-to-left text.
+ * What the context menu reads to build its entries. The entries, their
+ * labels, glyphs and shortcut hints live in the grid's deferred chunk, which
+ * loads after the first render; the core keeps only the state they read.
  */
-const GRID_MENU_ICONS = {
-  cut: Scissors,
-  copy: Copy,
-  copyWithHeaders: CopyPlus,
-  paste: ClipboardPaste,
-  insertRows: Plus,
-  insertChild: CornerDownRight,
-  deleteRows: Trash2,
-} as const;
+export interface ɵTmGridMenuState {
+  /** The grid's translation function, for the entries' labels. */
+  readonly translate: TmUiTranslateFn;
+  /** Whether the grid is editable: the editing entries show, and Cut and Paste are enabled. */
+  readonly editable: boolean;
+  /** Whether the grid can make a row (a `newRow` factory is set). */
+  readonly canAddRows: boolean;
+  /** How many rows the selection spans, at least 1. */
+  readonly rowCount: number;
+  /** Whether Paste can read the clipboard; else it shows the keyboard shortcut's hint. */
+  readonly canReadClipboard: boolean;
+  /** Whether the row-end cell is active, where the clipboard entries do nothing. */
+  readonly onRowEnd: boolean;
+  /** Whether the grid is a tree, which offers Insert child. */
+  readonly tree: boolean;
+  /** Whether a data row is active, which Insert child parents under. */
+  readonly hasActiveRow: boolean;
+  /** The consumer's extra entries, after a separator. */
+  readonly extras: readonly TmMenuItem[];
+}
 
 /** Natively-focusable content consumers may project into cells/headers. */
 const INTERACTIVE_CONTENT_SELECTOR = 'a[href], button, input, select, textarea, [tabindex]';
@@ -936,8 +951,10 @@ export interface ɵTmGridViewCore {
    * waits for it to reach 0.
    */
   readonly pendingCount: Signal<number>;
-  /** The context-menu entries (built-ins + consumer extras). */
-  readonly menuItems: Signal<readonly TmMenuEntry[]>;
+  /** What the context menu reads to build its entries. */
+  readonly menuState: Signal<ɵTmGridMenuState>;
+  /** Runs a built-in context-menu action. */
+  runMenuAction(action: ɵTmGridMenuAction): void;
   /** The error-overlay message element's id (`aria-describedby` target). */
   readonly errorMsgId: string;
   /** The active errored cell's element — the error overlay's anchor. */
@@ -982,6 +999,16 @@ export interface ɵTmGridViewCore {
   attachEditorOutlet(outlet: ViewContainerRef | null): void;
   /** Hands the core the context menu (or `null` when it is gone). */
   attachMenu(menu: TmMenu | null): void;
+  /**
+   * Whether the context menu was asked for: a right-click, a long-press or
+   * the Menu key before its code arrived. The view loads the menu then.
+   */
+  readonly menuWanted: Signal<boolean>;
+  /**
+   * The context menu's code failed to load: an open asked for meanwhile is
+   * dropped, and the next one asks for the code again.
+   */
+  menuLoadFailed(): void;
   /** The scroller's scroll handler. */
   onScroll(event: Event): void;
   /** The scroller's keydown handler. */
@@ -1110,6 +1137,12 @@ export class ɵTmGridCore<T>
   private lastOutsidePointerDown = 0;
   private dragCleanup: (() => void) | null = null;
   private menuRef: TmMenu | null = null;
+  /** A context-menu open asked for before the menu attached; it opens on attach. */
+  private pendingMenuOpen: { readonly anchor: TmMenuAnchor; readonly options: TmMenuOpenOptions | undefined } | null = null;
+  /** Whether the context menu was asked for before it attached. */
+  private readonly menuWantedSignal = signal(false);
+  /** Whether the context menu was asked for: the view loads it then. */
+  readonly menuWanted = this.menuWantedSignal.asReadonly();
   /** Generation guard for the chunked error-tally warm-up chains. */
   private warmupGeneration = 0;
   /** Each rendered row's slot from the last render, by row key, in render order. */
@@ -1345,8 +1378,8 @@ export class ɵTmGridCore<T>
   readonly pendingCount: Signal<number>;
   /** The column-resize pointer controller. */
   readonly resize: ɵTmGridColumnResize;
-  /** The context-menu entries (built-ins + consumer extras). */
-  readonly menuItems: Signal<readonly TmMenuEntry[]>;
+  /** What the context menu reads to build its entries. */
+  readonly menuState: Signal<ɵTmGridMenuState>;
   /** The error-overlay message element's id (`aria-describedby` target). */
   readonly errorMsgId = `tm-grid-errmsg-${nextErrorMsgId++}`;
   /** The active errored cell's element — the error overlay's anchor. */
@@ -1985,7 +2018,7 @@ export class ɵTmGridCore<T>
     });
 
     // ---- context menu (§8.5) ----
-    this.menuItems = computed(() => this.buildMenuItems());
+    this.menuState = computed(() => this.readMenuState());
 
     this.setupEffects();
 
@@ -2002,6 +2035,9 @@ export class ɵTmGridCore<T>
     // page instead of moving the active cell). Document-level captures so
     // nothing inside the page can hide the signal.
     const onDocumentPointerDown = (event: Event): void => {
+      // A press anywhere drops a context-menu open still waiting for its code
+      // (a right-click's own press comes before its contextmenu event).
+      this.cancelPendingMenu();
       if (event.target instanceof Node && !deps.host.contains(event.target)) {
         this.lastOutsidePointerDown = Date.now();
         this.gridOwnsFocus = false; // the user is interacting outside the grid
@@ -2054,6 +2090,43 @@ export class ɵTmGridCore<T>
   /** Hands the core the context menu (or `null` when it is gone). */
   attachMenu(menu: TmMenu | null): void {
     this.menuRef = menu;
+    const pending = this.pendingMenuOpen;
+    if (menu !== null && pending !== null) {
+      this.pendingMenuOpen = null;
+      menu.open(pending.anchor, pending.options);
+    }
+  }
+
+  /**
+   * Opens the context menu, or, while its code has not arrived, asks the
+   * view for it and opens it once it attaches.
+   *
+   * @param anchor - Where the menu opens.
+   * @param options - Where focus returns when it closes.
+   */
+  private openMenu(anchor: TmMenuAnchor, options: TmMenuOpenOptions | undefined): void {
+    const menu = this.menuRef;
+    if (menu === null) {
+      this.pendingMenuOpen = { anchor, options };
+      this.menuWantedSignal.set(true);
+      return;
+    }
+    menu.open(anchor, options);
+  }
+
+  /** The context menu's code failed to load: drops the open asked for, so the next one asks again. */
+  menuLoadFailed(): void {
+    this.pendingMenuOpen = null;
+    this.menuWantedSignal.set(false);
+  }
+
+  /**
+   * Drops a context-menu open still waiting for the menu's code: the user
+   * pressed Escape, pressed elsewhere or moved focus out of the grid, so a
+   * menu opening later at the old point would act on what they left.
+   */
+  private cancelPendingMenu(): void {
+    this.pendingMenuOpen = null;
   }
 
   /**
@@ -2418,6 +2491,9 @@ export class ɵTmGridCore<T>
 
   /** The scroller's keydown handler: resolve to an intent, execute, consume. */
   onKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      this.cancelPendingMenu();
+    }
     if (event.target instanceof Element && this.inOverlay(event.target)) {
       // A popup editor's pane is an overlay that keeps the editing keys
       // (spec 0010 §C.15); every other surface owns its own keys. Only the
@@ -3501,13 +3577,11 @@ export class ɵTmGridCore<T>
     }
     event.preventDefault();
     const menu = this.menuRef;
-    if (menu === null) {
-      return;
-    }
     // The keyboard Menu key opens the menu from its keydown AND emits a native
     // contextmenu; if that one lands here (focus still on the scroller), just
     // swallow it — the menu is already open, reopening would flicker/re-anchor.
-    if (untracked(menu.isOpen)) {
+    // An open asked for before the menu arrived is in flight the same way.
+    if ((menu !== null && untracked(menu.isOpen)) || (menu === null && this.pendingMenuOpen !== null)) {
       return;
     }
     if (untracked(() => this.engine.edit.session()) !== null) {
@@ -3521,7 +3595,7 @@ export class ɵTmGridCore<T>
       keyboardSourced && element !== null
         ? element.getBoundingClientRect()
         : { x: event.clientX, y: event.clientY };
-    menu.open(anchor, element !== null ? { restoreFocus: element } : undefined);
+    this.openMenu(anchor, element !== null ? { restoreFocus: element } : undefined);
   }
 
   /**
@@ -3532,17 +3606,13 @@ export class ɵTmGridCore<T>
    */
   private onLongPress(point: { x: number; y: number }): void {
     this.pressLongPressed = true;
-    const menu = this.menuRef;
-    if (menu === null) {
-      return;
-    }
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
     const hit = document.elementFromPoint(point.x, point.y);
     this.selectMenuTarget(hit);
     const element = this.activeCellElement();
-    menu.open(point, element !== null ? { restoreFocus: element } : undefined);
+    this.openMenu(point, element !== null ? { restoreFocus: element } : undefined);
   }
 
   /**
@@ -3626,6 +3696,9 @@ export class ɵTmGridCore<T>
    * one commits a draft too.
    */
   onFocusOut(event: FocusEvent): void {
+    if (!(event.relatedTarget instanceof Node && this.deps.host.contains(event.relatedTarget))) {
+      this.cancelPendingMenu();
+    }
     const engine = this.engineInstance;
     const viewing = untracked(this.popupViewSignal) !== null;
     if (engine === null || (!viewing && untracked(() => engine.edit.session()) === null)) {
@@ -4595,12 +4668,11 @@ export class ɵTmGridCore<T>
         return true;
       }
       case 'menu': {
-        const menu = this.menuRef;
         const element = this.activeCellElement();
-        if (menu === null || element === null) {
+        if (element === null) {
           return false;
         }
-        menu.open(element.getBoundingClientRect(), { restoreFocus: element });
+        this.openMenu(element.getBoundingClientRect(), { restoreFocus: element });
         return true;
       }
       case 'clear':
@@ -5412,117 +5484,64 @@ export class ɵTmGridCore<T>
 
   // ---- context menu (§8.5) ----
 
-  private buildMenuItems(): readonly TmMenuEntry[] {
-    const translate = this.deps.translate;
-    const editable = this.editable();
-    const canAddRows = this.deps.newRow() !== undefined;
+  /** Reads what the context menu's entries depend on, so the menu rebuilds them as it changes. */
+  private readMenuState(): ɵTmGridMenuState {
     const engine = this.engine;
     engine.selection.ranges(); // recompute the row tally as selection changes
     const spans = engine.selection.rowsUnion();
-    const count = Math.max(
-      1,
-      spans.reduce((sum, span) => sum + (span.end - span.start + 1), 0),
-    );
-    // Menu Paste rides the async read API. Where the read is unavailable —
-    // or once a read was denied — the item degrades to the keyboard-
-    // shortcut hint instead (§8.5, the Sheets-established fallback).
-    const canReadClipboard =
-      typeof navigator.clipboard?.read === 'function' && !this.pasteReadDenied();
-    // The row-end column never takes part in the clipboard (spec 0010
-    // §C.14): with its cell active the keys do nothing, and so do the items.
-    const onEnd = this.rowEndActive();
-    const items: TmMenuEntry[] = [
-      {
-        id: 'cut',
-        label: translate('grid.menu.cut')(),
-        icon: GRID_MENU_ICONS.cut,
-        shortcut: GRID_MENU_SHORTCUTS.cut,
-        disabled: !editable || onEnd,
-        action: () => this.clipboardDom.cutAsync(),
-      },
-      {
-        id: 'copy',
-        label: translate('grid.menu.copy')(),
-        icon: GRID_MENU_ICONS.copy,
-        shortcut: GRID_MENU_SHORTCUTS.copy,
-        disabled: onEnd,
-        action: () => this.clipboardDom.copyAsync(),
-      },
-      {
-        id: 'copyWithHeaders',
-        label: translate('grid.menu.copyWithHeaders')(),
-        icon: GRID_MENU_ICONS.copyWithHeaders,
-        disabled: onEnd,
-        action: () => this.clipboardDom.copyAsync({ withHeaders: true }),
-      },
-      canReadClipboard
-        ? {
-            id: 'paste',
-            label: translate('grid.menu.paste')(),
-            icon: GRID_MENU_ICONS.paste,
-            shortcut: GRID_MENU_SHORTCUTS.paste,
-            disabled: !editable || onEnd,
-            action: () => void this.pasteFromAsyncClipboard(),
-          }
-        : {
-            id: 'paste',
-            // The hint is a sentence, so the combination is written out as
-            // text for the platform ("Ctrl+V", "⌘V") rather than as caps.
-            label: translate('grid.menu.pasteHint', {
-              shortcut: tmKeysText(GRID_MENU_SHORTCUTS.paste),
-            })(),
-            icon: GRID_MENU_ICONS.paste,
-            disabled: true,
-            action: () => undefined,
-          },
-    ];
-    if (editable) {
-      items.push(
-        { separator: true },
-        {
-          id: 'insertAbove',
-          label: translate('grid.menu.insertAbove', { count })(),
-          icon: GRID_MENU_ICONS.insertRows,
-          shortcut: GRID_MENU_SHORTCUTS.insertAbove,
-          disabled: !canAddRows,
-          action: () => this.engine.insertRows('above'),
-        },
-        {
-          id: 'insertBelow',
-          label: translate('grid.menu.insertBelow', { count })(),
-          icon: GRID_MENU_ICONS.insertRows,
-          disabled: !canAddRows,
-          action: () => this.engine.insertRows('below'),
-        },
-      );
-      if (engine.model.isTree) {
-        // Insert child row (§13.4): needs the row factory and an active
-        // DATA row to parent under (the placeholder has no identity yet).
-        const active = engine.nav.activeCell();
-        const activeView = active === null ? null : engine.model.rowAt(active.row);
-        items.push({
-          id: 'insertChild',
-          label: translate('grid.menu.insertChild')(),
-          icon: GRID_MENU_ICONS.insertChild,
-          disabled: !canAddRows || activeView === null,
-          action: () => this.insertChildAtActive(),
-        });
-      }
-      items.push({
-        id: 'deleteRows',
-        label: translate('grid.menu.deleteRows', { count })(),
-        icon: GRID_MENU_ICONS.deleteRows,
-        shortcut: GRID_MENU_SHORTCUTS.deleteRows,
+    const active = engine.model.isTree ? engine.nav.activeCell() : null;
+    return {
+      translate: this.deps.translate,
+      editable: this.editable(),
+      canAddRows: this.deps.newRow() !== undefined,
+      rowCount: Math.max(
+        1,
+        spans.reduce((sum, span) => sum + (span.end - span.start + 1), 0),
+      ),
+      // Menu Paste rides the async read API. Where the read is unavailable —
+      // or once a read was denied — the item degrades to the keyboard-
+      // shortcut hint instead (§8.5, the Sheets-established fallback).
+      canReadClipboard: typeof navigator.clipboard?.read === 'function' && !this.pasteReadDenied(),
+      // The row-end column never takes part in the clipboard (spec 0010
+      // §C.14): with its cell active the keys do nothing, and so do the items.
+      onRowEnd: this.rowEndActive(),
+      tree: engine.model.isTree,
+      // Insert child (§13.4) needs an active DATA row to parent under (the
+      // placeholder has no identity yet).
+      hasActiveRow: active !== null && engine.model.rowAt(active.row) !== null,
+      extras: this.deps.extraMenuItems(),
+    };
+  }
+
+  /** Runs a built-in context-menu action. */
+  runMenuAction(action: ɵTmGridMenuAction): void {
+    switch (action) {
+      case 'cut':
+        void this.clipboardDom.cutAsync();
+        break;
+      case 'copy':
+        void this.clipboardDom.copyAsync();
+        break;
+      case 'copyWithHeaders':
+        void this.clipboardDom.copyAsync({ withHeaders: true });
+        break;
+      case 'paste':
+        void this.pasteFromAsyncClipboard();
+        break;
+      case 'insertAbove':
+      case 'insertBelow':
+        this.engine.insertRows(action === 'insertAbove' ? 'above' : 'below');
+        break;
+      case 'insertChild':
+        this.insertChildAtActive();
+        break;
+      case 'deleteRows':
         // Refocus the surviving active cell: the menu's restoreFocus targets
         // the now-deleted cell, so focus would otherwise fall out of the grid.
-        action: () => {
-          this.engine.deleteSelectedRows();
-          this.requestFocusActive();
-        },
-      });
+        this.engine.deleteSelectedRows();
+        this.requestFocusActive();
+        break;
     }
-    const extras = this.deps.extraMenuItems();
-    return extras.length > 0 ? [...items, { separator: true }, ...extras] : items;
   }
 
   /**

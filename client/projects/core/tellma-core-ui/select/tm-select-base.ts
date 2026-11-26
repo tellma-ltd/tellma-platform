@@ -38,8 +38,8 @@ import {
   ɵtmControlSize,
   type TmControlSize,
 } from '@tellma/core-ui';
-import { TmFormField } from '@tellma/core-ui/form-field';
 import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
+import { ɵTM_FORM_FIELD_HOST } from '@tellma/core-ui/private';
 
 import { TmOption } from './tm-option';
 import type { TmOptionGroup } from './tm-option-group';
@@ -91,7 +91,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
   /** The enclosing grid cell's registration sink, if any — absent standalone. */
   protected readonly cellHost = inject(TM_CELL_EDITOR_HOST, { optional: true });
   /** The enclosing form field, if any — decides whether the size ladder is inherited. */
-  private readonly field = inject(TmFormField, { optional: true });
+  private readonly field = inject(ɵTM_FORM_FIELD_HOST, { optional: true });
 
   // ---- FormValueControl<V> + optional state inputs ----
   /** The selected domain value — THE source of truth. */

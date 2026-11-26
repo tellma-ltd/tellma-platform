@@ -8,7 +8,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
 import type { TmDecimal } from '../json/tm-json';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, type TmAppRig } from '../routes/tm-app.testing.util';
+import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, tmSettleUntil, type TmAppRig } from '../routes/tm-app.testing.util';
 import { TM_ROUTE_CASES } from '../routes/tm-route-cases.testing.util';
 import { tmParseListPayload } from './tm-search-query';
 
@@ -183,6 +183,8 @@ describe('TmUrls', () => {
       // Guards run only inside a navigation, so no navigation event means no guard ran.
       const events: string[] = [];
       const subscription = rig.router.events.subscribe((event) => events.push(event.constructor.name));
+      // The centers' search page loads its declared results component as it starts.
+      await tmSettleUntil(() => document.querySelector('tm-search-host') !== null, 'the search page starts');
       tmLoadTestPage.mockClear();
 
       rig.urls.preload('/17/centers/5');

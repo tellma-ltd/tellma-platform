@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { NgComponentOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject, InjectionToken, signal, type Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal, type Type } from '@angular/core';
 import { TmLocalization, TmTelemetry } from '@tellma/core';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
@@ -12,8 +12,9 @@ import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import type { TmEntityPickerPageData } from '@tellma/core-ui/entity-picker';
 import { TM_MODAL_DATA, TmModalFooter, TmModalRef } from '@tellma/core-ui/modal';
 import { TmSpinner } from '@tellma/core-ui/spinner';
+import { ɵTM_PICKER_PAGES, type TmEntityPickerContext } from '@tellma/core/entity';
 
-import { ɵTM_PICKER_STRINGS_EN } from './tm-entity-strings';
+import { ɵTM_PICKER_STRINGS_EN } from './tm-entity-editing-strings';
 
 // The page an entity picker opens in its modal (spec 0029 §14.4): one shim
 // for every entity, which loads the search page's picker mode (spec 0030
@@ -23,50 +24,6 @@ import { ɵTM_PICKER_STRINGS_EN } from './tm-entity-strings';
 // provides its own half of (the search pages Advanced search, the details
 // pages Create and Edit); until a family lands, the shim says its page is
 // not available.
-
-/**
- * What an entity picker's page is opened for, in the page's
- * `TmEntityPickerPageData.context`: the entity it serves, the field's own
- * filter beside the entity's declared one, and the page's kind.
- */
-export interface TmEntityPickerContext {
-  /** The entity's name, such as `gl.Center`. */
-  readonly entity: string;
-  /** The field's Queryex filter, applied beside the entity's declared picker filter; `null` for none. */
-  readonly filter: string | null;
-  /** Advanced search, a new record, or the chosen record's details. */
-  readonly kind: 'search' | 'create' | 'edit';
-}
-
-/**
- * A page family's half of the picker pages: the loader of the component
- * its picker mode renders. Internal: the search and details pages each
- * provide theirs.
- */
-export interface ɵTmPickerPages {
-  /** Loads the search page's picker mode, which advanced search renders. */
-  readonly search?: () => Promise<Type<unknown>>;
-  /** Loads the details page's picker mode, which Create and Edit render. */
-  readonly details?: () => Promise<Type<unknown>>;
-}
-
-/**
- * The picker pages, a multi-provider each page family adds its half to, so
- * neither replaces the other; a later provider of the same half wins. A
- * family loads its half with an `import()` of its own entry point, which
- * this one never reaches statically. Both halves must be provided at the
- * root environment injector, in the app's providers: `TmModal` opens its
- * dialogs without an injector of their own, so a provider on a route or a
- * component is never seen. Internal: with none, every page shows as not
- * available.
- *
- * @example
- * ```ts
- * // The app's providers, beside the search family's routes.
- * { provide: ɵTM_PICKER_PAGES, multi: true, useValue: { search: () => import('@tellma/core/search').then((m) => m.TmSearchPickerPage) } }
- * ```
- */
-export const ɵTM_PICKER_PAGES = new InjectionToken<readonly ɵTmPickerPages[]>('TM_PICKER_PAGES');
 
 /**
  * Registers the pickers' English strings, once per app. Internal.

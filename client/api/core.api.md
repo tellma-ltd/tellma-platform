@@ -21,6 +21,7 @@ import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
+import { WritableSignal } from '@angular/core';
 
 // @public
 export function bootstrapTellma(appConfig: ApplicationConfig): Promise<ApplicationRef>;
@@ -539,9 +540,29 @@ export type TmColumnInput<N extends string> = TmPath<N> | {
 };
 
 // @public
+export type TmColumnKind = 'expression' | 'file' | 'image' | 'navigation' | 'text' | 'value';
+
+// @public
+export interface TmColumnPlan {
+    readonly descriptor: TmValueDescriptor | null;
+    readonly filter: TmFilterKind | null;
+    readonly input: TmColumnInput<string>;
+    readonly key: string;
+    readonly kind: TmColumnKind;
+    readonly label: Signal<string>;
+    orderBy(direction: 'asc' | 'desc'): string | null;
+    readonly resolution: TmPathResolution | null;
+    readonly type: TmDataType | null;
+    value(row: TmPlanRow): unknown;
+}
+
+// @public
 export type TmColumnPreference = string | {
     readonly expression: string;
 };
+
+// @public
+export type TmColumnSource = 'declaration' | 'preference' | 'url';
 
 // @public
 export interface TmContextError {
@@ -764,6 +785,15 @@ export interface TmDraftsReplyMessage {
     readonly replyTo: string;
     readonly type: 'drafts.reply';
 }
+
+// @public
+export interface TmDroppedKey {
+    readonly key: string;
+    readonly reason: TmDroppedReason;
+}
+
+// @public
+export type TmDroppedReason = 'unknown' | 'unreachable';
 
 // @public
 export function tmEnglish(): TmLanguageDefinition;
@@ -1006,6 +1036,9 @@ export interface TmFeatureVersion {
     readonly key: string;
     readonly version: string;
 }
+
+// @public
+export type TmFilterKind = 'bool' | 'date' | 'enum' | 'instant' | 'navigation' | 'number' | 'text';
 
 // @public
 export type TmFilterSource = {
@@ -1928,6 +1961,29 @@ export interface TmRoutingMetadata {
 export function tmRowsToObjects(root: TmEntityDescriptor, set: TmQueryRowSet): readonly TmJsonObject[];
 
 // @public
+export interface TmSearchContext {
+    readonly ancestors: Signal<readonly TmPlanRow[]>;
+    readonly descriptor: TmEntityDescriptor;
+    readonly error: Signal<TmApiError | null>;
+    readonly highlight: WritableSignal<TmId | null>;
+    readonly mode: 'list' | 'page' | 'picker';
+    open(id: TmId, options?: {
+        readonly newTab?: boolean;
+    }): void;
+    readonly plan: Signal<TmSelectPlan>;
+    readonly query: Signal<TmSearchQuery>;
+    refresh(): void;
+    readonly rows: Signal<readonly TmPlanRow[]>;
+    select(ids: Iterable<TmId>, mode: 'add' | 'remove' | 'replace'): void;
+    readonly selection: Signal<ReadonlySet<TmId>>;
+    readonly status: Signal<'error' | 'loading' | 'ready'>;
+    readonly total: Signal<number | null>;
+    readonly totalIsLowerBound: Signal<boolean>;
+    update(patch: Partial<TmSearchQuery>): void;
+    url(id: TmId): string | null;
+}
+
+// @public
 export interface TmSearchPageActionDeclaration {
     readonly confirm?: TmActionConfirmation;
     readonly destructive?: boolean;
@@ -1937,7 +1993,7 @@ export interface TmSearchPageActionDeclaration {
     readonly labelKey: string;
     readonly order?: number;
     readonly requires?: TmSecurableRef;
-    run(search: unknown, ids: readonly TmId[]): Promise<void>;
+    run(search: TmSearchContext, ids: readonly TmId[]): Promise<void>;
     readonly selection?: boolean;
 }
 
@@ -2010,6 +2066,14 @@ export interface TmSecurableSummary {
     readonly action: string;
     readonly hasFilter: boolean;
     readonly resource: string;
+}
+
+// @public
+export interface TmSelectPlan {
+    readonly columns: readonly TmColumnPlan[];
+    readonly dropped: readonly TmDroppedKey[];
+    rows(set: TmQueryRowSet): readonly TmPlanRow[];
+    readonly select: string;
 }
 
 // @public

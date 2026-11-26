@@ -42,11 +42,13 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /**
  * The library's folders that are not additions: the entry points that came
  * before them or stand outside them (the pivot and the chart, whose own
- * suites, pivot.spec.ts and chart.spec.ts, run their axe scans), the shared
- * folders with no entry point of their own, the image's blob-fetching seam,
- * split out of the image's entry point with no UI to scan, and the avatar's
+ * suites, pivot.spec.ts and chart.spec.ts, run their axe scans, and the
+ * multi-select, which the select story shows and select.spec.ts scans), the
+ * shared folders with no entry point of their own, the image's blob-fetching
+ * seam, split out of the image's entry point with no UI to scan, the avatar's
  * initials and tone helpers, split out of the avatar's entry point with no UI
- * of their own (the avatar's story scans the faces they draw). A new folder
+ * of their own (the avatar's story scans the faces they draw), and l10n's
+ * input side, its parsers, split out of l10n with no UI either. A new folder
  * must join this list or the additions, so that none is skipped unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
@@ -75,9 +77,11 @@ const OLDER_FOLDERS: readonly string[] = [
   'input',
   'l10n',
   'l10n-facade',
+  'l10n-input',
   'layout',
   'menu',
   'modal',
+  'multi-select',
   'number',
   'overlay',
   'pivot',
