@@ -384,6 +384,10 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-377 (2026-11-26): PC-F109 landed; PC-F92 released; PC-123 in pc-3
+
+PC-F109 landed at 7e0e13d6 on green CI 45865466176, with a plans-only merge on top. The passkey E2E flake (SyncedPasskeyTierTests) is closed by it. PC-F92 is the next held item (D-087), so it is released to integrate. The freed T1 slot pc-3 takes PC-123, the T1 item check_deps listed ready (D-229), with PC-115's carry. Its brief records the thin headroom so the home page stays lazy.
+
 ### D-376 (2026-11-26): PC-F91 landed; PC-F109 released; PC-F110 in pc-f3
 
 PC-F91 landed at 068d4cc7 as a fast-forward over 79143ecf, on green CI 45859734290. PC-F109 (held 42a81780 after a one-minor R1 and its fix1, so no R2) is a blocking fix, so per D-229 it is released ahead of PC-F92, PC-F95, PC-F96, PC-129 and PC-128. The freed fix slot pc-f3 takes PC-F110, the Windows vitest hang, because it can turn any integration's CI red. check_deps also lists PC-123 (T1), but every T1 slot is occupied and T1 items do not take fix slots, so it waits for the next T1 slot to free up.
