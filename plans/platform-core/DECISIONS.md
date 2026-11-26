@@ -384,6 +384,20 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-394 (2026-11-26): Ahmad's ruling on PC-128: option (c), raise the ./search cap to fit
+
+Ahmad answered D-384 in chat: "Go with option C, increase the cap to fit". Spec 0030 §1's route-chunk figure is revised for the search page, so the search field and type-to-search stay as specified and ./search's ceiling is sized to what it weighs. That is his authorization for the raise D-313 and D-373 withheld from the orchestrator.
+
+The orchestrator does not edit docs/. Bringing spec 0030 §1's figure in line is Ahmad's edit, and the run's measured figure is reported to him once PC-128 lands.
+
+How PC-128 resumes. With the cap no longer the constraint, the eager sibling @tellma/core/search-view has no purpose; it only split one eager weight across two lines (R2-2). So:
+- ./search-view is folded back into ./search, and its entry point, budget line and API report are retired.
+- ./search's ceiling is set to its clean-build measure rounded up to the next 0.5 (about 23.5 to 24 by fix1's 23.51).
+- ARCHITECTURE.md drops the "eager sibling, pending a budget ruling" text.
+- Nothing else changes.
+
+PC-128 has spent its three implementer rounds (§4.4), so this change gets a fresh R1 before it integrates (D-384). PC-128 is T1, so it takes the next T1 slot that frees (pc-1, pc-3 or pc-2). It cannot take a fix slot (D-229), and the heavy-agent limit holds (D-028).
+
 ### D-393 (2026-11-26): PC-F110 landed on Ahmad's approval
 
 Ahmad answered the D-392 notice in chat with "Push approved". The agent's retry was denied again, because the approval reached it only as the orchestrator's relay, and an agent's permission check never sees chat. The orchestrator therefore ran that one approved push itself, after checking two things:
