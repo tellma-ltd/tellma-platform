@@ -16,8 +16,24 @@ bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence artifacts/
 ```
 
 The limit is a whole number of seconds, minutes or hours (`90s`, `12m`, `1h`). The script exits
-with the build's own exit code, or 2 when its arguments are wrong. Besides `dotnet` it needs only
-GNU `timeout`, which Linux and Git for Windows both carry.
+with the build's own exit code, or 2 when its arguments are wrong or it finds no `timeout`.
+
+Besides `dotnet` it needs only a coreutils `timeout`, which Linux and Git for Windows both carry.
+It does not take the first one it finds:
+- Git Bash's PATH can put Windows' own `timeout.exe` first.
+- Ubuntu from 25.10 ships the Rust coreutils (uutils) as `/usr/bin/timeout`. That one kills its
+  command outright when told to send SIGINT, so MSBuild never cancels and its binary log is lost.
+  GNU's stays as `/usr/bin/gnutimeout`.
+
+So the script tries each candidate on a stand-in command that finishes a moment after the stop
+signal, as MSBuild does when it cancels, and uses the first that waits for it. If none waits, it
+uses one that at least enforces the limit, and warns that a stopped build will be killed; the text
+log survives a kill. `--probe` runs only this choice, prints the tool and how it stops a build,
+and exits 0 when the script can run:
+
+```bash
+bash eng/dotnet-build/build-with-evidence.sh --probe
+```
 
 On a developer machine the script also helps with a build that ends in error MSB4166 ("Child node
 exited prematurely"): a node that failed with an exception leaves a report in `msbuild/`, and the

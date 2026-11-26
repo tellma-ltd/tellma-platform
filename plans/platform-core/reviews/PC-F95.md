@@ -369,3 +369,47 @@ Re-run for fix1:
 - `dotnet build Tellma.slnx` (Debug): "Build succeeded", 0 warnings, 0 errors.
 - `dotnet format Tellma.slnx --verify-no-changes`: clean (only the workspace-loading warnings line).
 - `bash -n` on the script.
+
+## Integration
+
+### CI 45883335548 (c632f01d): build-test (ubuntu-latest) failed before building
+
+- **Symptom.** The script printed "GNU timeout (coreutils) was not found." and exited 2. The
+  windows-latest leg passed.
+- **Root cause.** ubuntu-latest is now Ubuntu 26.04, where `/usr/bin/timeout` is the Rust coreutils
+  one, `timeout (uutils coreutils) 0.10.0`, so the `--version` match on "GNU coreutils" refused it.
+- **Second problem, the reason uutils cannot simply be accepted.** Checked in `ubuntu:26.04`, with
+  GNU 9.4 in the `dotnet/sdk:10.0` image as the control. Under uutils, `timeout -s INT` kills its
+  command with SIGKILL at the limit (exit 137 within a second) instead of waiting for it. The
+  graceful-cancel stand-in shows this: 137 at 1 s under uutils, against 124 after the cancel under
+  GNU. So MSBuild would never cancel, and its binary log would be lost. SIGTERM on Linux is no
+  substitute: under GNU `timeout -s TERM`, MSBuild ended with a 0-byte binlog and no `Time Elapsed`.
+  Ubuntu 26.04 also ships GNU's as `/usr/bin/gnutimeout` (package `gnu-coreutils` 9.7).
+- **Fix.** The tool is now chosen by behaviour, not by its version string.
+  - Each candidate (`/usr/bin/timeout`, `/usr/bin/gnutimeout`, then `timeout` and `gnutimeout` on
+    PATH) is tried on a stand-in that finishes 0.2 s after the stop signal. The first that reports
+    124 is used.
+  - Failing that, the script uses one that at least enforces a limit on `sleep` and prints a
+    `::warning`; a stop then kills the build, and the text log is kept.
+  - It exits 2 only when there is none.
+  - The `==>` line names the tool, its version and how it stops a build, so every CI run logs the
+    choice. The new `--probe` mode runs only the choice.
+- **Probe results.**
+  - Windows Git Bash: `/usr/bin/timeout` (GNU 8.32), SIGTERM.
+  - `ubuntu:26.04`: `/usr/bin/gnutimeout` (GNU 9.7), SIGINT.
+  - `ubuntu:26.04` with gnutimeout removed: uutils, with the warning ("kills a build at its limit").
+  - With both removed: `::error`, exit 2.
+  - `dotnet/sdk:10.0` (Debian): `/usr/bin/timeout` (GNU 9.4), SIGINT.
+- **End to end.**
+  - `ubuntu:26.04`, with a stand-in `dotnet` that cancels for a second on SIGINT: exit 124 through
+    gnutimeout with the cancel logged, and 137 with the "killed" annotation under uutils alone.
+  - The real stall cases, Linux (`dotnet/sdk:10.0`):
+    - passing build: exit 0;
+    - compile error: exit 1, 2 CS0029;
+    - stall: exit 124, complete binlog, the MSB3073 line in the summary.
+  - The Windows stall: exit 124, complete binlog.
+  - The Release solution build through the script, below.
+- **Release solution build.** `bash eng/dotnet-build/build-with-evidence.sh --timeout 12m
+  --evidence <scratch> -- Tellma.slnx -c Release --no-restore`, with this worktree's handshake salt,
+  ran on Windows: exit 0, Build succeeded, 0 warnings.
+- `bash -n` on the script passes, and nothing outside `eng/dotnet-build/` and these notes changed.

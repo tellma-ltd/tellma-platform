@@ -6,10 +6,13 @@
 #
 # Usage:
 #   build-with-evidence.sh --timeout <limit> --evidence <directory> -- <dotnet build arguments>...
+#   build-with-evidence.sh --probe
 #
 # <limit> is a whole number of seconds, minutes or hours: 90s, 12m, 1h. <directory> must be absent
 # or empty; the script creates it and leaves the diagnostics there. For example:
 #   build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+# --probe only finds the timeout tool the build would run under, prints it and how it stops a
+# command, and exits 0 when the script can run here (2 when it cannot).
 
 set -uo pipefail
 
@@ -23,13 +26,19 @@ readonly tail_lines=40
 # Prints the usage to stderr.
 usage() {
   echo "Usage: $0 --timeout <limit: 90s, 12m, 1h> --evidence <empty or absent directory> -- <dotnet build arguments>..." >&2
+  echo "       $0 --probe" >&2
 }
 
 # --- Arguments: the options, then `--`, then the arguments for dotnet build ---------------------
 limit=''
 evidence=''
+probe_only=false
 while (($# > 0)) && [[ $1 != -- ]]; do
   case $1 in
+    --probe)
+      probe_only=true
+      shift
+      ;;
     --timeout | --evidence)
       if (($# < 2)); then
         usage
@@ -45,11 +54,93 @@ while (($# > 0)) && [[ $1 != -- ]]; do
       ;;
   esac
 done
-if [[ -z $limit || -z $evidence ]] || (($# == 0)); then
+if $probe_only; then
+  if [[ -n $limit || -n $evidence ]] || (($# > 0)); then
+    usage
+    exit 2
+  fi
+elif [[ -z $limit || -z $evidence ]] || (($# == 0)); then
   usage
   exit 2
+else
+  shift # the `--`
 fi
-shift # the `--`
+
+# --- How the build is asked to stop --------------------------------------------------------------
+# On Linux, SIGINT is a Ctrl+C. timeout sends it to the build's whole process group, so MSBuild
+# cancels the build (logging warning MSB4220 for each task it waits on, and writing its binary log
+# out in full), but the tools and worker nodes the build started, and a compiler server it started
+# in that group, get the SIGINT directly as well, and a stalled tool usually dies of it first (error
+# MSB3073). SIGTERM is no substitute there: it ends MSBuild without its binary log.
+# Git Bash on Windows cannot deliver a Ctrl+C to a native program (SIGINT does nothing there), so the
+# script sends SIGTERM, which ends the build's processes outright. Either way, a build stalled on a
+# tool can lose only that tool and then finish on its own, with the tool's failure and a complete
+# binary log; the summary below lists the errors the stop caused, which name the project.
+case $OSTYPE in
+  msys* | cygwin*) stop_signal=TERM ;;
+  *) stop_signal=INT ;;
+esac
+
+# --- The time limit: a coreutils timeout, tried for what the build needs ------------------------
+# Not every `timeout` will do. Git Bash's PATH can put Windows' own timeout.exe, a different
+# program, before GNU's /usr/bin/timeout. Ubuntu, from 25.10, makes /usr/bin/timeout the Rust
+# coreutils one (uutils), which kills its command outright when told to send SIGINT, and keeps GNU's
+# as /usr/bin/gnutimeout. So each candidate is tried on a stand-in for MSBuild: a command that, sent
+# the stop signal, takes a moment to finish and exits, as MSBuild does when it cancels. A tool that
+# reports 124 for it, the code for a command its limit stopped, waits for the command as the build
+# needs. A tool that only reports 124 for a plain `sleep` stops a build by killing it: a last resort,
+# with a warning, since the text log still survives that.
+# Prints the exit code of a half-second limit on the stand-in under timeout tool $1.
+stop_probe() {
+  "$1" --signal="$stop_signal" --kill-after=10s 0.5s \
+    bash -c "sleep 10 & trap 'kill \$! 2>/dev/null; sleep 0.2; exit 3' $stop_signal; wait" >/dev/null 2>&1
+  echo $?
+}
+# Prints the exit code of a fraction-of-a-second limit on `sleep` under timeout tool $1.
+limit_probe() {
+  "$1" --kill-after=1s 0.2s sleep 5 >/dev/null 2>&1
+  echo $?
+}
+candidates=(/usr/bin/timeout /usr/bin/gnutimeout)
+for name in timeout gnutimeout; do
+  if found=$(command -v "$name"); then
+    candidates+=("$found")
+  fi
+done
+timeout_tool=''
+stops_gracefully=false
+for candidate in "${candidates[@]}"; do
+  if [[ -x $candidate && $(stop_probe "$candidate") == 124 ]]; then
+    timeout_tool=$candidate
+    stops_gracefully=true
+    break
+  fi
+done
+if [[ -z $timeout_tool ]]; then
+  for candidate in "${candidates[@]}"; do
+    if [[ -x $candidate && $(limit_probe "$candidate") == 124 ]]; then
+      timeout_tool=$candidate
+      break
+    fi
+  done
+fi
+if [[ -z $timeout_tool ]]; then
+  echo "::error::No coreutils timeout was found (tried ${candidates[*]})." >&2
+  exit 2
+fi
+# The first line of `--version` names the implementation; `sed` reads it all, so the tool is not cut
+# off mid-write.
+timeout_version=$("$timeout_tool" --version 2>/dev/null | sed -n 1p)
+if $stops_gracefully; then
+  timeout_note="$timeout_tool ($timeout_version), which stops a build with SIG$stop_signal"
+else
+  timeout_note="$timeout_tool ($timeout_version), which kills a build at its limit"
+  echo "::warning title=Build time limit::$timeout_tool does not let a command finish after SIG$stop_signal: a build past its limit will be killed, and its binary log lost; its text log is kept."
+fi
+if $probe_only; then
+  echo "Time limit: $timeout_note."
+  exit 0
+fi
 
 # The limit in seconds, to tell a build the limit stopped from one killed by something else.
 if [[ ! $limit =~ ^([1-9][0-9]*)([smh])$ ]]; then
@@ -60,32 +151,6 @@ case ${BASH_REMATCH[2]} in
   s) limit_seconds=${BASH_REMATCH[1]} ;;
   m) limit_seconds=$((BASH_REMATCH[1] * 60)) ;;
   h) limit_seconds=$((BASH_REMATCH[1] * 3600)) ;;
-esac
-
-# --- The time limit: GNU timeout ----------------------------------------------------------------
-# Git Bash on Windows carries GNU coreutils in /usr/bin, but its PATH can put Windows' own
-# timeout.exe, a different program, first. The `--version` probe refuses anything but GNU timeout.
-timeout_tool=/usr/bin/timeout
-if [[ ! -x $timeout_tool ]]; then
-  timeout_tool=$(command -v timeout || true)
-fi
-if [[ -z $timeout_tool ]] || ! "$timeout_tool" --version 2>/dev/null | grep -q 'GNU coreutils'; then
-  echo "::error::GNU timeout (coreutils) was not found." >&2
-  exit 2
-fi
-
-# How the build is asked to stop. On Linux, SIGINT is a Ctrl+C. timeout sends it to the build's
-# whole process group, so MSBuild cancels the build (logging warning MSB4220 for each task it waits
-# on, and writing its binary log out in full), but the tools and worker nodes the build started, and
-# a compiler server it started in that group, get the SIGINT directly as well, and a stalled tool
-# usually dies of it first (error MSB3073).
-# Git Bash on Windows cannot deliver a Ctrl+C to a native program (SIGINT does nothing there), so the
-# script sends SIGTERM, which ends the build's processes outright. Either way, a build stalled on a
-# tool can lose only that tool and then finish on its own, with the tool's failure and a complete
-# binary log; the summary below lists the errors the stop caused, which name the project.
-case $OSTYPE in
-  msys* | cygwin*) stop_signal=TERM ;;
-  *) stop_signal=INT ;;
 esac
 
 # --- The evidence folder ------------------------------------------------------------------------
@@ -126,7 +191,7 @@ export DOTNET_CLI_UI_LANGUAGE=en
 # The binary log is complete only when the build ends on its own or cancels: it is buffered and
 # compressed, so a build killed mid-way leaves it truncated, or empty. The text log is flushed line
 # by line and keeps everything up to the moment the build stopped, each line with its time.
-echo "==> dotnet build $* (time limit $limit; evidence in $evidence)"
+echo "==> dotnet build $* (time limit $limit under $timeout_note; evidence in $evidence)"
 started=$SECONDS
 started_at=$(date +%s)
 "$timeout_tool" --signal="$stop_signal" --kill-after="$stop_grace" "$limit" dotnet build "$@" \
@@ -325,6 +390,8 @@ if ((status == 124 || status == 137)); then
   fi
   if ((status == 124)); then
     echo "::error title=Build stopped::dotnet build did not finish within $limit and was stopped. Its logs are in $evidence; the binary log is $binary_log_state."
+  elif ((elapsed >= limit_seconds)) && ! $stops_gracefully; then
+    echo "::error title=Build stopped::dotnet build did not finish within $limit and was killed, as $timeout_tool does at a limit. Its logs are in $evidence; the binary log is $binary_log_state."
   elif ((elapsed >= limit_seconds)); then
     echo "::error title=Build stopped::dotnet build did not finish within $limit, was still running $stop_grace after it was asked to stop, and was killed. Its logs are in $evidence; the binary log is $binary_log_state."
   else
