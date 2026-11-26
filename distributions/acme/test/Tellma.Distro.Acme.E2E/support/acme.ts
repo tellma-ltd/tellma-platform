@@ -243,13 +243,22 @@ export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
   const held: (() => Promise<void>)[] = [];
   let holding = true;
   await page.route('**/*.js', async (route) => {
-    const response = await route.fetch();
-    const body = await response.text();
-    const answer = () => route.fulfill({ response, body });
-    if (holding && body.includes('tm-select__trigger')) {
-      held.push(answer);
-    } else {
-      await answer();
+    try {
+      const response = await route.fetch();
+      const body = await response.text();
+      const answer = () => route.fulfill({ response, body });
+      if (holding && body.includes('tm-select__trigger')) {
+        held.push(answer);
+      } else {
+        await answer();
+      }
+    } catch (error) {
+      // A request the page cancels, as a navigation does to the files the last
+      // page was still loading, disposes its fetched response before its body
+      // is read. Nothing waits for that file any more, so it stays unanswered.
+      if (!(error instanceof Error && error.message.includes('Response has been disposed'))) {
+        throw error;
+      }
     }
   });
   return {

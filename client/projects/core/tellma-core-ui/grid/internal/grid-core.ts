@@ -3594,11 +3594,12 @@ export class ɵTmGridCore<T>
     if (untracked(() => this.engine.edit.session()) !== null) {
       this.commitEditor({ refocus: true });
     }
-    if (event.target instanceof Element) {
-      this.selectMenuTarget(event.target);
-    }
+    const target = event.target instanceof Element ? event.target : null;
+    this.selectMenuTarget(target);
     const element = this.activeCellElement();
-    this.noteMenuRow(keyboardSourced ? element : event.target instanceof Element ? event.target : null);
+    // The keyboard's menu names the active cell's row, except on a column
+    // header, whose selection made a data cell active: that menu names none.
+    this.noteMenuRow(keyboardSourced && (target?.closest('[data-tm-colhdr]') ?? null) === null ? element : target);
     const anchor =
       keyboardSourced && element !== null
         ? element.getBoundingClientRect()

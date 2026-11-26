@@ -18,7 +18,7 @@ export { ɵTmSearchPageField } from './src/tm-search-page-field';
 
 // The keys, the live region's pause and the row menu's copied link.
 export { ɵTmSearchKeys, type ɵTmSearchKeysOptions } from './src/tm-search-keys';
-export type { TmSearchFieldMode } from './src/tm-search-typing';
+export type { TmSearchFieldMode as ɵTmSearchFieldMode } from './src/tm-search-typing';
 
 // A refused query's diagnostics, mapped back to their controls.
 export {
@@ -37,6 +37,7 @@ export {
 export {
   TmSearchState as ɵTmSearchState,
   ɵTM_SEARCH_ERROR_VIEWS,
+  ɵtmSearchStateMessage,
   type TmSearchErrorViewsLoader as ɵTmSearchErrorViewsLoader,
   type TmSearchRegionState as ɵTmSearchRegionState,
   type TmSearchStateCreate as ɵTmSearchStateCreate,

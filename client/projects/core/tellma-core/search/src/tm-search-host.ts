@@ -72,6 +72,7 @@ import {
   ɵtmSearchContextErrors as tmSearchContextErrors,
   ɵtmSearchDiagnose as tmSearchDiagnose,
   ɵtmSearchRefusedState as tmSearchRefusedState,
+  ɵtmSearchStateMessage as tmSearchStateMessage,
   type ɵTmSearchRegionState as TmSearchRegionState,
 } from '@tellma/core/search-view';
 import { TmBreakpoints } from '@tellma/core-ui';
@@ -202,6 +203,32 @@ interface TmSearchPending {
 
 /** No result and no failure: what shows before the first read lands. */
 const NOTHING_HELD: TmSearchHeld = { result: null, failure: null };
+
+/**
+ * The query a read answered: its key's identity holds the canonical query,
+ * less the shown columns and the view.
+ *
+ * @param key - The read's key.
+ * @returns The query.
+ */
+function answered(key: TmSearchReadKey): TmSearchQuery {
+  return (JSON.parse(key.canonical) as { readonly query: TmSearchQuery }).query;
+}
+
+/**
+ * Whether two region states are the same: the same kind with the same
+ * fields, an error view's by the same error.
+ *
+ * @param a - One state.
+ * @param b - The other.
+ * @returns Whether they are.
+ */
+function sameState(a: TmSearchRegionState | null, b: TmSearchRegionState | null): boolean {
+  if (a === null || b === null || a.kind === 'error' || b.kind === 'error') {
+    return a === b || (a?.kind === 'error' && b?.kind === 'error' && a.error === b.error && a.entity === b.entity);
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 /** The last search page's number, which keeps each page's element ids apart. */
 let pages = 0;
@@ -1025,19 +1052,27 @@ export class TmSearchHost implements OnInit {
   /** Whether the pager's total is a lower bound. */
   protected readonly capped = this.#capped;
 
-  /** The region's state in place of rows; `null` while rows show, or the first load's skeleton does. */
-  protected readonly region = computed<TmSearchRegionState | null>(() => {
-    const state = this.#state();
-    if (state.payloadInvalid) {
-      return { kind: 'invalid-link' };
-    }
-    const held = this.#held();
-    if (held.result !== null) {
-      // A page past the end shows nothing while the last page with rows loads.
-      return held.result.set.rows.length > 0 || tmSearchLastPage(held.result) !== null ? null : this.#emptyState(state.query);
-    }
-    return held.failure === null ? null : this.#failureState(held.failure);
-  });
+  /**
+   * The region's state in place of rows; `null` while rows show, or the first
+   * load's skeleton does. It is the held answer's: built from the query that
+   * answer was read for, not the query being typed, so it stays as it is,
+   * marked busy, until the next answer lands, and an equal state is not a
+   * change.
+   */
+  protected readonly region = computed<TmSearchRegionState | null>(
+    () => {
+      if (this.#state().payloadInvalid) {
+        return { kind: 'invalid-link' };
+      }
+      const held = this.#held();
+      if (held.result !== null) {
+        // A page past the end shows nothing while the last page with rows loads.
+        return held.result.set.rows.length > 0 || tmSearchLastPage(held.result) !== null ? null : this.#emptyState(answered(held.result.key));
+      }
+      return held.failure === null ? null : this.#failureState(held.failure);
+    },
+    { equal: sameState },
+  );
 
   /** Whether the first load's skeleton shows: a read runs with no rows and no state held. */
   protected readonly firstLoad = computed(() => this.loading() && this.#held().result === null && this.region() === null);
@@ -1243,7 +1278,15 @@ export class TmSearchHost implements OnInit {
       }
     });
 
-    // --- A settled result is announced; rows kept through an offline re-read say so ---
+    // --- A list link with no valid filter reads nothing, so its state is said as it shows ---
+    effect(() => {
+      const shown = this.region();
+      if (shown?.kind === 'invalid-link') {
+        untracked(() => this.#speak(tmSearchStateMessage(this.#l10n, shown)!));
+      }
+    });
+
+    // --- A settled answer is announced; rows kept through an offline re-read say so ---
     let announced: TmSearchHeld = NOTHING_HELD;
     effect(() => {
       const held = this.#held();
@@ -1584,7 +1627,7 @@ export class TmSearchHost implements OnInit {
    * Searches a text, from the field or from Clear search. The first change
    * of a run takes the anchor, a snapshot of what shows now; a text that
    * comes back to the anchor's restores it, with no request when the anchor
-   * held its result (spec 0030 §5.2).
+   * held its result.
    *
    * @param text - The text, as typed.
    * @param fromField - Whether the field emitted it, so it shows there already.
@@ -1664,7 +1707,7 @@ export class TmSearchHost implements OnInit {
    * The field's Enter, through the driver: on a fresh result it opens the
    * highlighted row (Mod+Enter, in a new tab); on a stale one it flushes the
    * search and arms a pending open, which the result for the field's text
-   * settles (spec 0030 §6.3).
+   * settles.
    *
    * @param rowId - The row to open; the highlighted one when omitted.
    * @param newTab - Whether it opens in a new tab.
@@ -1702,9 +1745,9 @@ export class TmSearchHost implements OnInit {
 
   /**
    * Settles a pending Enter once the result for the field's text is fresh:
-   * its first row opens (after an anchor restore, the restored highlight
-   * when it shows); an empty result or a failure disarms it, and the
-   * region's state says "No matches" once the keys pause.
+   * its first row opens, after an anchor restore too, whatever the restored
+   * highlight; an empty result or a failure disarms it, and the region's
+   * state says "No matches" once the keys pause.
    *
    * @param held - What the host holds now.
    */
@@ -1722,8 +1765,8 @@ export class TmSearchHost implements OnInit {
       // The region's state says so, once the keys pause.
       return;
     }
-    const restored = held.result.key.canonical === this.#restoring ? this.highlight() : null;
-    const id = restored !== null && this.#byId().has(restored) ? restored : rows[0]!.id;
+    // Enter acts on the result for the field's text, so its first row opens (spec 0030 §6.3).
+    const id = rows[0]!.id;
     this.highlight.set(id);
     if (this.#open(id, pending.newTab)) {
       this.#opened('pending', pending.newTab);
@@ -1983,9 +2026,10 @@ export class TmSearchHost implements OnInit {
   }
 
   /**
-   * Announces a settled result: its count, or that the rows on screen were
-   * kept through an offline re-read. A state announces itself. What the
-   * host held before and has not said yet is never said: the new result
+   * Announces a settled answer, once: its count, the state the region shows
+   * in place of rows, or that the rows on screen were kept through an
+   * offline re-read. An error view says itself once its chunk lands. What
+   * the host held before and has not said yet is never said: the new answer
    * supersedes it.
    *
    * @param held - What the host holds now.
@@ -2001,6 +2045,12 @@ export class TmSearchHost implements OnInit {
     if (result !== null && result !== previous.result && result.set.rows.length > 0) {
       const count = result.total ?? result.set.rows.length;
       this.#speak(this.#l10n.ɵtext(result.capped ? 'tm.search.resultsAtLeast' : 'tm.search.results', { count })());
+    }
+    // The state in place of rows, said once per answer, after the keys pause.
+    const shown = this.region();
+    const message = shown === null ? null : tmSearchStateMessage(this.#l10n, shown);
+    if (message !== null) {
+      this.#speak(message);
     }
     // A leaf or a named filter from code that the server refused is a distribution's bug.
     if (held.failure !== null && held.failure !== previous.failure && tmSearchDiagnose(held.failure.key.request, this.#mode, held.failure.error)?.state === 'invalid-code') {

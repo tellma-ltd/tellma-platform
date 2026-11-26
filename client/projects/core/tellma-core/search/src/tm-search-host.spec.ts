@@ -10,7 +10,7 @@ import { signal, type Provider } from '@angular/core';
 import { TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { NavigationStart, Router } from '@angular/router';
 import {
   TmApiError,
   TmLocalization,
@@ -703,10 +703,92 @@ describe('TmSearchHost', () => {
       expect(reads(api)).toHaveLength(2);
     });
 
-    it("show that a drill-through list's link has no valid filter, and read nothing", async () => {
+    it("show that a drill-through list's link has no valid filter, say so once, and read nothing", async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
       const { api, page } = await open('/17/list/customers');
       expect(await page.getStateHeading()).toBe("This link's filter is not valid");
       expect(reads(api)).toEqual([]);
+      expect(announce.mock.calls).toEqual([["This link's filter is not valid", 'polite']]);
+    });
+
+    it('keep an empty answer’s state, and say nothing, while the read for new keys runs', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const { api, page } = await open('/17/customers?q=zzz', { rows: [] });
+      expect(await page.getStateHeading()).toBe('No matches');
+      fakeClock();
+      api.respond('customers/query', later(3000, answer(customers(2))));
+      announce.mockClear();
+      const shown = host()!.querySelector('tm-search-state tm-empty-state');
+      field().focus();
+      typeKey('y');
+      typeKey('x');
+      await step(1500);
+      // The held answer's state stays, marked busy, and nothing is said before the next answer lands.
+      expect(settled()).toBe(false);
+      expect(host()!.querySelector('tm-search-state tm-empty-state')).toBe(shown);
+      expect(announce).not.toHaveBeenCalled();
+      await until(() => rowTexts().length === 2 && settled(), 'the answer for "zzzyx" lands');
+      await step(600);
+      expect(announce.mock.calls).toEqual([['2 results', 'polite']]);
+    });
+
+    it('keep the no-data state with its Create until the answer for a new key lands, then say the new state once', async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const { api, page } = await open('/17/customers', { rows: [] });
+      expect(await page.getStateHeading()).toBe('Nothing here yet');
+      fakeClock();
+      api.respond('customers/query', later(3000, answer([])));
+      announce.mockClear();
+      field().focus();
+      typeKey('a');
+      await step(1500);
+      const state = (): string => host()!.querySelector('tm-search-state')?.textContent ?? '';
+      expect(settled()).toBe(false);
+      expect(state()).toContain('Nothing here yet');
+      expect(state()).toContain('New customer');
+      expect(announce).not.toHaveBeenCalled();
+      await until(settled, 'the answer for "a" lands');
+      expect(state()).toContain('No matches');
+      expect(state()).toContain('Clear search');
+      await step(600);
+      expect(announce.mock.calls).toEqual([['No matches. Clear the filters or widen the search.', 'polite']]);
+      await step(1000);
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it("keep a failed read's error view, and say nothing, while the read for new keys runs", async () => {
+      const announce = vi.spyOn(LiveAnnouncer.prototype, 'announce').mockResolvedValue(undefined);
+      onTestFinished(() => announce.mockRestore());
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const { api } = await open('/17/customers', {
+        respond: () => {
+          throw new TmApiError({ kind: 'server', status: 500, code: 'server', traceId: 'trace-9' });
+        },
+      });
+      await errorViews();
+      const view = host()!.querySelector('tm-search-state tm-error-state');
+      fakeClock();
+      api.respond('customers/query', later(3000, answer(customers(2))));
+      announce.mockClear();
+      field().focus();
+      typeKey('a');
+      typeKey('b');
+      await step(1500);
+      // The same view stays: it is not torn down and built again, nor said again, per key.
+      expect(host()!.querySelector('tm-search-state tm-error-state')).toBe(view);
+      expect(announce).not.toHaveBeenCalled();
+      await until(() => rowTexts().length === 2 && settled(), 'the answer for "ab" lands');
     });
   });
 
@@ -1272,6 +1354,27 @@ describe('TmSearchHost', () => {
       expect(restored['orderBy']).not.toBe(reads(api)[0]!['orderBy']);
     });
 
+    it('opens the first row on an Enter pressed while a restore reads, not the restored highlight', async () => {
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const { api, page } = await open('/17/customers?order=Name', { languages: 2, respond: searched(customers(3)) });
+      // The anchor holds the third row's highlight; the result for "C" seeds the first row.
+      const grid = (await page.getGrid())!;
+      await grid.pressKeys(TestKey.DOWN_ARROW, TestKey.DOWN_ARROW, TestKey.DOWN_ARROW);
+      await typeC();
+      TestBed.inject(TmLocalization).setLanguage('ar');
+      await tmSettleUntil(() => reads(api).length === 3 && settled(), 'the switch reads again');
+      fakeClock();
+      api.respond('customers/query', later(100, searched(customers(3))));
+      // Backspace restores with a read, since the switch rebuilt the request; Enter comes before it lands.
+      field().focus();
+      document.execCommand('delete');
+      press(field(), 'Enter');
+      await until(() => address().startsWith('/17/customers/'), 'the pending Enter opens a row');
+      expect(address()).toBe('/17/customers/1');
+    });
+
     it('restores on Clear search, a text change like the field’s own, from memory', async () => {
       const { api, page, rig } = await open('/17/customers', { respond: searched(customers(3)) });
       field().focus();
@@ -1319,6 +1422,33 @@ describe('TmSearchHost', () => {
       await until(() => address() === '/17/customers?q=Customer%202' && rowTexts().length === 1 && settled(), 'Back lands on the query before');
       await step(200);
       expect(address()).toBe('/17/customers?q=Customer%202');
+    });
+
+    it('disarms on Back, though the page’s own address write supersedes it', async () => {
+      const { api, rig, location } = await open('/17/customers?q=Customer%202', { respond: searched(customers(3)) });
+      await rig.router.navigateByUrl('/17/customers');
+      await resettle();
+      const router = TestBed.inject(Router);
+      router.setUpLocationChangeListener();
+      fakeClock();
+      api.respond('customers/query', later(100, searched(customers(3))));
+      field().focus();
+      typeKey('2');
+      await step(10);
+      press(field(), 'Enter');
+      // The Back starts, and a write of the page's own address supersedes it, so the navigation
+      // that ends leaves the canonical as it was.
+      const supersede = router.events.subscribe((event) => {
+        if (event instanceof NavigationStart && event.navigationTrigger === 'popstate') {
+          void router.navigateByUrl('/17/customers?q=2');
+        }
+      });
+      onTestFinished(() => supersede.unsubscribe());
+      location.back();
+      await until(() => rowTexts().length === 1 && settled(), 'the result for "2" lands');
+      await step(300);
+      expect(address()).not.toBe('/17/customers/2');
+      expect(rig.telemetry.recent().some((item) => item.name === 'tm.search.open')).toBe(false);
     });
 
     it('stays armed through a navigation to the page’s own address', async () => {
@@ -1411,6 +1541,20 @@ describe('TmSearchHost', () => {
       // A data cell's menu still offers them.
       menu = await contextMenuOn(rig, cellOf(0));
       expect(await menu.getItemLabels()).toEqual(expect.arrayContaining(['Open in new tab', 'Copy link']));
+    });
+
+    it('offers no row items on a column header’s menu opened from the keyboard', async () => {
+      const { rig } = await open('/17/customers', { respond: searched(customers(3)) });
+      const code = header('Code');
+      code.focus();
+      // The Menu key or Shift+F10 on a focused header reaches the browser, whose menu event has no point.
+      code.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }));
+      await tmSettleUntil(() => document.querySelector('.tm-menu__panel') !== null, 'the context menu opens');
+      const menu = await TestbedHarnessEnvironment.documentRootLoader(rig.router.fixture).getHarness(TmMenuHarness);
+      const labels = await menu.getItemLabels();
+      expect(labels).toContain('Copy');
+      expect(labels).not.toContain('Open in new tab');
+      expect(labels).not.toContain('Copy link');
     });
   });
 

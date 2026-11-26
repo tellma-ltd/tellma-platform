@@ -18,7 +18,4 @@ import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 import { ViewContainerRef } from '@angular/core';
 
-// @public
-export type TmSearchFieldMode = 'list' | 'page' | 'picker';
-
 ```
