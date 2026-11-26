@@ -59,15 +59,21 @@ export function tmResolveBrandFiles(publicDir: string, defaultsDir: string | nul
   });
 }
 
-/** A viewBox: four numbers, the last two positive. */
-const VIEW_BOX = /^\s*(-?[\d.]+(?:e-?\d+)?)[\s,]+(-?[\d.]+(?:e-?\d+)?)[\s,]+([\d.]+(?:e-?\d+)?)[\s,]+([\d.]+(?:e-?\d+)?)\s*$/i;
+/** One number of SVG's number grammar: an optional sign, digits with an optional point (or a point and digits), an optional exponent. */
+const NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/gi;
 
 /** The width and height of an `<svg>` root's viewBox, or null when it has no valid one. */
 function viewBoxSize(root: TmHtmlElement): { readonly width: number; readonly height: number } | null {
-  const viewBox = VIEW_BOX.exec(tmAttribute(root, 'viewBox') ?? '');
-  const width = Number(viewBox?.[3]);
-  const height = Number(viewBox?.[4]);
-  return viewBox !== null && width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+  const value = tmAttribute(root, 'viewBox') ?? '';
+  // Four numbers, apart from which only commas and whitespace occur: a sign
+  // or a second point may also start the next number, as in `-.5-.5`.
+  const numbers = value.match(NUMBER) ?? [];
+  if (numbers.length !== 4 || !/^[\s,]*$/.test(value.replace(NUMBER, ''))) {
+    return null;
+  }
+  const width = Number(numbers[2]);
+  const height = Number(numbers[3]);
+  return width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
 }
 
 /**

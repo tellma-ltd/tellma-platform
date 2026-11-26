@@ -154,6 +154,8 @@ export async function tmServe(context: TmCommandContext, options: TmServeOptions
   tmLogStep(context, 'Writing tm-boot.js and the brand files');
   const coreDir = tmRequirePackageDir(project, '@tellma/core');
   const defaults = join(coreDir, 'brand');
+  // The brand files' ratios are measured here, once: the dev server fixes its
+  // define when it starts, so a brand file edited later needs a restart.
   const brand = tmResolveBrandFiles(project.publicDir, existsSync(defaults) ? defaults : null);
   tmRefreshRootFiles(project.rootAssetsDir, tmBuildBootScript(coreDir, tmBootConfig(metadata)), brand);
   const certificate = await exportDevCertificate(context, options.certificateDir ?? tmDefaultCertificateDir(), slug);
