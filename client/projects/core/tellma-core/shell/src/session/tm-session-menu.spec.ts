@@ -12,7 +12,7 @@ import { TmFakeSession, type TmSessionMenuHarness, TmTenantShellHarness, tmTestS
 import { type TmBreakpoint, TmBreakpoints, TmTheme } from '@tellma/core-ui';
 import { TmModalHarness } from '@tellma/core-ui-testing';
 import { tmAvatarTone } from '@tellma/core-ui/initials';
-import { tmFormatKeys } from '@tellma/core-ui/kbd';
+import { tmFormatKeys } from '@tellma/core-ui/keys';
 
 import {
   TM_T17_DOCS,

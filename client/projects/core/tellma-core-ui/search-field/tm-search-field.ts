@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   Component,
@@ -16,7 +18,8 @@ import {
   ViewEncapsulation,
   type ElementRef,
 } from '@angular/core';
-import { Search, X } from 'lucide';
+import Search from 'lucide/dist/esm/icons/search.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TM_UI_TRANSLATE, type TmControlSize } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
@@ -22,7 +24,11 @@ import {
   TemplateRef,
   untracked,
 } from '@angular/core';
-import { Camera, Crop, Image as ImageGlyph, ImageOff, Trash2 } from 'lucide';
+import Camera from 'lucide/dist/esm/icons/camera.mjs';
+import Crop from 'lucide/dist/esm/icons/crop.mjs';
+import ImageGlyph from 'lucide/dist/esm/icons/image.mjs';
+import ImageOff from 'lucide/dist/esm/icons/image-off.mjs';
+import Trash from 'lucide/dist/esm/icons/trash.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
@@ -50,7 +56,7 @@ const GLYPHS = {
   /** The edit chrome's re-fit action. */
   adjust: Crop,
   /** The edit chrome's delete action. */
-  remove: Trash2,
+  remove: Trash,
 } as const;
 
 /**

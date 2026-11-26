@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
@@ -23,7 +25,15 @@ import type { TmDragPayload } from '@tellma/core-ui/drag-drop';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmSearchField } from '@tellma/core-ui/search-field';
 import { TmTree, TmTreeNode } from '@tellma/core-ui/tree';
-import { Calendar, Hash, Image, Languages, Link2, List, Paperclip, ToggleLeft, Type } from 'lucide';
+import Calendar from 'lucide/dist/esm/icons/calendar.mjs';
+import Hash from 'lucide/dist/esm/icons/hash.mjs';
+import Image from 'lucide/dist/esm/icons/image.mjs';
+import Languages from 'lucide/dist/esm/icons/languages.mjs';
+import Link2 from 'lucide/dist/esm/icons/link-2.mjs';
+import List from 'lucide/dist/esm/icons/list.mjs';
+import Paperclip from 'lucide/dist/esm/icons/paperclip.mjs';
+import ToggleLeft from 'lucide/dist/esm/icons/toggle-left.mjs';
+import Type from 'lucide/dist/esm/icons/type.mjs';
 
 import { ɵTM_PATH_PICKER_STRINGS_EN } from './tm-path-picker-strings';
 import { ɵTmPathTree, type TmPathNode } from './tm-path-tree';

@@ -3,10 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { Inbox } from 'lucide';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { provideTellmaIcons } from '@tellma/core-ui/icon';

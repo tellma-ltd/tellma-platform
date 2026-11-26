@@ -47,9 +47,11 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * shared folders with no entry point of their own, the image's blob-fetching
  * seam, split out of the image's entry point with no UI to scan, the avatar's
  * initials and tone helpers, split out of the avatar's entry point with no UI
- * of their own (the avatar's story scans the faces they draw), and l10n's
- * input side, its parsers, split out of l10n with no UI either. A new folder
- * must join this list or the additions, so that none is skipped unclassified.
+ * of their own (the avatar's story scans the faces they draw), l10n's input
+ * side, its parsers, split out of l10n with no UI either, and the keys
+ * grammar, split out of kbd's entry point with no UI of its own (the kbd
+ * story draws and matches the combinations it defines). A new folder must
+ * join this list or the additions, so that none is skipped unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
   'alert',
@@ -75,6 +77,7 @@ const OLDER_FOLDERS: readonly string[] = [
   'image',
   'initials',
   'input',
+  'keys',
   'l10n',
   'l10n-facade',
   'l10n-input',

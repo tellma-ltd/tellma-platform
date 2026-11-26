@@ -7,13 +7,17 @@ import { tmEntity, tmFeature } from '@tellma/core';
 
 /**
  * Acme's own feature, the client side of the server's `acme` feature: the
- * customers' details page so far; Acme's sections, other entities, pages
- * and reports join it as the server side composes them.
+ * customers' details page and GL's centers in the launcher so far; Acme's
+ * sections, other entities, pages and reports join it as the server side
+ * composes them.
  */
 export const acmeFeature = tmFeature({
   key: 'acme',
   entities: [
     // The layout loads with the first customer's page, in a chunk of its own.
     tmEntity('acme.Customer', { details: () => import('./customers/customer-details') }),
+    // GL's centers, under Administration as the GL module places them: a
+    // stand-in for that module's client feature, which does not exist yet.
+    tmEntity('gl.Center', { section: 'administration', order: 30 }),
   ],
 });

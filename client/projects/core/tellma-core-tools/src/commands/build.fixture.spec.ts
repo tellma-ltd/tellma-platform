@@ -205,6 +205,24 @@ describe('tellma-client build on the fixture app', () => {
     }
   });
 
+  it('keeps the icons only lazy chunks draw out of the initial JavaScript', () => {
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    // No module imports Lucide's index. The index re-exports every icon, so
+    // once the first frame reaches it, the bundler marks every icon reachable
+    // from the first frame and places each icon a lazy chunk draws in a chunk
+    // the first frame loads.
+    expect([...graph.modules.keys()].filter((path) => path.endsWith('/lucide/dist/esm/lucide.mjs'))).toEqual([]);
+    // The session menu's icons, which only its lazy chunk draws, are in the
+    // build but in none of the files the first frame loads.
+    const initial = tmReadInitialFiles(read('index.html'));
+    const initialJs = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
+    for (const icon of ['user-cog', 'keyboard', 'calendar-days']) {
+      const holding = graph.outputsHolding((input) => input.endsWith(`/lucide/dist/esm/icons/${icon}.mjs`));
+      expect(holding, icon).not.toEqual([]);
+      expect(holding.filter((file) => initialJs.has(file)), icon).toEqual([]);
+    }
+  });
+
   it("attributes to the @tellma/core primary the bytes the bundler's stats give its modules in the initial files", () => {
     // The stats count each module's bytes in each file; the source maps cut
     // the same code out of the files. The two must agree, or the primary's

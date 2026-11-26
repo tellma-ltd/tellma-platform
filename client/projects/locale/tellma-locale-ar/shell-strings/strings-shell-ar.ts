@@ -9,9 +9,9 @@ import type { TmStringTree } from '@tellma/core';
 // `tm.shell`, the tenantless pages under `tm.tenantless`, the tenant shell's
 // app bar under `tm.tenantShell`, its session menu, markers and dialogs'
 // frames under `tm.shellOverlays`, its installed-mode Back and Forward under
-// `tm.shellHistory`, and its About and Shortcuts dialogs under
-// `tm.aboutDialog` and `tm.shortcutsDialog`. It is a table of
-// its own beside the platform's main one, so that table's ceiling holds;
+// `tm.shellHistory`, its About and Shortcuts dialogs under `tm.aboutDialog`
+// and `tm.shortcutsDialog`, and its launcher under `tm.launcher`. It is a
+// table of its own beside the platform's main one, so that table's ceiling holds;
 // `tmArabic()` merges the two under `tm` on the first switch to Arabic.
 
 /**
@@ -32,8 +32,9 @@ function imperative(male: string, female: string): string {
  * picker (search, loading, Connect, badges, unavailable reasons, empty,
  * no-match, failure and notice), the signed-out page, the tenant app bar,
  * the session menu, the markers' popovers, the installed-mode Back and
- * Forward, and the About and Shortcuts dialogs. The same shape as their
- * English.
+ * Forward, the About and Shortcuts dialogs, and the launcher (its headings,
+ * rows, footer and announcements, and the platform entries' search
+ * synonyms). The same shape as their English.
  */
 export const TM_SHELL_STRINGS_AR: TmStringTree = {
   shell: {
@@ -169,5 +170,25 @@ export const TM_SHELL_STRINGS_AR: TmStringTree = {
     launcherNewTab: 'فتح النتيجة في علامة تبويب جديدة',
     launcherClose: 'إغلاق المشغّل',
     noMatch: 'لا يطابق أي اختصار.',
+  },
+  launcher: {
+    results: 'الصفحات والنتائج',
+    hint: `${imperative('اكتب', 'اكتبي')} للبحث. ${imperative('استخدم', 'استخدمي')} مفاتيح الأسهم للتنقّل بين الخيارات، وEnter لفتح أحدها، وEscape للإغلاق.`,
+    close: 'إغلاق',
+    pinned: 'المثبّتة',
+    recent: 'الصفحات الأخيرة',
+    pages: 'الصفحات',
+    pinnedEntry: '{label}، مثبّتة',
+    create: '{label} · إنشاء',
+    noMatch: 'لا يطابق «{query}» أي صفحة.',
+    footer: `${imperative('اكتب', 'اكتبي')} للبحث · ↑↓ للتنقّل · Enter للفتح · Esc للإغلاق`,
+    count: '{count, plural, zero {لا صفحات} one {صفحة واحدة} two {صفحتان} few {# صفحات} many {# صفحة} other {# صفحة}}',
+    nothing: 'لا نتائج مطابقة',
+    bucketCount: '{bucket}: {count, plural, zero {لا نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}',
+    synonyms: {
+      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
+      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
+      meDisplay: 'السمة، الشريط المثبت',
+    },
   },
 };

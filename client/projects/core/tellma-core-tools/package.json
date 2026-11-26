@@ -21,6 +21,9 @@
       "default": "./dist/stylelint/index.js"
     },
     "./tsconfig.json": "./presets/tsconfig.json",
+    "./lucide-icons": {
+      "types": "./presets/lucide-icons.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [

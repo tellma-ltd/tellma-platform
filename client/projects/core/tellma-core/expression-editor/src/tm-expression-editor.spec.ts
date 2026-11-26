@@ -9,7 +9,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { form } from '@angular/forms/signals';
 import { TmExpressionEditorHarness, TmFakeDiscover, TmFakeTelemetry } from '@tellma/core-testing';
 import { TmGrid, TmGridColumn, TmGridEditorDef } from '@tellma/core-ui/grid';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 

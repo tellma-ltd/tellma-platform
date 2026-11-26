@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import type { Signal } from '@angular/core';
-import type { TmKeys } from '@tellma/core-ui/kbd';
+import type { TmKeys } from '@tellma/core-ui/keys';
 
 import type { TmActionConfirmation } from '../entity/tm-entity-declaration';
 import type { TmJson, TmJsonSchema } from '../json/tm-json';

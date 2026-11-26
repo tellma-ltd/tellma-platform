@@ -1,8 +1,9 @@
 /**
- * Public API Surface of @tellma/core-ui/kbd — the one grammar for writing,
- * matching and showing key combinations: the `TmKeys` notation, the
+ * Public API Surface of @tellma/core-ui/kbd — `tm-kbd`'s key caps, and the
+ * one grammar for writing, matching and labelling key combinations,
+ * re-exported from `@tellma/core-ui/keys`: the `TmKeys` notation, the
  * layout-independent `tmKeysMatch`, the platform-aware labels and
- * `tm-kbd`'s key caps.
+ * `tmIsApplePlatform`.
  *
  * @packageDocumentation
  */
@@ -19,4 +20,4 @@ export {
   tmKeysMatch,
   tmKeysText,
   type TmKeys,
-} from './tm-keys';
+} from '@tellma/core-ui/keys';

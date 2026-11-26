@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   Component,
@@ -17,7 +19,8 @@ import {
   viewChild,
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
-import { Check, Minus } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import Minus from 'lucide/dist/esm/icons/minus.mjs';
 
 import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, TmL10n, tmResolveFieldErrors } from '@tellma/core-ui';

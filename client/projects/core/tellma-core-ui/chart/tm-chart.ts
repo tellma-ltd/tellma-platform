@@ -26,7 +26,7 @@ import {
 import { TM_ACTIVE_LOCALE, TM_UI_TRANSLATE, ɵtmRegisterUiStrings } from '@tellma/core-ui';
 import { TmBadge, type TmBadgeTone } from '@tellma/core-ui/badge';
 import { TmGrid, TmGridColumn, type TmGridRowActivation } from '@tellma/core-ui/grid';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { tmFormatNumber } from '@tellma/core-ui/l10n';
 import { ɵTmChartEnvironment } from './internal/chart-environment';
 import { ɵTM_CHART_ENGINE_LOADER } from './internal/chart-loader';

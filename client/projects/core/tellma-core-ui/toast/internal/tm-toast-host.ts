@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterRenderEffect,
   Component,
@@ -13,7 +15,11 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { CircleCheckBig, CircleX, Info, TriangleAlert, X } from 'lucide';
+import CircleCheckBig from 'lucide/dist/esm/icons/circle-check-big.mjs';
+import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
+import Info from 'lucide/dist/esm/icons/info.mjs';
+import TriangleAlert from 'lucide/dist/esm/icons/triangle-alert.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
