@@ -97,6 +97,25 @@ gates run on Linux and Windows too; the client e2e suite runs on Linux.
 dotnet build Tellma.slnx
 ```
 
+CI runs that build through `eng/dotnet-build/build-with-evidence.sh`, which stops a build still
+running after 12 minutes (a normal one takes 3 to 4) and keeps its binary log, a time-stamped text
+log and the compiler's and MSBuild nodes' own diagnostics. When the build fails, the job uploads
+them as the `build-evidence-<OS>` artifact, and a stopped build's step log lists the projects and
+compilations it was still waiting on. The script runs locally too (`eng/dotnet-build/README.md`):
+
+```bash
+bash eng/dotnet-build/build-with-evidence.sh --timeout 30m --evidence artifacts/build-evidence -- Tellma.slnx
+```
+
+A machine that runs several builds at once (one per worktree, say) can see a build fail with error
+MSB4166, "Child node exited prematurely", and no failure report. MSBuild keeps a build's worker
+nodes alive for the next build of the same user and SDK to reuse, as children of the process that
+started them, so a tool that ends a process tree (Playwright stopping a web server, `taskkill /T`,
+an agent stopping a background command) can end nodes that another build is using at that moment.
+`-nodeReuse:false` on a build, or `MSBUILDDISABLENODEREUSE=1` in its environment, keeps it to nodes
+of its own, at the cost of starting them: a full Release rebuild of the solution took 40 to 80%
+longer on a 20-core development machine. The Acme e2e host builds that way for the same reason.
+
 ```bash
 dotnet format Tellma.slnx --verify-no-changes
 ```
