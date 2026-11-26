@@ -3,13 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { ApplicationRef, Component, signal } from '@angular/core';
+import { DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
-import { provideTellmaUi } from '@tellma/core-ui';
+import { provideTellmaUi, type TmControlSize } from '@tellma/core-ui';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
-import { TmPagerHarness } from '@tellma/core-ui-testing';
+import { TmPagerHarness, TmSelectHarness } from '@tellma/core-ui-testing';
 
 import {
   ɵtmPagerReservedCh,
@@ -126,6 +126,7 @@ describe('the pager width reservation', () => {
         [maxPage]="maxPage()"
         [sizeLabel]="sizeLabel()"
         [disabled]="disabled()"
+        [size]="size()"
         (previous)="previousCount = previousCount + 1"
         (next)="nextCount = nextCount + 1"
       />
@@ -144,6 +145,7 @@ class Host {
   readonly maxPage = signal<number | null>(null);
   readonly sizeLabel = signal<'short' | 'long'>('long');
   readonly disabled = signal(false);
+  readonly size = signal<TmControlSize | undefined>(undefined);
   previousCount = 0;
   nextCount = 0;
 }
@@ -159,8 +161,11 @@ beforeAll(() => {
 
 afterAll(() => tokenSheet.remove());
 
-async function setup(configure: (host: Host) => void = () => undefined) {
-  TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+async function setup(
+  configure: (host: Host) => void = () => undefined,
+  deferBlockBehavior = DeferBlockBehavior.Playthrough,
+) {
+  TestBed.configureTestingModule({ providers: [provideTellmaUi()], deferBlockBehavior });
   const fixture = TestBed.createComponent(Host);
   configure(fixture.componentInstance);
   fixture.autoDetectChanges();
@@ -315,10 +320,163 @@ describe('tm-pager', () => {
 
   it('reserves the widest size option, so the select never resizes', async () => {
     const { host, pager, element } = await setup((h) => h.pageSizes.set([20, 1000]));
+    const harness = (await pager.getSizeSelect())!;
     const select = element.querySelector('tm-select')!;
     const width = select.getBoundingClientRect().width;
-    await (await pager.getSizeSelect())!.selectOption('1,000 per page');
+    await harness.selectOption('1,000 per page');
     expect(host.pageSize()).toBe(1000);
     expect(select.getBoundingClientRect().width).toBe(width);
+  });
+});
+
+// ---- The size select's stand-in, with the select's loading held ----
+
+/** The box properties the stand-in copies from the select's trigger. */
+const CHROME = [
+  'block-size',
+  'padding-inline-start',
+  'padding-inline-end',
+  'border-top-width',
+  'border-top-color',
+  'border-top-left-radius',
+  'background-color',
+  'color',
+  'font-family',
+  'font-size',
+  'line-height',
+  'column-gap',
+] as const;
+
+/** An element's box, as plain numbers. */
+function box(element: Element): Record<'x' | 'y' | 'width' | 'height', number> {
+  const { x, y, width, height } = element.getBoundingClientRect();
+  return { x, y, width, height };
+}
+
+/** The given computed properties of an element. */
+function chrome(element: Element): Record<string, string> {
+  const style = getComputedStyle(element);
+  return Object.fromEntries(CHROME.map((name) => [name, style.getPropertyValue(name)]));
+}
+
+/** A pager offering 20, 50 and 100 per page, whose select lands only when the test lets it. */
+async function held(configure: (host: Host) => void = () => undefined) {
+  const result = await setup((h) => {
+    h.total.set(400);
+    h.pageSizes.set([20, 50, 100]);
+    configure(h);
+  }, DeferBlockBehavior.Manual);
+  const [block] = await result.fixture.getDeferBlocks();
+  const proxy = () => result.element.querySelector<HTMLElement>('.tm-pager__proxy');
+  const land = async () => {
+    await block!.render(DeferBlockState.Complete);
+    await result.fixture.whenStable();
+  };
+  const select = () => TestbedHarnessEnvironment.loader(result.fixture).getHarness(TmSelectHarness);
+  const trigger = () => result.element.querySelector<HTMLElement>('.tm-select__trigger');
+  return { ...result, proxy, land, select, trigger };
+}
+
+/** A cancelable key press on an element. */
+function keydown(element: HTMLElement, key: string): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+  element.dispatchEvent(event);
+  return event;
+}
+
+describe('the size select before it loads', () => {
+  for (const size of ['sm', 'md', 'lg'] as const) {
+    it(`holds the select's box, chrome and current size, and hands over in place (${size})`, async () => {
+      const { element, proxy, land, trigger } = await held((h) => {
+        h.pageSize.set(50);
+        h.size.set(size);
+      });
+      const standIn = proxy()!;
+      expect(element.querySelector('tm-select')).toBeNull();
+      expect(standIn.textContent!.trim()).toBe('50 per page');
+      expect(standIn.getAttribute('role')).toBe('combobox');
+      expect(standIn.getAttribute('aria-label')).toBe('Page size');
+      expect(standIn.getAttribute('aria-expanded')).toBe('false');
+      expect(standIn.tabIndex).toBe(0);
+      const before = { standIn: box(standIn), pager: box(element), chrome: chrome(standIn) };
+
+      await land();
+      expect(proxy()).toBeNull();
+      expect(box(element.querySelector('tm-select')!)).toEqual(before.standIn);
+      expect(box(element)).toEqual(before.pager);
+      expect(chrome(trigger()!)).toEqual(before.chrome);
+      expect(trigger()!.textContent!.trim()).toBe('50 per page');
+      // Landing on its own takes no focus.
+      expect(document.activeElement).toBe(document.body);
+    });
+  }
+
+  it('keeps the stand-in under a press, then opens the select on its click', async () => {
+    const { host, proxy, land, select, trigger } = await held();
+    const standIn = proxy()!;
+    standIn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    standIn.focus();
+    await land();
+    // The press has not ended: the stand-in stays, over an inert select.
+    expect(proxy()).toBe(standIn);
+    expect(trigger()!.closest('tm-select')!.hasAttribute('inert')).toBe(true);
+
+    standIn.click();
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(proxy()).toBeNull();
+    const harness = await select();
+    expect(await harness.isOpen()).toBe(true);
+    expect(document.activeElement).toBe(trigger());
+    await harness.selectOption('100 per page');
+    expect(host.pageSize()).toBe(100);
+  });
+
+  it('opens the select on an open key pressed before it lands', async () => {
+    const { proxy, land, select, trigger } = await held();
+    const standIn = proxy()!;
+    standIn.focus();
+    expect(keydown(standIn, 'ArrowDown').defaultPrevented).toBe(true);
+    await land();
+    expect(await (await select()).isOpen()).toBe(true);
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it('feeds the text typed before it lands to the typeahead', async () => {
+    const { proxy, land, select } = await held();
+    const standIn = proxy()!;
+    standIn.focus();
+    expect(keydown(standIn, '1').defaultPrevented).toBe(true);
+    await land();
+    const harness = await select();
+    expect(await harness.isOpen()).toBe(true);
+    const active: string[] = [];
+    for (const option of await harness.getOptions()) {
+      if (await option.isActive()) {
+        active.push(await option.getText());
+      }
+    }
+    expect(active).toEqual(['100 per page']);
+  });
+
+  it('moves focus to the select when the focused stand-in retires', async () => {
+    const { proxy, land, select, trigger } = await held();
+    proxy()!.focus();
+    await land();
+    expect(document.activeElement).toBe(trigger());
+    expect(await (await select()).isOpen()).toBe(false);
+  });
+
+  it('takes no press or key while disabled', async () => {
+    const { proxy, land, select } = await held((h) => h.disabled.set(true));
+    const standIn = proxy()!;
+    expect(standIn.getAttribute('aria-disabled')).toBe('true');
+    expect(standIn.tabIndex).toBe(-1);
+    standIn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
+    standIn.click();
+    expect(keydown(standIn, 'Enter').defaultPrevented).toBe(false);
+    await land();
+    const harness = await select();
+    expect(await harness.isOpen()).toBe(false);
+    expect(await harness.isDisabled()).toBe(true);
   });
 });

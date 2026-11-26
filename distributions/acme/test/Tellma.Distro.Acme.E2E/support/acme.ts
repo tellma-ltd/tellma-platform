@@ -223,6 +223,43 @@ export async function comeIntoViewUntil(page: Page, shown: Locator): Promise<voi
   }).toPass({ timeout: 30_000 });
 }
 
+/** A hold on the script files that carry the select component. */
+export interface SelectChunksHold {
+  /** Answers the held files and every later one. */
+  release(): Promise<void>;
+}
+
+/**
+ * Holds every script file of the page that carries the select component (its
+ * trigger's class names it), so the pager's size select cannot land until
+ * the flow lets it. The context must block the service worker
+ * (`serviceWorkers: 'block'`), which would answer the files from its own
+ * cache once it claims the page.
+ *
+ * @param page - The page.
+ * @returns The hold.
+ */
+export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
+  const held: (() => Promise<void>)[] = [];
+  let holding = true;
+  await page.route('**/*.js', async (route) => {
+    const response = await route.fetch();
+    const body = await response.text();
+    const answer = () => route.fulfill({ response, body });
+    if (holding && body.includes('tm-select__trigger')) {
+      held.push(answer);
+    } else {
+      await answer();
+    }
+  });
+  return {
+    release: async () => {
+      holding = false;
+      await Promise.all(held.splice(0).map((answer) => answer()));
+    },
+  };
+}
+
 /** What the document looked like when its first frame was about to paint. */
 export interface FirstPaint {
   /** `<html lang>`. */

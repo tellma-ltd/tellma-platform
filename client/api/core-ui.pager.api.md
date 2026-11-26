@@ -9,6 +9,8 @@ import * as lucide from 'lucide';
 
 // @public
 export class TmPager {
+    constructor();
+    protected readonly caretGlyph: lucide.IconNode;
     readonly disabled: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly index: _angular_core.InputSignal<number>;
     readonly maxPage: _angular_core.InputSignal<number | null>;
@@ -23,6 +25,9 @@ export class TmPager {
     protected onNext(): void;
     protected onPageSize(size: number): void;
     protected onPrevious(): void;
+    protected onProxyKeydown(event: KeyboardEvent): void;
+    protected onProxyPress(event: PointerEvent): void;
+    protected onProxyRelease(clicked: boolean): void;
     readonly page: _angular_core.ModelSignal<number>;
     readonly pageSize: _angular_core.ModelSignal<number>;
     protected readonly pageSizeLabel: _angular_core.Signal<string>;
@@ -43,12 +48,16 @@ export class TmPager {
         value: number;
         label: string;
     }[]>;
+    protected readonly sizeSelectReady: _angular_core.WritableSignal<boolean>;
+    protected readonly sizeSelectWanted: _angular_core.WritableSignal<boolean>;
+    protected readonly sizeText: _angular_core.Signal<string>;
     protected readonly status: _angular_core.Signal<{
         text: string;
         sentence: string;
     } | null>;
     readonly total: _angular_core.InputSignal<number | null>;
     readonly totalIsLowerBound: _angular_core.InputSignalWithTransform<boolean, unknown>;
+    protected wantSizeSelect(): void;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmPager, "tm-pager", never, { "mode": { "alias": "mode"; "required": false; "isSignal": true; }; "page": { "alias": "page"; "required": false; "isSignal": true; }; "pageSize": { "alias": "pageSize"; "required": false; "isSignal": true; }; "pageSizes": { "alias": "pageSizes"; "required": false; "isSignal": true; }; "index": { "alias": "index"; "required": false; "isSignal": true; }; "total": { "alias": "total"; "required": false; "isSignal": true; }; "totalIsLowerBound": { "alias": "totalIsLowerBound"; "required": false; "isSignal": true; }; "maxPage": { "alias": "maxPage"; "required": false; "isSignal": true; }; "sizeLabel": { "alias": "sizeLabel"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "page": "pageChange"; "pageSize": "pageSizeChange"; "previous": "previous"; "next": "next"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPager, never>;
 }

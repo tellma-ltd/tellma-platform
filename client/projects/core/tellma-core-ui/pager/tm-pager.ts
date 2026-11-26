@@ -3,8 +3,23 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { booleanAttribute, Component, computed, inject, input, model, output } from '@angular/core';
-import { ChevronLeft, ChevronRight } from 'lucide';
+import {
+  afterNextRender,
+  afterRenderEffect,
+  booleanAttribute,
+  Component,
+  computed,
+  DOCUMENT,
+  type ElementRef,
+  inject,
+  input,
+  model,
+  output,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
+import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide';
 
 import {
   TM_ACTIVE_LOCALE,
@@ -15,6 +30,9 @@ import {
 } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
+// Referenced only inside the template's @defer block, so the compiler loads
+// the select entry point with import() and the pager's own chunk never
+// carries it.
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 
 import {
@@ -23,6 +41,26 @@ import {
   ɵtmPagerWidestStatus,
   type ɵTmPagerStatus,
 } from './internal/tm-pager-status';
+
+/** What the stand-in replays on the size select once it lands: the parts of `tm-select` it calls. */
+interface TmPagerSizeSelect {
+  /** Focuses the trigger. */
+  focus(): void;
+  /** Focuses the trigger and opens the panel. */
+  open(): void;
+  /** Opens the panel with the text fed to its typeahead. */
+  seed(text: string): void;
+}
+
+/** What the stand-in received before the select landed. */
+interface TmPagerReplay {
+  /** Whether it held focus. */
+  focus: boolean;
+  /** Whether a click or an open key asked for the panel. */
+  open: boolean;
+  /** The characters typed on it, for the panel's typeahead. */
+  text: string;
+}
 
 /**
  * Paging status and controls. Range mode pages through a list and shows
@@ -41,12 +79,19 @@ import {
  * `maxPage` disables Next from that page on, even then. An unknown total
  * hides the status and keeps Next enabled.
  *
+ * The size select loads on demand, at idle or on the first pointer, focus
+ * or key, so a page that shows a pager does not carry the select until
+ * then. Until it lands, a stand-in with the trigger's chrome and the
+ * current size holds its box; a click, an open key or typed text on the
+ * stand-in opens the select when it lands, and focus moves to it.
+ *
  * @tmGroup collection
  * @tmA11yNotes Native buttons named "Previous page" and "Next page" (or
  *   "Previous item" and "Next item"), and a `tm-select` named "Page
- *   size". The status reads as a sentence, "Items 1 to 20 of 55"; its
- *   visible fraction is hidden from assistive technology and set
- *   left-to-right in both directions.
+ *   size". Until the select loads, its stand-in is a collapsed combobox of
+ *   the same name in the same tab stop. The status reads as a sentence,
+ *   "Items 1 to 20 of 55"; its visible fraction is hidden from assistive
+ *   technology and set left-to-right in both directions.
  */
 @Component({
   selector: 'tm-pager',
@@ -94,18 +139,52 @@ import {
          wide as its widest option whatever it shows. -->
     @if (showsSizes()) {
       <span class="tm-pager__size">
-        <tm-select
-          class="tm-pager__select"
-          [value]="pageSize()"
-          [size]="resolvedSize()"
-          [disabled]="disabled()"
-          [aria-label]="pageSizeLabel()"
-          (selectionChange)="onPageSize($event)"
-        >
-          @for (option of sizeOptions(); track option.value) {
-            <tm-option [value]="option.value" [label]="option.label">{{ option.label }}</tm-option>
-          }
-        </tm-select>
+        <!-- The select loads on demand: at idle after the first render, or
+             as soon as the user points at, focuses or presses the stand-in
+             below. -->
+        @defer (when sizeSelectWanted()) {
+          <tm-select
+            #sizeSelect
+            class="tm-pager__select"
+            [value]="pageSize()"
+            [size]="resolvedSize()"
+            [disabled]="disabled()"
+            [aria-label]="pageSizeLabel()"
+            [attr.inert]="sizeSelectReady() ? null : ''"
+            (selectionChange)="onPageSize($event)"
+          >
+            @for (option of sizeOptions(); track option.value) {
+              <tm-option [value]="option.value" [label]="option.label">{{ option.label }}</tm-option>
+            }
+          </tm-select>
+        }
+        <!-- The stand-in until the select is ready: the trigger's chrome
+             with the current size, in the same cell. It takes focus, and
+             the select replays the click, the open keys or the typed text
+             it received when it lands. -->
+        @if (!sizeSelectReady()) {
+          <span
+            #sizeProxy
+            class="tm-pager__select tm-pager__proxy"
+            role="combobox"
+            aria-haspopup="listbox"
+            aria-expanded="false"
+            [class.tm-pager__proxy--disabled]="disabled()"
+            [attr.tabindex]="disabled() ? -1 : 0"
+            [attr.aria-label]="pageSizeLabel()"
+            [attr.aria-disabled]="disabled() ? 'true' : null"
+            (pointerenter)="wantSizeSelect()"
+            (focus)="wantSizeSelect()"
+            (pointerdown)="onProxyPress($event)"
+            (pointerleave)="onProxyRelease(false)"
+            (pointercancel)="onProxyRelease(false)"
+            (click)="onProxyRelease(true)"
+            (keydown)="onProxyKeydown($event)"
+          >
+            <span class="tm-pager__proxy-value">{{ sizeText() }}</span>
+            <tm-icon class="tm-pager__proxy-caret" [svg]="caretGlyph" />
+          </span>
+        }
         <span class="tm-pager__size-sizer" aria-hidden="true">
           @for (option of sizeOptions(); track option.value) {
             <span>{{ option.label }}</span>
@@ -124,6 +203,9 @@ import {
 export class TmPager {
   /** The library's string resolver. */
   private readonly translate = inject(TM_UI_TRANSLATE);
+
+  /** The document, whose window schedules the select's idle load. */
+  private readonly document = inject(DOCUMENT);
 
   /** The ICU argument formatter, for the short size labels' bare numbers. */
   private readonly formatArgument = inject(TM_UI_ARGUMENT_FORMATTER);
@@ -181,6 +263,27 @@ export class TmPager {
 
   /** The next glyph, mirrored in right-to-left text. */
   protected readonly nextGlyph = { node: ChevronRight, mirrorInRtl: true };
+
+  /** The stand-in's caret, the select's own. */
+  protected readonly caretGlyph = ChevronDown;
+
+  /** Whether the size select should load now: set by the stand-in's first pointer, focus or key. */
+  protected readonly sizeSelectWanted = signal(false);
+
+  /** Whether the size select has landed and replaced its stand-in. */
+  protected readonly sizeSelectReady = signal(false);
+
+  /** The loaded size select, once its `@defer` block renders. */
+  private readonly sizeSelect = viewChild<TmPagerSizeSelect>('sizeSelect');
+
+  /** The stand-in, while the select has not replaced it. */
+  private readonly sizeProxy = viewChild<ElementRef<HTMLElement>>('sizeProxy');
+
+  /** Whether a pointer is pressed on the stand-in: it stays until the press ends in a click. */
+  private readonly proxyPressed = signal(false);
+
+  /** What the stand-in received before the select landed. */
+  private replay: TmPagerReplay = { focus: false, open: false, text: '' };
 
   /** The status's visible text and its sentence, or `null` while the total is unknown. */
   protected readonly status = computed(() => {
@@ -264,6 +367,57 @@ export class TmPager {
     }));
   });
 
+  /** The stand-in's text: the current size's label, or the select's own placeholder when no size matches. */
+  protected readonly sizeText = computed(
+    () =>
+      this.sizeOptions().find((option) => option.value === this.pageSize())?.label ??
+      this.translate('select.placeholder')(),
+  );
+
+  /** Loads the size select at idle, and hands the stand-in over to it once it lands. */
+  constructor() {
+    // At idle after the first render, the select loads unasked. The pager
+    // asks for idle itself rather than through the block's `on idle`
+    // trigger, whose scheduler would join the framework code every app's
+    // first frame loads.
+    afterNextRender(() => {
+      const view = this.document.defaultView;
+      const load = (): void => this.sizeSelectWanted.set(true);
+      if (view?.requestIdleCallback) {
+        view.requestIdleCallback(load);
+      } else {
+        setTimeout(load);
+      }
+    });
+
+    afterRenderEffect(() => {
+      const select = this.sizeSelect();
+      // The stand-in stays while the select is loading, and while a press
+      // on it has not yet ended in a click.
+      if (select === undefined || this.proxyPressed()) {
+        return;
+      }
+      if (!this.sizeSelectReady()) {
+        // The last render with the stand-in: note whether it holds focus,
+        // then retire it. The next run, with the select interactive (no
+        // longer inert), replays.
+        const proxy = untracked(this.sizeProxy)?.nativeElement;
+        this.replay.focus ||= proxy !== undefined && proxy === document.activeElement;
+        this.sizeSelectReady.set(true);
+        return;
+      }
+      const { focus, open, text } = this.replay;
+      this.replay = { focus: false, open: false, text: '' };
+      if (text !== '') {
+        select.seed(text);
+      } else if (open) {
+        select.open();
+      } else if (focus) {
+        select.focus();
+      }
+    });
+  }
+
   /** Range mode writes the previous page; item mode asks the host to step back. */
   protected onPrevious(): void {
     if (this.mode() === 'range') {
@@ -295,6 +449,49 @@ export class TmPager {
     const firstRow = (Math.max(1, this.page()) - 1) * Math.max(1, previous);
     this.pageSize.set(size);
     this.page.set(Math.floor(firstRow / size) + 1);
+  }
+
+  /** Starts loading the size select: a pointer over the stand-in, or focus on it. */
+  protected wantSizeSelect(): void {
+    this.sizeSelectWanted.set(true);
+  }
+
+  /** A press on the enabled stand-in loads the select; the stand-in stays until the press ends. */
+  protected onProxyPress(event: PointerEvent): void {
+    if (this.disabled() || event.button !== 0) {
+      return;
+    }
+    this.sizeSelectWanted.set(true);
+    this.proxyPressed.set(true);
+  }
+
+  /** A press on the stand-in ends: a click asks for the panel, a pointer that left or was cancelled does not. */
+  protected onProxyRelease(clicked: boolean): void {
+    if (clicked && !this.disabled()) {
+      this.replay.open = true;
+    }
+    this.proxyPressed.set(false);
+  }
+
+  /**
+   * Keys on the stand-in, kept for the select: Enter, Space and the
+   * vertical arrows ask for the panel, a printable character joins the
+   * typeahead text (a space only after another character), as on the
+   * select's closed trigger. Tab and the rest pass.
+   */
+  protected onProxyKeydown(event: KeyboardEvent): void {
+    if (this.disabled() || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    if (event.key.length === 1 && !event.altKey && (event.key !== ' ' || this.replay.text !== '')) {
+      this.replay.text += event.key;
+    } else if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
+      this.replay.open = true;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    this.sizeSelectWanted.set(true);
   }
 
   /** The status's visible text, in the locale's digits. */

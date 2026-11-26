@@ -109,7 +109,7 @@
       "./shell": ["./recents", "./search-normalize", "./error-paths", "./page-snapshot", "./realtime", "@tellma/core-ui/menu", "@tellma/core-ui/image", "@tellma/core-ui/badge", "./support"],
       "./attention": ["./search-normalize", "./error-paths", "./page-snapshot", "./realtime"],
       "./entity": ["./entity-editing", "./column-filter", "./expression-editor", "./path-picker", "@tellma/core-ui/entity-picker", "@tellma/core-ui/select", "@tellma/core-ui/multi-select", "@tellma/core-ui/date-picker", "@tellma/core-ui/number", "@tellma/core-ui/input", "@tellma/core-ui/form-field", "@angular/forms"],
-      "./search": ["./entity-editing", "@tellma/core-ui/entity-picker", "@tellma/core-ui/date-picker", "@tellma/core-ui/number", "@tellma/core-ui/input", "@tellma/core-ui/multi-select", "@angular/forms", "./drafts"],
+      "./search": ["./entity-editing", "@tellma/core-ui/entity-picker", "@tellma/core-ui/select", "@tellma/core-ui/date-picker", "@tellma/core-ui/number", "@tellma/core-ui/input", "@tellma/core-ui/multi-select", "@angular/forms", "./drafts"],
       "./leader": ["./realtime"]
     },
     "treeShakes": {
