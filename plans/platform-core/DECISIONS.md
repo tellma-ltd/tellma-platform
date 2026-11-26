@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-355 (orchestrator, 2026-11-26): PC-F106 landed; PC-154 is released; PC-F92 takes pc-1
+
+- PC-F106 landed at e83e61c5, with CI 45780628722 green on 89106096. The plans-only merge e83e61c of the 41c2bb02 snapshot sits on top. Its flaky-table row is marked fixed.
+- PC-154 is released next (D-354). It merges platform-core, re-measures as the second to land (D-214) and integrates.
+- pc-1 is free. No blocking fix is open, no T1 is ready that is not already in a slot (PC-122 held, PC-129 in progress), and no T2 is ready.
+  - So the first non-blocking fix in ledger order takes it (D-229): PC-F92, the core-ui kbd split out of the primary's first frame. Branched at e83e61c5.
+- The release queue after PC-154 is PC-F89 and PC-F94, then PC-122, then PC-F91.
+
 ### D-354 (orchestrator, 2026-11-26): PC-126 landed; PC-F106 is released; PC-129 takes pc-4
 
 - PC-126 landed at bf0dc0f5, with CI 45774106884 green on that commit, as a fast-forward over 84cf2ede.
