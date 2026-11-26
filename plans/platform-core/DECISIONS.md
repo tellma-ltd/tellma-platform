@@ -384,6 +384,10 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-386 (2026-11-26): PC-F96 landed; PC-129 released; pc-f waits on D-028
+
+PC-F96 landed at 01a3c31b on green CI 45894291651, with a plans-only merge on top. PC-129 is the next held item, so it is released to integrate as the later lander over PC-154, PC-122, PC-F91, PC-F92 and the rest, re-measuring against the thin headroom (D-214). That puts five heavy agents in flight: PC-123's R1, PC-F111, PC-156, PC-128's fix2 and PC-129's integration. The freed fix slot pc-f therefore stays empty until one finishes (D-028). Its next fix is PC-F107, the in-memory TmClientCache for tests and the cause of PC-F106's flake class.
+
 ### D-385 (2026-11-26): PC-F95 landed; PC-F96 released; PC-F111 in pc-f2
 
 PC-F95 landed at d1e2b461 on green CI 45887626054, with a plans-only merge on top. Its first integration CI was red on its own code: ubuntu-latest is now Ubuntu 26.04, whose /usr/bin/timeout is uutils. That timeout failed the script's GNU check, and it kills on SIGINT at once. The CI fix picks a timeout by a behaviour probe and uses gnutimeout on 26.04.
