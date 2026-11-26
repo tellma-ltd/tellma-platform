@@ -6,13 +6,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { tmAttribute, tmElements, tmParseFragment } from '../common/html.js';
+import { tmAttribute, tmElements, tmParseFragment, type TmHtmlElement } from '../common/html.js';
 import type { TmBuildProblem } from '../common/problems.js';
 
 // The brand files (spec 0024 §7.6): four SVGs the app renders inline, so
 // each must scale (a viewBox) and carry no script. A distribution's
 // public/brand/<name> replaces @tellma/core's brand/<name>. A file that fails
-// is `brand-file-invalid`, as is a name neither folder provides.
+// is `brand-file-invalid`, as is a name neither folder provides. Each file's
+// viewBox also gives its aspect ratio, its width over its height, which
+// `build` and `serve` define as the constant TM_BRAND_RATIOS in the app's
+// code, so the shells give each image its final box before its file loads.
+
+/** The global constant the Angular build replaces with the brand files' ratios, which @tellma/core/shell reads. */
+export const TM_BRAND_RATIOS_CONSTANT = 'TM_BRAND_RATIOS';
 
 /** The build problem code of every failed brand check. */
 export const TM_BRAND_PROBLEM = 'brand-file-invalid';
@@ -56,6 +62,14 @@ export function tmResolveBrandFiles(publicDir: string, defaultsDir: string | nul
 /** A viewBox: four numbers, the last two positive. */
 const VIEW_BOX = /^\s*(-?[\d.]+(?:e-?\d+)?)[\s,]+(-?[\d.]+(?:e-?\d+)?)[\s,]+([\d.]+(?:e-?\d+)?)[\s,]+([\d.]+(?:e-?\d+)?)\s*$/i;
 
+/** The width and height of an `<svg>` root's viewBox, or null when it has no valid one. */
+function viewBoxSize(root: TmHtmlElement): { readonly width: number; readonly height: number } | null {
+  const viewBox = VIEW_BOX.exec(tmAttribute(root, 'viewBox') ?? '');
+  const width = Number(viewBox?.[3]);
+  const height = Number(viewBox?.[4]);
+  return viewBox !== null && width > 0 && height > 0 && Number.isFinite(width) && Number.isFinite(height) ? { width, height } : null;
+}
+
 /**
  * Checks one brand SVG's text.
  *
@@ -69,8 +83,7 @@ export function tmBrandSvgFaults(svg: string): string[] {
   if (root === undefined) {
     return ['It holds no <svg> element.'];
   }
-  const viewBox = VIEW_BOX.exec(tmAttribute(root, 'viewBox') ?? '');
-  if (viewBox === null || Number(viewBox[3]) <= 0 || Number(viewBox[4]) <= 0) {
+  if (viewBoxSize(root) === null) {
     faults.push('Its <svg> element has no valid viewBox, so it cannot scale.');
   }
   // Every element counts, including any outside the root, since the file
@@ -101,6 +114,42 @@ export function tmBrandSvgFaults(svg: string): string[] {
     faults.push(`Its <${animation.tagName}> element animates a link's href.`);
   }
   return faults;
+}
+
+/**
+ * The aspect ratio of each brand file's viewBox, its width over its height,
+ * from which the shells size each image of the file, so it has its final box
+ * before the file loads. A file
+ * whose box fails the brand check, or that neither folder provides, is left
+ * out: the build fails on it.
+ *
+ * @param files - The resolved files.
+ * @returns By file name without `.svg`, the ratio, such as 3.5384615384615383 for a 736 by 208 viewBox.
+ */
+export function tmBrandRatios(files: readonly TmBrandFile[]): Record<string, number> {
+  const ratios: Record<string, number> = {};
+  for (const file of files) {
+    if (file.source === null) {
+      continue;
+    }
+    const root = tmElements(tmParseFragment(readFileSync(file.source, 'utf8'))).find((element) => element.tagName === 'svg');
+    const size = root === undefined ? null : viewBoxSize(root);
+    if (size !== null) {
+      ratios[file.name.replace(/\.svg$/, '')] = size.width / size.height;
+    }
+  }
+  return ratios;
+}
+
+/**
+ * The `--define` argument of `ng build` and `ng serve` that gives the app's
+ * code the brand files' ratios as the constant TM_BRAND_RATIOS.
+ *
+ * @param files - The resolved files.
+ * @returns The argument's value, such as `TM_BRAND_RATIOS={"wordmark-on-dark":3.5384615384615383}`.
+ */
+export function tmBrandDefine(files: readonly TmBrandFile[]): string {
+  return `${TM_BRAND_RATIOS_CONSTANT}=${JSON.stringify(tmBrandRatios(files))}`;
 }
 
 /** The animation elements that can set another element's attribute. */

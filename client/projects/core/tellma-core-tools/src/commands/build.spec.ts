@@ -211,6 +211,14 @@ describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
       'emit-client-assets',
       join(run.app, 'generated'),
     ]);
+    // ng build writes the chunk graph and defines the brand files' ratios for the app's code: the fixture's 120 by 24 wordmark and 24 px mark.
+    const ng = run.calls.find((call) => /ng\.js$/.test(call[1] ?? ''));
+    expect(ng?.slice(2)).toEqual([
+      'build',
+      '--stats-json',
+      '--define',
+      'TM_BRAND_RATIOS={"wordmark-on-dark":5,"wordmark-on-light":5,"mark-on-dark":1,"mark-on-light":1}',
+    ]);
     // generated/root/ is fresh before ng build: the boot script, and no override of public/brand/.
     expect(readFileSync(join(run.app, 'generated', 'root', 'tm-boot.js'), 'utf8')).toContain('"defaultLanguage":"en"');
     expect(existsSync(join(run.app, 'generated', 'root', 'brand'))).toBe(false);

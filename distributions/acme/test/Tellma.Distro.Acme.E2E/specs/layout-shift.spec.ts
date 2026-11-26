@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { type Route } from '@playwright/test';
 import { holdNetwork, signInAs, warmUp } from '@tellma/core-testing/e2e';
 
 import { expect, test } from '../support/acme';
@@ -53,6 +54,53 @@ test.describe('layout shift', () => {
     );
     expect(shifts).toEqual([]);
   });
+
+  // The wordmark's file loads in its own time, after the bar's first frame on
+  // a device that has never loaded it: its image keeps the box its file's
+  // ratio gives it, so nothing after it in the bar moves when the file lands.
+  // The image, and the item after it in its bar.
+  for (const [url, wordmark, next] of [
+    ['/1/customers', '.tm-app-bar__wordmark img', '.tm-app-bar__group'],
+    ['/tenants', '.tm-tenantless-shell__wordmark img', '.tm-tenantless-shell__spacer'],
+  ] as const) {
+    test(`the wordmark keeps its box while its file loads (${url})`, async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      // The brand files, held: a first visit, so no service worker answers them.
+      const held: Route[] = [];
+      let holding = true;
+      await page.route('**/brand/*.svg', (route) =>
+        holding ? void held.push(route) : route.fallback(),
+      );
+
+      await page.goto(url);
+      await expect(
+        page.getByRole('heading', {
+          level: 1,
+          name: url === '/tenants' ? text.chooseTenant : text.customers,
+        }),
+      ).toBeVisible();
+      const image = page.locator(wordmark);
+      const after = page.locator(next);
+      expect(await image.evaluate((element: HTMLImageElement) => element.complete)).toBe(false);
+      const before = [await image.boundingBox(), await after.boundingBox()];
+      expect(before[0]?.width).toBeGreaterThan(0);
+
+      holding = false;
+      await Promise.all(held.map((route) => route.fallback()));
+      await expect
+        .poll(() =>
+          image.evaluate(
+            (element: HTMLImageElement) => element.complete && element.naturalWidth > 0,
+          ),
+        )
+        .toBe(true);
+      expect([await image.boundingBox(), await after.boundingBox()]).toEqual(before);
+    });
+  }
 
   // An error state inside the content box needs a page whose read fails (specs 0030, 0031).
   test.fixme('an error state replaces the skeleton with zero shift', async () => {});

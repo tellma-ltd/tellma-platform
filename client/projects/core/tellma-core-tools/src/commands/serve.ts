@@ -8,7 +8,7 @@ import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 
-import { tmResolveBrandFiles } from '../checks/brand.js';
+import { tmBrandDefine, tmResolveBrandFiles } from '../checks/brand.js';
 import { tmFindAbove } from '../common/files.js';
 import { TmBuildFailure } from '../common/problems.js';
 import { tmRunEmit } from '../emit/emit.js';
@@ -23,8 +23,9 @@ import { tmWritePlatformAssets } from './platform-assets.js';
 // emit, writes tm-boot.js and the brand files to generated/root/ (which
 // angular.json copies to the output root, so the dev server serves them as
 // the built app does), exports the ASP.NET Core development certificate, and
-// runs `ng serve` over HTTPS on the worktree's client port, proxying every
-// path the server owns (the routing words, websockets included) to the
+// runs `ng serve` over HTTPS on the worktree's client port, with the brand
+// files' ratios defined for the app's code as `build` defines them, proxying
+// every path the server owns (the routing words, websockets included) to the
 // distribution's web host. It sets no CSP and registers no worker: the dev
 // server serves the app unbuilt. Inside the platform's own repository it
 // first writes the platform's generated assets (the token stylesheets and
@@ -153,11 +154,8 @@ export async function tmServe(context: TmCommandContext, options: TmServeOptions
   tmLogStep(context, 'Writing tm-boot.js and the brand files');
   const coreDir = tmRequirePackageDir(project, '@tellma/core');
   const defaults = join(coreDir, 'brand');
-  tmRefreshRootFiles(
-    project.rootAssetsDir,
-    tmBuildBootScript(coreDir, tmBootConfig(metadata)),
-    tmResolveBrandFiles(project.publicDir, existsSync(defaults) ? defaults : null),
-  );
+  const brand = tmResolveBrandFiles(project.publicDir, existsSync(defaults) ? defaults : null);
+  tmRefreshRootFiles(project.rootAssetsDir, tmBuildBootScript(coreDir, tmBootConfig(metadata)), brand);
   const certificate = await exportDevCertificate(context, options.certificateDir ?? tmDefaultCertificateDir(), slug);
   const prefix = slug.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   const port = options.port ?? tmDevPort(project.dir, `${prefix}_CLIENT`) ?? TM_DEFAULT_CLIENT_PORT;
@@ -184,6 +182,8 @@ export async function tmServe(context: TmCommandContext, options: TmServeOptions
         certificate.key,
         '--proxy-config',
         proxy,
+        '--define',
+        tmBrandDefine(brand),
       ],
       { cwd: project.dir },
     );

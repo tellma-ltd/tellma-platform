@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'n
 import { join, relative } from 'node:path';
 
 import { tmReadBudgetLevels, tmBudgetProblems, tmFormatBudgetReport, tmMeasureBudgets, type TmBudgetLevels } from '../checks/budgets.js';
-import { tmCheckBrandFiles, tmResolveBrandFiles, type TmBrandFile } from '../checks/brand.js';
+import { tmBrandDefine, tmCheckBrandFiles, tmResolveBrandFiles, type TmBrandFile } from '../checks/brand.js';
 import { tmRunConfigCheck } from '../checks/config-check.js';
 import { tmCheckHashedNames } from '../checks/hashed-names.js';
 import { tmCheckIndexHtml } from '../checks/index-html.js';
@@ -31,8 +31,9 @@ import { tmWritePlatformAssets } from './platform-assets.js';
 // checks, in six steps.
 //
 //  1. The emit, then the source checks (config, index.html, manifest, brand
-//     files, budget notes), then `ng build --stats-json`. A source problem
-//     stops here, before the slow part.
+//     files, budget notes), then `ng build --stats-json`, which defines the
+//     brand files' ratios for the app's code. A source problem stops here,
+//     before the slow part.
 //  2. The brand files, tm-boot.js and the manifest's localized names.
 //  3. The preloads: fonts, the Core chunk and default string pack, and the
 //     /shell and /attention chunks.
@@ -123,8 +124,8 @@ async function sourceStep(
   return { metadata, slug, coreDir, brand, names, levels: budgets.levels, bootScript };
 }
 
-/** Step 1's end: the Angular build, with its chunk graph. */
-async function angularBuild(context: TmCommandContext, project: TmAppProject): Promise<void> {
+/** Step 1's end: the Angular build, with its chunk graph and the brand files' ratios. */
+async function angularBuild(context: TmCommandContext, project: TmAppProject, brand: readonly TmBrandFile[]): Promise<void> {
   tmLogStep(context, `Building ${project.angularProject}`);
   const ng = join(tmRequirePackageDir(project, '@angular/cli'), 'bin', 'ng.js');
   rmSync(project.outputDir, { recursive: true, force: true });
@@ -132,7 +133,7 @@ async function angularBuild(context: TmCommandContext, project: TmAppProject): P
   // metafile, which leaves the metafile describing chunks the output does
   // not hold and names some chunks outside the hashed-name pattern; with it
   // off, the metafile is the output's true graph.
-  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json'], {
+  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json', '--define', tmBrandDefine(brand)], {
     cwd: project.dir,
     env: { NG_BUILD_OPTIMIZE_CHUNKS: 'false' },
   });
@@ -180,7 +181,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   }
   // The files serve copies from generated/root/, refreshed so ng build never copies stale ones.
   tmRefreshRootFiles(project.rootAssetsDir, source.bootScript, source.brand);
-  await angularBuild(context, project);
+  await angularBuild(context, project, source.brand);
   const browser = project.browserDir;
   const { core, strings } = source.metadata;
   const languages = core.value.languages.map((language) => language.code);

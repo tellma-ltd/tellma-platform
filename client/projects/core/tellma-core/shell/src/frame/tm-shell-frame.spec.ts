@@ -7,16 +7,19 @@ import { createEnvironmentInjector, DestroyRef, EnvironmentInjector, signal } fr
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { TmBanners, TmShell } from '@tellma/core';
+import { page } from 'vitest/browser';
 
 import { tmAppRig, tmNavigate, tmSettleUntil, tmTestMembership } from '../../../src/routes/tm-app.testing.util';
-import { type TmShellRows, TmShellRowsWriter } from './tm-shell-frame';
+import { TM_SHELL_BRAND_RATIOS, type TmShellRows, TmShellRowsWriter } from './tm-shell-frame';
 
 // The shell frame on the signed-out page, the lightest page that renders
 // it: the landmarks in order with the skip link first, the skip link's
 // focus move, the row heights it writes on the root element and restores,
 // the banner row, and the immersive frame without its header. Then the
 // rows across a navigation between the two shells, and the writer's
-// newest-frame-wins rule with two frames alive at once.
+// newest-frame-wins rule with two frames alive at once. Then the brand
+// files' ratios it writes, and the box they give the signed-out bar's
+// wordmark before its file loads.
 
 /** The root element's value of a row variable, or `''` while the stylesheet's default holds. */
 function row(name: string): string {
@@ -32,8 +35,8 @@ describe('the shell frame', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   /** Starts the app on the signed-out page and waits for its chunk. */
-  async function open(): Promise<void> {
-    await tmAppRig();
+  async function open(ratios?: Readonly<Record<string, number>>): Promise<void> {
+    await tmAppRig(ratios === undefined ? {} : { providers: [{ provide: TM_SHELL_BRAND_RATIOS, useValue: ratios }] });
     await tmNavigate('/signed-out');
     await tmSettleUntil(() => document.querySelector('tm-shell-frame main') !== null, 'the frame renders');
   }
@@ -78,6 +81,48 @@ describe('the shell frame', () => {
     await router.navigateByUrl('/tenants');
     await tmSettleUntil(() => document.querySelector('tm-tenant-shell') === null, 'the tenant shell ends');
     await tmSettleUntil(() => rows().join() === '40px,0px,0px', "the picker's rows are written again");
+  });
+
+  describe("the brand files' ratios", () => {
+    /** The platform's own files' ratios, as the build reads them from their viewBoxes. */
+    const RATIOS = { 'wordmark-on-dark': 736 / 208, 'wordmark-on-light': 736 / 208, 'mark-on-dark': 1, 'mark-on-light': 1 };
+
+    /** The root element's brand variables, by file. */
+    const written = (): Record<string, string> =>
+      Object.fromEntries(Object.keys(RATIOS).map((file) => [file, row(`--tm-brand-${file}`)]));
+
+    it("writes each on the root element, and removes them at the app's end", async () => {
+      await open(RATIOS);
+      expect(written()).toEqual({ 'wordmark-on-dark': '3.5384615384615383', 'wordmark-on-light': '3.5384615384615383', 'mark-on-dark': '1', 'mark-on-light': '1' });
+      TestBed.resetTestingModule();
+      expect(written()).toEqual({ 'wordmark-on-dark': '', 'wordmark-on-light': '', 'mark-on-dark': '', 'mark-on-light': '' });
+    });
+
+    it('writes none in an app the build defined none for', async () => {
+      await open();
+      expect(written()).toEqual({ 'wordmark-on-dark': '', 'wordmark-on-light': '', 'mark-on-dark': '', 'mark-on-light': '' });
+    });
+
+    it("give the bar's wordmark its file's box whether or not the file has loaded, and the mark's below md", async () => {
+      const viewport = [window.innerWidth, window.innerHeight] as const;
+      try {
+        // The unit runner serves no brand file, so the image may be loading or failed: the box comes from the ratio alone.
+        await open({ ...RATIOS, 'wordmark-on-dark': 5 });
+        const image = document.querySelector<HTMLImageElement>('.tm-tenantless-shell__wordmark img')!;
+        const box = (): number[] => {
+          const { width, height } = image.getBoundingClientRect();
+          return [width, height];
+        };
+        await page.viewport(1000, 900);
+        await tmSettleUntil(() => box()[1] === 14, 'the wordmark lays out');
+        expect(box()).toEqual([70, 14]);
+        await page.viewport(600, 900);
+        await tmSettleUntil(() => box()[1] === 18, 'the mark lays out');
+        expect(box()).toEqual([18, 18]);
+      } finally {
+        await page.viewport(...viewport);
+      }
+    });
   });
 
   describe('the rows writer', () => {
