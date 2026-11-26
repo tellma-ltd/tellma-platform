@@ -14,7 +14,7 @@ import Plus from 'lucide/dist/esm/icons/plus.mjs';
 import Scissors from 'lucide/dist/esm/icons/scissors.mjs';
 import Trash from 'lucide/dist/esm/icons/trash.mjs';
 
-import { tmKeysText, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmKeysText, type TmKeys } from '@tellma/core-ui/keys';
 import { TmMenu, type TmMenuEntry } from '@tellma/core-ui/menu';
 
 import type { ɵTmGridMenuState, ɵTmGridViewCore } from './grid-core';

@@ -25,7 +25,7 @@ import {
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
 import type { TmCalendar } from '@tellma/core-ui/l10n';
 import type { TmEntitySearchResult } from '@tellma/core-ui/entity-picker';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { TmModalRef } from '@tellma/core-ui/modal';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 

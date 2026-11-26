@@ -11,7 +11,7 @@ import { By } from '@angular/platform-browser';
 
 import { provideTellmaUi, TM_ACTIVE_LOCALE } from '@tellma/core-ui';
 import { TmGridStateStore } from '@tellma/core-ui/grid';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 import { TmChartHarness } from '@tellma/core-ui-testing';
 import { getInstanceByDom } from 'echarts/core';

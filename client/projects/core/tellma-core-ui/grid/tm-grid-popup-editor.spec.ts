@@ -10,7 +10,7 @@ import { applyEach, form, required } from '@angular/forms/signals';
 
 import type { TmCellEditor, TmRowId } from '@tellma/core-ui/contracts';
 import { provideTellmaUi, TM_CELL_EDITOR_HOST } from '@tellma/core-ui';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmGridHarness } from '@tellma/core-ui-testing';
 

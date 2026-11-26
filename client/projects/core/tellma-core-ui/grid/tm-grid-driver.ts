@@ -6,7 +6,7 @@
 import { ApplicationRef, Directive, ElementRef, inject, input, type Signal } from '@angular/core';
 
 import type { TmRowId } from '@tellma/core-ui/contracts';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 
 import { ɵTM_GRID_FLUSH_KEY } from './internal/grid-core';
 

@@ -49,7 +49,24 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      - run: dotnet build Tellma.slnx -c Release --no-restore
+      # The build takes 3 to 4 minutes on either OS. On windows-latest it once stalled until the
+      # job's limit cancelled it, leaving no log. The script stops a build still running after 12
+      # minutes, reports in the step log what it was doing, and keeps its binary log, text log and
+      # compiler and node diagnostics (eng/dotnet-build/README.md); the step's own limit is only a
+      # backstop above the script's limit and grace. The next step uploads them when the build
+      # fails.
+      - name: Build
+        id: build
+        shell: bash
+        timeout-minutes: 14
+        run: bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+      - name: Upload the build evidence
+        if: always() && (steps.build.outcome == 'failure' || steps.build.outcome == 'cancelled')
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: ${{ runner.temp }}/build-evidence
+          if-no-files-found: ignore
       # The platform analyzers load on this OS in a project that reaches the contract only through
       # project references: the probe holds one violation of each rule, so its build must fail
       # with exactly the six errors and no other. It is not in the solution, whose build stays clean.

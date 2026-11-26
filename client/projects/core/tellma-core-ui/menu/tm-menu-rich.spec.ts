@@ -19,7 +19,7 @@ import Star from 'lucide/dist/esm/icons/star.mjs';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { provideTellmaIcons } from '@tellma/core-ui/icon';
-import { tmFormatKeys } from '@tellma/core-ui/kbd';
+import { tmFormatKeys } from '@tellma/core-ui/keys';
 import { TmMenuHarness, TmMenuTriggerHarness } from '@tellma/core-ui-testing';
 
 import { TmMenu, TmMenuHeaderDef } from './tm-menu';

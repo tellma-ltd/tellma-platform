@@ -27,7 +27,7 @@ import Copy from 'lucide/dist/esm/icons/copy.mjs';
 import { TM_UI_TRANSLATE, type TmControlSize } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { tmKeysText } from '@tellma/core-ui/kbd';
+import { tmKeysText } from '@tellma/core-ui/keys';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmTooltip, ɵTmTooltipController } from '@tellma/core-ui/tooltip';
 

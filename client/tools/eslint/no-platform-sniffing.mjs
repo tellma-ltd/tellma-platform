@@ -5,12 +5,12 @@
 
 /**
  * tm/no-platform-sniffing — library code reads `navigator.platform` and
- * `navigator.userAgentData` nowhere but `@tellma/core-ui/kbd`, whose
+ * `navigator.userAgentData` nowhere but `@tellma/core-ui/keys`, whose
  * `tmIsApplePlatform` is the one platform check (what Mod means, which
  * modifier a pointer gesture takes). A second check drifts from it, and a
  * grid that reads Mod one way beside a menu that labels it another is the
  * bug this rule prevents. The config scopes the rule to the library and
- * module packages outside `kbd/`.
+ * module packages outside `keys/`.
  *
  * It refuses the two properties read off `navigator` (also through
  * `window`, `self` or `globalThis`, a type assertion, optional chaining or a
@@ -75,7 +75,7 @@ export default /** @type {import('eslint').Rule.RuleModule} */ ({
     schema: [],
     messages: {
       sniffing:
-        "Do not read navigator.{{name}} here: take the platform from tmIsApplePlatform in '@tellma/core-ui/kbd', " +
+        "Do not read navigator.{{name}} here: take the platform from tmIsApplePlatform in '@tellma/core-ui/keys', " +
         'the one platform check, so every shortcut and pointer gesture agrees on what Mod means.',
     },
   },

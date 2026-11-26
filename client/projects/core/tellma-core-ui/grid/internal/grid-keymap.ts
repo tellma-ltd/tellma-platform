@@ -18,7 +18,7 @@
 // lists.
 
 import type { TmGridMotion } from '@tellma/core-ui/grid-engine';
-import { tmKeysMatch, type TmKeys } from '@tellma/core-ui/kbd';
+import { tmKeysMatch, type TmKeys } from '@tellma/core-ui/keys';
 
 /** What the resolver needs to know about the grid's current state. */
 export interface TmGridKeyContext {
@@ -277,8 +277,8 @@ function isCharacterKey(keys: TmKeys): boolean {
   return [...key].length === 1 || /^(plus|minus)$/i.test(key);
 }
 
-// The bindings matched through kbd, filtered once: a keydown walks a dozen
-// entries whose parsed combinations kbd has cached.
+// The bindings matched through the keys grammar, filtered once: a keydown
+// walks a dozen entries whose parsed combinations the grammar has cached.
 const CHARACTER_BINDINGS: readonly TmGridKeyBinding[] = TM_GRID_KEY_BINDINGS.filter((binding) =>
   isCharacterKey(binding.keys),
 );
@@ -320,8 +320,8 @@ function conditionHolds(
  * everything unrecognized.
  */
 export function tmResolveGridKey(event: KeyboardEvent, ctx: TmGridKeyContext): TmGridIntent | null {
-  // Section: letters, digits and symbols, matched through kbd so they work
-  // on every keyboard layout (Ctrl+D sends 'ي' on an Arabic layout).
+  // Section: letters, digits and symbols, matched through the keys grammar
+  // so they work on every keyboard layout (Ctrl+D sends 'ي' on an Arabic layout).
   for (const binding of CHARACTER_BINDINGS) {
     if (tmKeysMatch(event, binding.keys, ctx.apple)) {
       return binding.intent !== null && conditionHolds(binding.when, ctx) ? binding.intent : null;

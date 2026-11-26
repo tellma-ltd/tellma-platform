@@ -384,6 +384,106 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-386 (2026-11-26): PC-F96 landed; PC-129 released; pc-f waits on D-028
+
+PC-F96 landed at 01a3c31b on green CI 45894291651, with a plans-only merge on top. PC-129 is the next held item, so it is released to integrate as the later lander over PC-154, PC-122, PC-F91, PC-F92 and the rest, re-measuring against the thin headroom (D-214). That puts five heavy agents in flight: PC-123's R1, PC-F111, PC-156, PC-128's fix2 and PC-129's integration. The freed fix slot pc-f therefore stays empty until one finishes (D-028). Its next fix is PC-F107, the in-memory TmClientCache for tests and the cause of PC-F106's flake class.
+
+### D-385 (2026-11-26): PC-F95 landed; PC-F96 released; PC-F111 in pc-f2
+
+PC-F95 landed at d1e2b461 on green CI 45887626054, with a plans-only merge on top. Its first integration CI was red on its own code: ubuntu-latest is now Ubuntu 26.04, whose /usr/bin/timeout is uutils. That timeout failed the script's GNU check, and it kills on SIGINT at once. The CI fix picks a timeout by a behaviour probe and uses gnutimeout on 26.04.
+
+PC-F96 is the next held item, so it is released to integrate. The freed fix slot pc-f2 takes PC-F111 (Acme's two vitest instances). No blocking fix is open, PC-F111 is the cheapest open lead on PC-F110's hang, and fix slots serve fixes (D-035).
+
+### D-384 (2026-11-26): PC-128 parked on the ./search budget (spec 0030 §1)
+
+D-383's route does not hold either. Type-to-search must decide inside the keydown and call preventDefault there, so the listener and its capture check (tmSearchCapturesKey and its helpers) cannot wait behind import(). A stub that guesses would swallow keys or replay them twice. With everything the conditions allow emptied from the bundle, ./search measures at least 21.06, against 18.5. That is before the stub and the glue, and the earlier 18.3 estimate was also mis-added.
+
+So the search field and type-to-search, as spec 0030 specifies them, do not fit the ./search budget that the spec's route-chunk figure and two D-031 raises allow. Raising a spec budget is not the orchestrator's call (D-313). §8.1 permits parking a checkpoint; since nothing waits for Ahmad, PC-128 is parked on this one question.
+
+Fix2, the last implementer round, still goes ahead on fix1's structure for R2-1 and R2-3 to R2-7. ./search-view stays an eager sibling with its own line and no ceiling moves. ARCHITECTURE.md describes it as eager pending the ruling, and R2-2 stays open in the review. After fix2, PC-128 is not held for integration. Its branch keeps the work, and pc-2 is freed for the next ready item.
+
+Question for Ahmad, non-blocking for the rest of the run. Which should it be?
+- (a) A real lazy split of the deferrable parts, with ./search re-baselined to its measure (about 21.5 eager) and the lazy chunk budgeted on its own.
+- (b) Fix1's eager ./search-view kept as its own line, with ARCHITECTURE.md's lazy-boundary rule amended.
+- (c) Spec 0030 §1's route-chunk figure revised for the search page.
+
+Once answered, PC-128 resumes with the matching edit and an R3-free integration, because §4.4's rounds are spent; any code change beyond the ruling gets a fresh R1.
+
+### D-383 (2026-11-26): PC-128 R2-2 remedy: early keys behind a replaying stub
+
+The implementer stopped before fix2, as D-382 told it to. Its measurements:
+- ./search and ./search-view merged weigh 23.51 KB.
+- The cut R2-2 named (diagnostics, refused, calculation, invalid-link and error states, Copy link, the failure paths) frees about 2.3 KB, which leaves about 21.2.
+- Even lazy-loading every non-first-frame host member leaves about 19.2.
+
+The only route under 18.5 also puts type-to-search's listeners and rules, the empty states and the undo anchor behind import(), with a small static stub that queues early keys and replays them. The estimate is about 18.3 before the stub's own weight.
+
+Ruling: take that route. D-371's pager select is the precedent for a stand-in that replays input, and spec 0030's requirement is that no early key is lost, not that the key code is eager. The conditions:
+- The stub queues and replays every early key in order.
+- The chunk starts loading at idle after the first frame, and at once on the first key.
+- The lazy-delay harness and a held-import unit spec prove the replay.
+- If ./search still measures above 18.5, PC-128 is blocked and reported (D-247, D-313). There is no raise, no trimming and no combined line.
+
+This is fix2, the last implementer round (§4.4).
+
+### D-382 (2026-11-26): PC-128 R2 rulings; D-381's figures corrected
+
+PC-128's R2 found 0/2/5.
+
+R2-2 is ruled against fix1's split. @tellma/core/search-view loads eagerly on the search route, so splitting ./search into two eagerly loaded budget lines meets the letter of D-373 but not its purpose, which is to stop a third raise of the same weight. Fix2 must move what the first results frame does not need behind an idle or on-demand import(), while early keys keep working under the lazy-delay harness, and hold ./search within 18.5. If that cannot hold, PC-128 is blocked and is reported (D-247). There is no combined budget line and no raise.
+
+R2-1 is fixed: the results states are built and spoken once per settled answer. R2-3 to R2-7 are fixed as the review suggests. R2-4 follows spec 0030 §6.3 unless another rule wins, in which case the deviation is recorded.
+
+Correction to D-381. Its "searchRoute 109.79 to 98.62" compared platform-core's tip with the branch's base. In-branch, the route went from 97.95 to 98.62. After the merge it should be about 101.0, so D-375's harness problem eases once PC-128 lands but does not go away by 11 KB.
+
+### D-381 (2026-11-26): PC-128 fix1 re-split; R2 at xhigh
+
+PC-128's fix1 (e7f53338) answers R1-1 to R1-10 and the D-373 re-split. The results view moves to a new entry point, @tellma/core/search-view (6.12 of a new 6.5). ./search drops to 18.19 and its ceiling goes from 22.5 to 18.5. On Acme, searchRoute falls from 109.79 to 98.62 and initialJs is 224.25, which restores the headroom D-375 lacked.
+
+Fix1 is large (32 files, +1848/-472), so R2 runs at xhigh per §4.4.
+
+Spec questions for Ahmad, non-blocking, are recorded here and not acted on:
+- §5.2 against §5.3 on the results live region. The states say themselves once through the 500 ms rule; TmErrorState gains a live input.
+- The new entry point is missing from ARCHITECTURE.md and from the entry lists in specs 0023 and 0030. ARCHITECTURE.md is brought in line at integration.
+- Type-to-search also skips checkbox and radio targets.
+- The grid gains a public menuRowId signal.
+
+The six-worker Acme e2e timing failures include an EPERM on the sign-in identity-file rename. That is the known flaky row "EPERM in the sign-in cookie cache" (local watch); its tracking is upgraded to a fix item if it ever shows in CI.
+
+### D-380 (2026-11-26): PC-F110 fix1 held without R2
+
+PC-F110's fix1 (4e47f77f) addresses R1-1 to R1-7 in about 280 lines of code and specs. §4.4 calls for R2 only on a blocking finding, four or more majors, or a large fix1, and none applies, so it is held. Its integration CI is the first run of the watchdog on Linux and on the Windows runners.
+
+R1-5's deviation is accepted. The client and client-windows steps use DEBUG=vite:deps,vitest:browser:playwright, 208 lines over 7 green runs, instead of vitest:browser*, which added 1,078. Acme keeps the wider set.
+
+PC-F110 joins the held queue behind PC-F96 and PC-129 (D-087). It is not a blocking fix, because CI is green without it.
+
+### D-379 (2026-11-26): PC-F92 landed; PC-F95 released; PC-156 in pc-1
+
+PC-F92 landed at 9836ce03 on green CI 45877621966, with a plans-only merge on top. No ceiling was raised. Acme initialJs is 224.70 and searchRoute 109.79 of 110. PC-F95 is the next held item, so it is released to integrate. Its ci.yml and nightly-tier.yml edits meet PC-F110's ci.yml edit later; PC-F110, the later lander, merges them. No T1 item is ready, so the freed slot pc-1 takes the first ready T2, PC-156, with PC-155's carry (D-229).
+
+### D-378 (2026-11-26): PC-F110 R1 rulings; PC-F111 opened
+
+PC-F110's R1 found 0/1/7. All of R1-1 to R1-7 are fixed in fix1. R1-1 is the major one: the watchdog's exit deadline outlives a run, so a multi-project ng test in one process could end a healthy later run.
+
+R1-8 is split into fix item PC-F111: Acme loads two vitest/vite module instances through two pnpm peer variants. It is a cheap candidate cause, separate from the fail-fast work.
+
+PC-F110 is done once its fail-fast evidence lands, because the local root-cause hunt (30 cold runs, no repro) is exhausted. The flaky row stays open, tracked by PC-F111 and by the report the watchdog prints on the next hang. That is the evidence-first route D-011 asks for, and it is not a quarantine.
+
+### D-377 (2026-11-26): PC-F109 landed; PC-F92 released; PC-123 in pc-3
+
+PC-F109 landed at 7e0e13d6 on green CI 45865466176, with a plans-only merge on top. The passkey E2E flake (SyncedPasskeyTierTests) is closed by it. PC-F92 is the next held item (D-087), so it is released to integrate. The freed T1 slot pc-3 takes PC-123, the T1 item check_deps listed ready (D-229), with PC-115's carry. Its brief records the thin headroom so the home page stays lazy.
+
+### D-376 (2026-11-26): PC-F91 landed; PC-F109 released; PC-F110 in pc-f3
+
+PC-F91 landed at 068d4cc7 as a fast-forward over 79143ecf, on green CI 45859734290. PC-F109 (held 42a81780 after a one-minor R1 and its fix1, so no R2) is a blocking fix, so per D-229 it is released ahead of PC-F92, PC-F95, PC-F96, PC-129 and PC-128. The freed fix slot pc-f3 takes PC-F110, the Windows vitest hang, because it can turn any integration's CI red. check_deps also lists PC-123 (T1), but every T1 slot is occupied and T1 items do not take fix slots, so it waits for the next T1 slot to free up.
+
+### D-375 (2026-11-26): PC-F91 integration accepted with a self-built harnessed webroot
+
+PC-F91 integrated at 068d4cc7. Platform-core's newly merged search host and launcher still imported the lucide index, which put searchRoute at 110.76, over its 110 error. Converting them to per-icon imports brought it to 109.79. Acme initialJs is 225.08, about 2 KB under platform-core alone.
+
+The PC-F86 lazy-delay harness adds wrapper bytes that put searchRoute at 110.06. The harnessed host build therefore stops at its output checks, after the service-worker and source-map steps have run. The agent built the harnessed Acme itself, confirmed the budget was the only error, and served that build to the same specs through TELLMA_E2E_WEBROOT: 29 passed, 8 skipped. Ruling: accepted. The harness is a test instrument and its bytes are not shipped, so no ceiling moves. Note for PC-128 and anything else touching ./search: searchRoute has 0.21 KB of headroom on platform-core once PC-F91 lands, so the harnessed build will keep failing on budget until the PC-128 re-split lands.
+
 ### D-374 (orchestrator, 2026-11-26): PC-122 landed; PC-F91 is released; PC-F109 takes pc-3
 
 - PC-122 landed at eac329c5, with CI 45845091482 green on that commit, as a fast-forward over 251bb6bd.

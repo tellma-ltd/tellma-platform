@@ -10,7 +10,7 @@ import { Title } from '@angular/platform-browser';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import { TmApiError, TmClientStore, TmLaunch, TmUrls, type TmMembership } from '@tellma/core';
 import { TmFakeSession, TmPageContextHarness, TmTenantPickerHarness, type TmTenantPickerRowHarness } from '@tellma/core-testing';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 
 import { TM_SHELL_ERROR_VIEWS } from '../tm-shell-errors';
 

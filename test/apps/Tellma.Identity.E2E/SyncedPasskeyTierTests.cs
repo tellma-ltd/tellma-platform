@@ -5,7 +5,6 @@
 
 using Microsoft.Playwright;
 using Tellma.Identity.E2E.Infrastructure;
-using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.E2E
 {
@@ -41,8 +40,14 @@ namespace Tellma.Identity.E2E
                     await using VirtualAuthenticator _ =
                         await VirtualAuthenticator.AttachAsync(context, page, backupEligible: true);
 
-                    await SignInWithEmailCodeAsync(page, "mixed-keys@example.com");
-                    await EnrollPasskeyAsync(page);
+                    // Every page here arrives with its scripts late, as on a loaded runner. Each
+                    // press of a passkey button below then lands before the button is wired unless
+                    // the flow waits for the page's scripts, so a flow that stops waiting fails
+                    // here every time rather than once in a while.
+                    await page.HoldBackScriptsAsync();
+
+                    await PasskeyCeremonies.SignInWithEmailCodeAsync(server, page, string.Empty, "mixed-keys@example.com");
+                    await PasskeyCeremonies.EnrollPasskeyAsync(page, string.Empty);
 
                     // The list classifying it "Synced" is what proves the CDP backup-eligibility
                     // option took effect — without it every virtual credential would be
@@ -68,7 +73,10 @@ namespace Tellma.Identity.E2E
 
                     // Sign in against a request demanding aal3 — the tier the authorization
                     // endpoint puts on the login URL when it needs a device-bound credential.
-                    await page.GotoAsync(
+                    // Whichever ceremony the page runs, the single attempt allowed presents the
+                    // synced credential.
+                    await PasskeyCeremonies.StartPasskeySignInAsync(
+                        page,
                         "/Identity/Account/Login?tier=" + Uri.EscapeDataString("urn:tellma:acr:aal3")
                         + "&returnUrl=" + Uri.EscapeDataString("/Identity/Manage/Passkeys"));
 
@@ -78,7 +86,10 @@ namespace Tellma.Identity.E2E
                     // appeared" would pass without the refusal ever running. The summary is the
                     // only place that string appears inside an error notice — the standing hint
                     // above the form is a warning notice with no list in it.
-                    await DriveCeremonyUntilRefusedAsync(page);
+                    await page
+                        .Locator(".tmi-notice-error li", new() { HasTextString = "device-bound passkey" })
+                        .First
+                        .WaitForAsync();
 
                     // The user was not signed in, so the authorization endpoint is never handed a
                     // session that cannot reach the tier.
@@ -117,59 +128,6 @@ namespace Tellma.Identity.E2E
                     await route.ContinueAsync();
                 }
             });
-        }
-
-        /// <summary>
-        ///     Waits for the device-bound refusal on the login page. Whichever ceremony ran — the
-        ///     conditional one the page starts on load, or the explicit button where conditional
-        ///     mediation is unavailable — the single attempt allowed produces the message, and the
-        ///     page then stays put.
-        /// </summary>
-        private static async Task DriveCeremonyUntilRefusedAsync(IPage page)
-        {
-            ILocator error = page
-                .Locator(".tmi-notice-error li", new() { HasTextString = "device-bound passkey" })
-                .First;
-
-            try
-            {
-                await error.WaitForAsync(new() { Timeout = 15000 });
-                return;
-            }
-            catch (TimeoutException)
-            {
-                // Conditional mediation was never offered, so the allowance is still unspent and
-                // the explicit button gets it.
-            }
-
-            await page.GetByRole(AriaRole.Button, new() { Name = "Sign in with a passkey" }).ClickAsync();
-            await error.WaitForAsync(new() { Timeout = 15000 });
-        }
-
-        /// <summary>Runs the enrollment ceremony from the passkey list and returns to it.</summary>
-        private static async Task EnrollPasskeyAsync(IPage page)
-        {
-            await page.GotoAsync("/Identity/Manage/Passkeys");
-            await page.GetByRole(AriaRole.Link, new() { Name = "Add a passkey" }).ClickAsync();
-            await page.GetByRole(AriaRole.Button, new() { Name = "Create a passkey" }).ClickAsync();
-            await page.WaitForPathAsync("/Identity/Manage/Passkeys");
-        }
-
-        /// <summary>Signs the user in through the email-code flow, landing on the passkey list.</summary>
-        private async Task SignInWithEmailCodeAsync(IPage page, string email)
-        {
-            await page.GotoAsync("/Identity/Account/Login?returnUrl=%2FIdentity%2FManage%2FPasskeys");
-            await page.GetByLabel("Email").FillAsync(email);
-
-            // The baseline is taken before the code is requested, so a second sign-in of the same
-            // address waits for its own code rather than reading the first, already redeemed one.
-            int delivered = server.Emails.CountFor(email);
-            await page.GetByRole(AriaRole.Button, new() { Name = "Email me a sign-in code" }).ClickAsync();
-
-            string code = await server.Emails.WaitForCodeAfterAsync(email, delivered);
-            await page.GetByLabel("Code").FillAsync(code);
-            await page.GetByRole(AriaRole.Button, new() { Name = "Verify" }).ClickAsync();
-            await page.WaitForPathAsync("/Identity/Manage/Passkeys");
         }
     }
 }

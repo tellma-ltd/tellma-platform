@@ -37,7 +37,7 @@ import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridDriverTarget, TmGridRowActivation } from '@tellma/core-ui/grid';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage, TmImagePlaceholder } from '@tellma/core-ui/image';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
 import {
