@@ -123,9 +123,25 @@ describe('the check over a hand-made install', () => {
       '@angular/build > vitest > vite',
       '@angular/build > vitest > @vitest/mocker > vite',
       '@vitest/browser-playwright > @vitest/browser > vite',
+      '@vitest/browser-playwright > @vitest/browser > @vitest/mocker > vite',
       '@vitest/browser-playwright > @vitest/mocker > vite',
     ]);
     expect(unitRunProblems('app', run, root)).toEqual([]);
+  });
+
+  it("fail a run whose browser server's own mocker sits on another vite", () => {
+    // @vitest/browser imports @vitest/mocker from its own folder, apart from the provider's.
+    writePackage('app/node_modules/@vitest/browser/node_modules/@vitest/mocker', '4.1.9');
+    writePackage(
+      'app/node_modules/@vitest/browser/node_modules/@vitest/mocker/node_modules/vite',
+      '7.3.5',
+    );
+    const problems = unitRunProblems('app', instances(), root);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^app: one unit run loads 2 copies of vite,/);
+    expect(problems[0]).toContain(
+      'app/node_modules/@vitest/browser/node_modules/@vitest/mocker/node_modules/vite (@vitest/browser-playwright > @vitest/browser > @vitest/mocker > vite)',
+    );
   });
 
   it("fail a run whose builder loads a vitest other than the provider's, naming both copies and their routes", () => {
@@ -159,11 +175,36 @@ describe('the check over a hand-made install', () => {
     ]);
   });
 
+  it('fail a builder whose sass pin cannot be compared with the override, rather than pass it', () => {
+    const recheck =
+      'Check whether the sass override in pnpm-workspace.yaml still fits it, and update the override and this check together.';
+    // A range in its dependencies.
+    writePackage('app/node_modules/@angular/build', '22.0.5', { sass: '^1.99.0' });
+    expect(unitRunProblems('app', instances(), root)).toEqual([
+      `app: @angular/build names sass as ^1.99.0, not an exact version, and resolves 1.99.0. ${recheck}`,
+    ]);
+    // No sass at all.
+    writePackage('app/node_modules/@angular/build', '22.0.5');
+    expect(unitRunProblems('app', instances(), root)).toEqual([
+      `app: @angular/build names no sass in its package.json, so its sass cannot be compared with the override. ${recheck}`,
+    ]);
+    // An exact version, but outside its dependencies.
+    writeJson('app/node_modules/@angular/build/package.json', {
+      name: '@angular/build',
+      version: '22.0.5',
+      peerDependencies: { sass: '1.99.0' },
+    });
+    expect(unitRunProblems('app', instances(), root)).toEqual([
+      `app: @angular/build names sass 1.99.0 in its peerDependencies, not its dependencies. ${recheck}`,
+    ]);
+  });
+
   it('fail a provider whose own packages do not resolve, and a workspace with no builder', () => {
     rmSync(join(root, 'app/node_modules/@vitest/browser'), { recursive: true });
     expect(unitRunProblems('app', instances(), root)).toEqual([
       'app: @vitest/browser-playwright > @vitest/browser > vitest does not resolve; run pnpm install.',
       'app: @vitest/browser-playwright > @vitest/browser > vite does not resolve; run pnpm install.',
+      'app: @vitest/browser-playwright > @vitest/browser > @vitest/mocker > vite does not resolve; run pnpm install.',
     ]);
     rmSync(join(root, 'app/node_modules/@angular/build'), { recursive: true });
     expect(unitRunProblems('app', instances(), root)).toEqual(
@@ -177,9 +218,23 @@ describe('the check over a hand-made install', () => {
     });
     expect(discoverUnitTestWorkspaces(root)).toEqual([]);
   });
+
+  it('leave out a folder a ! glob takes away, and read a glob past its trailing comment', () => {
+    // A second folder with a unit-test target and no install of its own.
+    writeJson('legacy/angular.json', {
+      projects: { legacy: { architect: { test: { builder: UNIT_TEST_BUILDER } } } },
+    });
+    writeFileSync(
+      join(root, 'pnpm-workspace.yaml'),
+      "packages:\n  - '*'  # every folder\n  - '!legacy'\n",
+      'utf8',
+    );
+    expect(discoverUnitTestWorkspaces(root)).toEqual([{ name: 'app', dir: join(root, 'app') }]);
+  });
 });
 
 describe('the workspace globs', () => {
+  /** The scratch folder that holds the pnpm-workspace.yaml under test, its real path. */
   let root: string;
 
   beforeEach(() => {
@@ -195,12 +250,16 @@ describe('the workspace globs', () => {
       join(root, 'pnpm-workspace.yaml'),
       [
         '# The workspace.',
-        'packages:',
+        'packages:  # the packages',
         '  # The platform.',
         '  - client',
         "  - 'distributions/*/src/*.Client'",
         '',
         '  - "tools/*"',
+        '  - samples/*  # the samples',
+        "  - 'docs/#notes' # a quoted # stays",
+        '  - a#b',
+        "  - '!distributions/legacy/**'  # taken away",
         'catalog:',
         '  - not-a-package',
         'overrides:',
@@ -208,6 +267,16 @@ describe('the workspace globs', () => {
       ].join('\r\n'),
       'utf8',
     );
-    expect(readWorkspaceGlobs(root)).toEqual(['client', 'distributions/*/src/*.Client', 'tools/*']);
+    expect(readWorkspaceGlobs(root)).toEqual({
+      include: [
+        'client',
+        'distributions/*/src/*.Client',
+        'tools/*',
+        'samples/*',
+        'docs/#notes',
+        'a#b',
+      ],
+      exclude: ['distributions/legacy/**'],
+    });
   });
 });

@@ -54,10 +54,41 @@ export interface TmUnitRunInstances {
   readonly vitest: readonly TmPackageRoute[];
   /** Every route to Vite. */
   readonly vite: readonly TmPackageRoute[];
-  /** The sass the builder's package.json names, or null when it names none. */
-  readonly sassPinned: string | null;
+  /** How the builder names and resolves sass, or null when the builder does not resolve. */
+  readonly sass: TmBuilderSass | null;
+}
+
+/** How the unit-test builder's package.json names sass, and which sass it resolves. */
+export interface TmBuilderSass {
+  /**
+   * The first package.json section that names sass (`dependencies`, `optionalDependencies`
+   * or `peerDependencies`), or null when none does.
+   */
+  readonly section: string | null;
+  /** The version or range that section names, or null when none names sass. */
+  readonly spec: string | null;
   /** The version of the sass the builder resolves, or null when it resolves none. */
-  readonly sassResolved: string | null;
+  readonly resolved: string | null;
+}
+
+/** The pnpm-workspace.yaml `packages` list: the globs it adds, and the `!` globs it takes away. */
+export interface TmWorkspaceGlobs {
+  /** The globs whose folders are workspace packages. */
+  readonly include: readonly string[];
+  /** The globs, without their `!`, whose folders are left out. */
+  readonly exclude: readonly string[];
+}
+
+/** The fields of a package.json this module reads. */
+interface TmPackageJson {
+  /** The package's version. */
+  readonly version?: string;
+  /** Its dependencies. */
+  readonly dependencies?: Record<string, string>;
+  /** Its optional dependencies. */
+  readonly optionalDependencies?: Record<string, string>;
+  /** Its peer dependencies. */
+  readonly peerDependencies?: Record<string, string>;
 }
 
 /** A pnpm workspace package whose unit tests run on Angular's unit-test builder. */
@@ -70,27 +101,36 @@ export interface TmUnitTestWorkspace {
 
 /**
  * Reads the `packages` globs of the repository's pnpm-workspace.yaml: the
- * items of its top-level `packages:` list, one `- <glob>` per line.
+ * items of its top-level `packages:` list, one `- <glob>` per line, quoted or
+ * not, each with an optional trailing `# comment`. An item that starts with
+ * `!` takes folders away, as pnpm reads it.
  *
  * @param repoRoot - The repository root, which holds pnpm-workspace.yaml.
- * @returns The globs, in file order.
+ * @returns The globs that add folders and the globs that take them away, in file order.
  */
-export function readWorkspaceGlobs(repoRoot: string): string[] {
+export function readWorkspaceGlobs(repoRoot: string): TmWorkspaceGlobs {
   const lines = readFileSync(join(repoRoot, 'pnpm-workspace.yaml'), 'utf8').split(/\r?\n/);
-  const globs: string[] = [];
+  const include: string[] = [];
+  const exclude: string[] = [];
   let inPackages = false;
   for (const line of lines) {
     // A top-level key starts or ends the list; comments and blank lines are skipped.
     if (/^[^\s#]/.test(line)) {
-      inPackages = /^packages:\s*$/.test(line);
+      inPackages = /^packages:(\s+#.*)?\s*$/.test(line);
       continue;
     }
-    const item = inPackages ? /^\s+-\s+(['"]?)(.+?)\1\s*$/.exec(line) : null;
-    if (item !== null) {
-      globs.push(item[2]!);
+    // An item: a quoted value up to its closing quote, or a plain one up to a ` #` comment.
+    const item = inPackages
+      ? /^\s+-\s+(?:'([^']*)'|"([^"]*)"|(.*?))\s*(?:\s#.*)?$/.exec(line)
+      : null;
+    const glob = item === null ? '' : (item[1] ?? item[2] ?? item[3] ?? '');
+    if (glob.startsWith('!')) {
+      exclude.push(glob.slice(1));
+    } else if (glob !== '') {
+      include.push(glob);
     }
   }
-  return globs;
+  return { include, exclude };
 }
 
 /**
@@ -120,8 +160,10 @@ function runsUnitTests(angularJsonPath: string): boolean {
  */
 export function discoverUnitTestWorkspaces(repoRoot: string): TmUnitTestWorkspace[] {
   const workspaces = new Map<string, TmUnitTestWorkspace>();
-  for (const glob of readWorkspaceGlobs(repoRoot)) {
-    for (const match of globSync(glob, { cwd: repoRoot })) {
+  // The `!` globs take their folders away from every other glob, as pnpm applies them.
+  const { include, exclude } = readWorkspaceGlobs(repoRoot);
+  for (const glob of include) {
+    for (const match of globSync(glob, { cwd: repoRoot, exclude: [...exclude] })) {
       const dir = join(repoRoot, match);
       const angularJson = join(dir, 'angular.json');
       if (existsSync(angularJson) && runsUnitTests(angularJson)) {
@@ -187,14 +229,8 @@ function follow(
  * @param dir - The package's folder.
  * @returns Its version and its dependencies.
  */
-function readPackage(dir: string): {
-  readonly version?: string;
-  readonly dependencies?: Record<string, string>;
-} {
-  return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
-    readonly version?: string;
-    readonly dependencies?: Record<string, string>;
-  };
+function readPackage(dir: string): TmPackageJson {
+  return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as TmPackageJson;
 }
 
 /**
@@ -235,18 +271,31 @@ export function unitRunInstances(
     vitest.push(route([provider, 'vitest']), route([provider, '@vitest/browser', 'vitest']));
     vite.push(
       route([provider, '@vitest/browser', 'vite']),
+      route([provider, '@vitest/browser', '@vitest/mocker', 'vite']),
       route([provider, '@vitest/mocker', 'vite']),
     );
   }
-  // The sass the builder's package.json names, and the version it resolves.
+  // How the builder's package.json names sass, and the version it resolves.
   const builderDir = route([builder]).dir;
-  const sassDir = builderDir === null ? null : resolve(builderDir, 'sass');
+  return { vitest, vite, sass: builderDir === null ? null : builderSass(builderDir, resolve) };
+}
+
+/**
+ * Reads how the unit-test builder's package.json names sass, and which sass it resolves.
+ *
+ * @param builderDir - The builder's real folder.
+ * @param resolve - The lookup the builder's import of sass uses.
+ * @returns The section and the version or range that name sass, and the version resolved.
+ */
+function builderSass(builderDir: string, resolve: TmPackageResolver): TmBuilderSass {
+  const builderJson = readPackage(builderDir);
+  const sections = ['dependencies', 'optionalDependencies', 'peerDependencies'] as const;
+  const section = sections.find((name) => builderJson[name]?.['sass'] !== undefined) ?? null;
+  const sassDir = resolve(builderDir, 'sass');
   return {
-    vitest,
-    vite,
-    sassPinned:
-      builderDir === null ? null : (readPackage(builderDir).dependencies?.['sass'] ?? null),
-    sassResolved: sassDir === null ? null : (readPackage(sassDir).version ?? null),
+    section,
+    spec: section === null ? null : (builderJson[section]?.['sass'] ?? null),
+    resolved: sassDir === null ? null : (readPackage(sassDir).version ?? null),
   };
 }
 
@@ -293,7 +342,8 @@ function routeProblems(
  * Lists what is wrong with one workspace's unit run: more than one copy of
  * Vitest or Vite, a route that does not resolve, or a builder on a sass other
  * than the exact version its package.json names (an override left behind by
- * an upgrade of the builder).
+ * an upgrade of the builder), or one whose sass pin cannot be compared with
+ * the override at all.
  *
  * @param workspace - The workspace's name, as the problems name it.
  * @param instances - What the workspace's unit run loads.
@@ -309,13 +359,42 @@ export function unitRunProblems(
     ...routeProblems(workspace, 'vitest', instances.vitest, repoRoot),
     ...routeProblems(workspace, 'vite', instances.vite, repoRoot),
   ];
-  // Only an exact pin can be compared; Angular pins sass exactly.
-  const pinned = instances.sassPinned;
-  if (pinned !== null && /^\d+\.\d+\.\d+$/.test(pinned) && instances.sassResolved !== pinned) {
-    problems.push(
-      `${workspace}: ${BUILDER_PACKAGE} pins sass ${pinned} but resolves ${instances.sassResolved ?? 'none'}; ` +
-        `set the sass override in pnpm-workspace.yaml to ${pinned}.`,
-    );
+  const sassProblem = instances.sass === null ? null : builderSassProblem(instances.sass);
+  if (sassProblem !== null) {
+    problems.push(`${workspace}: ${sassProblem}`);
   }
   return problems;
+}
+
+/**
+ * Checks the sass override against the builder. The override must equal the
+ * exact version the builder names in its dependencies; anything else (a
+ * range, another section, no sass at all) cannot be compared, so it is a
+ * problem too, never a silent pass.
+ *
+ * @param sass - How the builder names and resolves sass.
+ * @returns The problem, or null when the builder resolves the exact sass it pins.
+ */
+function builderSassProblem(sass: TmBuilderSass): string | null {
+  const recheck =
+    'Check whether the sass override in pnpm-workspace.yaml still fits it, and update the override and this check together.';
+  if (sass.section === null || sass.spec === null) {
+    return `${BUILDER_PACKAGE} names no sass in its package.json, so its sass cannot be compared with the override. ${recheck}`;
+  }
+  if (sass.section !== 'dependencies') {
+    return `${BUILDER_PACKAGE} names sass ${sass.spec} in its ${sass.section}, not its dependencies. ${recheck}`;
+  }
+  if (!/^\d+\.\d+\.\d+$/.test(sass.spec)) {
+    return (
+      `${BUILDER_PACKAGE} names sass as ${sass.spec}, not an exact version, and resolves ${sass.resolved ?? 'none'}. ` +
+      recheck
+    );
+  }
+  if (sass.resolved !== sass.spec) {
+    return (
+      `${BUILDER_PACKAGE} pins sass ${sass.spec} but resolves ${sass.resolved ?? 'none'}; ` +
+      `set the sass override in pnpm-workspace.yaml to ${sass.spec}.`
+    );
+  }
+  return null;
 }
