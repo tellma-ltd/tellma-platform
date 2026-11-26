@@ -223,6 +223,25 @@ describe('tellma-client build on the fixture app', () => {
     expect(attributed).toBeLessThanOrEqual(counted * 1.01 + 16);
   });
 
+  it("names the chunk optimizer's chunks by their content, and leaves none that no import reaches", () => {
+    // Angular's chunk optimizer ran: its Rollup chunks import the main entry they share code with.
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    const initial = tmReadInitialFiles(read('index.html'));
+    const main = initial.scripts.find((file) => file.startsWith('main-'))!;
+    expect([...graph.outputs.values()].some((chunk) => chunk.imports.some((edge) => edge.kind === 'static' && edge.path === main))).toBe(true);
+    expect(first.out).toMatch(/^\[tellma-client\] Named [1-9]\d* chunks by their content$/m);
+    // The stats list exactly the chunks the output holds, and the app reaches every one of them.
+    const chunks = tmListFiles(browser()).filter((file) => file.endsWith('.js') && !['tm-boot.js', 'ngsw-worker.js', 'safety-worker.js'].includes(file));
+    expect([...graph.outputs.keys()].sort()).toEqual(chunks);
+    expect([...graph.reach(initial.scripts)].sort()).toEqual(chunks);
+    for (const chunk of chunks) {
+      expect(chunk).toMatch(/^(?:main|chunk)-[0-9A-HJKMNP-TV-Z]{8}\.js$/);
+      // Each chunk's text names exactly the chunks the stats say it imports.
+      const named = chunks.filter((other) => read(chunk).includes(`'./${other}'`) || read(chunk).includes(`"./${other}"`));
+      expect(named, chunk).toEqual([...new Set(graph.outputs.get(chunk)!.imports.map((edge) => edge.path))].sort());
+    }
+  });
+
   it('moves the source maps out of the deployable output', () => {
     expect(tmListFiles(browser()).filter((file) => file.endsWith('.map'))).toEqual([]);
     expect(tmListFiles(join(output(), 'sourcemaps')).some((file) => /^main-[A-Z0-9]{8}\.js\.map$/.test(file))).toBe(true);
