@@ -15,6 +15,7 @@ export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
 export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
+export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOfflineHarness } from './src/tm-diagnostics-panel-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmExpressionEditorHarness, type TmExpressionEditorChip } from './src/tm-expression-editor-harness';
 export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
@@ -27,12 +28,26 @@ export { TmFakeLocks } from './src/tm-fake-locks';
 export { TmFakeSession, tmTestProfile } from './src/tm-fake-session';
 export { TmFakeTabBus } from './src/tm-fake-tab-bus';
 export { TmFakeTelemetry } from './src/tm-fake-telemetry';
+export {
+  TmLauncherGroupHarness,
+  type TmLauncherGroupHarnessFilters,
+  type TmLauncherGroupKind,
+  TmLauncherHarness,
+  TmLauncherOptionHarness,
+  type TmLauncherOptionHarnessFilters,
+  type TmLauncherSurfaceKind,
+} from './src/tm-launcher-harness';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
 export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';
 export { TmSessionMenuHarness, type TmSessionMenuTenantCard } from './src/tm-session-menu-harness';
 export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';
-export { TmTenantShellHarness, type TmTenantShellMain, type TmTenantShellSlot } from './src/tm-tenant-shell-harness';
+export {
+  TmTenantShellHarness,
+  type TmTenantShellLauncherControl,
+  type TmTenantShellMain,
+  type TmTenantShellSlot,
+} from './src/tm-tenant-shell-harness';
 export { tmTestEntities, type TmTestEntities } from './src/tm-test-entities';
 export { tmTestEntitiesChunk, tmTestMetadata } from './src/tm-test-metadata';
 export { tmTestShellSlot, TmTestShellSlotPanel, type TmTestShellSlotOptions } from './src/tm-test-shell-slot';

@@ -437,6 +437,8 @@ export class TmFakeApiUpdates implements TmWorkerUpdates {
   checks = 0;
   /** How many reloads ran. */
   reloads = 0;
+  /** The version the worker serves the page. */
+  readonly version = signal<string | null>(null);
 
   /** Runs a check. */
   check(): Promise<TmApiUpdateCheck> {

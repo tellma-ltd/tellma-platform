@@ -7,7 +7,7 @@ own.
 
 | Entry point | Holds | Loaded |
 |---|---|---|
-| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`) and the running build's identity (`TmAppVersion`); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
+| `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`), the running build's identity (`TmAppVersion`) and the support facade (`TmSupport`: Report a problem, the diagnostic file and the dump's sections); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
 | `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button) and its states; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the About and Shortcuts dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
@@ -25,6 +25,7 @@ own.
 | `@tellma/core/realtime` | The leader tab's realtime connection to its tenant's hub over `@microsoft/signalr`, which nothing else imports, with its own reconnect loop; platform-internal | lazy, through `import()` once a tab leads |
 | `@tellma/core/updates` | The app's updates through its service worker (`TmUpdates`): the worker's registration through the `tellma` Trusted Types policy, the update checks, the reload into a new version and the update banner; the app loads it with `import()` after its first render, and the HTTP layer's update check loads it on demand | lazy, through `import()` after first render |
 | `@tellma/core/errors` | Error presentation: `TmErrorPresenter`, whose one table turns a `TmApiError` into an error view, and which shows a write's or an action's error in the shared 5xx or 400 dialog, asks before a step-up, and handles a tenant that is gone or suspended; `tm-error-state` (`TmErrorState`), the inline state a page renders for a failed read | lazy, through `import()` with the first error presented |
+| `@tellma/core/support` | The support tools: the Diagnostics panel (`tm-diagnostics`, `TmDiagnosticsPanel`: the builds, the tenant, the tab and its connection, the recent requests with their references, Copy diagnostics, the diagnostic file and Report a problem), the support dialog (`TmSupportDialog`) and the support dump (`tmBuildSupportDump`, `tmDownloadSupportDump`, `tmSupportDumpFileName`), which `TmSupport` loads on first use | lazy, through `import()` by `TmSupport` |
 | `@tellma/core/config-check` | `tmCheckAppConfig`, the check of an app's configuration against the client metadata, which the build runs in Node and a development app at startup, and `tmCheckEntityDeclaration`, the check of one entity declaration against the Entities chunk | lazy |
 | `@tellma/core/error-paths` | `tmSplitErrorPath` and `tmWalkErrorPath`, the server's error paths onto a Signal Forms tree, which an entity action's dialog and the details page's save land their errors by | with the code that imports it |
 | `@tellma/core/search-normalize` | `tmSearchNormalize`, the one text folding the launcher, the shortcuts filter, the field tree and the reports list match with | with the code that imports it |
@@ -328,10 +329,12 @@ stored page takes the title and icon of the launcher entry at its URL from `TmNa
 list keeps only the pages whose URL `TmNavigation.resolve` finds `ok`; the access filter runs on
 read.
 
-**The dump.** `ɵTmStateDump.read()` (in the primary) builds the state's support-dump section: the
-mirrored documents' partition kinds, stored names and tags, the last sync, the unsaved
-preference, draft and page-state keys, never a value, and whether the tab leads with the hub's
-status as it sees it. The preferences, the drafts and the page
+**The dump.** The support host chunk builds the state's support-dump section (`state`, typed
+`ɵTmStateDumpSection`): the mirrored documents' partition kinds, stored names and tags, the last
+sync, the unsaved preference, draft and page-state keys, never a value, and whether the tab leads
+with the hub's status as it sees it. On a tenant's routes, the keys are that tenant's and those of
+no tenant. The builder lives in that lazy chunk alone, so the first frame does not carry it. The
+preferences, the drafts and the page
 state report their keys to it through `ɵTM_STATE_PARTS` when they are created, so reading the
 section creates none of them, and a tab that never loaded `@tellma/core/drafts` reports no drafts.
 
@@ -645,11 +648,13 @@ and their name and the tenant's as the width allows. While a cold launch's sync 
 from the profile cookie and the tenant's name is a skeleton; a failed sync shows the error views'
 error state with Retry, and `TmShellMain` can put the tenant-state page in place of the route host.
 The session menu (the tenant card, My settings, the language and calendar switches with two choices
-or more, the theme, Keyboard shortcuts, About, the slots below md and Sign out), the popovers and
+or more, the theme, Keyboard shortcuts, About, Report a problem, the slots below md and Sign out), the popovers and
 the drawers are a chunk the bar loads at idle or on the first hover, focus or press of their
 buttons, and that chunk's avatar, which can show the user's photo, replaces the first frame's
-initials. The About dialog (the wordmark, the distribution's description, the versions, Reload while
-the server is newer, the copyright and the legal links) and the Shortcuts dialog (`Mod+/`: the
+initials. The About dialog (an About tab with the wordmark, the distribution's description, the
+versions, Reload while the server is newer, the copyright and the legal links, and a Diagnostics tab
+that loads the Diagnostics panel from `@tellma/core/support` on its first selection, or shows the
+offline line with Copy diagnostics' shortcut when that cannot load) and the Shortcuts dialog (`Mod+/`: the
 general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
 in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
 
@@ -845,7 +850,7 @@ app gets a descriptor of the summary alone.
 ```ts
 await entities.load();
 const name2 = entities.get('acme.Customer').property('Name2'); // label "Name (ع)", contentDir "rtl"
-const manager = entities.resolve('gl.Center', 'Parent.Manager'); // a navigation end, fkPath "Parent.ManagerId"
+const editor = entities.resolve('core.RoleMembership', 'Role.ModifiedBy'); // a navigation end, fkPath "Role.ModifiedById"
 ```
 
 `TmDisplayNames` renders any row's display name by the rule the server declares, in the active
@@ -1235,6 +1240,33 @@ header, and holds no bidi control. `copy()` writes it to the clipboard synchrono
 the user's gesture, and toasts the outcome once; `Mod+Alt+Shift+D` copies it from anywhere, in
 fields and over modals, from the app's first page on.
 
+## Report a problem and the support dump
+
+`TmSupport` is the support tools' facade, in the primary so that an error dialog, the session menu
+and About can call it before the tools load. `open()` takes the snapshot of the page and its
+dialogs and opens the support dialog in the caller's frame, with a placeholder in the dialog's
+final size until `@tellma/core/support` lands; when that entry point cannot load, the dialog says
+so and names Copy diagnostics' shortcut, which still works. `downloadDump()` downloads the
+diagnostic file, never with page data, and settles once the download has started. Presses made
+before the tools land collapse to one of each kind, the last. `canSend` holds while a request could reach support:
+support enabled in the distribution, a live member of an active tenant online in a live session.
+The app's startup preloads the small host chunk that opens the dialog when the browser first goes
+idle, so even the first press opens the dialog in its own frame.
+
+The dump is one JSON document, at most 2 MB: the builds and the browser, the tenant, the page's
+address and its contexts (with page data only when the user includes it), the storage estimate,
+the last requests, telemetry events and errors, and the registered sections. Built on a tenant's
+routes, it keeps that tenant's requests, telemetry, errors, draft keys and page-state keys, and
+those that name no tenant, so a tab that visited another tenant never hands its records over. Over the cap it
+drops, in order, the visible rows, the telemetry, the page data and the sections, each only while
+the dump is still over, and names each step that dropped something. It never holds the stored documents, cookies, web storage or the user's
+profile. A feature adds a section with `registerDumpSection(name, read, destroyRef)`: a short
+lowercase name, a read that returns plain JSON within 64 KB, which the dump calls once (a read
+that throws is recorded as `{ "error": "<class>" }` under the section's name, and one over 64 KB as
+`{ "truncated": true }`), and the `DestroyRef` that ends it; without one, the section lasts as long as the
+app. The client state's section, `state`, is the platform's: the facade adds it when the host
+chunk lands, and no feature may take its name.
+
 ## Seams
 
 `TmRequestLog` is an abstract class provided in root, whose default is the app's ring of the last
@@ -1265,7 +1297,7 @@ point's test rigs (`*.testing.util.ts`) by a relative path, since no build ships
 rule `tm/core-import-boundary` enforces the graph, and ng-packagr refuses a cycle between entry
 points.
 
-The primary reaches `/shell`, `/recents`, `/leader`, `/updates` and `/errors` only through `import()` with a specifier TypeScript
+The primary reaches `/shell`, `/recents`, `/leader`, `/updates`, `/errors`, `/page-snapshot` and `/support` only through `import()` with a specifier TypeScript
 does not follow, since ng-packagr would count a followed one as a cycle. The components it loads
 from the shell are named in an internal contract that the shell's component map `satisfies`, so
 either side's rename fails the build. A build or test that compiles the primary from sources in

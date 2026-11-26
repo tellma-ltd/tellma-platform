@@ -3,12 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TestKey } from '@angular/cdk/testing';
 import { form, FormField, readonly } from '@angular/forms/signals';
-import { LayoutGrid, Table2 } from 'lucide';
+import LayoutGrid from 'lucide/dist/esm/icons/layout-grid.mjs';
+import Table2 from 'lucide/dist/esm/icons/table-2.mjs';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 import { provideTellmaIcons } from '@tellma/core-ui/icon';

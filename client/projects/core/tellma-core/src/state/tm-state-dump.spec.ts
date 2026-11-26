@@ -11,7 +11,8 @@ import { TmLeader } from './leader/tm-leader';
 import { TM_DRAFTS_STORAGE } from './memory/tm-draft-keys';
 import { tmPreferenceKey } from './prefs/tm-preference-key';
 import { TmPreferences } from './prefs/tm-preferences';
-import { TM_STATE_PARTS, TmStateDump } from './tm-state-dump';
+import { TmStateDump } from './tm-state-dump';
+import { TM_STATE_PARTS } from './tm-state-parts';
 
 // The state's dump section, in a whole test app warm in tenant 17 and on its
 // own. The tab's memory and its drafts are other entry points', which a page
@@ -78,5 +79,15 @@ describe('TmStateDump', () => {
     expect([...dump.drafts].sort()).toEqual(['17:gl.Center:5', '17:gl.Center:new:2']);
     expect(JSON.stringify(dump)).not.toMatch(/Secret/);
     expect(TestBed.inject(TM_STATE_PARTS)).toEqual({});
+  });
+
+  it("lists the routed tenant's draft keys alone when given that tenant", () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
+    const storage = TestBed.inject(TM_DRAFTS_STORAGE)!;
+    storage.setItem('tm.draft:test-user:17:gl.Center:5', '{}');
+    storage.setItem('tm.draft:test-user:18:gl.Center:6', '{}');
+    const dump = TestBed.inject(TmStateDump);
+    expect(dump.read(18).drafts).toEqual(['18:gl.Center:6']);
+    expect([...dump.read().drafts].sort()).toEqual(['17:gl.Center:5', '18:gl.Center:6']);
   });
 });

@@ -35,6 +35,8 @@ export const TM_SHELL_OVERLAYS_STRINGS_EN = {
     themeSystem: 'System',
     themeLight: 'Light',
     themeDark: 'Dark',
+    /** The row that opens the support dialog. */
+    reportProblem: 'Report a problem',
     signOut: 'Sign out',
   },
   /** The markers' popovers. */

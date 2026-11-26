@@ -18,7 +18,7 @@ import { TmLaunchCache } from '../state/launch/tm-launch-cache';
 import { TmUrls } from '../urls/tm-urls';
 import { TmErrorCapture } from './tm-error-capture';
 import type { TmErrorRecord, TmErrorSource } from './tm-error-handler';
-import type { TmTelemetryCall, TmTelemetryCallContext, TmTelemetryItem, TmTelemetryOptions, TmTelemetryProps } from './tm-telemetry';
+import type { TmTelemetryCall, TmTelemetryCallContext, TmTelemetryItem, TmTelemetryOptions, TmTelemetryProps, TmTelemetrySink } from './tm-telemetry';
 
 // The telemetry pipeline (spec 0026 §3, §4): a lazy chunk the front loads at
 // idle after the first render. Each call is guarded, stamped with the
@@ -383,7 +383,7 @@ export class TmTelemetryPipeline {
     }
     // The caller's context is guarded before anything is kept.
     const contextProps = this.#props('tm.error.captured', {}, rest);
-    const captured = this.#capture.capture(error, source, at, this.#page()?.route ?? '', this.#traceIds());
+    const captured = this.#capture.capture(error, source, at, this.#page()?.route ?? '', this.#traceIds(), this.#tenantId());
     if (captured === 'filtered') {
       return;
     }
@@ -785,13 +785,13 @@ function tmAppTelemetryHost(injector: Injector, recent: WritableSignal<readonly 
  * @param injector - The root injector.
  * @param recent - The front's ring.
  * @param calls - The calls the front held, oldest first; emptied here.
- * @returns What takes every later call.
+ * @returns What takes every later call, and the error records the pipeline keeps for the support dump.
  */
 export function tmStartTelemetry(
   injector: Injector,
   recent: WritableSignal<readonly TmTelemetryItem[]>,
   calls: TmTelemetryCall[],
-): (call: TmTelemetryCall) => void {
+): TmTelemetrySink {
   const host = tmAppTelemetryHost(injector, recent);
   const pipeline = new TmTelemetryPipeline(host);
   const urls = injector.get(TmUrls);
@@ -854,5 +854,5 @@ export function tmStartTelemetry(
       });
     }
   }
-  return take;
+  return { take, errors: () => pipeline.errors };
 }

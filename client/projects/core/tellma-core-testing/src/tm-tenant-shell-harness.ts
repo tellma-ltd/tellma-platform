@@ -6,18 +6,31 @@
 import { ComponentHarness, HarnessPredicate, type HarnessQuery, type TestElement } from '@angular/cdk/testing';
 import { TmPopoverHarness } from '@tellma/core-ui-testing';
 
+import { TmLauncherHarness } from './tm-launcher-harness';
 import { TmSessionMenuHarness } from './tm-session-menu-harness';
 
 // The tenant shell at /{t}: what its main landmark shows (the routed page,
 // the error state of a failed cold sync, or what replaces the route host),
 // and its app bar: the wordmark, the installed-mode history, the slots, the
 // reserved boxes, the markers with their popovers and the session button
-// with its menu. The menu and the popovers live in a chunk the shell loads
-// after its first frame, and the installed-mode Back and Forward in a chunk
-// of their own, so opening one or reading the other waits for it.
+// with its menu, and the controls that open the launcher. The menu and the
+// popovers live in a chunk the shell loads after its first frame, the
+// launcher's panel in another and the installed-mode Back and Forward in a
+// chunk of their own, so opening one or reading the other waits for it.
 
 /** What the tenant shell's main landmark shows. */
 export type TmTenantShellMain = 'page' | 'error' | 'replaced';
+
+/** A control of the app bar that opens the launcher: the Menu button, the search field (from lg), the search button beside Menu (at md) and the search button below md. */
+export type TmTenantShellLauncherControl = 'menu' | 'field' | 'group-search' | 'search';
+
+/** The selector of each control that opens the launcher. */
+const LAUNCHER_CONTROLS: Readonly<Record<TmTenantShellLauncherControl, string>> = {
+  menu: '.tm-app-bar__menu',
+  field: '.tm-app-bar__field input',
+  'group-search': '.tm-app-bar__group-search',
+  search: '.tm-app-bar__narrow-search',
+};
 
 /** One distribution slot's button. */
 export interface TmTenantShellSlot {
@@ -69,6 +82,7 @@ export class TmTenantShellHarness extends ComponentHarness {
   readonly #error = this.locatorForOptional('.tm-tenant-shell__error');
   readonly #outlet = this.locatorForOptional('main router-outlet');
   readonly #errorActions = this.locatorForAll('.tm-tenant-shell__error button');
+  readonly #launcherSkeleton = this.locatorForOptional('.tm-app-bar__launcher-skeleton');
 
   /**
    * What the main landmark shows.
@@ -272,6 +286,55 @@ export class TmTenantShellHarness extends ComponentHarness {
       await button.click();
     }
     return this.#waitFor(TmSessionMenuHarness, 'the session menu');
+  }
+
+  /**
+   * Opens the launcher from a control of the app bar, waiting for its chunk,
+   * and returns it. A press on the Menu button while the launcher is open
+   * closes it, so this presses only a closed launcher's Menu.
+   *
+   * @param control - The control to press.
+   * @returns The launcher's harness.
+   * @throws Error when the launcher does not open.
+   */
+  async openLauncher(control: TmTenantShellLauncherControl = 'menu'): Promise<TmLauncherHarness> {
+    const button = await this.locatorFor(LAUNCHER_CONTROLS[control])();
+    if (control !== 'menu' || (await button.getAttribute('aria-expanded')) !== 'true') {
+      await button.click();
+    }
+    return this.#waitFor(TmLauncherHarness, 'the launcher');
+  }
+
+  /**
+   * Types in the app bar's search field, the launcher's input from lg up,
+   * which opens the launcher, and returns it once its chunk is in.
+   *
+   * @param text - The text to type after the field's own.
+   * @returns The launcher's harness.
+   * @throws Error when the launcher does not open.
+   */
+  async typeInSearchField(text: string): Promise<TmLauncherHarness> {
+    await (await this.locatorFor(LAUNCHER_CONTROLS.field)()).sendKeys(text);
+    return this.#waitFor(TmLauncherHarness, 'the launcher');
+  }
+
+  /**
+   * Whether the Menu button reports the launcher open.
+   *
+   * @returns The Menu button's `aria-expanded`.
+   */
+  async isLauncherOpen(): Promise<boolean> {
+    return (await (await this.locatorFor(LAUNCHER_CONTROLS.menu)()).getAttribute('aria-expanded')) === 'true';
+  }
+
+  /**
+   * Whether the launcher's skeleton shows in its panel's place, as it does
+   * while an open waits for the launcher's chunk.
+   *
+   * @returns `true` while the skeleton shows.
+   */
+  async isLauncherSkeletonShown(): Promise<boolean> {
+    return (await this.#launcherSkeleton()) !== null;
   }
 
   /** The history buttons, which must show, waiting for their chunk. */

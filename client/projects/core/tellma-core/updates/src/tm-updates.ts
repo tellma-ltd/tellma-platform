@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   ApplicationRef,
   computed,
@@ -31,7 +33,7 @@ import {
   ɵTM_API_HOST,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { RefreshCw } from 'lucide';
+import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
 
 import { TM_WORKER_SCRIPT, tmRegisterWorker, tmWorkerScriptUrl, type TmTrustedTypes, type TmWorkerContainer } from './tm-worker-registration';
 

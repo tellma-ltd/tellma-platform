@@ -3,13 +3,17 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, computed, inject, InjectionToken, Injector, signal } from '@angular/core';
-import { TmAppVersion, TmLaunchCache, TmLocalization, TmServerText, ɵTmClientMetadataStore } from '@tellma/core';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, inject, InjectionToken, Injector, input, signal, type Type } from '@angular/core';
+import { TmAppVersion, TmLaunchCache, TmLocalization, TmServerText, TmTelemetry, ɵTmClientMetadataStore } from '@tellma/core';
 import { TmTheme } from '@tellma/core-ui';
 import { TmAlert } from '@tellma/core-ui/alert';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCopyButton } from '@tellma/core-ui/copy';
 import { TmDescriptionList } from '@tellma/core-ui/description-list';
+import { TmTab, TmTabContent, TmTabGroup } from '@tellma/core-ui/tabs';
+
+import type { TmShellSupport } from '../tm-shell-support';
 
 // The About dialog (spec 0027 §11.1), a deferred chunk the session menu's
 // About row opens. Top to bottom: the wordmark for the theme; the
@@ -17,8 +21,19 @@ import { TmDescriptionList } from '@tellma/core-ui/description-list';
 // of the UI (copyable), the server, the platform and each feature but core,
 // as mono values in left-to-right isolates; an alert with Reload when the
 // server runs a newer build; then the copyright and the legal links. It
-// reads only local data, so it works offline. The Diagnostics tab joins it
-// once the support entry point lands.
+// reads only local data, so it works offline. That content is the About
+// tab of a two-tab group; the Diagnostics tab imports the Diagnostics panel
+// from @tellma/core/support on its first selection (spec 0026 §8.4), and when
+// that entry point cannot load it shows the offline line that names Copy
+// diagnostics' shortcut, from the support host's chunk, which the startup
+// preloads at idle; a later selection tries the panel again. Until the panel
+// is in, its place keeps the panel's height, so the first selection grows
+// the dialog only once. The tabs' code
+// is a static import of this chunk, not a deferred block of its own: a
+// dynamic entry reaching only part of the CDK would split the CDK's code in
+// the first frame into smaller chunks, each paying its own compression
+// overhead. The overlays' host, which opens the dialog, hands it the support
+// tools as an input, so this chunk shares no module with the overlays'.
 
 /** The scope of the About dialog's strings under `tm`. */
 const SCOPE = 'aboutDialog';
@@ -29,6 +44,8 @@ export const TM_ABOUT_DIALOG_STRINGS_EN = {
   copy: 'Copy version',
   server: 'Server',
   platform: 'Platform',
+  /** The second tab's label. */
+  diagnostics: 'Diagnostics',
   /** A version that is not known. */
   unknown: '—',
   /** The alert while the server runs a newer build. */
@@ -47,88 +64,127 @@ export const TM_ABOUT_ERROR_VIEWS = new InjectionToken<() => Promise<typeof impo
   factory: () => () => import('@tellma/core/errors'),
 });
 
-/** The About dialog: the wordmark, the description, the versions, Reload when the server is newer, and the legal lines. */
+/** The Diagnostics tab's offline line's inputs. */
+const OFFLINE_INPUTS: Readonly<Record<string, unknown>> = { kind: 'diagnostics' };
+
+/**
+ * The About dialog: an About tab with the wordmark, the description, the
+ * versions, Reload when the server is newer, and the legal lines, and a
+ * Diagnostics tab with the Diagnostics panel.
+ */
 @Component({
   selector: 'tm-about-dialog',
-  imports: [TmAlert, TmButton, TmCopyButton, TmDescriptionList],
+  imports: [NgComponentOutlet, NgTemplateOutlet, TmAlert, TmButton, TmCopyButton, TmDescriptionList, TmTab, TmTabContent, TmTabGroup],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- The wordmark, for the theme, in its file's box. -->
-    <img
-      class="tm-about-dialog__wordmark"
-      [src]="'brand/' + wordmark() + '.svg'"
-      [style.--tm-about-dialog-wordmark-ratio]="'var(--tm-brand-' + wordmark() + ')'"
-      [alt]="displayName()"
-    />
-    <!-- The distribution's own description, when its server text has one. -->
-    @if (description(); as description) {
-      <p class="tm-about-dialog__description">{{ description }}</p>
-    }
-    <!-- The versions. -->
-    <dl tmDescriptionList class="tm-about-dialog__versions">
-      <div>
-        <dt>{{ displayName() }}</dt>
-        <dd>
-          <span class="tm-about-dialog__mono" dir="ltr">{{ label }}</span>
-          <tm-copy-button size="sm" [text]="ui" [label]="copyLabel()" />
-        </dd>
-      </div>
-      <div>
-        <dt>{{ serverLabel() }}</dt>
-        <dd><span class="tm-about-dialog__mono" dir="ltr">{{ server() }}</span></dd>
-      </div>
-      <div>
-        <dt>{{ platformLabel() }}</dt>
-        <dd><span class="tm-about-dialog__mono" dir="ltr">{{ platform }}</span></dd>
-      </div>
-      @for (feature of features; track feature.key) {
-        <div>
-          <dt><span dir="ltr">{{ feature.key }}</span></dt>
-          <dd><span class="tm-about-dialog__mono" dir="ltr">{{ feature.version }}</span></dd>
-        </div>
-      }
-    </dl>
-    <!-- The server runs a newer build: Reload, which turns busy, says when it fails, and offers Reload anyway. -->
-    @if (serverNewer()) {
-      <tm-alert kind="info" class="tm-about-dialog__newer">
-        <p class="tm-about-dialog__alert-text">{{ newerMessage() }}</p>
-        <span class="tm-about-dialog__actions">
-          <button tmButton size="sm" type="button" [pending]="pending()" [attr.aria-label]="pending() ? updatingLabel() : null" (click)="reload()">
-            {{ reloadLabel() }}
-          </button>
-          @if (failures() > 1) {
-            <button
-              tmButton
-              size="sm"
-              type="button"
-              variant="ghost"
-              [pending]="anywayPending()"
-              [attr.aria-label]="anywayPending() ? updatingLabel() : null"
-              (click)="reloadAnyway()"
-            >
-              {{ reloadAnywayLabel() }}
-            </button>
+    <tm-tab-group (selectedIdChange)="selected($event)">
+      <tm-tab id="about" [label]="aboutLabel()">
+        <ng-template tmTabContent><ng-container [ngTemplateOutlet]="about" /></ng-template>
+      </tm-tab>
+      <tm-tab id="diagnostics" [label]="diagnosticsLabel()">
+        <ng-template tmTabContent>
+          <!-- The panel once loaded; else, as tall as the panel, the offline line once it failed, or the loading status. -->
+          @if (diagnostics(); as diagnostics) {
+            <ng-container [ngComponentOutlet]="diagnostics" />
+          } @else {
+            <div class="tm-about-dialog__pending">
+              @if (offline(); as offline) {
+                <ng-container [ngComponentOutlet]="offline" [ngComponentOutletInputs]="offlineInputs" />
+              } @else if (failed()) {
+                <p class="tm-about-dialog__status" role="alert">{{ failedLabel() }}</p>
+              } @else {
+                <p class="tm-about-dialog__status" role="status">{{ loadingLabel() }}</p>
+              }
+            </div>
           }
-        </span>
-      </tm-alert>
-    }
-    <!-- The copyright and the legal links, each omitted when absent. -->
-    @if (copyright(); as copyright) {
-      <p class="tm-about-dialog__legal">{{ copyright }}</p>
-    }
-    @if (links(); as links) {
-      <p class="tm-about-dialog__legal tm-about-dialog__links">
-        @if (links.terms; as terms) {
-          <a [href]="terms" target="_blank" rel="noopener">{{ termsLabel() }}</a>
+        </ng-template>
+      </tm-tab>
+    </tm-tab-group>
+    <ng-template #about>
+      <!-- The About tab's content. -->
+      <div class="tm-about-dialog__about">
+        <!-- The wordmark, for the theme, in its file's box. -->
+        <img
+          class="tm-about-dialog__wordmark"
+          [src]="'brand/' + wordmark() + '.svg'"
+          [style.--tm-about-dialog-wordmark-ratio]="'var(--tm-brand-' + wordmark() + ')'"
+          [alt]="displayName()"
+        />
+        <!-- The distribution's own description, when its server text has one. -->
+        @if (description(); as description) {
+          <p class="tm-about-dialog__description">{{ description }}</p>
         }
-        @if (links.privacy; as privacy) {
-          <a [href]="privacy" target="_blank" rel="noopener">{{ privacyLabel() }}</a>
+        <!-- The versions. -->
+        <dl tmDescriptionList class="tm-about-dialog__versions">
+          <div>
+            <dt>{{ displayName() }}</dt>
+            <dd>
+              <span class="tm-about-dialog__mono" dir="ltr">{{ label }}</span>
+              <tm-copy-button size="sm" [text]="ui" [label]="copyLabel()" />
+            </dd>
+          </div>
+          <div>
+            <dt>{{ serverLabel() }}</dt>
+            <dd><span class="tm-about-dialog__mono" dir="ltr">{{ server() }}</span></dd>
+          </div>
+          <div>
+            <dt>{{ platformLabel() }}</dt>
+            <dd><span class="tm-about-dialog__mono" dir="ltr">{{ platform }}</span></dd>
+          </div>
+          @for (feature of features; track feature.key) {
+            <div>
+              <dt><span dir="ltr">{{ feature.key }}</span></dt>
+              <dd><span class="tm-about-dialog__mono" dir="ltr">{{ feature.version }}</span></dd>
+            </div>
+          }
+        </dl>
+        <!-- The server runs a newer build: Reload, which turns busy, says when it fails, and offers Reload anyway. -->
+        @if (serverNewer()) {
+          <tm-alert kind="info" class="tm-about-dialog__newer">
+            <p class="tm-about-dialog__alert-text">{{ newerMessage() }}</p>
+            <span class="tm-about-dialog__actions">
+              <button tmButton size="sm" type="button" [pending]="pending()" [attr.aria-label]="pending() ? updatingLabel() : null" (click)="reload()">
+                {{ reloadLabel() }}
+              </button>
+              @if (failures() > 1) {
+                <button
+                  tmButton
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                  [pending]="anywayPending()"
+                  [attr.aria-label]="anywayPending() ? updatingLabel() : null"
+                  (click)="reloadAnyway()"
+                >
+                  {{ reloadAnywayLabel() }}
+                </button>
+              }
+            </span>
+          </tm-alert>
         }
-      </p>
-    }
+        <!-- The copyright and the legal links, each omitted when absent. -->
+        @if (copyright(); as copyright) {
+          <p class="tm-about-dialog__legal">{{ copyright }}</p>
+        }
+        @if (links(); as links) {
+          <p class="tm-about-dialog__legal tm-about-dialog__links">
+            @if (links.terms; as terms) {
+              <a [href]="terms" target="_blank" rel="noopener">{{ termsLabel() }}</a>
+            }
+            @if (links.privacy; as privacy) {
+              <a [href]="privacy" target="_blank" rel="noopener">{{ privacyLabel() }}</a>
+            }
+          </p>
+        }
+      </div>
+    </ng-template>
   `,
   styles: `
     :host {
+      display: block;
+    }
+
+    .tm-about-dialog__about {
       display: grid;
       gap: var(--space-4);
     }
@@ -176,6 +232,18 @@ export const TM_ABOUT_ERROR_VIEWS = new InjectionToken<() => Promise<typeof impo
       display: flex;
       gap: var(--space-4);
     }
+
+    .tm-about-dialog__status {
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    /* The Diagnostics tab before its panel: the panel's height, which the
+       opener sets for the width and the language, so the first selection
+       grows the dialog only once. */
+    .tm-about-dialog__pending {
+      min-block-size: var(--tm-about-dialog-diagnostics-height, auto);
+    }
   `,
 })
 export class TmAboutDialog {
@@ -190,6 +258,26 @@ export class TmAboutDialog {
   readonly #pending = signal(false);
   readonly #anywayPending = signal(false);
   readonly #failures = signal(0);
+  readonly #telemetry = inject(TmTelemetry);
+  readonly #diagnostics = signal<Type<unknown> | null>(null);
+  readonly #offline = signal<Type<unknown> | null>(null);
+  readonly #failed = signal(false);
+  #loading = false;
+
+  /** The support tools, which the Diagnostics tab loads its content through. */
+  readonly support = input.required<TmShellSupport>();
+
+  /** The Diagnostics panel, once loaded. */
+  protected readonly diagnostics = this.#diagnostics.asReadonly();
+
+  /** The offline line, once the panel failed to load. */
+  protected readonly offline = this.#offline.asReadonly();
+
+  /** Whether neither the panel nor the offline line could load. */
+  protected readonly failed = this.#failed.asReadonly();
+
+  /** The offline line's inputs: the Diagnostics tab's variant. */
+  protected readonly offlineInputs = OFFLINE_INPUTS;
 
   /** The distribution's display name. */
   protected readonly displayName = this.#l10n.displayName;
@@ -252,6 +340,18 @@ export class TmAboutDialog {
   /** How many times Reload, or Reload anyway, failed to get the update. */
   protected readonly failures = this.#failures.asReadonly();
 
+  /** The About tab's label: the dialog's title. */
+  protected readonly aboutLabel = this.#l10n.ɵtext('tm.shellOverlays.dialogs.about');
+
+  /** The Diagnostics tab's label. */
+  protected readonly diagnosticsLabel = this.#l10n.ɵtext('tm.aboutDialog.diagnostics');
+
+  /** The Diagnostics tab's status while its content loads. */
+  protected readonly loadingLabel = this.#l10n.ɵtext('tm.shellOverlays.dialogs.loading');
+
+  /** The Diagnostics tab's line when neither its panel nor the offline line could load. */
+  protected readonly failedLabel = this.#l10n.ɵtext('tm.shellOverlays.dialogs.failed');
+
   /** The copy button's name. */
   protected readonly copyLabel = this.#l10n.ɵtext('tm.aboutDialog.copy');
 
@@ -279,6 +379,38 @@ export class TmAboutDialog {
   /** Creates the dialog, which registers its strings. */
   constructor() {
     this.#l10n.ɵregisterStrings(SCOPE, TM_ABOUT_DIALOG_STRINGS_EN);
+  }
+
+  /**
+   * Follows the tab selection: a selection of Diagnostics while its panel
+   * is not in loads it. When the panel cannot load, the offline line shows
+   * in its place, and the next selection tries the panel again.
+   *
+   * @param id - The selected tab's id.
+   */
+  protected selected(id: string | undefined): void {
+    if (id !== 'diagnostics' || this.#diagnostics() !== null || this.#loading) {
+      return;
+    }
+    this.#loading = true;
+    const support = this.support();
+    support
+      .diagnostics()
+      .then(
+        (panel) => this.#diagnostics.set(panel),
+        (error: unknown) => {
+          // Offline, or after a deploy removed the chunk: the shortcut still copies the diagnostics.
+          this.#telemetry.error(error, { where: 'tm.about.diagnostics' });
+          if (this.#offline() !== null) {
+            return undefined;
+          }
+          return support.offline().then(
+            (line) => this.#offline.set(line),
+            () => this.#failed.set(true),
+          );
+        },
+      )
+      .finally(() => (this.#loading = false));
   }
 
   /**

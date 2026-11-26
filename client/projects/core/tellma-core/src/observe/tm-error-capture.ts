@@ -268,6 +268,7 @@ export class TmErrorCapture {
    * @param at - When, in epoch milliseconds.
    * @param routeTemplate - The routed page's template, or empty.
    * @param recentTraceIds - The three most recent requests' trace ids, newest first.
+   * @param tenantId - The routed tenant, or `null` off a tenant's routes.
    * @returns The capture's outcome.
    */
   capture(
@@ -276,6 +277,7 @@ export class TmErrorCapture {
     at: number,
     routeTemplate: string,
     recentTraceIds: readonly string[],
+    tenantId: number | null = null,
   ): TmErrorRecord | 'filtered' | 'foreign' {
     const api = error instanceof TmApiError ? error : null;
     const message = api === null ? messageOf(error) : undefined;
@@ -312,6 +314,7 @@ export class TmErrorCapture {
       stack: stack.text,
       ...(message === undefined ? {} : { message: tmRedactMessage(message) }),
       at,
+      tenantId,
       recentTraceIds: [...recentTraceIds],
     };
     this.#records.push(record);

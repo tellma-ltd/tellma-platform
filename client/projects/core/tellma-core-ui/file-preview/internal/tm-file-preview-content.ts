@@ -3,9 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, computed, ElementRef, inject, type OnDestroy, signal } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-import { CircleX, FileText } from 'lucide';
+import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
+import FileText from 'lucide/dist/esm/icons/file-text.mjs';
 
 import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';

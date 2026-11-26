@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   Component,
   computed,
@@ -13,7 +15,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { Check } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';

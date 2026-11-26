@@ -18,7 +18,10 @@ namespace Tellma.Core.Tests.Client
     /// <summary>
     ///     The client's fixtures of the entity model, which its type tests compile against: the
     ///     Entities chunk, the Core chunk's summaries and the declarations the test model writes,
-    ///     and the declarations the platform alone writes, which core's sources compile against.
+    ///     and the declarations the platform alone writes, which core's sources compile against. The
+    ///     client's test metadata takes the platform's entities and enums from the test model's
+    ///     fixtures, so the suite also checks that the test model writes them as the platform alone
+    ///     does.
     /// </summary>
     /// <remarks>
     ///     A fixture that no longer matches fails with the difference. After an intended change, run
@@ -77,6 +80,32 @@ namespace Tellma.Core.Tests.Client
             string declarations = context.Files.Single(static file => file.RelativePath == EntityTypesWriter.FileName).Content;
 
             Golden("client/tools/typecheck/fixtures/tellma-entities.d.ts.txt", declarations);
+        }
+
+        [Fact]
+        public void The_test_model_writes_the_platform_entities_as_the_platform_alone_writes_them()
+        {
+            // The client's test metadata takes its core entities and enums from the test model's
+            // fixtures. They are the platform's own only while the test model's features leave
+            // them as the platform alone writes them, so each section's core items must match.
+            using ServiceProvider services = TestComposition.Compose(static _ => { }).BuildServiceProvider(validateScopes: true);
+            ClientAssetContext platform = ClientEntityModelComposition.Contribute(services);
+            (ClientMetadataChunk Chunk, string Name)[] sections =
+            [
+                (ClientMetadataChunk.Core, EntityClientAssetContributor.EntitiesSection),
+                (ClientMetadataChunk.Entities, EntityClientAssetContributor.EntitiesSection),
+                (ClientMetadataChunk.Entities, EntityClientAssetContributor.EnumsSection),
+            ];
+
+            foreach ((ClientMetadataChunk chunk, string name) in sections)
+            {
+                JsonArray alone = JsonNode.Parse(ClientEntityModelComposition.Section(platform, chunk, name).Span)!.AsArray();
+                JsonArray model = Node(chunk, name).AsArray();
+                JsonArray core = [.. model.Where(static item => item!["name"]!.GetValue<string>().StartsWith("core.", StringComparison.Ordinal)).Select(static item => item!.DeepClone())];
+
+                Assert.NotEmpty(alone);
+                Assert.Equal(alone.ToJsonString(Indented), core.ToJsonString(Indented));
+            }
         }
 
         /// <summary>A section of the test model, parsed.</summary>
