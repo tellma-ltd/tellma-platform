@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-362 (orchestrator, 2026-11-26): PC-F94 landed; PC-122 is released; PC-F96 takes pc-f
+
+- PC-F94 landed at 50ee9b75, with CI 45816950064 green on 43a2e5dd. The plans-only merge 50ee9b7 of the ae785a00 snapshot sits on top.
+- PC-122 is released next (D-361). It merges platform-core and re-measures as the later lander (D-214).
+  - Its branch measured Acme initialJs 230.67 before the merge. If the merged tree is still over 230, it is blocked (D-247) and stops; nothing is raised.
+- pc-f is a fix slot. No blocking fix is open, and PC-F95 is in pc-f2. So the next non-blocking fix in ledger order takes pc-f (D-229): PC-F96, the HubConnectTests disconnect metric race. Branched at 50ee9b75.
+- The release queue after PC-122 is PC-F91, then PC-F92.
+
 ### D-361 (orchestrator, 2026-11-26): PC-F89 landed; PC-F94 is released; PC-F95 takes pc-f2
 
 - PC-F89 landed at 53e3a0e7, with CI 45804982828 green on 7ef1a090. The plans-only merge 53e3a0e of the 60b30c4e snapshot sits on top.
