@@ -384,6 +384,67 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-344 (orchestrator, 2026-11-26): PC-126's CI is red on its own changes
+
+- CI 45747759513 on 18443c55 failed two jobs. Both failures are PC-126's own.
+  - client, additions-axe.spec:124: the new core-ui l10n-input folder is not classified exactly once in the additions registry. This is the same class of gap as PC-118's counter and initials folders (D-323).
+  - acme-client (ubuntu-latest), layout-shift.spec:14 cold entry: it fails on the first run and the retry, in chromium and chromium-ar, with 0.0005696614583333333.
+    - That is not D-327's wordmark value, 0.000617, and it is deterministic, so it is a new shift source.
+    - The most likely source is the real TmSearchHost now on /17/centers. No other job saw it.
+- PC-126's agent fixes both in "PC-126: CI fixes (...)" and integrates again. It records the shift sources and fixes the cause in product code (D-011). If only the wordmark's shift remains, PC-F105 owns it.
+- Releases stay one at a time (D-087). PC-F105 is next once PC-126 pushes platform-core.
+
+### D-343 (orchestrator, 2026-11-25): PC-F106 review 1, so a records-only fix1
+
+- R1 found 0 blocking, 0 major and 1 minor on b167a7c9.
+- R1 confirmed:
+  - the cause, from vitest 4.1.9's fake-timers source: only TmClientCache.clearAll waits on real storage;
+  - that the new wait can neither pass vacuously nor hang;
+  - that no other core test has the pattern.
+- Its full core run passed 2,649 of 2,649.
+- R1-1: the package-level lint and full test runs (PLAN.md §7.1 item 4) were not recorded. fix1 runs and records them, with no code change unless a check fails. No R2 runs.
+- PC-F106 then queues for release after PC-F105 (D-339). It is blocking, so it goes ahead of PC-154 and the held fixes.
+
+### D-342 (orchestrator, 2026-11-25): PC-126's integration rulings
+
+- PC-126 integrated as 18443c55 on platform-core 21cba2f6.
+  - The merge had 14 conflicts, not 8. They were resolved on their content, and every package.json map keeps one key per entry.
+  - Candidate C is in bf1715f3 (D-316).
+- Figures: the search route is 104.15 KB against spec 0024's 110, Acme initialJs 222.91 and fixture 222.24, both under 230. Every gate passes.
+- Rulings:
+  - The "." ceiling goes from 53.69 to 53.72 (+32 B). This is the search route's existing weight on the merged tree, re-based, and within D-031's cap.
+  - build.fixture.spec is fixed for the merge. The optimizer's 6 orphans, which PC-F102's R1 predicted, change the log line, and a per-chunk read loop was quadratic. Accepted: its assertions still prove no orphan remains and every chunk is reachable.
+  - tm-page-visits.spec answers centers/query with no rows, because /17/centers is now the real TmSearchHost. Accepted: the pages it times are unchanged.
+- The local dotnet build crashed once with MSB4166 while lint:test ran beside it, as in pc-f3's warm-up. The rerun alone succeeded. This is laptop load, not a code fault.
+
+### D-341 (orchestrator, 2026-11-25): PC-F106 finds the session-flows cause; PC-F107 opens
+
+- PC-F106's impl, b167a7c9, found the cause of D-329's failure.
+  - After the confirm, the sign-out leave awaits the real TmClientCache.clearAll (caches.keys and indexedDB.databases), which no fake clock moves.
+  - vi.advanceTimersByTimeAsync(100) yields one real task at its start and one per timer it fires. That left about two real tasks, 19.6 ms measured, before the assertion. Storage slower than about 20 ms on a loaded Windows runner fails it.
+  - A temporary 20 ms storage delay reproduces CI's exact message.
+- The fix is test-only. The test waits with tmWaitUntil on a zero advance, which is stricter than before because no fake time may pass. A mutation check proves the wait.
+- CONTRIBUTING.md's wait rule now covers browser storage as well as import().
+- The spec file passed 50 of 50 runs with the PC-F86 harness and 50 of 50 without it.
+- R1 runs at high.
+- PC-F107 opens, non-blocking. The impl suggests the core testing providers use an in-memory TmClientCache, so session clean-ups no longer sweep the shared test page's real storage. That changes a shared composition, so it is its own item.
+
+### D-340 (orchestrator, 2026-11-25): PC-154 fix2 is held; it queues behind PC-126 and PC-F105
+
+- PC-154's fix2, 38059de4, fixes R2-1 to R2-4 as D-331 ruled.
+  - The Diagnostics grid is contained, and its layout is keyed to the panel's own width. The md-dialog tests fail on 670d05e9.
+  - The state section loads from the support host chunk, so "." goes from 54.42 to 54.25.
+  - The About and Diagnostics heights are measured per breakpoint and per language, and an Acme e2e checks them within 8 px.
+  - A dump keeps only the routed tenant's records and those with no tenant tag.
+- The ./support ceiling goes from 6.5 to 7, at 6.58. That is its first raise, within D-031. tm-support-host is at 2.47 of 2.5.
+- Tests: 667 of 667 with the delay harness, and the Acme tenant-shell e2e 10 of 10.
+  - One plain-run failure, the shell frame's skip-link focus test, ran while api-extractor ran and passed 8 of 8 alone. It gets a local watch row.
+- PC-154 is held. It integrates after PC-126 lands and after PC-F105 (D-339). At integration it merges PC-F102's chunk optimizer and re-measures Acme initialJs (235.00 before PC-F102) and the fixture's 230 line.
+- **For Ahmad:**
+  - Spec 0026 §8.4's "below md" for the Diagnostics panel's narrow layout should say the panel's own width.
+  - Spec 0026 §10.1's error record should gain tenantId.
+  - §10.1 should also say that a dump holds only the routed tenant's records (D-331).
+
 ### D-339 (orchestrator, 2026-11-25): PC-F102 landed; PC-126 is released; PC-F106 fills pc-1
 
 - PC-F102 landed at 21cba2f6, with CI 45735284023 green on that commit. It was a fast-forward over 05ffd4fd. D-065 is reversed: Angular's chunk optimizer is on, and chunks get content-hash names that meet spec 0024 §6. Acme initialJs is 220.52 KB in 3 files on platform-core.
