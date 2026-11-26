@@ -384,6 +384,29 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
+
+PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.
+
+PC-128 is parked with its work on pc/PC-128, not held, so pc-2 is freed (D-384). No T1 item is ready, so pc-2 takes PC-163, the only ready T2, with its three carries (D-229). The heavy-agent count stays within five: PC-F112, PC-F110's integration, PC-123's fix1, PC-156's fix1 and PC-163.
+
+### D-390 (2026-11-26): PC-156 R1 rulings
+
+PC-156's R1 found 1/4/6.
+
+R1-1 is blocking. The implementer raised spec 0028 §1's budgets itself (/attention 6 to 6.5, the panels 9 to 10.5), which D-313 forbids. Both go back to the spec's figures, and fix1 applies every trim the review measured. /attention must reach 6. If the panels chunk cannot reach 9 without losing spec behaviour (the review estimates 9.6 to 9.8), PC-156 is parked on that one budget, as PC-128 was (D-384), and nothing is raised.
+
+R1-2 moves TmProgressRing to its own @tellma/core-ui/progress-ring entry point, so core-ui/progress (about 2 KB gzip) leaves every first frame. That is most of Acme initialJs's growth from 224.70 to 226.85.
+
+R1-9 is a spec contradiction ruled here under Rule 2. Job stop follows spec 0026 §9.5, the spec that owns jobs, in both the panel and the attention.stop-job page action, with the kind-specific confirmation text.
+
+R1-3 to R1-8, R1-10 and R1-11 are fixed as the review describes. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
+Questions for Ahmad, non-blocking:
+- The new @tellma/core/attention-rows entry point (5.86) moves TmAttentionText and TmAssignmentList out of §1's 6 KB /attention line, so the members §1 budgets at 6 KB weigh 12.14 in total. Should §1 list /attention-rows with its own figure?
+- The moved string key, one TmAttentionButton in place of two classes, and the bell-only hold.
+- The 0028 §6.2/§13 stop-confirmation wording against 0026 §9.5.
+
 ### D-389 (2026-11-26): PC-129 blocked on spec 0024's 110 KB search route; PC-F112 lands PC-128's pager saving
 
 D-388's placement fix cannot reach 110. PC-129's details kit renders /entity's TmValue and aria tabs in view mode. The modules both lazy routes reach statically (the /entity view side, aria's shared pieces, the l10n-input parsers) must therefore leave the search host's chunk. That splitting costs about 1.5 KB of gzip, and moving TmUploads off the /entity barrel saves only 0.26, which leaves about 111.3.
