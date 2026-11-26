@@ -7,16 +7,19 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Injectable } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { TmAppVersion, type TmDistributionInfo } from '@tellma/core';
+import { TmTheme } from '@tellma/core-ui';
 import { TmAlertHarness, TmCopyButtonHarness } from '@tellma/core-ui-testing';
 
 import { TM_TEST_SUB, tmAppRig, tmSettle, type TmAppRig, type TmAppRigOptions } from '../../../src/routes/tm-app.testing.util';
+import { TM_SHELL_BRAND_RATIOS, TmShellBrandWriter } from '../frame/tm-shell-frame';
 import { TM_ABOUT_ERROR_VIEWS, TmAboutDialog } from './tm-about-dialog';
 
-// The About dialog in the test app: the wordmark, the distribution's own
-// description only when its server text has one, the versions, the alert
-// and Reload while the server runs a newer build and none while it runs an
-// older one, Reload's failure and Reload anyway (which tries the error views
-// again when they cannot load), and the legal lines.
+// The About dialog in the test app: the wordmark, in its theme's file's
+// box, the distribution's own description only when its server text has
+// one, the versions, the alert and Reload while the server runs a newer
+// build and none while it runs an older one, Reload's failure and Reload
+// anyway (which tries the error views again when they cannot load), and the
+// legal lines.
 
 /** The error views' update service, answering each update with a scripted result. */
 @Injectable()
@@ -162,5 +165,30 @@ describe('the About dialog', () => {
     await tmSettle();
     expect(versions(element)[1]).toEqual(['Server', '0.9.0']);
     expect(element.querySelector('tm-alert')).toBeNull();
+  });
+
+  it("gives the wordmark its theme's file's box whether or not the file has loaded", async () => {
+    // The unit runner serves no brand file, so the box comes from the ratio alone.
+    const element = await open({ providers: [{ provide: TM_SHELL_BRAND_RATIOS, useValue: { 'wordmark-on-light': 4, 'wordmark-on-dark': 3 } }] });
+    // No frame renders here, so nothing else has written the ratios.
+    TestBed.inject(TmShellBrandWriter);
+    const theme = TestBed.inject(TmTheme);
+    const setting = theme.setting();
+    const box = (): number[] => {
+      const { width, height } = element.querySelector('img')!.getBoundingClientRect();
+      return [width, height];
+    };
+    try {
+      theme.set('light');
+      await tmSettle();
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('brand/wordmark-on-light.svg');
+      expect(box()).toEqual([80, 20]);
+      theme.set('dark');
+      await tmSettle();
+      expect(element.querySelector('img')?.getAttribute('src')).toBe('brand/wordmark-on-dark.svg');
+      expect(box()).toEqual([60, 20]);
+    } finally {
+      theme.set(setting);
+    }
   });
 });

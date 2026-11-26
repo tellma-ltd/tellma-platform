@@ -27,6 +27,7 @@ import {
 } from '../../src/routes/tm-app.testing.util';
 import { TM_HISTORY_HOST } from './app-bar/tm-installed-mode';
 import { TM_SHELL_PANELS_LOAD } from './app-bar/tm-shell-overlays';
+import { TM_SHELL_BRAND_RATIOS } from './frame/tm-shell-frame';
 import { TmLauncher } from './launcher/tm-launcher';
 import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 
@@ -36,7 +37,8 @@ import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 // or unavailable, a replaced main), the app bar's names, avatar tone,
 // markers with their popovers, slots, reserved boxes, session button keys
 // and installed-mode history (through the Navigation API or the router, a
-// replace keeping Forward), Mod+/, the overlays' chunk landing with nothing
+// replace keeping Forward), the wordmark's and the mark's boxes before their
+// files load, Mod+/, the overlays' chunk landing with nothing
 // in the bar moving, presses made before it lands, the chunk failing to
 // load, and a tenant switch,
 // which closes the shell's overlays and clears the launcher's text. The
@@ -487,6 +489,31 @@ describe('the tenant shell', () => {
       const menu = await shell.openSessionMenu();
       expect(await menu.getItemLabels()).toContain('Sign out');
     });
+  });
+
+  describe('the wordmark', () => {
+    // The unit runner serves no brand file, so the image may be loading or failed: each box comes from its file's ratio alone.
+    for (const [width, box] of [
+      [1000, [(14 * 736) / 208, 14]],
+      [600, [18 * 1.5, 18]],
+    ] as const) {
+      it(`has its file's box whether or not the file has loaded (${width} px)`, async () => {
+        const viewport = [window.innerWidth, window.innerHeight] as const;
+        await page.viewport(width, 900);
+        try {
+          await start({ providers: [{ provide: TM_SHELL_BRAND_RATIOS, useValue: { 'wordmark-on-dark': 736 / 208, 'mark-on-dark': 1.5 } }] });
+          await open();
+          const image = document.querySelector<HTMLImageElement>('.tm-app-bar__wordmark img')!;
+          const { width: inline, height: block } = image.getBoundingClientRect();
+          expect(inline).toBeCloseTo(box[0], 1);
+          expect(block).toBe(box[1]);
+          // The link's box is the image's, so the bar's next item starts where the final wordmark ends.
+          expect(document.querySelector('.tm-app-bar__wordmark')!.getBoundingClientRect().width).toBeCloseTo(box[0], 1);
+        } finally {
+          await page.viewport(...viewport);
+        }
+      });
+    }
   });
 
   it('opens the Shortcuts dialog on Mod+/, listing the shortcuts active when it opens', async () => {

@@ -7,7 +7,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'n
 import { join, relative } from 'node:path';
 
 import { tmReadBudgetLevels, tmBudgetProblems, tmFormatBudgetReport, tmMeasureBudgets, type TmBudgetLevels } from '../checks/budgets.js';
-import { tmCheckBrandFiles, tmResolveBrandFiles, type TmBrandFile } from '../checks/brand.js';
+import { tmBrandDefine, tmCheckBrandFiles, tmResolveBrandFiles, type TmBrandFile } from '../checks/brand.js';
 import { tmRunConfigCheck } from '../checks/config-check.js';
 import { tmCheckHashedNames } from '../checks/hashed-names.js';
 import { tmCheckIndexHtml } from '../checks/index-html.js';
@@ -33,8 +33,9 @@ import { tmWritePlatformAssets } from './platform-assets.js';
 //
 //  1. The emit, then the source checks (config, index.html, manifest, brand
 //     files, budget notes), then `ng build --stats-json` with Angular's
-//     chunk optimizer on, whose chunks then take names of their content. A
-//     source problem stops here, before the slow part.
+//     chunk optimizer on, whose chunks then take names of their content, and
+//     with the brand files' ratios defined for the app's code. A source
+//     problem stops here, before the slow part.
 //  2. The brand files, tm-boot.js and the manifest's localized names.
 //  3. The preloads: fonts, the Core chunk and default string pack, and the
 //     /shell and /attention chunks.
@@ -138,12 +139,15 @@ export const TM_NG_BUILD_ENV: Readonly<Record<string, string>> = Object.freeze({
   NG_BUILD_CHUNKS_ROLLDOWN: 'false',
 });
 
-/** Step 1's end: the Angular build, its chunks named by their content. */
-async function angularBuild(context: TmCommandContext, project: TmAppProject): Promise<void> {
+/** Step 1's end: the Angular build, its chunks named by their content, with the brand files' ratios. */
+async function angularBuild(context: TmCommandContext, project: TmAppProject, brand: readonly TmBrandFile[]): Promise<void> {
   tmLogStep(context, `Building ${project.angularProject}`);
   const ng = join(tmRequirePackageDir(project, '@angular/cli'), 'bin', 'ng.js');
   rmSync(project.outputDir, { recursive: true, force: true });
-  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json'], { cwd: project.dir, env: TM_NG_BUILD_ENV });
+  const code = await context.runner.run(process.execPath, [ng, 'build', '--stats-json', '--define', tmBrandDefine(brand)], {
+    cwd: project.dir,
+    env: TM_NG_BUILD_ENV,
+  });
   if (code !== 0) {
     throw new TmBuildFailure(`ng build exited with code ${code}.`);
   }
@@ -192,7 +196,7 @@ export async function tmBuild(context: TmCommandContext, options: TmEmitOptions)
   }
   // The files serve copies from generated/root/, refreshed so ng build never copies stale ones.
   tmRefreshRootFiles(project.rootAssetsDir, source.bootScript, source.brand);
-  await angularBuild(context, project);
+  await angularBuild(context, project, source.brand);
   const browser = project.browserDir;
   const { core, strings } = source.metadata;
   const languages = core.value.languages.map((language) => language.code);

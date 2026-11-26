@@ -114,6 +114,10 @@ describe('tellma-client build on the fixture app', () => {
     expect(manifest['name_localized']).toEqual({ ar: 'فكسشر' });
     expect(manifest['short_name_localized']).toEqual({ ar: 'فكسشر' });
     expect(manifest['name']).toBe('Fixture');
+    // The brand files' ratios, defined for the app's code: the fixture's 120 by 24 wordmark and 24 px mark.
+    const scripts = readdirSync(browser()).filter((file) => file.endsWith('.js') && file !== 'tm-boot.js');
+    const defined = scripts.filter((file) => read(file).includes('{"wordmark-on-dark":5,"wordmark-on-light":5,"mark-on-dark":1,"mark-on-light":1}'));
+    expect(defined).toHaveLength(1);
   });
 
   it('preloads the Latin and Arabic fonts, the Core chunk and the default string pack', () => {

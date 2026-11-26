@@ -45,7 +45,11 @@ teal dot), each in ink for light backgrounds and in white for dark ones. They ar
 logo's SVG exports: one `<path>` per glyph with its fill, no clip paths, ids or editor metadata,
 so two of them inline on one page cannot clash. The app renders them inline and gives them their
 accessible name. `tellma-client build` copies each to `brand/` in the output unless the
-distribution's `public/brand/` has a file of the same name.
+distribution's `public/brand/` has a file of the same name. It also reads each file's `viewBox` and
+defines its ratio for the app's code; the shell frame writes them on the root element as
+`--tm-brand-<name>` (such as `--tm-brand-wordmark-on-dark: 3.5384615384615383`, the viewBox's
+width over its height), and every image of a brand file takes its width from its height times that
+ratio, so its box is final whether its file has loaded, is still loading or failed.
 
 ## Boot
 

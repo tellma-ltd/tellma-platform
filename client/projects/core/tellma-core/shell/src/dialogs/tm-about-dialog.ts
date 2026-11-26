@@ -53,8 +53,13 @@ export const TM_ABOUT_ERROR_VIEWS = new InjectionToken<() => Promise<typeof impo
   imports: [TmAlert, TmButton, TmCopyButton, TmDescriptionList],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- The wordmark, for the theme. -->
-    <img class="tm-about-dialog__wordmark" [src]="wordmark()" [alt]="displayName()" />
+    <!-- The wordmark, for the theme, in its file's box. -->
+    <img
+      class="tm-about-dialog__wordmark"
+      [src]="'brand/' + wordmark() + '.svg'"
+      [style.--tm-about-dialog-wordmark-ratio]="'var(--tm-brand-' + wordmark() + ')'"
+      [alt]="displayName()"
+    />
     <!-- The distribution's own description, when its server text has one. -->
     @if (description(); as description) {
       <p class="tm-about-dialog__description">{{ description }}</p>
@@ -128,10 +133,15 @@ export const TM_ABOUT_ERROR_VIEWS = new InjectionToken<() => Promise<typeof impo
       gap: var(--space-4);
     }
 
+    /*
+     * The width is the height times the theme's file's ratio, which the shell
+     * frame writes, so the box is final before the file loads; without the
+     * ratio the declaration is invalid at computed-value time, and the width is auto.
+     */
     .tm-about-dialog__wordmark {
       display: block;
       block-size: 20px;
-      inline-size: auto;
+      inline-size: calc(20px * var(--tm-about-dialog-wordmark-ratio));
     }
 
     .tm-about-dialog__description,
@@ -196,8 +206,11 @@ export class TmAboutDialog {
   /** Each composed feature's version but core's. */
   protected readonly features = this.#version.features.filter((feature) => feature.key !== 'core');
 
-  /** The wordmark's file for the effective theme. */
-  protected readonly wordmark = computed(() => `brand/wordmark-on-${this.#theme.effective() === 'dark' ? 'dark' : 'light'}.svg`);
+  /**
+   * The wordmark's brand file for the effective theme, without `.svg`, which
+   * also names the ratio its image's width comes from, `--tm-brand-{file}`.
+   */
+  protected readonly wordmark = computed(() => (this.#theme.effective() === 'dark' ? 'wordmark-on-dark' : 'wordmark-on-light'));
 
   /** The distribution's own description, or `null` without its server key. */
   protected readonly description = computed(() =>
