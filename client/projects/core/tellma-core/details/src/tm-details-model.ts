@@ -19,7 +19,7 @@ const CLIENT_WRITTEN: ReadonlySet<string> = new Set(['editable', 'write-once']);
 /**
  * A new record's values: every child collection empty, every non-nullable
  * flag the client writes `false`, and the declaration's `defaults` merged
- * over them.
+ * over them; every other property the client writes `null`.
  *
  * @param descriptor - The entity's descriptor.
  * @returns A fresh object.
@@ -36,7 +36,63 @@ export function tmDetailsCreateModel(descriptor: TmEntityDescriptor): TmJsonObje
     }
   }
   const defaults = descriptor.declaration['defaults'] as (() => TmJsonObject) | undefined;
-  return { ...model, ...defaults?.() };
+  return tmDetailsComplete({ ...model, ...defaults?.() }, descriptor, () => undefined);
+}
+
+/**
+ * A record with every property the client writes present, `null` where the
+ * record omits it, recursively in the rows of its loaded child collections.
+ * The wire omits null members, and a Signal Forms tree has no field, so no
+ * validation, for a member the model lacks: the working copy carries every
+ * writable property so each one has its field.
+ * A collection the record lacks stays absent, since a save never sends one
+ * it did not load. An object that lacks nothing is returned as it is, so a
+ * complete record keeps its identity.
+ *
+ * @param record - The record, wire-shaped.
+ * @param descriptor - Its entity's descriptor.
+ * @param childDescriptor - The descriptor of a child collection's entity, by name; `undefined` leaves the collection's rows as they are.
+ * @returns The record, or a completed copy of it.
+ */
+export function tmDetailsComplete(
+  record: TmJsonObject,
+  descriptor: TmEntityDescriptor,
+  childDescriptor: (entity: string) => TmEntityDescriptor | undefined,
+): TmJsonObject {
+  // The members to write over the record; empty while it lacks nothing.
+  const writes: Record<string, TmJson> = {};
+  let lacks = false;
+
+  // --- Every property the client writes that the record omits, as null ---
+  for (const property of descriptor.properties) {
+    if (CLIENT_WRITTEN.has(property.ownership) && record[property.json] === undefined) {
+      writes[property.json] = null;
+      lacks = true;
+    }
+  }
+
+  // --- Each loaded collection's rows, completed by their own entity ---
+  for (const child of descriptor.children) {
+    const rows = record[child.json];
+    const target = Array.isArray(rows) && rows.length > 0 ? childDescriptor(child.entity) : undefined;
+    if (!Array.isArray(rows) || target === undefined) {
+      continue;
+    }
+    let changed = false;
+    const completed = rows.map((row) => {
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        return row;
+      }
+      const next = tmDetailsComplete(row, target, childDescriptor);
+      changed ||= next !== row;
+      return next;
+    });
+    if (changed) {
+      writes[child.json] = completed;
+      lacks = true;
+    }
+  }
+  return lacks ? { ...record, ...writes } : record;
 }
 
 /**

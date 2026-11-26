@@ -298,6 +298,18 @@ export interface TmSelectPlanOptions {
 }
 
 // @public
+export class TmUploads {
+    constructor();
+    cancel(path: string): void;
+    readonly running: Signal<ReadonlySet<string>>;
+    stage(path: string, blob: TmBlobDescriptor | null): void;
+    staged(path: string): TmBlobDescriptor | undefined;
+    start(path: string, upload: (signal: AbortSignal) => Promise<TmBlobDescriptor>): Promise<TmBlobDescriptor>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmUploads, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmUploads>;
+}
+
+// @public
 export class TmValue {
     constructor();
     protected readonly asIs: (src: string) => string;

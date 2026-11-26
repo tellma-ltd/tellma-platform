@@ -8,10 +8,12 @@ import {
   type DestroyableInjector,
   DestroyRef,
   inject,
+  InjectionToken,
   Injector,
   runInInjectionContext,
   type Signal,
   signal,
+  type TemplateRef,
   untracked,
   type WritableSignal,
 } from '@angular/core';
@@ -23,8 +25,10 @@ import {
   type TmId,
   type TmJson,
   type TmJsonObject,
+  TmLocalization,
   type TmPageAction,
 } from '@tellma/core';
+import { TmUploads } from '@tellma/core/entity';
 
 import {
   TM_DETAILS_CONTEXT,
@@ -35,15 +39,18 @@ import {
   type TmDetailsStatus,
   type TmRelated,
 } from './tm-details-context';
-import { tmDetailsRefused } from './tm-details-model';
+import { tmDetailsComplete, tmDetailsRefused } from './tm-details-model';
+import { type TmDetailsServerError, tmDetailsPlatformSchema } from './tm-details-schema';
 import type { TmDetailsAbilities, TmDetailsRecord, TmDetailsSource } from './tm-details-source';
+import { TM_DETAILS_STRINGS_EN } from './tm-details-strings';
 
 // One record's state (spec 0031 §3.1, §4.2): its working copy and the one
 // Signal Forms tree over it, its server copy, base, extras, related rows and
 // registrations, in an injector of its own that the layout renders in. A
 // re-key replaces the whole of it, so the form, the extras and the
 // registrations never outlive their record; the header's state stays with
-// the host.
+// the host. It also holds what the layout kit renders outside the layout
+// (the aside, the title's extras) and the view state the page remembers.
 
 /** What a record reads from its host: the page-wide state and the commands. */
 export interface TmDetailsHostView<T> {
@@ -89,6 +96,60 @@ export interface TmDetailsRecordInit<T> {
   readonly host: TmDetailsHostView<T>;
   /** The injector the record's own injector descends from. */
   readonly parent: Injector;
+}
+
+/** The layout's aside, as the kit registers it for the frame to render. */
+export interface TmDetailsAsideRef {
+  /** The aside's content. */
+  readonly template: TemplateRef<unknown>;
+  /** The aside's heading, in the active language; empty for none. */
+  readonly title: Signal<string>;
+}
+
+/** A layout's `tm-details-tabs`, as the kit registers it. */
+export interface TmDetailsTabsRef {
+  /** Renders every tab's content without selecting it, so the fields on unvisited tabs register. */
+  instantiate(): void;
+}
+
+/** The view state a record's page remembers: what the user opened, collapsed and scrolled. */
+export interface TmDetailsViewState {
+  /** The selected tab of each `tm-details-tabs`, by its id. */
+  readonly tabs: WritableSignal<Readonly<Record<string, string>>>;
+  /** Whether each collapsible card is expanded, by its id. */
+  readonly cards: WritableSignal<Readonly<Record<string, boolean>>>;
+  /** The scrolling element of each scrollable card, by the card's id, and of the aside, under `aside`. */
+  readonly scrollers: WritableSignal<ReadonlyMap<string, HTMLElement>>;
+}
+
+/**
+ * The record on screen. Internal: the record's injector provides it, so the
+ * layout kit reaches what it registers with the frame; a layout test's fake
+ * provides the same.
+ */
+export const TM_DETAILS_RECORD = new InjectionToken<TmDetailsRecordState<unknown>>('TM_DETAILS_RECORD');
+
+/**
+ * Whether the app runs in development, where the kit's misuse throws.
+ *
+ * @returns Whether it does.
+ */
+export function tmDevMode(): boolean {
+  return typeof ngDevMode !== 'undefined' && !!ngDevMode;
+}
+
+/**
+ * The record of a details page, for the layout kit.
+ *
+ * @returns The record.
+ * @throws Error outside a details page.
+ */
+export function injectTmDetailsRecord(): TmDetailsRecordState<TmJsonObject> {
+  const record = inject(TM_DETAILS_RECORD, { optional: true });
+  if (record === null) {
+    throw new Error('The details layout kit renders inside a details page: use it in a layout or a hatch the page renders.');
+  }
+  return record as TmDetailsRecordState<TmJsonObject>;
 }
 
 /** The related rows of one read, indexed by entity and id on first ask. */
@@ -200,6 +261,24 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
   /** The child row a link asked to show. */
   readonly childTarget = signal<{ readonly collection: string; readonly id: TmId } | null>(null);
 
+  /** The form's uploads, which the record's injector provides to its editors. */
+  readonly uploads: TmUploads;
+
+  /** The recorded server and source errors the form shows on their nodes. */
+  readonly errors = signal<readonly TmDetailsServerError[]>([]);
+
+  /** The layout's aside, which the frame renders in its column. */
+  readonly aside = signal<TmDetailsAsideRef | null>(null);
+
+  /** The layout's title extras, which the frame renders after the badges, in registration order. */
+  readonly titleExtras = signal<readonly TemplateRef<unknown>[]>([]);
+
+  /** The view state the page remembers. */
+  readonly view: TmDetailsViewState = { tabs: signal({}), cards: signal({}), scrollers: signal(new Map()) };
+
+  /** The layout's `tm-details-tabs`, by id: what a failed save renders before it marks the fields touched. */
+  readonly tabs = signal<ReadonlyMap<string, TmDetailsTabsRef>>(new Map());
+
   /** The host's view. */
   readonly #host: TmDetailsHostView<T>;
 
@@ -222,12 +301,23 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
     this.landed = signal(init.landed);
     this.#entities = init.entities;
     this.#related = signal(new TmRelatedRows({}, init.entities));
-    this.injector = Injector.create({ providers: [{ provide: TM_DETAILS_CONTEXT, useValue: this }], parent: init.parent });
+    this.injector = Injector.create({
+      providers: [{ provide: TM_DETAILS_CONTEXT, useValue: this }, { provide: TM_DETAILS_RECORD, useValue: this }, TmUploads],
+      parent: init.parent,
+    });
+    this.uploads = this.injector.get(TmUploads);
+    // The kit's own strings (the lock, the error names, the audit card), merged once, as the page's frame merges them.
+    this.injector.get(TmLocalization).ɵregisterStrings('details', TM_DETAILS_STRINGS_EN);
 
-    // --- The form: one tree per record, with the declaration's schema ---
-    const validate = init.descriptor.declaration['validate'] as ((path: SchemaPathTree<T>) => void) | undefined;
+    // --- The form: one tree per record, the platform's schema first, then the declaration's (spec 0031 §4.2, §7) ---
+    const descriptor = init.descriptor;
+    const validate = descriptor.declaration['validate'] as ((path: SchemaPathTree<T>) => void) | undefined;
+    const options = { mode: this.mode, uploads: this.uploads, errors: this.errors, child: (entity: string) => this.#child(entity) };
     this.form = runInInjectionContext(this.injector, () =>
-      validate ? form(this.model, (path) => validate(path as SchemaPathTree<T>)) : form(this.model),
+      form(this.model, (path) => {
+        tmDetailsPlatformSchema(path, descriptor, options);
+        validate?.(path as SchemaPathTree<T>);
+      }),
     );
 
     // --- Dirty by reference: a write copies the objects on its path, never the base ---
@@ -271,8 +361,10 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
    */
   land(record: TmDetailsRecord<T>): void {
     if (this.mode() === 'view') {
-      this.entity.set(record.entity);
-      this.model.set(record.entity);
+      // Every writable member present, so each has its field and its rules.
+      const entity = this.#complete(record.entity);
+      this.entity.set(entity);
+      this.model.set(entity);
       this.base.set(null);
     }
     this.#related.set(new TmRelatedRows(record.related ?? {}, this.#entities));
@@ -286,8 +378,9 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
    * @param model - The working copy.
    */
   start(model: T): void {
-    this.model.set(model);
-    this.base.set(model);
+    const complete = this.#complete(model);
+    this.model.set(complete);
+    this.base.set(complete);
     this.landed.set(true);
   }
 
@@ -358,9 +451,93 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
     );
   }
 
+  /**
+   * Registers the layout's aside, until `destroyRef` ends. Internal: the kit's `tm-details-aside` calls it.
+   *
+   * @param aside - The aside.
+   * @param destroyRef - What ends the registration.
+   * @throws Error in development, when the layout already has an aside.
+   */
+  registerAside(aside: TmDetailsAsideRef, destroyRef: DestroyRef): void {
+    if (untracked(this.aside) !== null) {
+      if (tmDevMode()) {
+        throw new Error('A details layout renders one tm-details-aside: merge the second one into the first.');
+      }
+      return;
+    }
+    this.aside.set(aside);
+    destroyRef.onDestroy(() => this.aside.update((current) => (current === aside ? null : current)));
+  }
+
+  /**
+   * Registers one of the layout's title extras, until `destroyRef` ends. Internal: the kit's `tmDetailsTitleExtra` calls it.
+   *
+   * @param template - The extra's content.
+   * @param destroyRef - What ends the registration.
+   */
+  registerTitleExtra(template: TemplateRef<unknown>, destroyRef: DestroyRef): void {
+    this.titleExtras.update((extras) => [...extras, template]);
+    destroyRef.onDestroy(() => this.titleExtras.update((extras) => extras.filter((extra) => extra !== template)));
+  }
+
+  /**
+   * Registers a `tm-details-tabs` by its id, until `destroyRef` ends. Internal: the kit's tabs call it.
+   *
+   * @param id - The tabs' id.
+   * @param tabs - The tabs.
+   * @param destroyRef - What ends the registration.
+   * @throws Error in development, when another rendered `tm-details-tabs` has the id.
+   */
+  registerTabs(id: string, tabs: TmDetailsTabsRef, destroyRef: DestroyRef): void {
+    if (untracked(this.tabs).has(id)) {
+      if (tmDevMode()) {
+        throw new Error(`Two tm-details-tabs in one details layout have the id '${id}': give each its own id.`);
+      }
+      return;
+    }
+    this.tabs.update((all) => new Map(all).set(id, tabs));
+    destroyRef.onDestroy(() => this.tabs.update((all) => (all.get(id) === tabs ? without(all, id) : all)));
+  }
+
+  /**
+   * Registers an element whose scroll the page remembers, until `destroyRef` ends. Internal: scrollable cards and the aside call it.
+   *
+   * @param id - The scrollable card's id, or `aside`.
+   * @param element - The element that scrolls.
+   * @param destroyRef - What ends the registration.
+   */
+  registerScroller(id: string, element: HTMLElement, destroyRef: DestroyRef): void {
+    this.view.scrollers.update((scrollers) => new Map(scrollers).set(id, element));
+    destroyRef.onDestroy(() => this.view.scrollers.update((scrollers) => (scrollers.get(id) === element ? without(scrollers, id) : scrollers)));
+  }
+
   /** Ends the record: its form's effects, its registrations and everything rendered in its injector. */
   dispose(): void {
     this.injector.destroy();
+  }
+
+  /**
+   * A record with every writable member present, recursively in its child rows.
+   *
+   * @param record - The record, wire-shaped.
+   * @returns It, or a completed copy.
+   */
+  #complete(record: T): T {
+    return tmDetailsComplete(record as TmJsonObject, this.descriptor, (entity) => this.#child(entity)) as T;
+  }
+
+  /**
+   * A child collection's entity descriptor.
+   *
+   * @param entity - The entity's name.
+   * @returns Its descriptor, or `undefined` when the metadata does not list it.
+   */
+  #child(entity: string): TmEntityDescriptor | undefined {
+    try {
+      return untracked(() => this.#entities.get(entity));
+    } catch {
+      return undefined;
+    }
   }
 }
 

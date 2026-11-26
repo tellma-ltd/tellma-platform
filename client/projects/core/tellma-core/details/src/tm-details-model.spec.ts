@@ -6,7 +6,7 @@
 import type { TmEntityDescriptor, TmJson, TmJsonObject } from '@tellma/core';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
-import { tmDetailsCloneStrip, tmDetailsCreateModel, tmDetailsRefused, tmDetailsRouteId } from './tm-details-model';
+import { tmDetailsCloneStrip, tmDetailsComplete, tmDetailsCreateModel, tmDetailsRefused, tmDetailsRouteId } from './tm-details-model';
 
 // The record's model rules over the recorded entity model: a new record's
 // values, the strip that turns a copy into a new record, the route's id, and
@@ -21,6 +21,16 @@ import { tmDetailsCloneStrip, tmDetailsCreateModel, tmDetailsRefused, tmDetailsR
  */
 function declaring(descriptor: TmEntityDescriptor, members: Record<string, unknown>): TmEntityDescriptor {
   return Object.create(descriptor, { declaration: { value: { ...descriptor.declaration, ...members } } }) as TmEntityDescriptor;
+}
+
+/**
+ * A model's members that hold a value: the completion's nulls left out.
+ *
+ * @param model - The model.
+ * @returns Its members that are not null.
+ */
+function valued(model: TmJsonObject): TmJsonObject {
+  return Object.fromEntries(Object.entries(model).filter(([, value]) => value !== null));
 }
 
 /** A customer as `customers/get` returns it, with a contact and an image. */
@@ -54,14 +64,23 @@ describe('the details model rules', () => {
   describe('a new record', () => {
     it('starts with every child collection empty and every non-nullable flag the client writes false', () => {
       // A role's IsPublic is the client's to write; its IsActive is the server's, so a new record leaves it out.
-      expect(tmDetailsCreateModel(rig.entities.get('core.Role'))).toEqual({ permissions: [], isPublic: false });
-      expect(tmDetailsCreateModel(rig.entities.get('acme.Customer'))).toEqual({ contacts: [] });
+      expect(valued(tmDetailsCreateModel(rig.entities.get('core.Role')))).toEqual({ permissions: [], isPublic: false });
+      expect(valued(tmDetailsCreateModel(rig.entities.get('acme.Customer')))).toEqual({ contacts: [] });
+    });
+
+    it('holds null for every other member the client writes, so each has a form field, and leaves out what the server writes', () => {
+      const model = tmDetailsCreateModel(rig.entities.get('acme.Customer'));
+
+      expect(model).toEqual(expect.objectContaining({ code: null, name: null, customerType: null, creditLimit: null, currencyId: null, imageId: null }));
+      expect(Object.keys(model)).not.toContain('id');
+      expect(Object.keys(model)).not.toContain('isActive');
+      expect(Object.keys(model)).not.toContain('createdAt');
     });
 
     it("merges the declaration's defaults over them", () => {
       const role = declaring(rig.entities.get('core.Role'), { defaults: () => ({ isPublic: true, code: 'R' }) });
 
-      expect(tmDetailsCreateModel(role)).toEqual({ permissions: [], isPublic: true, code: 'R' });
+      expect(valued(tmDetailsCreateModel(role))).toEqual({ permissions: [], isPublic: true, code: 'R' });
     });
 
     it('is a fresh object each time, so no edit reaches the next new record', () => {
@@ -69,6 +88,27 @@ describe('the details model rules', () => {
 
       expect(tmDetailsCreateModel(descriptor)).not.toBe(tmDetailsCreateModel(descriptor));
       expect(tmDetailsCreateModel(descriptor)['contacts']).not.toBe(tmDetailsCreateModel(descriptor)['contacts']);
+    });
+  });
+
+  describe("a record's completion", () => {
+    it('adds null for each member the client writes and the read omitted, in the record and its loaded child rows', () => {
+      const descriptor = rig.entities.get('acme.Customer');
+      const read = { id: 5, name: 'Al Noor', contacts: [{ id: 11, name: 'Huda' }] };
+      const completed = tmDetailsComplete(read, descriptor, (entity) => rig.entities.get(entity));
+
+      expect(completed).toEqual(expect.objectContaining({ id: 5, name: 'Al Noor', code: null, currencyId: null }));
+      expect(Object.keys(completed)).not.toContain('isActive');
+      expect(completed['contacts']).toEqual([{ id: 11, name: 'Huda', customerId: null, email: null }]);
+      expect(read).toEqual({ id: 5, name: 'Al Noor', contacts: [{ id: 11, name: 'Huda' }] });
+    });
+
+    it('returns the record itself when it lacks nothing, and never adds a collection the read left out', () => {
+      const descriptor = rig.entities.get('acme.Customer');
+      const once = tmDetailsComplete({ id: 5 }, descriptor, (entity) => rig.entities.get(entity));
+
+      expect(tmDetailsComplete(once, descriptor, (entity) => rig.entities.get(entity))).toBe(once);
+      expect(Object.keys(once)).not.toContain('contacts');
     });
   });
 

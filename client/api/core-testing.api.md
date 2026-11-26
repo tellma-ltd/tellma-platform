@@ -294,6 +294,41 @@ export class TmFakeTelemetry extends TmTelemetry {
 }
 
 // @public
+export interface TmFieldGeometry {
+    readonly boxHeight: number;
+    readonly boxTop: number;
+    readonly boxWidth: number;
+    readonly cellHeight: number;
+    readonly labelHeight: number;
+}
+
+// @public
+export class TmFieldHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    getErrors(): Promise<string[]>;
+    getFormField(): Promise<TmFormFieldHarness | null>;
+    getGeometry(): Promise<TmFieldGeometry>;
+    getHint(): Promise<string | null>;
+    getLabel(): Promise<string>;
+    getMode(): Promise<TmFieldMode>;
+    getPath(): Promise<string>;
+    getValueText(): Promise<string | null>;
+    static hostSelector: string;
+    isLocked(): Promise<boolean>;
+    isWide(): Promise<boolean>;
+    static with(options?: TmFieldHarnessFilters): HarnessPredicate<TmFieldHarness>;
+}
+
+// @public
+export interface TmFieldHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+    readonly path?: string;
+}
+
+// @public
+export type TmFieldMode = 'edit' | 'loading' | 'view';
+
+// @public
 export class TmPageContextHarness {
     action(id: string): TmPageAction | undefined;
     actions(): readonly TmPageAction[];

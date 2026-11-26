@@ -17,6 +17,7 @@ export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmExpressionEditorHarness, type TmExpressionEditorChip } from './src/tm-expression-editor-harness';
+export { type TmFieldGeometry, TmFieldHarness, type TmFieldHarnessFilters, type TmFieldMode } from './src/tm-field-harness';
 export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';

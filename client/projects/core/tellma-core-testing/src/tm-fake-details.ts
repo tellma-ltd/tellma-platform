@@ -20,10 +20,12 @@ import {
   type TmDetailsSource,
   type TmDetailsStatus,
   ɵTM_DETAILS_CONTEXT,
+  ɵTM_DETAILS_RECORD,
   ɵtmDetailsCreateModel,
   type ɵTmDetailsHostView,
   ɵTmDetailsRecordState,
 } from '@tellma/core/details';
+import { TmUploads } from '@tellma/core/entity';
 
 // A details context for a layout's unit test (spec 0031 §1): the real
 // record state, with its form, dirty rule, refusals and registrations, over
@@ -62,7 +64,7 @@ export interface TmFakeDetails<T> extends TmDetailsContext<T> {
   readonly busy: WritableSignal<boolean>;
   /** The commands the layout called, oldest first. */
   readonly calls: Signal<readonly TmFakeDetailsCall[]>;
-  /** The providers that give a component under test this context through `injectTmDetails()`. */
+  /** The providers that give a component under test this context through `injectTmDetails()`, and the layout kit its record. */
   readonly providers: Provider[];
   /**
    * Takes a read's record as the server copy, as a read landing does, and turns `ready`.
@@ -283,6 +285,11 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
       host.status.set('ready');
     },
   };
-  fake.providers.push({ provide: ɵTM_DETAILS_CONTEXT, useValue: fake });
+  // The layout kit reads the record itself, and its edit controls the record's uploads.
+  fake.providers.push(
+    { provide: ɵTM_DETAILS_CONTEXT, useValue: fake },
+    { provide: ɵTM_DETAILS_RECORD, useValue: record },
+    { provide: TmUploads, useValue: record.uploads },
+  );
   return fake;
 }

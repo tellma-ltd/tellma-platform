@@ -19,6 +19,7 @@ import {
   type TmValueDescriptor,
 } from '@tellma/core';
 import { TmEntityFieldHarness, TmEntityMultiFieldHarness } from '@tellma/core-testing';
+import { TmUploads } from '@tellma/core/entity';
 import { TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmImage } from '@tellma/core-ui/image';
@@ -35,7 +36,6 @@ import {
 
 import { tmSettle } from '../../src/routes/tm-app.testing.util';
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
-import { TmUploads } from './tm-uploads';
 import { TmValueEditor } from './tm-value-editor';
 
 // The value editor in a form over the entity registry's test app: one

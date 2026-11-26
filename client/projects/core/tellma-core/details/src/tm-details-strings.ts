@@ -5,7 +5,7 @@
 
 import type { TmStringTree } from '@tellma/core';
 
-// The details page's English strings (spec 0031 §3.4, §5.1–§5.3, §10.1),
+// The details page's English strings (spec 0031 §3.4, §5.1–§5.3, §6, §10.1),
 // merged under `tm.details` when the page first renders. A language pack
 // carries the same tree; the Arabic one is @tellma/locale-ar/details-strings.
 
@@ -32,4 +32,8 @@ export const TM_DETAILS_STRINGS_EN = {
     keep: 'Keep editing',
   },
   outsideFilter: "Your “{permission}” permission doesn't cover this record.",
+  readOnly: 'Read only',
+  hasErrors: '{label}, has errors',
+  audit: 'Audit info',
+  aside: 'Related information',
 } as const satisfies TmStringTree;

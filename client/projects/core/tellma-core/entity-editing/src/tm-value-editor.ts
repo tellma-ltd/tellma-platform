@@ -47,13 +47,12 @@ import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmMultiSelect } from '@tellma/core-ui/multi-select';
-import { ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, type ɵTmEditorKind } from '@tellma/core/entity';
+import { ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, TmUploads, type ɵTmEditorKind } from '@tellma/core/entity';
 
 import { ɵTmExactBinding } from './tm-exact-binding';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
 import { TmEntityField } from './tm-entity-field';
 import { TmEntityMultiField } from './tm-entity-multi-field';
-import { TmUploads } from './tm-uploads';
 
 // A typed value in edit mode (spec 0029 §12.2's control column): the one
 // control a value descriptor takes, bound to a Signal Forms field and placed

@@ -18,6 +18,7 @@ import { TmConfirmHarness } from '@tellma/core-ui-testing';
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmLoadTestPage, tmSettle, tmSettleUntil, TmTestPage } from '../../src/routes/tm-app.testing.util';
 import { injectTmDetails } from './tm-details-context';
+import { TmDetailsKit } from './tm-details-kit';
 
 // The routed details host over the recorded customer model, with a layout
 // that registers one field: the load, view → edit → cancel with no request,
@@ -70,6 +71,19 @@ class TmTestDetailsLayout {
   }
 }
 
+/** A layout in the kit: a half card, an aside and a title extra. */
+@Component({
+  selector: 'tm-test-kit-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-card width="half"><tm-field path="Code" /></tm-details-card>
+    <tm-details-card width="half"><tm-field path="Name" /></tm-details-card>
+    <tm-details-aside titleKey="Code"><p class="tm-test-layout__aside">Related</p></tm-details-aside>
+    <ng-template tmDetailsTitleExtra><span class="tm-test-layout__extra">Draft</span></ng-template>
+  `,
+})
+class TmTestKitLayout {}
+
 /** A read the test answers when it chooses. */
 interface TmPendingRead {
   /** The read's call. */
@@ -105,6 +119,17 @@ function saved(id: number, name: string): TmJsonObject {
   const result = customer(id);
   const [entity] = result['entities'] as TmJsonObject[];
   return { ...result, entities: [{ ...entity, name }] };
+}
+
+/**
+ * A model as the wire would carry it, without the nulls the working copy
+ * holds for each member the client writes, which give every member a form field.
+ *
+ * @param model - The model.
+ * @returns Its JSON, nulls dropped.
+ */
+function valued(model: TmJsonObject): unknown {
+  return JSON.parse(JSON.stringify(model, (_key, value: unknown) => (value === null ? undefined : value)));
 }
 
 /** An offline failure, as the API client raises it. */
@@ -443,7 +468,7 @@ describe('the details host', () => {
     expect(await page.getTitle()).toBe('New customer');
     expect(await page.getMode()).toBe('edit');
     expect(await page.getBadges()).toEqual([]);
-    expect(latest()!.details.model()).toEqual({ contacts: [] });
+    expect(valued(latest()!.details.model())).toEqual({ contacts: [] });
 
     // The app opened another page before this one, so Cancel goes Back to it;
     // the history moves, which the testing router does not follow.
@@ -462,7 +487,7 @@ describe('the details host', () => {
     const details = latest()!.details;
     expect([details.mode(), details.id(), details.dirty()]).toEqual(['create', null, false]);
     // The form tracks each child row by a symbol of its own, which the wire never carries.
-    expect(JSON.parse(JSON.stringify(details.model()))).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
+    expect(valued(details.model())).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
   });
 
   it('keeps Save disabled while the copied record loads', async () => {
@@ -574,6 +599,22 @@ describe('the details host', () => {
     await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
     expect(await page.getErrorState()).toBeNull();
     expect(await page.getTitle()).toBe(nameOf(5));
+  });
+
+  it("renders a kit layout's cards as the band's grid items, its aside in a labelled column and its title extra after the badges", async () => {
+    tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestKitLayout));
+    await start();
+    await open('/17/customers/5');
+    await tmSettleUntil(() => document.querySelector('.tm-details__aside .tm-test-layout__aside') !== null, 'the aside renders');
+
+    const layout = document.querySelector<HTMLElement>('.tm-details__cards > tm-test-kit-layout')!;
+    const aside = document.querySelector<HTMLElement>('aside.tm-details__aside')!;
+    expect(getComputedStyle(layout).display).toBe('contents');
+    expect(document.querySelectorAll('.tm-details__cards > tm-test-kit-layout > .tm-details-card--half')).toHaveLength(2);
+    expect(document.querySelector('.tm-details__columns')!.classList).toContain('tm-details__columns--aside');
+    expect(aside.getAttribute('aria-label')).toBe('Code');
+    expect(document.querySelector('tm-test-kit-layout .tm-test-layout__aside')).toBeNull();
+    expect(document.querySelector('[tmpagetitleextra] .tm-test-layout__extra, .tm-details__badge .tm-test-layout__extra')).not.toBeNull();
   });
 
   it('ends Save cleanly when the page is left while the write runs', async () => {

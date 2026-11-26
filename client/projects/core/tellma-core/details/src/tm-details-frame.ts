@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { LocationStrategy, NgComponentOutlet } from '@angular/common';
+import { LocationStrategy, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -19,11 +19,13 @@ import {
   untracked,
   viewChild,
   ViewContainerRef,
+  ViewEncapsulation,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { TM_BREAKPOINTS } from '@tellma/core-ui';
 import { TmBadge } from '@tellma/core-ui/badge';
 import { TmButton } from '@tellma/core-ui/button';
+import { TmCard } from '@tellma/core-ui/card';
 import { TmIcon, TmIconRegistry } from '@tellma/core-ui/icon';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmProgressBar } from '@tellma/core-ui/progress';
@@ -48,7 +50,11 @@ import { TmDetailsController } from './tm-details-controller';
 // rows (the crumb, the title and the badges; the toolbar), the body band
 // with its progress bar and status strip, the layout in the record's own
 // injector or the read's error state, and the one polite status region. It
-// registers the page actions the toolbar's buttons are views of.
+// registers the page actions the toolbar's buttons are views of. The band
+// lays the layout's cards out (half cards pair from md) beside the layout's
+// aside, a sticky column from lg; its rules reach the layout's own
+// elements, so the frame is not encapsulated and every selector is
+// namespaced under .tm-details.
 
 /** The icons the frame draws, registered when it first renders. */
 const ICONS = {
@@ -67,8 +73,22 @@ let nextFrame = 0;
 /** The details page's header, band and status, over the host's state. Internal: the routed host and the source page render it. */
 @Component({
   selector: 'tm-details-frame',
-  imports: [NgComponentOutlet, RouterLink, TmBadge, TmButton, TmDisplayName, TmIcon, TmPageHeader, TmProgressBar, TmSkeleton, TmTooltip],
+  imports: [
+    NgComponentOutlet,
+    NgTemplateOutlet,
+    RouterLink,
+    TmBadge,
+    TmButton,
+    TmCard,
+    TmDisplayName,
+    TmIcon,
+    TmPageHeader,
+    TmProgressBar,
+    TmSkeleton,
+    TmTooltip,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
   template: `
     <!-- Rows 1 and 2: the header. -->
     <tm-page-header>
@@ -103,6 +123,10 @@ let nextFrame = 0;
         <span tmPageTitleExtra class="tm-details__badge" [class.tm-details__badge--hidden]="!dirty()">
           <tm-badge tone="warning" dot>{{ text('unsaved') }}</tm-badge>
         </span>
+      }
+      <!-- The layout's title extras, after the badges, each in a box of its own. -->
+      @for (extra of titleExtras(); track extra) {
+        <span tmPageTitleExtra class="tm-details__badge"><ng-container [ngTemplateOutlet]="extra" /></span>
       }
 
       <!-- Row 2, leading: Edit, New and the Actions menu in view mode; Save and Cancel in edit and create mode. -->
@@ -209,10 +233,24 @@ let nextFrame = 0;
           <!-- The read's error state, with its way out to the list. -->
           <ng-container #errorSlot />
         } @else if (controller.record(); as record) {
-          <!-- The layout, in the record's own injector: a re-key renders a fresh one. -->
-          @if (controller.layout(); as layout) {
-            <ng-container *ngComponentOutlet="layout; injector: record.injector" />
-          }
+          <div class="tm-details__columns" [class.tm-details__columns--aside]="record.aside() !== null">
+            <!-- The main column: the layout, in the record's own injector, whose cards are the column's grid items; a re-key renders a fresh one. -->
+            <div class="tm-details__main">
+              <div class="tm-details__cards">
+                @if (controller.layout(); as layout) {
+                  <ng-container *ngComponentOutlet="layout; injector: record.injector" />
+                }
+              </div>
+            </div>
+            <!-- The layout's aside: a sticky column at the inline end from lg up, a card after the main cards below. -->
+            @if (record.aside(); as aside) {
+              <aside #aside class="tm-details__aside" [attr.aria-label]="aside.title() || text('aside')">
+                <tm-card [heading]="aside.title() || undefined" flush>
+                  <div class="tm-details__aside-body"><ng-container [ngTemplateOutlet]="aside.template" /></div>
+                </tm-card>
+              </aside>
+            }
+          </div>
         }
       </section>
     </div>
@@ -222,7 +260,7 @@ let nextFrame = 0;
   `,
   styles: `
     /* The frame fills the shell's main and splits it into the header and the band. */
-    :host {
+    .tm-details {
       display: flex;
       flex-direction: column;
       block-size: 100%;
@@ -296,13 +334,17 @@ let nextFrame = 0;
       white-space: nowrap;
     }
 
+    /* The band: a size container, so the aside can be as tall as its visible height. */
     .tm-details__band {
+      --tm-details-band-padding: var(--page-header-padding-x);
+
+      container: tm-details-band / size;
       display: flex;
       flex: 1 1 auto;
       flex-direction: column;
       gap: 10px;
       min-block-size: 0;
-      padding: var(--page-header-padding-x);
+      padding: var(--tm-details-band-padding);
       overflow: auto;
       border-block-start: var(--border-width) solid var(--border-subtle);
       background: var(--surface-subtle);
@@ -317,8 +359,74 @@ let nextFrame = 0;
       }
 
       .tm-details__band {
-        padding: var(--page-header-padding-narrow);
+        --tm-details-band-padding: var(--page-header-padding-narrow);
+
         scroll-padding-block-start: 44px;
+      }
+    }
+
+    /* The columns: the main one, then the aside below it, or beside it from lg. */
+    .tm-details__columns {
+      display: grid;
+      flex: none;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .tm-details__main {
+      min-inline-size: 0;
+      container-type: inline-size;
+    }
+
+    /* The cards: they stack; half cards pair up while the column is at least md wide. */
+    .tm-details__cards {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    /* The layout's own element takes no box: its children are the column's grid items. */
+    .tm-details .tm-details__cards > * {
+      display: contents;
+    }
+
+    .tm-details__cards > * > *,
+    .tm-details__cards .tm-details-card {
+      grid-column: 1 / -1;
+    }
+
+    @container (width >= 768px) {
+      .tm-details__cards {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .tm-details__cards .tm-details-card--half {
+        grid-column: auto;
+      }
+    }
+
+    .tm-details__aside-body {
+      padding: var(--card-body-padding);
+    }
+
+    /* From lg: the aside is a column of its own, 272 px (320 px from xxl), sticky and as tall as the band's visible height. */
+    @container tm-details-band (width >= 992px) {
+      .tm-details__columns--aside {
+        grid-template-columns: minmax(0, 1fr) 272px;
+      }
+
+      .tm-details__aside {
+        position: sticky;
+        inset-block-start: 0;
+        max-block-size: 100cqb;
+        overflow: auto;
+      }
+    }
+
+    @container tm-details-band (width >= 1440px) {
+      .tm-details__columns--aside {
+        grid-template-columns: minmax(0, 1fr) 320px;
       }
     }
 
@@ -361,6 +469,12 @@ export class TmDetailsFrame implements OnInit {
 
   /** Whether every button is labelled: the header reaches `xl`. */
   protected readonly wide = computed(() => this.#width() >= TM_BREAKPOINTS.xl);
+
+  /** The layout's title extras, which follow the badges. */
+  protected readonly titleExtras = computed(() => this.controller.record()?.titleExtras() ?? []);
+
+  /** The aside column, while the layout has an aside. */
+  protected readonly asideElement = viewChild<ElementRef<HTMLElement>>('aside');
 
   /** The read's error state's slot. */
   protected readonly errorSlot = viewChild('errorSlot', { read: ViewContainerRef });
@@ -465,6 +579,19 @@ export class TmDetailsFrame implements OnInit {
       const observer = new ResizeObserver(([entry]) => this.#width.set(entry?.contentRect.width ?? element.clientWidth));
       observer.observe(element);
       destroyRef.onDestroy(() => observer.disconnect());
+    });
+
+    // --- The aside column's scroll is remembered with the record's (spec 0031 §6.7) ---
+    effect((onCleanup) => {
+      const aside = this.asideElement()?.nativeElement;
+      const record = controller.record();
+      if (aside !== undefined && record !== null) {
+        untracked(() => {
+          const lifetime = Injector.create({ providers: [], parent: this.#injector });
+          record.registerScroller('aside', aside, lifetime.get(DestroyRef));
+          onCleanup(() => lifetime.destroy());
+        });
+      }
     });
 
     // --- The read's error state, from the error presenter, loaded on first use ---
