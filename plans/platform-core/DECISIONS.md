@@ -384,6 +384,16 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-376 (2026-11-26): PC-F91 landed; PC-F109 released; PC-F110 in pc-f3
+
+PC-F91 landed at 068d4cc7 as a fast-forward over 79143ecf, on green CI 45859734290. PC-F109 (held 42a81780 after a one-minor R1 and its fix1, so no R2) is a blocking fix, so per D-229 it is released ahead of PC-F92, PC-F95, PC-F96, PC-129 and PC-128. The freed fix slot pc-f3 takes PC-F110, the Windows vitest hang, because it can turn any integration's CI red. check_deps also lists PC-123 (T1), but every T1 slot is occupied and T1 items do not take fix slots, so it waits for the next T1 slot to free up.
+
+### D-375 (2026-11-26): PC-F91 integration accepted with a self-built harnessed webroot
+
+PC-F91 integrated at 068d4cc7. Platform-core's newly merged search host and launcher still imported the lucide index, which put searchRoute at 110.76, over its 110 error. Converting them to per-icon imports brought it to 109.79. Acme initialJs is 225.08, about 2 KB under platform-core alone.
+
+The PC-F86 lazy-delay harness adds wrapper bytes that put searchRoute at 110.06. The harnessed host build therefore stops at its output checks, after the service-worker and source-map steps have run. The agent built the harnessed Acme itself, confirmed the budget was the only error, and served that build to the same specs through TELLMA_E2E_WEBROOT: 29 passed, 8 skipped. Ruling: accepted. The harness is a test instrument and its bytes are not shipped, so no ceiling moves. Note for PC-128 and anything else touching ./search: searchRoute has 0.21 KB of headroom on platform-core once PC-F91 lands, so the harnessed build will keep failing on budget until the PC-128 re-split lands.
+
 ### D-374 (orchestrator, 2026-11-26): PC-122 landed; PC-F91 is released; PC-F109 takes pc-3
 
 - PC-122 landed at eac329c5, with CI 45845091482 green on that commit, as a fast-forward over 251bb6bd.
