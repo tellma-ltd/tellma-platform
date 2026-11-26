@@ -384,6 +384,32 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-361 (orchestrator, 2026-11-26): PC-F89 landed; PC-F94 is released; PC-F95 takes pc-f2
+
+- PC-F89 landed at 53e3a0e7, with CI 45804982828 green on 7ef1a090. The plans-only merge 53e3a0e of the 60b30c4e snapshot sits on top.
+- PC-F94 is released next (D-358). It merges platform-core, checks the newly merged code for uses of the test metadata it changed, and integrates.
+- pc-f2 is a fix slot. No blocking fix is open, so the first non-blocking fix in ledger order takes it (D-229): PC-F95, the Windows CI build stall. Branched at 53e3a0e7.
+- The release queue after PC-F94 is PC-122, then PC-F91, then PC-F92.
+
+### D-360 (orchestrator, 2026-11-26): PC-F92 R2 rulings
+
+- R2 on a86e609f..c4626210 is 0 blocking, 0 major, 1 minor. R1-1 is closed, and no other list in the repo misses keys.
+- R2-1 is fixed in fix2: Deviation 2 also names spec 0010's lines that the keys exemption makes untrue (998-999, 2016, 2233). That goes to Ahmad with the spec 0023 §1 and §3.2 deviations.
+- fix2 is the last round (§4.4). PC-F92 is then held and joins the end of the release queue, after PC-F91.
+
+### D-359 (orchestrator, 2026-11-26): PC-129 R1 rulings
+
+- R1 on f9a42802 is 1 blocking, 3 major, 3 minor. Fix1 follows, then R2 at xhigh (§4.4).
+- R1-1, blocking: the working-copy completion writes null to a cloned child row's parent key, a non-nullable int, so a clone with contacts fails to save. Fixed in fix1, with a test on the raw save body.
+- R1 confirmed the completion otherwise changes nothing a save clears: a whole-entity save already writes null over absent members (spec 0016 §3.10).
+- R1-2 is fixed: a failed edit-side load is retried.
+- R1-3: spec 0031 §18 requires Acme's credit-limit rule, so dropping it is not accepted.
+  - validate becomes lazy, loaded with the layout, so a rule file can import @angular/forms/signals as the §7.2 example does without reaching the initial bundle.
+  - R1's injection shape is the fallback only if the lazy shape misses a budget.
+  - Either is a contract change for Ahmad.
+- R1-4, R1-5 and R1-7 are fixed. R1-6 is accepted if small, which makes §6.6's example work and drops that deviation.
+- R1 warns that /details has about 4.4 KB left under spec 0031's 23 KB for the rest of the spec. Later 0031 checkpoints must plan for that.
+
 ### D-358 (orchestrator, 2026-11-26): PC-154 landed; PC-F89 is released; PC-128 takes pc-2
 
 - PC-154 landed at f2630982, with CI 45798240642 green on c31b8e31. The plans-only merge f263098 of the b369d68a snapshot sits on top.
