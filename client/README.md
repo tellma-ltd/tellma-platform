@@ -33,7 +33,7 @@ pnpm run e2e            # Playwright behavioral/a11y/RTL suite against the showc
 pnpm run lint           # ESLint (tm- rules, entry-point boundaries, decimal rules) + stylelint (token sizing, breakpoints)
 pnpm run typecheck      # the core, core-testing, core-tools and core-ui programs incl. files no build compiles (examples, specs)
 pnpm run typecheck:emitted # core and core-testing again, against the entity declarations the platform alone emits
-pnpm run lint:test      # the custom lint rules' own unit tests, the core-tools specs + MCP smoke tests
+pnpm run lint:test      # the custom lint rules' own unit tests, the core-tools specs, MCP smoke tests + workspace checks
 pnpm run tokens:check   # token schema + missing-ref gate (contrast is axe's job in e2e)
 pnpm run api:check      # public-API goldens (client/api/*.api.md)
 pnpm run api:approve    # accept an INTENDED public-API change (commit the diff)
@@ -62,6 +62,14 @@ ESLint and stylelint configs load its built presets, as a distribution's would.
 `lint:test` then runs in two groups (`tools/vitest.config.mts`): every other spec file in
 parallel, then the core-tools fixture build spec alone, so its real `ng build` never competes
 with the other specs for the machine.
+
+Among them, `tools/tests/vitest-instances.spec.mts` checks the install itself: in every workspace
+package whose `angular.json` has an `@angular/build:unit-test` target (this workspace and each
+distribution's Client project), Angular's builder and the browser provider must reach one copy of
+Vitest and one of Vite. pnpm links a copy of a package for each set of peers it resolves, and Vite
+takes sass as an optional peer, so a second sass in the graph once left Acme's unit run on two
+copies of each. The `sass` override in `pnpm-workspace.yaml` keeps the one `@angular/build` pins,
+and the check also fails when the two differ, so raise the override with `@angular/build`.
 
 **Changing a public API?** `api:check` fails on any drift; review the surface
 change, run `api:approve`, and commit the golden diff alongside the code. The
