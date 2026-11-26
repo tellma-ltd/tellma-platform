@@ -384,6 +384,29 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-358 (orchestrator, 2026-11-26): PC-154 landed; PC-F89 is released; PC-128 takes pc-2
+
+- PC-154 landed at f2630982, with CI 45798240642 green on c31b8e31. The plans-only merge f263098 of the b369d68a snapshot sits on top.
+- PC-F89 is released next. Both flakes that turned its CI red are fixed on platform-core (PC-F105 and PC-F106). It merges platform-core and integrates again. PC-F94 follows it.
+- check_deps --ready now lists PC-128 (T1), made ready by PC-154. pc-2 is a checkpoint slot, so PC-128 takes it (D-229), branched at f2630982.
+- The release queue after PC-F89 is PC-F94, then PC-122, then PC-F91.
+
+### D-357 (orchestrator, 2026-11-26): PC-F92 R1 rulings
+
+- R1 on a86e609f is 1 blocking, 0 major, 1 minor.
+- R1-1 is blocking: the new keys folder is in neither additions registry, so the PR-tier additions-axe registry test fails. Fixed in fix1, and fix1 also checks every other folder enumeration for keys.
+- R1-2 is fixed: the deviation also covers spec 0023 §1's copy row.
+- R1 found the 0.28 B margin on @tellma/core "." is hash noise from re-hashed lazy chunk names, not growth. After PC-154 lands, "." has a 54.5 ceiling, and the merge re-measures.
+- Because a finding is blocking, R2 runs at xhigh after fix1 (§4.4).
+
+### D-356 (orchestrator, 2026-11-26): PC-154 integration rulings
+
+- PC-154 merged e83e61c5 and pushed c31b8e31. CI 45798240642 is running.
+- Six conflicts were resolved on content, keeping both sides. Accepted.
+- The delayed e2e caught the About tab growing 20.8 px at 390 px when the update service arrived. The fix is in product code: the Diagnostics panel shows the version that service will report until it loads. Accepted, since the test is not loosened.
+- The tm-about-dialog chunk ceiling goes from 3.5 to 4, its second raise. It is within D-031: PC-154 adds 0.84 KB over the 3 KB it had before, which rounds up to 1. A third raise would need a re-split.
+- As the second to land, PC-154 re-measured (D-214): Acme initialJs 224.19, under 230 with no warning, up 1.06 from bf0dc0f5.
+
 ### D-355 (orchestrator, 2026-11-26): PC-F106 landed; PC-154 is released; PC-F92 takes pc-1
 
 - PC-F106 landed at e83e61c5, with CI 45780628722 green on 89106096. The plans-only merge e83e61c of the 41c2bb02 snapshot sits on top. Its flaky-table row is marked fixed.
