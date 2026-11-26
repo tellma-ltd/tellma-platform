@@ -47,24 +47,41 @@ every node is the build's own and writes everything here.
 The script first asks the build to stop, then kills it 30 seconds later if it is still running.
 On Linux it sends SIGINT, which MSBuild takes as a Ctrl+C: it cancels the build, logs a warning
 MSB4220 for each task it is still waiting on, and, once every task has stopped, writes the binary
-log out in full. A task that ignores the cancellation keeps the build running until the kill. Git
-Bash on Windows cannot send a Ctrl+C to a native program (SIGINT does nothing there), so the script
-sends SIGTERM, which ends the build's processes outright. A build stalled on a tool it started can
-lose only that tool and then fail on its own, with a complete binary log.
+log out in full. `timeout` sends the signal to the build's whole process group, though, so the
+tools and worker nodes the build started, and a compiler server it started in that group, get the
+SIGINT directly too: a stalled tool usually dies of it before MSBuild cancels it (error MSB3073,
+exit code 130). A task that ignores the cancellation keeps the build running until the kill.
+Git Bash on Windows cannot send a Ctrl+C to a native program (SIGINT does nothing there), so the
+script sends SIGTERM, which ends the build's processes outright. On both, a build stalled on a tool
+it started can lose only that tool and then fail on its own, with a complete binary log.
 
 It then fails with exit code 124 (the build stopped when asked) or 137 (it had to be killed), and
 writes into the step log, with no artifact to download:
 
 - an `::error` annotation that says which of the two happened, and whether the binary log is
   complete;
+- the errors and warnings the text log shows since the stop that name what the stop ended: MSB3073
+  (a tool failed), MSB4220 (a task was cancelled) and MSB4166 (a worker node ended), each with its
+  project;
 - the projects the text log shows starting and not finishing, with the time each was requested and
-  its node;
+  its node, and with how many of its instances are still open when one project builds several
+  times at once (once per target framework, say);
 - the compilations the compiler logs show requested and never answered: a compile waiting on the
   compiler server;
+- the compilations the compiler server did not complete: a compile it failed or refused, after
+  which the client compiled it itself, which points at a stopped or stuck server;
 - the last 40 lines of the text log.
 
+Each list says how many starts, finishes, requests and answers its parser read, so that a log it
+could not read shows as 0 rather than as nothing pending. The script sets
+`DOTNET_CLI_UI_LANGUAGE=en`, since the parsers read MSBuild's English messages.
+
 A 137 before the limit means something else killed the build, such as the out-of-memory killer;
-the script reports the same evidence for it.
+the script reports the same evidence for it, counting from the build's start.
+
+The extra logging made a full Release rebuild of the solution about 5 to 7% slower on a
+development machine, within the noise of the measurement; the build step's duration on CI is the
+cost that counts.
 
 CI uploads the evidence folder as an artifact when the build step fails or is cancelled. Set the
 step's own `timeout-minutes` a little above the script's limit plus the 30-second grace, so that
