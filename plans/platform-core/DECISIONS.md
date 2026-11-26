@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
+
+PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
+
+The orchestrator does not run the push itself, which would launder the agent's denial. PC-F110 keeps pc-f3 and waits for Ahmad's approval; that approval covers this one push (D-264, D-284).
+
+A blocked item is skipped, not waited on (D-319), so PC-F111 is released to integrate. Its integration push goes to pc/PC-F111. If its own land push is denied the same way, it waits beside PC-F110.
+
 ### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
 
 PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.
