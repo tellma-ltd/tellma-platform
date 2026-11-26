@@ -75,7 +75,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/tiles` | `tm-tiles` + `tmTileContent` / `tmTilesEmpty` / `tmTilesLoading` — rows as a virtualized lattice of fixed-size tiles (an image and four text corners each) that becomes a divided list on narrow containers, on the data grid's selection, activation and driver members |
 | `@tellma/core-ui/tiles-tree` | `TmTilesTree` (`tm-tiles[parentId]`) — tree mode for `tm-tiles`: a single-column tree over flat rows with two-way expansion and batched lazy children, in its own entry point so a flat list never downloads it |
 | `@tellma/core-ui/overlay` | `tmCreateAnchoredOverlay`, `tmLogicalPositions` and `tmPushEscapeDismissal` — the anchoring and the one Escape stack every Tellma overlay shares, for overlays built outside the library; also the `ɵ` top-layer wiring that orders the page-wide layers (modals, then the toasts, then a blocking busy overlay), and the `ɵ` touch and pen long-press observer the menu's context trigger, the tooltip and the grid share, here so a tooltip reaches it without the menu |
-| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble) — no API goldens, never for app code |
+| `@tellma/core-ui/private` | Unstable wiring shared between Tellma libraries (the validation bubble, and the form-field seams a control provides or injects without loading the field, which `./form-field` re-exports as `TM_FORM_FIELD_CONTROL`) — no API goldens, never for app code |
 
 ## Consuming
 

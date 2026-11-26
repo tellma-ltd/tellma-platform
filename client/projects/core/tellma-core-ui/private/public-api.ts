@@ -17,4 +17,5 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 export { ɵTmErrorPopover } from './tm-error-popover';
+export { ɵTM_FORM_FIELD_CONTROL, ɵTM_FORM_FIELD_HOST } from './tm-form-field-seams';
 export { ɵtmRadioArrowTarget } from './tm-radio-keys';
