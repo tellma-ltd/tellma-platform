@@ -384,6 +384,32 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-388 (2026-11-26): PC-129 integration over searchRoute; the fix is placement, not a raise
+
+PC-129's merged tree puts Acme searchRoute at 111.54 of 110 (fixture 111.56), so it stopped (D-247). By its own attribution the cause is shared-chunk placement:
+- aria's tabs chunk lands beside the expansion chunk that the search host imports;
+- tm-uploads and tm-editor-kind moved into /entity's shared chunk.
+
+The search page uses none of them. Under §8.1 the implementer is resumed with guidance. It commits the merge, moves those modules off the search route's graph with no behaviour change, and must end under 110 with no raise. If it cannot, it stops again with the attribution.
+
+The fix lands as an integration commit. It moves modules and does not change behaviour, so it gets no fresh review (D-364 precedent); the full gate set and integration CI are its check.
+
+### D-387 (2026-11-26): PC-123 R1 rulings
+
+PC-123's R1 found 1/0/6 and accepted all seven deviations.
+
+R1-1 is blocking. On a localhost origin the Angular service worker downloads its whole prefetch group (102 files) before it answers any request. The home page now needs a /dashboards chunk that /tenants has not loaded, so keyboard-errors:67 and automatic-entries:107 fail consistently. The fix is test.use({ serviceWorkers: 'block' }) in specs that do not test the worker, following launch.spec.ts's documented precedent, plus a sweep of every Acme spec exposed the same way. It is not a raised timeout. The older local-watch flaky row (automatic-entries:107, keyboard-errors:67, cold-deep-link:84) gets the same cause. Production origins prefetch at idle, so users are not affected.
+
+R1-2 to R1-7 are all fixed. They cover:
+- a named-condition wait;
+- home-hatch arrival focus;
+- aria-busy on a loading tile;
+- the DST-safe greeting timer;
+- the exported or ɵ tile types;
+- the three missing tests.
+
+PC-167 carries a skeleton-equals-page box check for both layouts. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
 ### D-386 (2026-11-26): PC-F96 landed; PC-129 released; pc-f waits on D-028
 
 PC-F96 landed at 01a3c31b on green CI 45894291651, with a plans-only merge on top. PC-129 is the next held item, so it is released to integrate as the later lander over PC-154, PC-122, PC-F91, PC-F92 and the rest, re-measuring against the thin headroom (D-214). That puts five heavy agents in flight: PC-123's R1, PC-F111, PC-156, PC-128's fix2 and PC-129's integration. The freed fix slot pc-f therefore stays empty until one finishes (D-028). Its next fix is PC-F107, the in-memory TmClientCache for tests and the cause of PC-F106's flake class.
