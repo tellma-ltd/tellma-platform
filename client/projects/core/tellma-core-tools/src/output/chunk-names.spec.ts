@@ -211,11 +211,43 @@ describe('settling the chunks of an optimized build', () => {
     expect(() => tmSettleChunks(unlisted.browser, unlisted.stats)).toThrow(
       /^stats\.json disagrees with chunk-Dd-Ee22F\.js: it names chunk-Bb_-cc11\.js, which the stats do not list among its imports\.$/,
     );
-    const unnamed = write({ ...chunks, 'chunk-Bb_-cc11.js': { text: 'export const a=1;', imports: [{ path: 'chunk-Dd-Ee22F.js', kind: 'import-statement' }] } });
+    // An unreached chunk too: a failing check must leave it, its map and stats.json as they were.
+    const unnamed = write({
+      ...chunks,
+      'chunk-Bb_-cc11.js': { text: 'export const a=1;', imports: [{ path: 'chunk-Dd-Ee22F.js', kind: 'import-statement' }] },
+      'chunk-KECAAUBL.js': { text: 'export const k=1;' },
+    });
+    const before = readFileSync(unnamed.stats, 'utf8');
     expect(() => tmSettleChunks(unnamed.browser, unnamed.stats)).toThrow(
       /^stats\.json disagrees with chunk-Bb_-cc11\.js: the stats list chunk-Dd-Ee22F\.js among its imports, which it does not name\.$/,
     );
-    expect(scripts(unnamed.browser)).toEqual(['chunk-Bb_-cc11.js', 'chunk-Dd-Ee22F.js', 'main-AW45UDH5.js', 'tm-boot.js']);
+    expect(scripts(unnamed.browser)).toEqual(['chunk-Bb_-cc11.js', 'chunk-Dd-Ee22F.js', 'chunk-KECAAUBL.js', 'main-AW45UDH5.js', 'tm-boot.js']);
+    expect(existsSync(join(unnamed.browser, 'chunk-KECAAUBL.js.map'))).toBe(true);
+    expect(readFileSync(unnamed.stats, 'utf8')).toBe(before);
+  });
+
+  it('refuses a new name that another file of the output already has, and writes nothing', () => {
+    const { browser, stats } = write(app());
+    // The leaf is outside any cycle, so its new name is the hash of its own bytes.
+    const leaf = `chunk-${tmContentHash(Buffer.from('export const a=1;', 'utf8'), 8)}.js`;
+    writeFileSync(join(browser, leaf), 'export const other=1;');
+    const before = readFileSync(stats, 'utf8');
+    expect(() => tmSettleChunks(browser, stats)).toThrow(`The content hash of chunk-Bb_-cc11.js gives ${leaf}, which another file of the output already has.`);
+    expect(readFileSync(join(browser, leaf), 'utf8')).toBe('export const other=1;');
+    expect(scripts(browser)).toEqual(['chunk-Bb_-cc11.js', 'chunk-Dd-Ee22F.js', leaf, 'main-AW45UDH5.js', 'tm-boot.js'].sort());
+    expect(readFileSync(stats, 'utf8')).toBe(before);
+  });
+
+  it('refuses two chunks of a cycle that the cycle cannot tell apart, since both would get one name', () => {
+    const { browser, stats } = write({
+      'main-AW45UDH5.js': { text: "const a=()=>import('./chunk-Aa11Aa11.js');export const m=1;" },
+      'chunk-Aa11Aa11.js': { text: "import'./chunk-Bb22Bb22.js';export const s=1;" },
+      'chunk-Bb22Bb22.js': { text: "import'./chunk-Aa11Aa11.js';export const s=1;" },
+    });
+    expect(() => tmSettleChunks(browser, stats)).toThrow(
+      /^The content hash of chunk-(?:Aa11Aa11|Bb22Bb22)\.js gives chunk-[0-9A-Z]{8}\.js, which another file of the output already has\.$/,
+    );
+    expect(scripts(browser)).toEqual(['chunk-Aa11Aa11.js', 'chunk-Bb22Bb22.js', 'main-AW45UDH5.js', 'tm-boot.js']);
   });
 
   it('refuses a chunk the app loads that the build did not write', () => {

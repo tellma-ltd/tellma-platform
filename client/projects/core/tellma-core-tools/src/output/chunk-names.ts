@@ -222,7 +222,9 @@ export function tmSettleChunks(browserDir: string, statsFile: string): TmSettled
   }
   const live = [...reached].sort();
 
-  // --- The chunks no import reaches: deleted once no file names them ---
+  // --- The chunks no import reaches: to be deleted, once no file names them ---
+  // Only checked here; the deletion waits for the write phase, so a check
+  // below that fails the build leaves the output as ng build wrote it.
   const removed = [...chunks].filter((file) => !reached.has(file)).sort();
   if (removed.length > 0) {
     const bases = removed.map((file) => file.split('/').pop()!);
@@ -236,10 +238,6 @@ export function tmSettleChunks(browserDir: string, statsFile: string): TmSettled
       if (mention !== undefined) {
         throw new TmBuildFailure(`${file} names ${mention}, which no import in stats.json reaches from index.html; the stats are not the output's graph.`);
       }
-    }
-    for (const file of removed) {
-      rmSync(path(file), { force: true });
-      rmSync(path(`${file}.map`), { force: true });
     }
   }
 
@@ -332,7 +330,13 @@ export function tmSettleChunks(browserDir: string, statsFile: string): TmSettled
     }
   }
 
-  // --- The chunks, their source maps and index.html, under the new names ---
+  // --- The writes: the unreached chunks gone, then every chunk, map and index.html renamed ---
+  // Every check has passed. The unreached chunks' names stay in the
+  // collision guard's set, so no new name can be one of them.
+  for (const file of removed) {
+    rmSync(path(file), { force: true });
+    rmSync(path(`${file}.map`), { force: true });
+  }
   for (const file of live) {
     const name = names.get(file)!;
     writeFileSync(path(name), texts.get(file)!);
