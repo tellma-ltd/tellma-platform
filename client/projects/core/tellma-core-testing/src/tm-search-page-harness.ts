@@ -141,7 +141,7 @@ export class TmSearchPageHarness extends ComponentHarness {
    * @returns Whether it does.
    */
   async isClearSearchShown(): Promise<boolean> {
-    return !(await (await this.#clearSearch()).hasClass('tm-search-host__clear--hidden'));
+    return !(await (await this.#clearSearch()).hasClass('tm-search-page-field__clear--hidden'));
   }
 
   /** Clicks the search field's clear button, which clears the text as an undoable edit and searches everything. */

@@ -377,6 +377,22 @@ async function held(configure: (host: Host) => void = () => undefined) {
   return { ...result, proxy, land, select, trigger };
 }
 
+/**
+ * Records each time focus leaves an element for no other: a stop on the
+ * body, which a screen reader announces as the page.
+ */
+function bodyStops(): { readonly count: () => number } {
+  let stops = 0;
+  const listener = (event: FocusEvent): void => {
+    if (event.relatedTarget === null) {
+      stops += 1;
+    }
+  };
+  document.addEventListener('focusout', listener, true);
+  onTestFinished(() => document.removeEventListener('focusout', listener, true));
+  return { count: () => stops };
+}
+
 /** A cancelable key press on an element. */
 function keydown(element: HTMLElement, key: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
@@ -416,6 +432,7 @@ describe('the size select before it loads', () => {
     const standIn = proxy()!;
     standIn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }));
     standIn.focus();
+    const stops = bodyStops();
     await land();
     // The press has not ended: the stand-in stays, over an inert select.
     expect(proxy()).toBe(standIn);
@@ -427,6 +444,7 @@ describe('the size select before it loads', () => {
     const harness = await select();
     expect(await harness.isOpen()).toBe(true);
     expect(document.activeElement).toBe(trigger());
+    expect(stops.count()).toBe(0);
     await harness.selectOption('100 per page');
     expect(host.pageSize()).toBe(100);
   });
@@ -435,10 +453,12 @@ describe('the size select before it loads', () => {
     const { proxy, land, select, trigger } = await held();
     const standIn = proxy()!;
     standIn.focus();
+    const stops = bodyStops();
     expect(keydown(standIn, 'ArrowDown').defaultPrevented).toBe(true);
     await land();
     expect(await (await select()).isOpen()).toBe(true);
     expect(document.activeElement).toBe(trigger());
+    expect(stops.count()).toBe(0);
   });
 
   it('feeds the text typed before it lands to the typeahead', async () => {
@@ -458,12 +478,47 @@ describe('the size select before it loads', () => {
     expect(active).toEqual(['100 per page']);
   });
 
-  it('moves focus to the select when the focused stand-in retires', async () => {
-    const { proxy, land, select, trigger } = await held();
-    proxy()!.focus();
+  it('keeps a focused stand-in that nothing was asked of until it loses focus', async () => {
+    const { element, proxy, land, select } = await held();
+    const standIn = proxy()!;
+    standIn.focus();
+    const stops = bodyStops();
     await land();
-    expect(document.activeElement).toBe(trigger());
+    // Focus stays where the user put it: the stand-in, over an inert select.
+    expect(proxy()).toBe(standIn);
+    expect(document.activeElement).toBe(standIn);
+    expect(element.querySelector('tm-select')!.hasAttribute('inert')).toBe(true);
+    expect(stops.count()).toBe(0);
+
+    // Once focus moves on, the stand-in retires and the select takes its place.
+    const next = element.querySelector<HTMLElement>('.tm-pager__next')!;
+    next.focus();
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(proxy()).toBeNull();
+    expect(document.activeElement).toBe(next);
     expect(await (await select()).isOpen()).toBe(false);
+    expect(stops.count()).toBe(0);
+  });
+
+  it('hands focus straight to the trigger on a key pressed after it lands', async () => {
+    const { proxy, land, select, trigger } = await held();
+    const standIn = proxy()!;
+    standIn.focus();
+    await land();
+    const stops = bodyStops();
+    const focused: Element[] = [];
+    const record = (event: FocusEvent): void => void focused.push(event.target as Element);
+    document.addEventListener('focusin', record);
+    onTestFinished(() => document.removeEventListener('focusin', record));
+
+    expect(keydown(standIn, 'ArrowDown').defaultPrevented).toBe(true);
+    await TestBed.inject(ApplicationRef).whenStable();
+    expect(proxy()).toBeNull();
+    expect(await (await select()).isOpen()).toBe(true);
+    expect(document.activeElement).toBe(trigger());
+    // One move, from the stand-in to the trigger: no stop on the body, and no second arrival.
+    expect(focused).toEqual([trigger()]);
+    expect(stops.count()).toBe(0);
   });
 
   it('takes no press or key while disabled', async () => {

@@ -3,7 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Location, NgComponentOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
@@ -30,7 +29,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, NavigationStart, Router, RouterLink } from '@angular/router';
-import { CircleAlert, Columns3, Ellipsis, ExternalLink, Inbox, Link, Plus, RefreshCw, Search, SearchX, X } from 'lucide';
+import { CircleAlert, Columns3, Ellipsis, ExternalLink, Inbox, Link, Plus, RefreshCw, SearchX } from 'lucide';
 import {
   TmApi,
   TmApiError,
@@ -66,14 +65,22 @@ import {
 } from '@tellma/core';
 import { TmFormats, TmValue, tmGridColumnFor, type TmGridColumnConfig } from '@tellma/core/entity';
 import { tmPageStateKey } from '@tellma/core/memory';
-import { TmBreakpoints, ɵtmControlSize } from '@tellma/core-ui';
+import {
+  ɵTmSearchKeys,
+  ɵTmSearchPageField,
+  ɵTmSearchState as TmSearchStateView,
+  ɵtmSearchContextErrors as tmSearchContextErrors,
+  ɵtmSearchDiagnose as tmSearchDiagnose,
+  ɵtmSearchRefusedState as tmSearchRefusedState,
+  type ɵTmSearchRegionState as TmSearchRegionState,
+} from '@tellma/core/search-view';
+import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import {
   TmGrid,
   TmGridColumn,
   TmGridDisplayDef,
-  TmGridDriver,
   TmGridEmptyDef,
   TmGridHeaderAction,
   TmGridHeaderDef,
@@ -88,13 +95,11 @@ import { TmMenu, TmMenuTrigger, type TmMenuItem } from '@tellma/core-ui/menu';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPager } from '@tellma/core-ui/pager';
 import { TmProgressBar } from '@tellma/core-ui/progress';
-import { TmSearch } from '@tellma/core-ui/search-input';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
 import { tmSearchCanonical, tmSearchQuiet, tmSearchText, tmSearchUrl } from './tm-search-canonical';
 import { tmSearchApply, tmSearchResize, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
 import { ɵTM_SEARCH_CONTEXT } from './tm-search-context';
-import { tmSearchDiagnose } from './tm-search-diagnostics';
 import {
   TM_SEARCH_EXPRESSION_LABEL,
   tmSearchColumnKey,
@@ -126,9 +131,7 @@ import {
 } from './tm-search-read';
 import { tmSearchPlan, tmSearchRequest, type TmSearchRequest } from './tm-search-request';
 import { tmSearchColumnsOf, tmSearchResolve, type TmSearchOpening } from './tm-search-resolve';
-import { TmSearchState as TmSearchStateView, type TmSearchRegionState } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
-import { tmSearchCapturesKey, tmSearchInsert, tmSearchOnTop, tmSearchPastedText } from './tm-search-typing';
 
 // The search host (spec 0030 §3, §5, §7, §13.1, §13.4, §14, §19): the page
 // of an entity's search route. It resolves the query state from the URL,
@@ -199,9 +202,6 @@ interface TmSearchPending {
 
 /** No result and no failure: what shows before the first read lands. */
 const NOTHING_HELD: TmSearchHeld = { result: null, failure: null };
-
-/** How long the live region waits after the last key before it speaks, so it never speaks once per keystroke. */
-const ANNOUNCE_QUIET_MS = 500;
 
 /** The last search page's number, which keeps each page's element ids apart. */
 let pages = 0;
@@ -277,7 +277,6 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
-    TmGridDriver,
     TmGridEmptyDef,
     TmGridHeaderAction,
     TmGridHeaderDef,
@@ -289,8 +288,8 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmPageHeader,
     TmPager,
     TmProgressBar,
-    TmSearch,
     TmSearchStateView,
+    ɵTmSearchPageField,
     TmSkeleton,
     TmValue,
   ],
@@ -302,44 +301,17 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     <tm-page-header>
       <h1 tmPageTitle tabindex="-1" [id]="ids.title">{{ title() }}</h1>
 
-      <!-- The search field: a native search input in the field chrome, from the first frame, so the header never
-           shifts. It filters as the user types and drives the results' highlight while focus stays in it; the clear
-           button keeps its slot while hidden, so the text never reflows. -->
-      <span
+      <!-- The search field, from the first frame, so the header never shifts. -->
+      <tm-search-page-field
         tmPageHeaderEnd
-        class="tm-search-host__field"
-        [class.tm-search-host__field--sm]="fieldSize() === 'sm'"
-        [class.tm-search-host__field--lg]="fieldSize() === 'lg'"
-      >
-        <tm-icon class="tm-search-host__magnifier" [svg]="glyphs.search" />
-        <input
-          #field
-          tmSearch
-          class="tm-search-host__input"
-          data-tm-search
-          [tmGridDriver]="driver"
-          [(value)]="fieldText"
-          [attr.maxlength]="maxLength()"
-          [placeholder]="text.search()"
-          [attr.aria-label]="text.search()"
-          [attr.aria-describedby]="ids.title + ' ' + ids.hint"
-          (search)="typed($event)"
-          (keydown)="fieldKey($event)"
-          (blur)="disarm()"
-        />
-        <button
-          type="button"
-          class="tm-search-host__clear"
-          data-tm-search-clear
-          [class.tm-search-host__clear--hidden]="fieldText() === ''"
-          [attr.aria-label]="text.clearSearch()"
-          [title]="text.clearSearch()"
-          (click)="clearField()"
-        >
-          <tm-icon [svg]="glyphs.clear" />
-        </button>
-        <span [id]="ids.hint" hidden>{{ text.searchHint() }}</span>
-      </span>
+        [driver]="driver"
+        [(text)]="fieldText"
+        [maxLength]="maxLength()"
+        [titleId]="ids.title"
+        (searched)="typed($event)"
+        (key)="fieldKey($event)"
+        (left)="disarm()"
+      />
 
       <!-- Create: a link while the user may create, else a button that says why not; icon-only in the narrowest form.
            Each block has one root element, which the header projects by its selector. -->
@@ -542,7 +514,7 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
           <!-- No rows: the region's state in their place, under the header. -->
           <div *tmGridEmpty class="tm-search-host__state">
             @if (region(); as shown) {
-              <tm-search-state [state]="shown" (clear)="clear($event)" (retry)="retry()" />
+              <tm-search-state [state]="shown" [speaker]="keys" (clear)="clear($event)" (retry)="retry()" />
             }
           </div>
         </tm-grid>
@@ -580,7 +552,6 @@ export class TmSearchHost implements OnInit {
   // page routes under a tenant, the first segment of its path.
   readonly #tenantUrls = this.#urls.forTenant(ɵtmRoutedTenant(this.#path)!);
 
-  readonly #announcer = inject(LiveAnnouncer);
   readonly #document = inject(DOCUMENT);
   readonly #window = this.#document.defaultView;
   readonly #element = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
@@ -900,14 +871,8 @@ export class TmSearchHost implements OnInit {
   /** The field's text as the query would carry it. */
   readonly #fieldQuery = computed(() => tmSearchText(this.fieldText(), this.#descriptor().limits.maxSearchLength));
 
-  /** The field's size: the workspace's, and `lg` below `sm`, as every control's. */
-  protected readonly fieldSize = ɵtmControlSize(signal(undefined));
-
-  /** The field's input element. */
-  private readonly field = viewChild<ElementRef<HTMLInputElement>>('field');
-
-  /** The field's search behaviour, which flushes a burst on Enter. */
-  private readonly search = viewChild(TmSearch);
+  /** The field. */
+  private readonly field = viewChild(ɵTmSearchPageField);
 
   /** The grid, while the page shows one. */
   private readonly grid = viewChild(TmGrid);
@@ -932,27 +897,34 @@ export class TmSearchHost implements OnInit {
   /** The anchor of the current run of text changes; `null` between runs. */
   #anchor: TmSearchAnchor | null = null;
 
-  /** The result an anchor restore put back, which seeds no highlight. */
-  #restored: TmSearchResult | null = null;
+  /**
+   * The identity of the rows an anchor restore put back, until their outcome
+   * lands and settles: that result seeds no highlight, whether it came from
+   * memory or from a re-read.
+   */
+  #restoring: string | null = null;
 
-  /** When the last key was pressed on the page, on the page's clock: the live region waits for a pause. */
-  #keyAt = Number.NEGATIVE_INFINITY;
-
-  /** The announcement waiting for a pause in the keys. */
-  #announcing: ReturnType<typeof setTimeout> | undefined;
+  /** The page's keys: type-to-search, and the pause the live region waits for. */
+  protected readonly keys = new ɵTmSearchKeys();
 
   /** The ids the header and the field name each other by. */
-  protected readonly ids = ((page) => ({ title: `tm-search-title-${page}`, hint: `tm-search-hint-${page}`, region: `tm-search-region-${page}` }))(++pages);
+  protected readonly ids = ((page) => ({ title: `tm-search-title-${page}`, region: `tm-search-region-${page}` }))(++pages);
 
-  /** The row context menu's own items, after the grid's copy items: they open or copy the highlighted row's target. */
-  protected readonly rowMenu = computed<readonly TmMenuItem[]>(() =>
-    this.activation() === 'none'
+  /**
+   * The row context menu's own items, after the grid's copy items: they open
+   * or copy the target of the row the menu was opened on, and a menu opened
+   * on a header, on the row-end cell or with no rows offers neither.
+   */
+  protected readonly rowMenu = computed<readonly TmMenuItem[]>(() => {
+    // The grid's row ids are the rows' own, as the grid's `rowId` reads them.
+    const id = (this.grid()?.menuRowId() ?? null) as TmId | null;
+    return this.activation() === 'none' || id === null
       ? []
       : [
-          { id: 'search.open-in-new-tab', label: this.text.openInNewTab(), icon: this.glyphs.newTab, action: () => this.#openHighlighted() },
-          { id: 'search.copy-link', label: this.text.copyLink(), icon: this.glyphs.link, action: () => this.#copyLink() },
-        ],
-  );
+          { id: 'search.open-in-new-tab', label: this.text.openInNewTab(), icon: this.glyphs.newTab, action: () => void this.#open(id, true) },
+          { id: 'search.copy-link', label: this.text.copyLink(), icon: this.glyphs.link, action: () => this.#copyLink(id) },
+        ];
+  });
 
   // ---------------------------------------------------------------------------
   // The view: the title, the toolbar, the grid's binding, the region's state
@@ -1137,8 +1109,6 @@ export class TmSearchHost implements OnInit {
 
   /** The glyphs of the field, the toolbar, the grid and the row menu; the new-tab arrow points along the reading direction. */
   protected readonly glyphs = {
-    search: Search,
-    clear: X,
     refresh: RefreshCw,
     create: Plus,
     columns: Columns3,
@@ -1149,9 +1119,6 @@ export class TmSearchHost implements OnInit {
 
   /** The field's, the toolbar's, the grid's and the row menu's labels. */
   protected readonly text = {
-    search: this.#l10n.ɵtext('tm.search.search'),
-    searchHint: this.#l10n.ɵtext('tm.search.searchHint'),
-    clearSearch: this.#l10n.ɵtext('tm.search.clearSearch'),
     refresh: this.#l10n.ɵtext('tm.search.refresh'),
     more: this.#l10n.ɵtext('tm.search.more'),
     moreActions: this.#l10n.ɵtext('tm.search.moreActions'),
@@ -1330,6 +1297,10 @@ export class TmSearchHost implements OnInit {
         }
         if (!stale) {
           this.#settle(held);
+          // The restore's mark ends once its own outcome has landed and settled.
+          if ((held.failure ?? held.result)?.key.canonical === this.#restoring) {
+            this.#restoring = null;
+          }
         }
       });
     });
@@ -1360,7 +1331,6 @@ export class TmSearchHost implements OnInit {
 
     // TmShortcuts listens on the document from its creation; created first, it sees every key before type-to-search.
     inject(TmShortcuts);
-    this.#destroyRef.onDestroy(() => clearTimeout(this.#announcing));
   }
 
   /**
@@ -1484,11 +1454,6 @@ export class TmSearchHost implements OnInit {
   /** Disarms a pending Enter: focus left the field, a pointer pressed, or the page navigates. */
   protected disarm(): void {
     this.#pending = null;
-  }
-
-  /** The clear button: clears the field as an undoable edit, searches the empty text and keeps focus in the field. */
-  protected clearField(): void {
-    this.search()?.clear();
   }
 
   /**
@@ -1640,6 +1605,7 @@ export class TmSearchHost implements OnInit {
       return;
     }
     this.#anchor ??= this.#snapshot();
+    this.#restoring = null;
     this.#prefilled.set(null);
     this.#apply(tmSearchUpdate(this.#setting(), state, { q: q === '' ? undefined : q }), 'typing', undefined, fromField);
   }
@@ -1672,14 +1638,17 @@ export class TmSearchHost implements OnInit {
     this.#anchor = null;
     const { key, result } = anchor;
     this.#prefilled.set(key === null || result === null ? null : { key, result });
-    this.#restored = result;
     this.#apply(tmSearchApply(this.#setting(), this.#state(), anchor.query), 'typing', undefined, fromField);
+    // The restore is known by the rows it reads, not by the result object:
+    // a re-read, or an anchor taken while a read ran, lands a new one.
+    this.#restoring = untracked(this.#key)?.canonical ?? null;
     this.highlight.set(anchor.highlight);
   }
 
   /** Ends the run of text changes: the next one takes a new anchor, and nothing restores from memory. */
   #dropAnchor(): void {
     this.#anchor = null;
+    this.#restoring = null;
     this.#prefilled.set(null);
   }
 
@@ -1707,7 +1676,7 @@ export class TmSearchHost implements OnInit {
       return false;
     }
     if (this.activation() === 'row' && untracked(this.stale)) {
-      this.search()?.flush();
+      this.field()?.flush();
       this.#pending = { newTab };
       return true;
     }
@@ -1722,7 +1691,7 @@ export class TmSearchHost implements OnInit {
    * @param result - The result.
    */
   #seed(result: TmSearchResult | null): void {
-    if (result === null || result === this.#restored || this.#document.activeElement !== this.field()?.nativeElement) {
+    if (result === null || result.key.canonical === this.#restoring || this.field()?.focused() !== true) {
       return;
     }
     const first = this.#rows()[0];
@@ -1734,8 +1703,8 @@ export class TmSearchHost implements OnInit {
   /**
    * Settles a pending Enter once the result for the field's text is fresh:
    * its first row opens (after an anchor restore, the restored highlight
-   * when it shows); an empty result or a failure disarms it, and an empty
-   * one says "No matches".
+   * when it shows); an empty result or a failure disarms it, and the
+   * region's state says "No matches" once the keys pause.
    *
    * @param held - What the host holds now.
    */
@@ -1750,10 +1719,10 @@ export class TmSearchHost implements OnInit {
     }
     const rows = this.#rows();
     if (rows.length === 0) {
-      this.#speak(this.#l10n.ɵtext('tm.search.noMatches')());
+      // The region's state says so, once the keys pause.
       return;
     }
-    const restored = held.result === this.#restored ? this.highlight() : null;
+    const restored = held.result.key.canonical === this.#restoring ? this.highlight() : null;
     const id = restored !== null && this.#byId().has(restored) ? restored : rows[0]!.id;
     this.highlight.set(id);
     if (this.#open(id, pending.newTab)) {
@@ -1761,35 +1730,18 @@ export class TmSearchHost implements OnInit {
     }
   }
 
-  /** Opens the highlighted row's target in a new tab: the row menu's item. */
-  #openHighlighted(): void {
-    const id = this.highlight();
-    if (id !== null) {
-      this.#open(id, true);
-    }
-  }
-
-  /** Copies the highlighted row's link, as an absolute URL, and says whether it was copied. */
-  #copyLink(): void {
-    const id = this.highlight();
-    const url = id === null ? null : this.ɵcontext.url(id);
+  /**
+   * Copies a row's link, as an absolute URL, and says whether it was copied.
+   *
+   * @param id - The row.
+   */
+  #copyLink(id: TmId): void {
+    const url = this.ɵcontext.url(id);
     if (url === null) {
       return;
     }
     const href = new URL(this.#location.prepareExternalUrl(url), this.#document.baseURI).href;
-    // The write starts synchronously inside the gesture, which the clipboard requires.
-    let written: Promise<void>;
-    try {
-      written = this.#window!.navigator.clipboard.writeText(href);
-    } catch (error) {
-      // No clipboard here, such as on an insecure origin.
-      written = Promise.reject(error);
-    }
-    const say = (key: 'linkCopied' | 'linkCopyFailed'): void => void this.#announcer.announce(this.#l10n.ɵtext(`tm.search.${key}`)(), 'polite');
-    written.then(
-      () => say('linkCopied'),
-      () => say('linkCopyFailed'),
-    );
+    this.keys.copyLink(this.#window, href);
   }
 
   /**
@@ -1804,57 +1756,22 @@ export class TmSearchHost implements OnInit {
 
   /**
    * Listens for type-to-search: a printable key or a paste the page leaves
-   * unhandled lands in the field (spec 0030 §6.2). The listener runs in the
-   * bubble phase on the document, or on the picker modal's pane in picker
-   * mode, so focused components and the app's shortcuts see the key first.
-   * It also notes every key for the live region's pause, and every pointer
-   * press, which disarms a pending Enter.
+   * unhandled lands in the field, on the document, or on the picker modal's
+   * pane in picker mode. A key typed in disarms a pending Enter, and so does
+   * every pointer press.
    */
   #listen(): void {
-    const scope: Document | Element = (this.#mode === 'picker' ? this.#element.closest('.cdk-overlay-pane') : null) ?? this.#document;
-    const onTop = (): boolean => tmSearchOnTop(this.#mode, scope, this.#contexts.overlays().length);
-    const field = (): HTMLInputElement | null => {
-      const element = this.field()?.nativeElement;
-      return element?.isConnected === true ? element : null;
-    };
-    const keydown = (event: Event): void => {
-      this.#keyAt = performance.now();
-      const input = field();
-      if (input !== null && tmSearchCapturesKey(event as KeyboardEvent, scope, onTop)) {
-        event.preventDefault();
-        this.#typeIn(input, (event as KeyboardEvent).key);
-      }
-    };
-    const paste = (event: Event): void => {
-      const input = field();
-      const text = input === null ? null : tmSearchPastedText(event as ClipboardEvent, scope, onTop);
-      if (input !== null && text !== null) {
-        event.preventDefault();
-        this.#typeIn(input, text);
-      }
-    };
-    const press = (): void => this.disarm();
-    scope.addEventListener('keydown', keydown);
-    scope.addEventListener('paste', paste);
-    scope.addEventListener('pointerdown', press, { capture: true, passive: true });
-    this.#destroyRef.onDestroy(() => {
-      scope.removeEventListener('keydown', keydown);
-      scope.removeEventListener('paste', paste);
-      scope.removeEventListener('pointerdown', press, { capture: true });
+    this.keys.listen({
+      mode: this.#mode,
+      scope: (this.#mode === 'picker' ? this.#element.closest('.cdk-overlay-pane') : null) ?? this.#document,
+      field: () => this.field()?.input() ?? null,
+      overlays: () => this.#contexts.overlays().length,
+      typed: () => {
+        this.#pending = null;
+        this.#telemetry.event('tm.search.type-to-search', undefined, { sampled: true });
+      },
+      pressed: () => this.disarm(),
     });
-  }
-
-  /**
-   * Types a captured key or a pasted text into the field, replacing its
-   * text as one undoable edit; the input event searches it as typed.
-   *
-   * @param input - The field.
-   * @param text - The key or the pasted text.
-   */
-  #typeIn(input: HTMLInputElement, text: string): void {
-    this.#pending = null;
-    this.#telemetry.event('tm.search.type-to-search', undefined, { sampled: true });
-    tmSearchInsert(input, text);
   }
 
   /**
@@ -2062,18 +1979,7 @@ export class TmSearchHost implements OnInit {
     if (reason !== null) {
       return { kind: 'calculation', reason };
     }
-    const diagnosis = tmSearchDiagnose(key.request, this.#mode, error);
-    if (diagnosis !== null && diagnosis.state !== 'other') {
-      if (diagnosis.state === 'invalid-link') {
-        return { kind: 'invalid-link' };
-      }
-      const diagnostic = diagnosis.diagnostic;
-      const filters = key.request.body['filters'];
-      const clause = diagnostic?.origin?.kind === 'fixed' || diagnostic === null ? null : Array.isArray(filters) ? filters[indexOf(diagnostic.clause)] : null;
-      const token = typeof clause === 'string' && diagnostic !== null && diagnostic.length > 0 ? clause.slice(diagnostic.start, diagnostic.start + diagnostic.length) : null;
-      return { kind: diagnosis.state, message: diagnostic?.message ?? null, token };
-    }
-    return { kind: 'error', error, entity: this.#descriptor().name };
+    return tmSearchRefusedState(key.request, this.#mode, error) ?? { kind: 'error', error, entity: this.#descriptor().name };
   }
 
   /**
@@ -2086,7 +1992,7 @@ export class TmSearchHost implements OnInit {
    * @param previous - What it held before.
    */
   #announce(held: TmSearchHeld, previous: TmSearchHeld): void {
-    clearTimeout(this.#announcing);
+    this.keys.hush();
     if (held.failure?.error.kind === 'offline' && held.result !== null) {
       this.#speak(this.#l10n.ɵtext('tm.search.offline')());
       return;
@@ -2103,21 +2009,12 @@ export class TmSearchHost implements OnInit {
   }
 
   /**
-   * Speaks a message in the polite live region once no key was pressed for
-   * {@link ANNOUNCE_QUIET_MS}, so typing never makes it speak once per key
-   * (spec 0030 §5.2). A key pressed while it waits puts it off again; a
-   * newer message replaces it.
+   * Speaks a message in the polite live region after a pause in the keys.
    *
    * @param message - The message.
    */
   #speak(message: string): void {
-    clearTimeout(this.#announcing);
-    const wait = this.#keyAt + ANNOUNCE_QUIET_MS - performance.now();
-    if (wait > 0) {
-      this.#announcing = setTimeout(() => this.#speak(message), wait);
-    } else {
-      void this.#announcer.announce(message, 'polite');
-    }
+    this.keys.speak(message);
   }
 
   /**
@@ -2239,27 +2136,7 @@ export class TmSearchHost implements OnInit {
   /** The page context's errors: the invalid filter's diagnostics, else the read's error with its trace id. */
   #contextErrors(): readonly TmContextError[] {
     const failure = this.#held().failure;
-    if (failure === null) {
-      return [];
-    }
-    const diagnosis = tmSearchDiagnose(failure.key.request, this.#mode, failure.error);
-    if (diagnosis !== null && diagnosis.diagnostics.length > 0) {
-      return diagnosis.diagnostics.map((diagnostic) => ({
-        source: 'request',
-        code: diagnostic.code,
-        message: diagnostic.message ?? diagnostic.code,
-        path: diagnostic.clause,
-        ...(failure.error.traceId !== '' && { traceId: failure.error.traceId }),
-      }));
-    }
-    return [
-      {
-        source: 'request',
-        code: failure.error.code,
-        message: failure.error.message,
-        ...(failure.error.traceId !== '' && { traceId: failure.error.traceId }),
-      },
-    ];
+    return failure === null ? [] : tmSearchContextErrors(failure.key.request, this.#mode, failure.error);
   }
 
   /** Registers the host's own page actions and the declaration's. */
@@ -2398,17 +2275,6 @@ function tmSearchLastPage(result: TmSearchResult): number | null {
  */
 function columnIdentity(column: TmColumnInput<string>): string {
   return tmSearchIsExpression(column) ? `=${column.expression}` : tmSearchColumnKey(column).toLowerCase();
-}
-
-/**
- * The index a clause such as `filters[1]` names.
- *
- * @param clause - The clause.
- * @returns The index, or -1.
- */
-function indexOf(clause: string): number {
-  const match = /^filters\[(\d+)\]$/.exec(clause);
-  return match === null ? -1 : Number(match[1]);
 }
 
 /**

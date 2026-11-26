@@ -25,6 +25,7 @@ export class TmPager {
     protected onNext(): void;
     protected onPageSize(size: number): void;
     protected onPrevious(): void;
+    protected onProxyFocus(focused: boolean): void;
     protected onProxyKeydown(event: KeyboardEvent): void;
     protected onProxyPress(event: PointerEvent): void;
     protected onProxyRelease(clicked: boolean): void;

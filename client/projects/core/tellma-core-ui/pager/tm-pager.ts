@@ -10,7 +10,7 @@ import {
   Component,
   computed,
   DOCUMENT,
-  type ElementRef,
+  ElementRef,
   inject,
   input,
   model,
@@ -54,8 +54,6 @@ interface TmPagerSizeSelect {
 
 /** What the stand-in received before the select landed. */
 interface TmPagerReplay {
-  /** Whether it held focus. */
-  focus: boolean;
   /** Whether a click or an open key asked for the panel. */
   open: boolean;
   /** The characters typed on it, for the panel's typeahead. */
@@ -83,7 +81,9 @@ interface TmPagerReplay {
  * or key, so a page that shows a pager does not carry the select until
  * then. Until it lands, a stand-in with the trigger's chrome and the
  * current size holds its box; a click, an open key or typed text on the
- * stand-in opens the select when it lands, and focus moves to it.
+ * stand-in opens the select when it lands, and focus moves to it. A
+ * focused stand-in with nothing asked of it stays until it loses focus, so
+ * focus never moves under the user.
  *
  * @tmGroup collection
  * @tmA11yNotes Native buttons named "Previous page" and "Next page" (or
@@ -164,7 +164,6 @@ interface TmPagerReplay {
              it received when it lands. -->
         @if (!sizeSelectReady()) {
           <span
-            #sizeProxy
             class="tm-pager__select tm-pager__proxy"
             role="combobox"
             aria-haspopup="listbox"
@@ -174,7 +173,8 @@ interface TmPagerReplay {
             [attr.aria-label]="pageSizeLabel()"
             [attr.aria-disabled]="disabled() ? 'true' : null"
             (pointerenter)="wantSizeSelect()"
-            (focus)="wantSizeSelect()"
+            (focus)="onProxyFocus(true)"
+            (blur)="onProxyFocus(false)"
             (pointerdown)="onProxyPress($event)"
             (pointerleave)="onProxyRelease(false)"
             (pointercancel)="onProxyRelease(false)"
@@ -276,14 +276,20 @@ export class TmPager {
   /** The loaded size select, once its `@defer` block renders. */
   private readonly sizeSelect = viewChild<TmPagerSizeSelect>('sizeSelect');
 
-  /** The stand-in, while the select has not replaced it. */
-  private readonly sizeProxy = viewChild<ElementRef<HTMLElement>>('sizeProxy');
+  /** The loaded size select's host element, made focusable before the stand-in hands focus to it. */
+  private readonly sizeSelectHost = viewChild('sizeSelect', { read: ElementRef });
 
   /** Whether a pointer is pressed on the stand-in: it stays until the press ends in a click. */
   private readonly proxyPressed = signal(false);
 
+  /** Whether the stand-in holds focus: with nothing asked of it, it stays until it loses focus. */
+  private readonly proxyFocused = signal(false);
+
+  /** Counts what the stand-in was asked for (a click or a key), so the handover runs again. */
+  private readonly proxyAsked = signal(0);
+
   /** What the stand-in received before the select landed. */
-  private replay: TmPagerReplay = { focus: false, open: false, text: '' };
+  private replay: TmPagerReplay = { open: false, text: '' };
 
   /** The status's visible text and its sentence, or `null` while the total is unknown. */
   protected readonly status = computed(() => {
@@ -398,22 +404,32 @@ export class TmPager {
         return;
       }
       if (!this.sizeSelectReady()) {
-        // The last render with the stand-in: note whether it holds focus,
-        // then retire it. The next run, with the select interactive (no
-        // longer inert), replays.
-        const proxy = untracked(this.sizeProxy)?.nativeElement;
-        this.replay.focus ||= proxy !== undefined && proxy === document.activeElement;
+        this.proxyAsked();
+        const asked = this.replay.open || this.replay.text !== '';
+        if (this.proxyFocused()) {
+          // A focused stand-in that nothing was asked of stays: moving focus
+          // to the trigger would announce the same combobox again. It
+          // retires when it loses focus, or hands over on a click or a key.
+          if (!asked) {
+            return;
+          }
+          // Focus moves straight to the trigger before the stand-in leaves,
+          // so it never drops to the body on the way.
+          const host = untracked(this.sizeSelectHost)?.nativeElement as HTMLElement | undefined;
+          host?.removeAttribute('inert');
+          select.focus();
+        }
+        // The last render with the stand-in. The next run, with the select
+        // interactive (no longer inert), replays.
         this.sizeSelectReady.set(true);
         return;
       }
-      const { focus, open, text } = this.replay;
-      this.replay = { focus: false, open: false, text: '' };
+      const { open, text } = this.replay;
+      this.replay = { open: false, text: '' };
       if (text !== '') {
         select.seed(text);
       } else if (open) {
         select.open();
-      } else if (focus) {
-        select.focus();
       }
     });
   }
@@ -456,6 +472,19 @@ export class TmPager {
     this.sizeSelectWanted.set(true);
   }
 
+  /**
+   * The stand-in gains or loses focus: gaining it loads the select, and
+   * losing it lets a stand-in that nothing was asked of retire.
+   *
+   * @param focused - Whether it holds focus now.
+   */
+  protected onProxyFocus(focused: boolean): void {
+    this.proxyFocused.set(focused);
+    if (focused) {
+      this.sizeSelectWanted.set(true);
+    }
+  }
+
   /** A press on the enabled stand-in loads the select; the stand-in stays until the press ends. */
   protected onProxyPress(event: PointerEvent): void {
     if (this.disabled() || event.button !== 0) {
@@ -469,6 +498,7 @@ export class TmPager {
   protected onProxyRelease(clicked: boolean): void {
     if (clicked && !this.disabled()) {
       this.replay.open = true;
+      this.proxyAsked.update((asked) => asked + 1);
     }
     this.proxyPressed.set(false);
   }
@@ -492,6 +522,7 @@ export class TmPager {
     }
     event.preventDefault();
     this.sizeSelectWanted.set(true);
+    this.proxyAsked.update((asked) => asked + 1);
   }
 
   /** The status's visible text, in the locale's digits. */

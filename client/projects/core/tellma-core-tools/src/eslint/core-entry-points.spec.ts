@@ -47,6 +47,7 @@ describe('the @tellma/core entry-point table', () => {
       './path-picker',
       './private',
       './search-normalize',
+      './search-view',
       './shell',
     ]);
   });

@@ -1143,6 +1143,13 @@ export class ɵTmGridCore<T>
   private readonly menuWantedSignal = signal(false);
   /** Whether the context menu was asked for: the view loads it then. */
   readonly menuWanted = this.menuWantedSignal.asReadonly();
+  /** The data row the context menu was last opened on. */
+  private readonly menuRowIdSignal = signal<TmRowId | null>(null);
+  /**
+   * The data row the context menu was last opened on: a data cell's or a
+   * row header's row; `null` for a column header or the row-end cell.
+   */
+  readonly menuRowId = this.menuRowIdSignal.asReadonly();
   /** Generation guard for the chunked error-tally warm-up chains. */
   private warmupGeneration = 0;
   /** Each rendered row's slot from the last render, by row key, in render order. */
@@ -3591,6 +3598,7 @@ export class ɵTmGridCore<T>
       this.selectMenuTarget(event.target);
     }
     const element = this.activeCellElement();
+    this.noteMenuRow(keyboardSourced ? element : event.target instanceof Element ? event.target : null);
     const anchor =
       keyboardSourced && element !== null
         ? element.getBoundingClientRect()
@@ -3611,6 +3619,7 @@ export class ɵTmGridCore<T>
     }
     const hit = document.elementFromPoint(point.x, point.y);
     this.selectMenuTarget(hit);
+    this.noteMenuRow(hit);
     const element = this.activeCellElement();
     this.openMenu(point, element !== null ? { restoreFocus: element } : undefined);
   }
@@ -3670,6 +3679,19 @@ export class ɵTmGridCore<T>
       // the ring between the row-end cell and the data cell beneath.
       this.rowEndFocusSignal.set(onEnd);
     }
+  }
+
+  /**
+   * Notes the data row a context menu opens on, for the items a consumer
+   * appends: a data cell's or a row header's row. A column header, the
+   * row-end cell and anything else name none; neither sits inside a data
+   * cell or a row header.
+   *
+   * @param target - The pressed element, or the active cell's (the row-end cell's while it holds the ring) for the keyboard.
+   */
+  private noteMenuRow(target: Element | null): void {
+    const row = Number(target?.closest('[data-tm-rowhdr], [data-tm-cell]')?.getAttribute('data-row') ?? NaN);
+    this.menuRowIdSignal.set(Number.isInteger(row) ? (untracked(() => this.engine.model.rowAt(row))?.id ?? null) : null);
   }
 
   /**
@@ -4679,6 +4701,7 @@ export class ɵTmGridCore<T>
         if (element === null) {
           return false;
         }
+        this.noteMenuRow(element);
         this.openMenu(element.getBoundingClientRect(), { restoreFocus: element });
         return true;
       }

@@ -16,7 +16,8 @@
 
 import { ɵtmOpenModals } from '@tellma/core-ui/overlay';
 
-import type { TmSearchMode } from './tm-search-model';
+/** Where the search page runs: an entity's search page, a picker's advanced search, or a drill-through list. */
+export type TmSearchFieldMode = 'page' | 'picker' | 'list';
 
 /** The targets that edit text, where a key or a paste is the target's own: fields, and an open grid editor. */
 const EDITING = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .tm-grid__cell--editing, tm-grid-editor-pane';
@@ -104,7 +105,7 @@ export function tmSearchPopupAttached(scope: ParentNode): boolean {
  * @param overlays - How many context-bearing dialogs are open.
  * @returns Whether it is.
  */
-export function tmSearchOnTop(mode: TmSearchMode, scope: ParentNode, overlays: number): boolean {
+export function tmSearchOnTop(mode: TmSearchFieldMode, scope: ParentNode, overlays: number): boolean {
   if (mode !== 'picker' && (overlays > 0 || ɵtmOpenModals().length > 0)) {
     return false;
   }
