@@ -16,15 +16,6 @@
   min-block-size: 0;
 }
 
-/* ---- the header ---- */
-
-/* Refresh and the pager keep their boxes but paint nothing while the first
-   load's skeleton shows: the pager's status widens when the total arrives,
-   and a hidden control that moves is no layout shift. */
-.tm-search-host__held {
-  visibility: hidden;
-}
-
 /* ---- the results region ---- */
 
 .tm-search-host__region {

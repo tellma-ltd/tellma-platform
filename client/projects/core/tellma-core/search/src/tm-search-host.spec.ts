@@ -274,7 +274,7 @@ describe('TmSearchHost', () => {
       ]);
     });
 
-    it('holds Refresh and the pager hidden in their boxes until the first read answers', async () => {
+    it('renders Refresh and the pager, and the end slot that holds them, only once the first read answers', async () => {
       // The first read waits, so the trailing group is seen while the total is unknown.
       let release!: () => void;
       const held = new Promise<void>((resolve) => (release = resolve));
@@ -286,14 +286,17 @@ describe('TmSearchHost', () => {
       });
       await rig.router.navigateByUrl('/17/customers');
       await tmSettleUntil(() => host()?.querySelector('[data-tm-skeleton]') != null, 'the skeleton shows');
-      const trailing = (): string[] =>
-        [host()!.querySelector('[data-tm-refresh]')!, host()!.querySelector('tm-pager')!].map((element) => getComputedStyle(element).visibility);
-      expect(trailing()).toEqual(['hidden', 'hidden']);
-      expect(host()!.querySelector<HTMLElement>('tm-pager')!.offsetWidth).toBeGreaterThan(0);
+      // The toolbar's end slot draws no box while it is empty, so its arrival moves nothing.
+      const end = (): HTMLElement => host()!.querySelector<HTMLElement>('.tm-page-header__toolbar .tm-page-header__end')!;
+      expect(host()!.querySelector('[data-tm-refresh]')).toBeNull();
+      expect(host()!.querySelector('tm-pager')).toBeNull();
+      expect(getComputedStyle(end()).display).toBe('none');
 
       release();
       await resettle();
-      expect(trailing()).toEqual(['visible', 'visible']);
+      expect(host()!.querySelector('[data-tm-refresh]')).not.toBeNull();
+      expect(host()!.querySelector('tm-pager')).not.toBeNull();
+      expect(getComputedStyle(end()).display).toBe('flex');
     });
 
     it('links the first shown column of the display name to the row’s details page, and opens a row there with its way back', async () => {

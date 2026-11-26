@@ -312,37 +312,40 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         }
       </span>
 
-      <!-- Refresh re-reads the query; the pager ends the toolbar. Both stay hidden, in their boxes, while the
-           first load's skeleton shows: the pager's status takes its width only once the total is known, which
-           moves Refresh, so the pair appears with the first answer in its final geometry. -->
-      <button
-        tmButton
-        tmPageToolbarEnd
-        type="button"
-        variant="ghost"
-        data-tm-refresh
-        [class.tm-search-host__held]="firstLoad()"
-        [attr.aria-label]="text.refresh()"
-        [title]="text.refresh()"
-        (click)="invoke('search.refresh')"
-      >
-        <tm-icon [svg]="glyphs.refresh" />
-      </button>
-      <tm-pager
-        tmPageToolbarEnd
-        mode="range"
-        [class.tm-search-host__held]="firstLoad()"
-        [page]="paging().page"
-        [pageSize]="paging().size"
-        [pageSizes]="paging().sizes"
-        [sizeLabel]="paging().sizeLabel"
-        [maxPage]="paging().maxPage"
-        [disabled]="paging().disabled"
-        [total]="total()"
-        [totalIsLowerBound]="capped()"
-        (pageChange)="goTo($event)"
-        (pageSizeChange)="setSize($event)"
-      />
+      <!-- Refresh re-reads the query; the pager ends the toolbar. Neither renders while the first load's
+           skeleton shows: the pager's status takes its width only once the total is known, so the end slot
+           would widen and move. The empty slot draws no box, and the pair arrives with the first answer in
+           its final geometry. Each block has one root element, which the header projects by its selector. -->
+      @if (!firstLoad()) {
+        <button
+          tmButton
+          tmPageToolbarEnd
+          type="button"
+          variant="ghost"
+          data-tm-refresh
+          [attr.aria-label]="text.refresh()"
+          [title]="text.refresh()"
+          (click)="invoke('search.refresh')"
+        >
+          <tm-icon [svg]="glyphs.refresh" />
+        </button>
+      }
+      @if (!firstLoad()) {
+        <tm-pager
+          tmPageToolbarEnd
+          mode="range"
+          [page]="paging().page"
+          [pageSize]="paging().size"
+          [pageSizes]="paging().sizes"
+          [sizeLabel]="paging().sizeLabel"
+          [maxPage]="paging().maxPage"
+          [disabled]="paging().disabled"
+          [total]="total()"
+          [totalIsLowerBound]="capped()"
+          (pageChange)="goTo($event)"
+          (pageSizeChange)="setSize($event)"
+        />
+      }
     </tm-page-header>
 
     <!-- The results region: busy while a read runs, the progress bar over the rows it keeps. -->
