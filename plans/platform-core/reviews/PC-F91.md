@@ -166,3 +166,114 @@ Base: e742b04d (platform-core at this branch's start).
     the one before it was applied.
 - `dotnet build Tellma.slnx`: Build succeeded, 0 warnings. `dotnet format --verify-no-changes`:
   clean. No .NET test touches this change, so none ran.
+
+## Review 1
+
+### Findings
+
+Scope: commit 6741da4a only. PC-F91 has no CHECKPOINTS.md entry, so I took the scope from the LEDGER
+row (per-icon imports so the primary reaches only the icons it uses, a static-graph or size guard,
+and fixture and Acme initialJs measured before and after), D-281, D-301 and D-351, plus spec 0023
+§1 and §3.1 and spec 0024 §12. All three LEDGER deliverables are met. The deviation from 0023 §3.1's
+example is justified and reported for a spec update.
+
+What I checked and found sound:
+- **Bindings.** A scratch script parsed `lucide.mjs`'s re-export table and compared every
+  `from 'lucide'` import in the parent commit with the per-icon imports in this commit, in all
+  62 changed `.ts` files. Every old name maps to the module the index exported it from, with the
+  same local name, except the two aliases. `Trash2` becomes `Trash` (`trash.mjs`, which the index
+  exports under both names). `Building2` becomes `BuildingComplex` (`building-complex.mjs`, also
+  exported under both names). Neither old name is still used in its file. No import was left out
+  or added, and every per-icon file carries the reference directive above its imports. Every icon
+  therefore draws the same data as before, with no missing glyph. The only diff lines outside the
+  import lines are the three renamed uses.
+- **Index imports.** In `client/projects`, no file imports the index outside doc text. The only
+  other importers are `client/e2e/specs/*-glyphs.spec.ts`, which run in Node.
+- **API goldens.** No `client/api/*.api.md` changed. The built
+  `dist/core-ui/types/tellma-core-ui-icon.d.ts` carries no reference directive; the directive
+  appears only inside its TSDoc example. The goldens still read `lucide.IconNode`, so the
+  wildcard declaration's `IconNode` resolves in the workspace and is not silently `any`.
+- **Lint coverage.** `eslint --print-config` shows `lucide` in the `no-restricted-imports` paths
+  of the realtime folder (shipped files and specs), platform-icons, calendar-umalqura and the other
+  blocks. `--stdin` probes report the rule in contracts, icon (shipped files and specs), kbd,
+  grid-engine, calendar-ethiopic, l10n, tiles, chart, alert, core-tools and the showcase. Under
+  `--stdin`, tellma-core's type-aware block reports nothing at all, not even `var` or a SignalR
+  import, so for those files I relied on print-config. The `@typescript-eslint/no-restricted-imports`
+  blocks are a separate rule and leave the base rule in force.
+- **workspace.mjs.** Only `@tellma/core-tools/lucide-icons` declares a `types` outside `./dist/`,
+  so no other export changes classification. `presets/` is already in core-tools' `files`.
+- **Budgets.** initialJs falls, and the lazy-side rises (detailsRoute +0.91, workerShell +2.77)
+  stay far inside their levels.
+- **AGENTS.md and PLAN.md §7.1 items 5 and 6.** TSDoc is present on the new declarations. No
+  spec, PC or decision ids appear in code comments or test names. Both READMEs and
+  ARCHITECTURE.md are updated.
+
+Commands I ran on pc-f3, all on this commit:
+- `pnpm typecheck`: exit 0.
+- `eslint .`: exit 0.
+- `vitest --project fixture-build`: 15 of 15 passed, the new test included.
+
+The tree was clean afterwards. The pc/PC-F91 CI run, 45773152108, was skipped because the commit
+message is not an integrate push, so there is no CI evidence yet.
+
+No blocking or major findings.
+
+**R1-1 (minor): no guard stops a distribution from undoing the fix in its own first frame.**
+`client/projects/core/tellma-core-tools/src/commands/build.fixture.spec.ts:200-216` and
+ARCHITECTURE.md:861 ("lint refuses it in the platform's packages").
+- Scenario: spec 0023 §3.1's example, which the spec still says, has a distribution write
+  `icons: { 'hand-coins': HandCoins }` with `HandCoins` imported from `lucide`. A feature's
+  `icons` sit in `app.config.ts`, which is first-frame code. Once a distribution does that, the
+  index is back in main's static graph, and every glyph a lazy platform chunk draws (the 26 this
+  commit moved out) is hoisted into the initial files again, about 1 KB gzip.
+- Nothing in `tellma-client build` or the distribution ESLint preset catches this. The new
+  checks cover the workspace's `projects/` only. The implementer lists this under open risk 3.
+- Suggested fix: give `tellma-client build`'s output step the same predicate the new fixture test
+  uses, "lucide's index is among stats.json's inputs". Make it a warning, or a `budget-warning`
+  class problem, naming the per-icon form. That reaches every distribution without touching the
+  preset's rule list from spec 0024 §2.1. If the orchestrator prefers not to grow the build checks
+  now, record it in LEDGER with the spec 0023 §3.1 example fix, so the spec and the guard change
+  together.
+
+**R1-2 (minor): the wildcard module type hides a wrong or moved icon path until bundling.**
+`client/projects/core/tellma-core-tools/presets/lucide-icons.d.ts:24`
+(`declare module 'lucide/dist/esm/icons/*.mjs'`).
+- Scenario: any specifier under that prefix type-checks, whether it is a typo such as
+  `.../chevron-rigth.mjs` or a path that a lucide 1.x minor no longer ships. The core-ui range is
+  `^1.66.0`, so a distribution can install such a minor. ng-packagr treats bare imports as
+  external, so the library build passes too. The failure first shows when something bundles that
+  file: a unit spec, the showcase, the fixture or Acme, or, after publishing, a distribution's
+  `ng build`.
+- Before this commit, a misspelt `import { ChevronRigth } from 'lucide'` was a compile error. The
+  implementer's "fails the build loudly" holds only for a build that bundles the file.
+- Suggested fix: add a cheap `tools/tests` spec. It scans `projects/**/*.ts` for
+  `lucide/dist/esm/icons/<name>.mjs` specifiers and asserts that each file exists in the installed
+  `lucide`, ideally also that the index exports it. Then a typo, or a lucide bump that moves the
+  layout, fails `lint:test` in the workspace before anything publishes. Optionally, pin `~1.66.0`
+  as the open risk suggests.
+
+**R1-3 (minor): one extracted example still says only "from `lucide`".**
+`client/projects/core/tellma-core-ui/input/tm-input.examples.ts:22` ("`searchIcon` is the
+`Search` data from `lucide`") and `client/projects/core/tellma-core-ui/icon/tm-icon.examples.ts:13`
+("with the data from `lucide`").
+- Scenario: the examples feed components.json, then llms.txt, then the MCP `example` tool, which
+  coding agents read. These are the two places left after the commit updated every other TSDoc
+  and README to the per-icon form. An agent writing a distribution from them will reach for the
+  index, which is exactly R1-1's regression.
+- Suggested fix: reword both to name the icon's own module, as `TmIcon`'s TSDoc now does
+  ("imported from its own `lucide` module").
+
+### Responses
+
+
+- **R1-1:** deferred to a fix item pending the spec 0023 §3.1 question.
+- **R1-2:** fixed. `client/tools/tests/lucide-icon-paths.spec.mts` (run by `lint:test`) reads
+  every `lucide/…` import under `client/projects`. It asserts that each is
+  `lucide/dist/esm/icons/<name>.mjs`, that the file exists in the installed `lucide` (resolved
+  through its `package.json`), and that the index `dist/esm/lucide.mjs` re-exports it. A floor
+  assertion keeps an empty scan from passing silently. The `lucide` catalog entry in
+  `pnpm-workspace.yaml` is left as it is (`1.66.0`), per the ruling.
+- **R1-3:** fixed. `input/tm-input.examples.ts` and `icon/tm-icon.examples.ts` now name the
+  icon's own module (`lucide/dist/esm/icons/search.mjs`, `lucide/dist/esm/icons/plus.mjs`), as
+  ARCHITECTURE.md's Icons paragraph does. `button/tm-button.examples.ts` had the same "`Search`
+  data from `lucide`" wording and got the same rewording.
