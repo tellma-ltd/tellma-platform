@@ -8,12 +8,13 @@ import {
   TmEntities,
   type TmColumnInput,
   type TmColumnPreference,
+  type TmColumnSource,
   type TmEntityDeclarationInput,
   type TmEntityDescriptor,
   type TmSearchQuery,
   type TmTabDeclaration,
+  type TmTenantUrls,
 } from '@tellma/core';
-import type { TmColumnSource } from '@tellma/core/entity';
 
 // The search page's model (spec 0030 §1-§4): the setting a host opens with,
 // the state it shows, and the facts both derive from the entity and its
@@ -76,6 +77,12 @@ export interface TmSearchSetting {
   readonly segment?: string;
   /** The injector the entity registry, the URLs, the localization and the telemetry are read through. */
   readonly injector: Injector;
+  /**
+   * The builders the page's URLs print with: its own tenant's, so a page
+   * still shown while the app navigates out of its tenant keeps its links.
+   * The routed tenant's when absent.
+   */
+  readonly urls?: TmTenantUrls;
 }
 
 /** The query state a search page shows. */

@@ -37,6 +37,12 @@ describe('Acme app configuration', () => {
     expect(typeof (await load!()).default).toBe('function');
   });
 
+  it("places GL's centers under Administration in the launcher", () => {
+    const centers = acmeFeature.entities?.find((entity) => entity.name === 'gl.Center');
+
+    expect([centers?.['section'], centers?.['order']]).toEqual(['administration', 30]);
+  });
+
   it("composes Acme's own feature last, under the server feature's name", () => {
     const config = tmAppConfigOf(appConfig);
 

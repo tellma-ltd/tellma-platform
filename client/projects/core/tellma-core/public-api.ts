@@ -71,6 +71,30 @@ export {
 } from './src/requests/tm-request-log';
 export { TmAppVersion, type TmFeatureVersion } from './src/requests/tm-app-version';
 
+// Support: Report a problem, Copy diagnostics, the diagnostic file and the
+// support dump's contributed sections. The dump's builder, the Diagnostics
+// panel and the support dialog are @tellma/core/support's.
+export { TmSupport } from './src/support/tm-support';
+// What @tellma/core/support and the About dialog build on, and the loaders
+// @tellma/core-testing replaces: the snapshot the facade takes and the request
+// line the panel copies. The offline line stays off this list: only the
+// support host chunk imports it, which keeps it off the first frame. Not for
+// app code.
+export {
+  TM_SUPPORT_LOAD as ɵTM_SUPPORT_LOAD,
+  TM_SUPPORT_TOOLS_LOAD as ɵTM_SUPPORT_TOOLS_LOAD,
+  type TmPageSnapshotModule as ɵTmPageSnapshotModule,
+  type TmSupportContexts as ɵTmSupportContexts,
+  type TmSupportDumpBuild as ɵTmSupportDumpBuild,
+  type TmSupportHostChunk as ɵTmSupportHostChunk,
+  type TmSupportModule as ɵTmSupportModule,
+  type TmSupportReported as ɵTmSupportReported,
+  type TmSupportSection as ɵTmSupportSection,
+  type TmSupportSnapshot as ɵTmSupportSnapshot,
+  type TmSupportTools as ɵTmSupportTools,
+} from './src/support/tm-support';
+export { tmDiagnosticsLine as ɵtmDiagnosticsLine } from './src/requests/tm-diagnostics';
+
 // The page context and the page actions: the registry, page scopes, the
 // dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.
 export type {
@@ -139,12 +163,21 @@ export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display
 export { TmDisplayName } from './src/entity/tm-display-name';
 export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
 export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
+export type {
+  TmColumnKind,
+  TmColumnPlan,
+  TmColumnSource,
+  TmDroppedKey,
+  TmDroppedReason,
+  TmFilterKind,
+  TmSelectPlan,
+} from './src/entity/tm-select-plan-types';
 
 // What a details page keeps between visits: its drafts and its snapshots (types only).
 export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
 
 // What a search page keeps between visits and in the user's column preference (types only).
-export type { TmColumnPreference, TmSearchSnapshot } from './src/search/tm-search-types';
+export type { TmColumnPreference, TmSearchContext, TmSearchSnapshot } from './src/search/tm-search-types';
 
 // Features and the declaration functions.
 export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
@@ -193,7 +226,9 @@ export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
 export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
 export type { TmShellSlot } from './src/nav/tm-shell-slot';
 
-// The navigation registry, the pins model's keys and the launcher's provider seam.
+// The navigation registry, the pins model's keys and the launcher's provider
+// seam. The icon of a recently visited page by its family is library wiring
+// the shell and the home page share.
 export { TmNavigation, type TmNavItem, type TmNavSectionView } from './src/nav/tm-navigation';
 export { tmPinnedBarVisibleKey, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from './src/nav/tm-pins';
 export {
@@ -202,6 +237,7 @@ export {
   type TmLauncherProvider,
   type TmLauncherSearchContext,
 } from './src/nav/tm-launcher-providers';
+export { tmRecentPageIcon as ɵtmRecentPageIcon } from './src/nav/tm-recent-icon';
 
 // App-level keyboard shortcuts and the shell frame's seams.
 export {
@@ -371,12 +407,10 @@ export {
   tmRemoveDrafts as ɵtmRemoveDrafts,
   tmStorageKeys as ɵtmStorageKeys,
 } from './src/state/memory/tm-draft-keys';
-export {
-  TM_STATE_PARTS as ɵTM_STATE_PARTS,
-  TmStateDump as ɵTmStateDump,
-  type TmStateDumpSection as ɵTmStateDumpSection,
-  type TmStateParts as ɵTmStateParts,
-} from './src/state/tm-state-dump';
+// The client state's dump section, as a type: its builder is the support host chunk's alone, so the
+// first frame does not carry it.
+export type { TmStateDumpSection as ɵTmStateDumpSection } from './src/state/tm-state-dump';
+export { TM_STATE_PARTS as ɵTM_STATE_PARTS, type TmStateParts as ɵTmStateParts } from './src/state/tm-state-parts';
 export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
 
 // The launch: the single-membership rule and the automatic-entry mark.

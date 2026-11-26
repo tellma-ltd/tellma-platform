@@ -3,10 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { TmUrls, type TmColumnInput, type TmSearchQuery, type TmSearchSnapshot } from '@tellma/core';
-import type { TmColumnSource } from '@tellma/core/entity';
+import { TmUrls, type TmColumnInput, type TmColumnSource, type TmSearchQuery, type TmSearchSnapshot } from '@tellma/core';
 
-import { tmSearchCanonical, tmSearchPlanColumns, tmSearchQuiet, tmSearchUrl } from './tm-search-canonical';
+import { tmSearchCanonical, tmSearchPlanColumns, tmSearchQuiet, tmSearchShownDefaults, tmSearchUrl } from './tm-search-canonical';
 import {
   TM_SEARCH_DEFAULT_PAGE_SIZE,
   tmSearchDefaultColumns,
@@ -226,7 +225,7 @@ function stateOf(setting: TmSearchSetting, query: TmSearchQuery, origin: TmState
           view: viewed ? query.view : preferences.view[width],
           list: query.list ?? preferences.view.list,
         };
-  const { columns, from } = columnsOf(setting, query.cols);
+  const { columns, from } = tmSearchColumnsOf(setting, query.cols);
   return {
     query: tmSearchCanonical(setting, filled, columns),
     columns,
@@ -241,19 +240,20 @@ function stateOf(setting: TmSearchSetting, query: TmSearchQuery, origin: TmState
  * default, else in page mode the preference's, else the code default. A picker always shows the code
  * default. Each source's keys are planned once, so a key that does not
  * resolve or that the user may not read drops and is reported under its
- * source, and the rest take their canonical case.
+ * source, and the rest take their canonical case. The host plans them again
+ * as the user's access moves, so a column read again returns.
  *
  * @param setting - The page's setting.
  * @param cols - The query's columns.
  * @returns The columns and their source.
  */
-function columnsOf(setting: TmSearchSetting, cols: readonly string[] | undefined): { columns: readonly TmColumnInput<string>[]; from: TmColumnSource } {
+export function tmSearchColumnsOf(setting: TmSearchSetting, cols: readonly string[] | undefined): { columns: readonly TmColumnInput<string>[]; from: TmColumnSource } {
   const { mode, declaration, preferences } = setting;
   const defaults = tmSearchDefaultColumns(setting.descriptor, declaration);
   if (mode !== 'picker' && cols !== undefined) {
     const columns = tmSearchPlanColumns(setting, cols, 'url');
-    // Columns at the code default read as left out, as the canonical URL leaves them out.
-    if (columns.length > 0 && !tmSearchSameColumns(columns, defaults)) {
+    // Columns at the code default, as the user may read it, read as left out, as the canonical URL leaves them out.
+    if (columns.length > 0 && !tmSearchSameColumns(columns, tmSearchShownDefaults(setting))) {
       return { columns, from: 'url' };
     }
   }

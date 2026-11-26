@@ -7,6 +7,7 @@
 
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
+  afterNextRender,
   afterRenderEffect,
   Component,
   computed,
@@ -14,8 +15,11 @@ import {
   effect,
   ElementRef,
   inject,
+  InjectionToken,
   input,
+  PendingTasks,
   signal,
+  type Type,
   untracked,
   ViewContainerRef,
   viewChild,
@@ -28,7 +32,6 @@ import ArrowDown from 'lucide/dist/esm/icons/arrow-down.mjs';
 import ArrowUp from 'lucide/dist/esm/icons/arrow-up.mjs';
 
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
-import { TmMenu } from '@tellma/core-ui/menu';
 import { tmCreateAnchoredOverlay } from '@tellma/core-ui/overlay';
 import { ɵTmErrorPopover } from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
@@ -36,12 +39,32 @@ import { TmSpinner } from '@tellma/core-ui/spinner';
 import { ɵTmGridFindBar } from './find-bar';
 import type { ɵTmGridViewCore } from './grid-core';
 import { ɵTmGridEndCell } from './grid-end-cell';
-import { ɵTmGridTouchHandles } from './touch-handles';
 
 /** The ascending sort indicator: a vertical arrow, which never mirrors. */
 const SORT_ASC_GLYPH: TmIconSource = ArrowUp;
 /** The descending sort indicator: a vertical arrow, which never mirrors. */
 const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
+
+/** The grid's deferred parts, which the view renders once their chunk arrives. */
+export interface ɵTmGridDeferredParts {
+  /** The context menu, which hands itself to the core when it renders. */
+  readonly contextMenu: Type<unknown>;
+  /** The coarse-pointer selection handles. */
+  readonly touchHandles: Type<unknown>;
+}
+
+/** Loads the grid's deferred parts. */
+export type ɵTmGridDeferredLoader = () => Promise<ɵTmGridDeferredParts>;
+
+/**
+ * The grid's deferred-parts loader: by default the lazy import of their
+ * own chunk. Internal; a test replaces it to hold or fail the load.
+ */
+export const ɵTM_GRID_DEFERRED = new InjectionToken<ɵTmGridDeferredLoader>('TmGridDeferred', {
+  providedIn: 'root',
+  factory: () => () =>
+    import('./grid-deferred').then((module) => ({ contextMenu: module.ɵTmGridContextMenu, touchHandles: module.ɵTmGridTouchHandles })),
+});
 
 /**
  * The grid's one and only template: scroller, sticky header, virtualized
@@ -61,12 +84,10 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
     NgTemplateOutlet,
     OverlayModule,
     TmIcon,
-    TmMenu,
     TmSpinner,
     ɵTmErrorPopover,
     ɵTmGridEndCell,
     ɵTmGridFindBar,
-    ɵTmGridTouchHandles,
   ],
   template: `
     <div
@@ -357,8 +378,12 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
         </div>
         @if (core().coarsePointer()) {
           <!-- Range-selection drag handles (coarse pointers): inside the
-               spacer so their measured positions scroll with the rows. -->
-          <tm-grid-touch-handles [core]="core()" />
+               spacer so their measured positions scroll with the rows. They
+               come with the deferred chunk, which a coarse pointer asks for
+               at once. -->
+          @if (deferred(); as parts) {
+            <ng-container *ngComponentOutlet="parts.touchHandles; inputs: { core: core() }" />
+          }
         }
       </div>
     </div>
@@ -428,7 +453,13 @@ const SORT_DESC_GLYPH: TmIconSource = ArrowDown;
       }
     }
 
-    <tm-menu [items]="core().menuItems()" />
+    <!-- The context menu comes with the deferred chunk, which loads once the browser is idle
+         after the first render, or at once when the menu is asked for sooner, so its code is
+         not part of what a grid's first paint waits for. It hands itself to the core when it
+         renders. -->
+    @if (deferred(); as parts) {
+      <ng-container *ngComponentOutlet="parts.contextMenu; inputs: { core: core() }" />
+    }
 
     <!-- Active-cell error message: a top-layer overlay so errors appearing
          or clearing never shift the grid's (or the page's) layout. The same
@@ -615,7 +646,16 @@ export class ɵTmGridView {
 
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly editorOutlet = viewChild('editorOutlet', { read: ViewContainerRef });
-  private readonly menu = viewChild(TmMenu);
+  /** Loads the deferred chunk. */
+  private readonly loadDeferred = inject(ɵTM_GRID_DEFERRED);
+  /** Keeps the app unstable while the deferred chunk loads, as a deferred block does. */
+  private readonly pendingTasks = inject(PendingTasks);
+  /** The deferred parts, once their chunk has arrived. */
+  protected readonly deferred = signal<ɵTmGridDeferredParts | null>(null);
+  /** Whether the deferred chunk is loading or has arrived. */
+  private deferredRequested = false;
+  /** Whether the view is destroyed, after which nothing loads. */
+  private destroyed = false;
 
   /**
    * Measures the loading/empty overlay's trailing insets, only while a
@@ -641,6 +681,34 @@ export class ɵTmGridView {
         border -
         scroller.clientHeight,
     );
+  }
+
+  /**
+   * Loads the deferred chunk once. A failed load drops the menu open the
+   * core holds for it, and the next request (the next right-click or
+   * long-press) loads again.
+   */
+  private requestDeferred(): void {
+    if (this.deferredRequested || this.destroyed) {
+      return;
+    }
+    this.deferredRequested = true;
+    const done = this.pendingTasks.add();
+    void this.loadDeferred()
+      .finally(done)
+      .then(
+        (parts) => {
+          if (!this.destroyed) {
+            this.deferred.set(parts);
+          }
+        },
+        () => {
+          this.deferredRequested = false;
+          if (!this.destroyed) {
+            untracked(this.core).menuLoadFailed();
+          }
+        },
+      );
   }
 
   constructor() {
@@ -679,11 +747,21 @@ export class ɵTmGridView {
       const outlet = this.editorOutlet();
       untracked(() => core.attachEditorOutlet(outlet ?? null));
     });
-    afterRenderEffect(() => {
+    // The deferred chunk: at once when the menu is asked for (a right-click, a long-press or the
+    // Menu key before it arrived) or the pointer is coarse (the handles show with a selection),
+    // else once the browser is idle after the first render.
+    effect(() => {
       const core = this.core();
-      const menu = this.menu();
-      untracked(() => core.attachMenu(menu ?? null));
+      if (core.menuWanted() || core.coarsePointer()) {
+        untracked(() => this.requestDeferred());
+      }
     });
+    afterNextRender(() => {
+      const idle = (run: () => void): unknown =>
+        typeof requestIdleCallback === 'function' ? requestIdleCallback(run) : setTimeout(run);
+      idle(() => this.requestDeferred());
+    });
+    inject(DestroyRef).onDestroy(() => (this.destroyed = true));
     // Measured after render so the scroller has its final box, re-running
     // when a layer goes up or the scroller arrives.
     afterRenderEffect(() => {

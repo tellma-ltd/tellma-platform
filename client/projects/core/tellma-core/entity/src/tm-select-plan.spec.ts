@@ -4,10 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 import { TestBed } from '@angular/core/testing';
-import { TmEntities, tmRowsToObjects, type TmColumnInput, type TmJson, type TmQueryRowSet } from '@tellma/core';
+import { TmEntities, tmRowsToObjects, type TmColumnInput, type TmJson, type TmQueryRowSet, type TmSelectPlan } from '@tellma/core';
 
 import { tmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSelectPlan, type TmSelectPlan, type TmSelectPlanOptions } from './tm-select-plan';
+import { tmSelectPlan, type TmSelectPlanOptions } from './tm-select-plan';
 
 // Select plans over the recorded entity model: each column kind's terms,
 // order and cell, the root key first, each term once, the dropped keys with

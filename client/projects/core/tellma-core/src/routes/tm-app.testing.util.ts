@@ -79,7 +79,11 @@ function summary(name: string, segment: string, kind: TmEntitySummary['kind']): 
   };
 }
 
-/** The test metadata, with a stack that has no details page, a child entity, and the stored reports and dashboards. */
+/**
+ * The test metadata, with a stack that has no details page, a child entity,
+ * and the stored dashboards. The stored reports (`core.Report`) are the
+ * platform's own, already in the test metadata as the server emits them.
+ */
 export function tmRouteTestMetadata(): TmClientMetadata {
   const base = tmTestMetadata();
   return tmTestMetadata({
@@ -87,7 +91,6 @@ export function tmRouteTestMetadata(): TmClientMetadata {
       ...base.entities,
       summary('acme.Currency', 'currencies', 'stack'),
       summary('acme.SalesInvoiceLine', 'sales-invoice-lines', 'child'),
-      summary('core.Report', 'reports', 'stack'),
       summary('core.Dashboard', 'dashboards', 'stack'),
     ],
   });

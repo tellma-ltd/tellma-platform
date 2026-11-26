@@ -13,9 +13,9 @@ import { provideTellmaUi, TM_ACTIVE_LOCALE } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmMultiSelectHarness } from '@tellma/core-ui-testing';
 
+import { TmOption, TmOptionGroup } from '@tellma/core-ui/select';
+
 import { TmMultiSelect } from './tm-multi-select';
-import { TmOption } from './tm-option';
-import { TmOptionGroup } from './tm-option-group';
 
 /** A center type, as the filter that motivated the control lists them. */
 interface CenterType {

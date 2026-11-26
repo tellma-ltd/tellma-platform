@@ -36,7 +36,7 @@ import { TM_DRAFT_KEY_PREFIX, TM_DRAFTS_STORAGE, tmDraftPrefix, tmRemoveDrafts, 
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TM_STORE_DATABASE } from '../state/store/tm-store-layout';
 import { TM_BOOT_RECORD_KEY } from '../state/tm-boot-record';
-import { TM_STATE_PARTS } from '../state/tm-state-dump';
+import { TM_STATE_PARTS } from '../state/tm-state-parts';
 import { TmUrls } from '../urls/tm-urls';
 import { tmParseProfileCookie } from './tm-profile';
 import { TmSession } from './tm-session';

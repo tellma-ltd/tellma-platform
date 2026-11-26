@@ -14,14 +14,15 @@ import {
   type InputSignal,
   type Signal,
 } from '@angular/core';
-import { TmDecimals, TmLocalization, type TmDataType, type TmDecimal, type TmId } from '@tellma/core';
+import { TmDecimals, TmLocalization, type TmColumnPlan, type TmDataType, type TmDecimal, type TmFilterKind, type TmId } from '@tellma/core';
 import { TmL10n } from '@tellma/core-ui';
-import { tmStripBidiControls, ɵtmInstantOfWallTime } from '@tellma/core-ui/l10n';
+import { tmStripBidiControls } from '@tellma/core-ui/l10n';
+import { ɵtmInstantOfWallTime } from '@tellma/core-ui/l10n-input';
 
 import { ɵTM_FILTER_STRINGS_EN } from './tm-entity-strings';
 import { ɵtmFormatExact, TmFormats } from './tm-formats';
 import { tmQx, tmQxPrint, ɵtmQxIsDate, type TmQx } from './tm-qx';
-import { ɵtmGroupSlots, ɵtmPlanEnumValues, type TmColumnPlan, type TmFilterKind } from './tm-select-plan';
+import { ɵtmGroupSlots, ɵtmPlanEnumValues } from './tm-select-plan';
 
 // Column filters (spec 0029 §13): the culture-free `f.{key}` value of the
 // search URL (spec 0024 §9.5), the Queryex leaf it becomes, and the

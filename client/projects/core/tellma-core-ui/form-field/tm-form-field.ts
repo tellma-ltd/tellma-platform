@@ -15,7 +15,6 @@ import {
   ElementRef,
   inject,
   input,
-  InjectionToken,
   signal,
   viewChild,
 } from '@angular/core';
@@ -27,7 +26,6 @@ import {
 } from '@angular/cdk/overlay';
 import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
 
-import type { TmFormFieldControl } from '@tellma/core-ui/contracts';
 import {
   TM_ERROR_DISPLAY,
   TM_FORM_FIELD_DEFAULTS,
@@ -36,17 +34,12 @@ import {
 } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
-import { ɵTmErrorPopover } from '@tellma/core-ui/private';
+import {
+  ɵTM_FORM_FIELD_CONTROL as TM_FORM_FIELD_CONTROL,
+  ɵTM_FORM_FIELD_HOST,
+  ɵTmErrorPopover,
+} from '@tellma/core-ui/private';
 import { TmSpinner } from '@tellma/core-ui/spinner';
-
-/**
- * A control projects itself into `tm-form-field` by providing this token
- * (`providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: … }]`) — the
- * MatFormFieldControl seam adapted to Signal Forms.
- */
-export const TM_FORM_FIELD_CONTROL = new InjectionToken<TmFormFieldControl>(
-  'TM_FORM_FIELD_CONTROL',
-);
 
 let nextUniqueId = 0;
 
@@ -84,6 +77,7 @@ let nextUniqueId = 0;
 @Component({
   selector: 'tm-form-field',
   imports: [TmIcon, TmSpinner, OverlayModule, ɵTmErrorPopover],
+  providers: [{ provide: ɵTM_FORM_FIELD_HOST, useExisting: TmFormField }],
   template: `
     @if (label() !== '') {
       <label

@@ -34,6 +34,7 @@ import { TmSession } from '../session/tm-session';
 import { TmSessionPaths } from '../session/tm-session-paths';
 import { TmPreferences } from '../state/prefs/tm-preferences';
 import { TmClientStore } from '../state/store/tm-client-store';
+import { TmSupport } from '../support/tm-support';
 import { TmUrls } from '../urls/tm-urls';
 import type { TmAppConfig } from './tm-app-config';
 
@@ -50,9 +51,10 @@ import type { TmAppConfig } from './tm-app-config';
 // the first page's render, the entry points of the recent pages, the leader
 // election and the worker's updates; and at idle the Contracts chunk, so the
 // first API call does not wait for it, the telemetry pipeline (spec 0026
-// §3), the load's paint metrics (§5.2) and the device-zone check (spec 0024
-// §7.8). The page visits are timed from the first navigation on (spec 0026
-// §5.1), and Copy diagnostics' shortcut works from then (§8.3).
+// §3), the load's paint metrics (§5.2), the device-zone check (spec 0024
+// §7.8) and the support host (spec 0026 §12.1). The page visits are timed
+// from the first navigation on (spec 0026 §5.1), and Copy diagnostics'
+// shortcut works from then (§8.3).
 
 /** The recent pages' entry point, as far as the startup reads it. Internal. */
 export interface TmRecentsModule {
@@ -168,7 +170,7 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
       // After the first page's render: the recent pages' visit count, the
       // leader election and the worker's updates; at idle, the Contracts
       // chunk, which the HTTP layer keeps, the telemetry pipeline, the paint
-      // metrics and the device-zone check.
+      // metrics, the device-zone check and the support host.
       // An app torn down before either moment starts nothing.
       let alive = true;
       inject(DestroyRef).onDestroy(() => (alive = false));
@@ -218,6 +220,9 @@ export function tmStartup(config: TmAppConfig): EnvironmentProviders[] {
           // The device-zone check's chunk, which checks now and then on
           // each tenant entry and whenever the tab comes into view.
           injector.get(TmDeviceZone).ɵstart();
+          // The support host's chunk and the page snapshot, so the first
+          // Report a problem opens its dialog in the press's frame.
+          injector.get(TmSupport).ɵstart();
         };
         if (window?.requestIdleCallback) {
           window.requestIdleCallback(load);

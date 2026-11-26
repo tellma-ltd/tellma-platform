@@ -10,9 +10,6 @@ import { Calendar } from '@internationalized/date';
 export const TM_BIDI_CONTROLS: RegExp;
 
 // @public
-export const TM_NUMBER_MAX_DIGITS = 15;
-
-// @public
 export interface TmCalendar {
     daysInMonth(year: number, month: number): number;
     fromParts(parts: TmCalendarParts): string | null;
@@ -38,17 +35,6 @@ export interface TmDateFormatOptions {
 }
 
 // @public
-export interface TmDateParseOptions {
-    readonly calendar?: TmCalendar;
-    readonly today?: string;
-}
-
-// @public
-export function tmDatePlaceholder(locale: string, options?: {
-    readonly calendar?: TmCalendar;
-}): string;
-
-// @public
 export type TmDateStyle = 'long' | 'medium' | 'month' | 'numeric' | 'quarter' | 'weekday' | 'year';
 
 // @public
@@ -60,9 +46,6 @@ export interface TmDateTimeFormatOptions {
     readonly timeZone: string;
     readonly zoneLabel?: boolean;
 }
-
-// @public
-export function tmFirstDayOfWeek(locale: string): number;
 
 // @public
 export function tmFormatDate(iso: string | null | undefined, locale: string, options?: TmDateFormatOptions): string;
@@ -97,26 +80,12 @@ export function tmFormatZoneOffset(instant: number | string, locale: string, tim
 export function tmGregorianCalendar(): TmCalendar;
 
 // @public
-export function tmNumberDigitCount(value: number): number;
-
-// @public
 export interface TmNumberFormatOptions {
     readonly grouping?: boolean;
     readonly maxDecimals?: number;
     readonly minDecimals?: number;
     readonly percent?: boolean;
 }
-
-// @public
-export interface TmNumberParseOptions extends TmNumberFormatOptions {
-    readonly sourceLocale?: string;
-}
-
-// @public
-export function tmParseDate(text: string, locale: string, options?: TmDateParseOptions): string | TmParseError | null;
-
-// @public
-export function tmParseNumber(text: string, locale: string, options?: TmNumberParseOptions): number | TmParseError | null;
 
 // @public
 export interface TmRelativeTimeFormatOptions {

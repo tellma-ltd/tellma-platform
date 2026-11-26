@@ -364,6 +364,12 @@ describe('TmEntityActions', () => {
   });
 
   describe('the generated dialog', () => {
+    // The dialog's chunks load once, before the first test waits on its modal: a cold load of
+    // the run, the dialog and the editors is the browser's to time, not these tests'.
+    beforeAll(async () => {
+      await Promise.all([import('./tm-action-run'), import('./tm-action-dialog'), import('@tellma/core/entity-editing' as string)]);
+    });
+
     it("opens set-credit-limit's dialog and posts the limit for customer 77", async () => {
       const { rig, actions } = await start();
       rig.api.respond('customers/set-credit-limit', { ids: [77], entities: [{ id: 77, creditLimit: '250000' }], extras: { permissions: {} } });

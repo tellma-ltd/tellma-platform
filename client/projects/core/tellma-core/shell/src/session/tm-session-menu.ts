@@ -30,22 +30,24 @@ import CalendarDays from 'lucide/dist/esm/icons/calendar-days.mjs';
 import Globe from 'lucide/dist/esm/icons/globe.mjs';
 import Info from 'lucide/dist/esm/icons/info.mjs';
 import Keyboard from 'lucide/dist/esm/icons/keyboard.mjs';
+import LifeBuoy from 'lucide/dist/esm/icons/life-buoy.mjs';
 import UserCog from 'lucide/dist/esm/icons/user-cog.mjs';
 
 import type { TmShellMarker } from '../app-bar/tm-shell-identity';
 import { TmShellIdentity } from '../app-bar/tm-shell-identity';
 import type { TmShellDialog } from '../app-bar/tm-shell-overlays';
 import { TmShellSlots } from '../app-bar/tm-shell-slots';
+import { TM_SHELL_SUPPORT } from '../tm-shell-support';
 import { TmSessionAvatar } from './tm-session-avatar';
 
 // The session menu (spec 0027 §10): a tm-menu 268 px wide (the viewport less
 // 8 px gutters below sm, where its rows grow to 44 px), opened from the app
 // bar's session button. Its header is who the user is; its rows, in order:
 // the tenant card, My settings, the language and calendar switches (each
-// with two or more choices), the theme, Keyboard shortcuts, About, the
-// distribution's slots below md (where the bar has no room for them), and
-// Sign out after a separator. Report a problem joins between About and the
-// slots once the support dialog lands.
+// with two or more choices), the theme, Keyboard shortcuts, About, Report a
+// problem, which opens the support dialog through the primary's facade (spec
+// 0026 §12.1), the distribution's slots below md (where the bar has no room
+// for them), and Sign out after a separator.
 
 /** The suffix each marker adds to the tenant card's second line. */
 const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
@@ -140,6 +142,7 @@ export class TmSessionMenu {
   readonly #metadata = inject(ɵTmClientMetadataStore);
   readonly #slots = inject(TmShellSlots).items;
   readonly #wide = inject(TmBreakpoints).atLeast('md');
+  readonly #support = inject(TM_SHELL_SUPPORT);
   /** The menu. */
   private readonly menu = viewChild.required(TmMenu);
 
@@ -201,6 +204,13 @@ export class TmSessionMenu {
         icon: Info,
         detail: this.#version.display,
         action: () => this.#ask(() => this.dialog.emit('about')),
+      },
+      {
+        id: 'report-problem',
+        label: this.#text('reportProblem'),
+        icon: LifeBuoy,
+        // The facade opens the dialog in this frame once its host is in, which the startup preloads at idle.
+        action: () => this.#ask(() => this.#support.open()),
       },
       ...this.#slotRows(),
       { separator: true },

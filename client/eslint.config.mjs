@@ -91,6 +91,36 @@ const LUCIDE_INDEX_RESTRICTION = {
     "The index reaches every icon, so the first frame would carry the icons lazy chunks draw.",
 };
 
+// The l10n-input boundary: l10n's pure posture, plus l10n itself.
+const L10N_INPUT_BOUNDARY = {
+  paths: [
+    {
+      name: '@tellma/core-ui',
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    SIGNALR_RESTRICTION,
+    LUCIDE_INDEX_RESTRICTION,
+  ],
+  patterns: [
+    {
+      group: ['@angular/*'],
+      message: 'The l10n-input entry point must stay free of Angular imports.',
+    },
+    {
+      group: ['@tellma/core-ui/*', '!@tellma/core-ui/l10n', '!@tellma/core-ui/contracts'],
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+      message: 'The l10n-input entry point is dependency-free beyond Intl, l10n and contracts.',
+    },
+  ],
+};
+
 /**
  * What a calendar pack may import, shared by the two config blocks below
  * (spec files get this list; shipped files get it plus the sibling-climb
@@ -125,6 +155,17 @@ const CALENDAR_BOUNDARY = {
       message: 'Calendar entry points are dependency-free beyond the calendar arithmetic package.',
     },
   ],
+};
+
+// The calendar boundary for a calendar's specs, which may also import
+// l10n-input to read the dates they format back.
+const CALENDAR_SPEC_BOUNDARY = {
+  ...CALENDAR_BOUNDARY,
+  patterns: CALENDAR_BOUNDARY.patterns.map((pattern) =>
+    pattern.group.includes('!@tellma/core-ui/l10n')
+      ? { ...pattern, group: [...pattern.group, '!@tellma/core-ui/l10n-input'] }
+      : pattern,
+  ),
 };
 
 export default defineConfig(
@@ -630,6 +671,15 @@ export default defineConfig(
     },
   },
 
+  // A calendar's specs also read its dates back through the parsers of
+  // l10n-input; its shipped code formats only.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': ['error', CALENDAR_SPEC_BOUNDARY],
+    },
+  },
+
   // …and SHIPPED calendar code additionally never climbs out of its own
   // entry point (a relative sibling import would duplicate that sibling into
   // the pack's bundle). Specs are exempt: both packs are checked against the
@@ -649,6 +699,24 @@ export default defineConfig(
               message: 'Calendar entry points must not reach into sibling entry points.',
             },
           ],
+        },
+      ],
+    },
+  },
+
+  // l10n-input entry-point boundary: the input side of l10n keeps its
+  // posture (no Angular, no DOM, no DI) and depends on l10n itself, whose
+  // formatters the parsers read the locale's symbols, field order and names
+  // from.
+  {
+    files: ['projects/core/tellma-core-ui/l10n-input/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', L10N_INPUT_BOUNDARY],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The l10n-input entry point must stay DI-free.',
         },
       ],
     },

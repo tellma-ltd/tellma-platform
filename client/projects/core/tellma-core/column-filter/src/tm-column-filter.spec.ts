@@ -6,8 +6,8 @@
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
-import { TmEntities, type TmColumnInput, type TmEntitiesChunk } from '@tellma/core';
-import { TM_ENUM_PICKER_THRESHOLD, tmSelectPlan, type TmColumnPlan } from '@tellma/core/entity';
+import { TmEntities, type TmColumnInput, type TmColumnPlan, type TmEntitiesChunk } from '@tellma/core';
+import { TM_ENUM_PICKER_THRESHOLD, tmSelectPlan } from '@tellma/core/entity';
 import { TmColumnFilterHarness, tmTestEntities } from '@tellma/core-testing';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 

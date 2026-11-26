@@ -16,6 +16,7 @@ import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
 import { Signal } from '@angular/core';
+import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
 import { Type } from '@angular/core';
 import { WritableSignal } from '@angular/core';
@@ -79,6 +80,20 @@ export class TmDetailsPageHarness extends ComponentHarness {
     isEnabled(button: TmDetailsPageButton): Promise<boolean>;
     isProgressShown(): Promise<boolean>;
     isTitleLoading(): Promise<boolean>;
+}
+
+// @public
+export type TmDiagnosticsPanelButton = 'Copy diagnostics' | 'Download diagnostic file' | 'Report a problem';
+
+// @public
+export class TmDiagnosticsPanelHarness extends ComponentHarness {
+    getButton(label: string | TmDiagnosticsPanelButton): Promise<TmButtonHarness>;
+    getButtons(): Promise<string[]>;
+    getGrid(): Promise<TmGridHarness>;
+    getHeader(): Promise<Record<string, string>>;
+    static hostSelector: string;
+    isFlaggedOnly(): Promise<boolean>;
+    toggleFlaggedOnly(): Promise<void>;
 }
 
 // @public
@@ -293,6 +308,68 @@ export class TmFakeTelemetry extends TmTelemetry {
 }
 
 // @public
+export class TmLauncherGroupHarness extends ComponentHarness {
+    getEmptyText(): Promise<string | null>;
+    getKind(): Promise<TmLauncherGroupKind>;
+    getLabel(): Promise<string>;
+    getOptionLabels(): Promise<string[]>;
+    getOptions(): Promise<TmLauncherOptionHarness[]>;
+    static hostSelector: string;
+    static with(options?: TmLauncherGroupHarnessFilters): HarnessPredicate<TmLauncherGroupHarness>;
+}
+
+// @public
+export interface TmLauncherGroupHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+}
+
+// @public
+export type TmLauncherGroupKind = 'band' | 'bucket' | 'pages' | 'section';
+
+// @public
+export class TmLauncherHarness extends ComponentHarness {
+    close(): Promise<void>;
+    getActiveDescendantLabel(): Promise<string | null>;
+    getActiveOption(): Promise<TmLauncherOptionHarness | null>;
+    getGroup(label: string | RegExp): Promise<TmLauncherGroupHarness | null>;
+    getGroupLabels(): Promise<string[]>;
+    getGroups(): Promise<TmLauncherGroupHarness[]>;
+    getOptionLabels(): Promise<string[]>;
+    getOptions(): Promise<TmLauncherOptionHarness[]>;
+    getQuery(): Promise<string>;
+    getState(): Promise<'browse' | 'typed'>;
+    getSurface(): Promise<TmLauncherSurfaceKind>;
+    static hostSelector: string;
+    isInputFocused(): Promise<boolean>;
+    pressKey(key: TestKey, modifiers?: ModifierKeys): Promise<void>;
+    type(text: string): Promise<void>;
+}
+
+// @public
+export class TmLauncherOptionHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    getDescription(): Promise<string | null>;
+    getHref(): Promise<string | null>;
+    getLabel(): Promise<string>;
+    getMarks(): Promise<string[]>;
+    getName(): Promise<string>;
+    static hostSelector: string;
+    hover(): Promise<void>;
+    isActive(): Promise<boolean>;
+    isCurrent(): Promise<boolean>;
+    isPinned(): Promise<boolean>;
+    static with(options?: TmLauncherOptionHarnessFilters): HarnessPredicate<TmLauncherOptionHarness>;
+}
+
+// @public
+export interface TmLauncherOptionHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+}
+
+// @public
+export type TmLauncherSurfaceKind = 'field' | 'panel' | 'sheet';
+
+// @public
 export class TmPageContextHarness {
     action(id: string): TmPageAction | undefined;
     actions(): readonly TmPageAction[];
@@ -321,6 +398,32 @@ export class TmPathPickerHarness extends ComponentHarness {
 }
 
 // @public
+export interface TmSearchPageCreate {
+    readonly disabledReason: string | null;
+    readonly href: string | null;
+    readonly label: string;
+}
+
+// @public
+export class TmSearchPageHarness extends ComponentHarness {
+    clickStateAction(label: string): Promise<void>;
+    getCreate(): Promise<TmSearchPageCreate | null>;
+    getGrid(): Promise<TmGridHarness | null>;
+    getPager(): Promise<TmPagerHarness>;
+    getState(): Promise<TmEmptyStateHarness | null>;
+    getStateActions(): Promise<string[]>;
+    getStateHeading(): Promise<string | null>;
+    getStateToken(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    hasColumnsButton(): Promise<boolean>;
+    hasMore(): Promise<boolean>;
+    static hostSelector: string;
+    isFirstLoad(): Promise<boolean>;
+    isLoading(): Promise<boolean>;
+    refresh(): Promise<void>;
+}
+
+// @public
 export class TmSessionMenuHarness extends TmMenuHarness {
     getAvatarTone(): Promise<number | null>;
     getEmail(): Promise<string>;
@@ -335,6 +438,13 @@ export interface TmSessionMenuTenantCard {
     readonly description: string | null;
     readonly detail: string | null;
     readonly label: string;
+}
+
+// @public
+export class TmSupportOfflineHarness extends ComponentHarness {
+    getKeys(): Promise<string[]>;
+    getText(): Promise<string>;
+    static hostSelector: string;
 }
 
 // @public
@@ -404,10 +514,17 @@ export class TmTenantShellHarness extends ComponentHarness {
     getUserName(): Promise<string>;
     hasHistoryButtons(): Promise<boolean>;
     static hostSelector: string;
+    isLauncherOpen(): Promise<boolean>;
+    isLauncherSkeletonShown(): Promise<boolean>;
     isTenantNameLoading(): Promise<boolean>;
+    openLauncher(control?: TmTenantShellLauncherControl): Promise<TmLauncherHarness>;
     openMarker(label: string): Promise<TmPopoverHarness>;
     openSessionMenu(): Promise<TmSessionMenuHarness>;
+    typeInSearchField(text: string): Promise<TmLauncherHarness>;
 }
+
+// @public
+export type TmTenantShellLauncherControl = 'field' | 'group-search' | 'menu' | 'search';
 
 // @public
 export type TmTenantShellMain = 'error' | 'page' | 'replaced';

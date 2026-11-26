@@ -13,6 +13,7 @@ import { DestroyRef } from '@angular/core';
 import { EnvironmentProviders } from '@angular/core';
 import { ErrorHandler } from '@angular/core';
 import { InjectionToken } from '@angular/core';
+import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
 import { Observable } from 'rxjs';
@@ -24,6 +25,7 @@ import { TemplateRef } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
+import { WritableSignal } from '@angular/core';
 
 // @public
 export class TmAppBar {
@@ -37,8 +39,13 @@ export class TmAppBar {
     protected readonly initials: _angular_core.Signal<string>;
     protected readonly installed: _angular_core.Signal<boolean>;
     protected readonly keycap: string;
+    protected readonly keyShortcuts: string;
     protected readonly launcher: TmLauncher;
+    protected readonly launcherActive: _angular_core.Signal<string | null>;
+    protected readonly launcherHint: _angular_core.Signal<string | null>;
+    protected readonly launcherListbox: _angular_core.Signal<string | null>;
     protected readonly launcherOpen: _angular_core.Signal<boolean>;
+    protected readonly launcherPending: _angular_core.Signal<boolean>;
     protected readonly markerIcons: {
         readonly sandbox: lucide.IconNode;
         readonly readOnly: lucide.IconNode;
@@ -50,12 +57,15 @@ export class TmAppBar {
     protected readonly menuLabel: _angular_core.Signal<string>;
     protected navigated(): void;
     protected readonly overlays: TmShellOverlays;
+    protected prefetchLauncher(): void;
     protected preloadSlot(slot: TmShellSlot): void;
     protected readonly searchIcon: lucide.IconNode;
     protected readonly searchLabel: _angular_core.Signal<string>;
+    protected searchLauncher(button: HTMLElement): void;
     protected sessionKeydown(event: KeyboardEvent, button: HTMLElement): void;
     protected slotLabel(item: TmShellSlotView): string;
     protected readonly slots: readonly TmShellSlotView[];
+    protected toggleLauncher(button: HTMLElement): void;
     protected toggleMarker(marker: TmShellMarker, button: HTMLElement): void;
     protected toggleSession(button: HTMLElement): void;
     protected toggleSlot(slot: TmShellSlot, button: HTMLElement): void;
@@ -64,6 +74,24 @@ export class TmAppBar {
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmAppBar, "tm-app-bar", never, {}, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmAppBar, never>;
 }
+
+// @public
+export class TmLauncher {
+    constructor();
+    close(reason: TmLauncherCloseReason): void;
+    readonly query: Signal<string>;
+    setQuery(text: string): void;
+    show(via: TmLauncherVia): void;
+    readonly state: Signal<'browse' | 'closed' | 'typed'>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmLauncher, never>;
+    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmLauncher>;
+}
+
+// @public
+export type TmLauncherCloseReason = 'chosen' | 'escape' | 'outside' | 'route' | 'tab';
+
+// @public
+export type TmLauncherVia = 'field' | 'icon' | 'link' | 'menu' | 'shortcut';
 
 // @public
 export class TmSessionMenu {

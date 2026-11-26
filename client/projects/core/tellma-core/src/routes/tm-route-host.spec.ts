@@ -365,6 +365,8 @@ describe('the route host', () => {
 
     it("publishes every page route's context, the entity's segment in its template, titled as the document is", async () => {
       rig = await tmAppRig();
+      // The search page reads its rows: none here.
+      rig.api.respond('centers/query', { rows: { columns: [], rows: [] }, count: 0 });
       const harness = await tmNavigate('/17/centers');
       const contexts = TestBed.inject(TmPageContexts);
       // An entity's page loads the Entities chunk's model first.
@@ -374,9 +376,10 @@ describe('the route host', () => {
       expect([search.status(), search.title()]).toEqual(['ready', 'Centers']);
 
       // A reused route showing another entity publishes that entity's context in place of the first.
-      await harness.navigateByUrl('/17/currencies');
+      rig.api.respond('customers/query', { rows: { columns: [], rows: [] }, count: 0 });
+      await harness.navigateByUrl('/17/customers');
       await tmSettle();
-      expect(contexts.current()!.routeTemplate).toBe('/:t/currencies');
+      expect(contexts.current()!.routeTemplate).toBe('/:t/customers');
 
       // The drill-through list keeps its own template; the others name their route.
       for (const [url, kind, template] of [

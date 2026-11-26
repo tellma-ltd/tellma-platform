@@ -50,6 +50,7 @@ export const TM_STRINGS_AR: TmStringTree = {
     updating: 'جارٍ تنزيل التحديث…',
     updateFailed: `تعذّر تنزيل التحديث. ${imperative('تحقق', 'تحققي')} من اتصالك ${imperative('وحاول', 'وحاولي')} مرة أخرى.`,
     reloadAnyway: 'إعادة التحميل على أي حال',
+    reportProblem: 'الإبلاغ عن هذه المشكلة',
     notSent: { message: `تغييراتك محفوظة. ${imperative('احفظ', 'احفظي')} مرة أخرى عند عودة الاتصال.` },
     outcomeUnknown: {
       title: 'تعذّر علينا التأكد من ذلك',
@@ -114,13 +115,6 @@ export const TM_STRINGS_AR: TmStringTree = {
       region: 'اللغة والمنطقة',
       display: 'العرض',
       notifications: 'الإشعارات',
-    },
-  },
-  launcher: {
-    synonyms: {
-      meProfile: 'الصورة، التوقيع، بيانات الاتصال',
-      meRegion: 'المنطقة الزمنية، التقويم، الأرقام، التنسيقات',
-      meDisplay: 'السمة، الشريط المثبت',
     },
   },
   entity: {

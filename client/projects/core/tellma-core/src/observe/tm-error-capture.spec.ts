@@ -41,7 +41,7 @@ function withStack<T extends Error>(error: T, stack: string): T {
  * @returns The record.
  */
 function recorded(capture: TmErrorCapture, error: unknown, source: TmErrorRecord['source'] = 'render'): TmErrorRecord {
-  const outcome = capture.capture(error, source, 1_000, '/:t/centers/:id', [TRACE_ID]);
+  const outcome = capture.capture(error, source, 1_000, '/:t/centers/:id', [TRACE_ID], 17);
   if (typeof outcome === 'string') {
     throw new Error(`Expected a record, got ${outcome}`);
   }
@@ -212,6 +212,7 @@ describe('TmErrorCapture', () => {
         stack: 'at TmCenters.load (chunk-K3J7Q2M9.js:1:2345)\nat main-ABCD1234.js:2:10',
         message: 'Invalid value "…" at row #',
         at: 1_000,
+        tenantId: 17,
         recentTraceIds: [TRACE_ID],
       });
     });

@@ -6,12 +6,12 @@
 import { Component, signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import type { TmJson, TmPathResolution, TmPlanRow, TmValueDescriptor } from '@tellma/core';
+import type { TmColumnPlan, TmJson, TmPathResolution, TmPlanRow, TmValueDescriptor } from '@tellma/core';
 import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmImage } from '@tellma/core-ui/image';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
-import { tmSelectPlan, type TmColumnPlan } from './tm-select-plan';
+import { tmSelectPlan } from './tm-select-plan';
 import { TmValue } from './tm-value';
 import type { TmValueStyle } from './tm-formats';
 

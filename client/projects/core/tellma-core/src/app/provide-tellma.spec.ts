@@ -37,7 +37,7 @@ import { TM_CLIENT_METADATA, TmClientMetadataStore } from '../metadata/tm-client
 import type { TmMetadataLoaders } from '../metadata/tm-metadata-loaders';
 import { TM_LEADER_DOCUMENTS } from '../state/leader/tm-leader-documents';
 import { TM_STORE_EXTRA_FORMATS } from '../state/store/tm-doc-formats';
-import { TM_STATE_PARTS } from '../state/tm-state-dump';
+import { TM_STATE_PARTS } from '../state/tm-state-parts';
 import { provideTellma, tmAppConfigOf } from './provide-tellma';
 import type { TmAppConfig } from './tm-app-config';
 import { TM_APP_DECLARATIONS } from './tm-app-declarations';

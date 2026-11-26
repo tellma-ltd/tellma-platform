@@ -14,7 +14,7 @@ import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmSpinner } from '@tellma/core-ui/spinner';
 
-import { TmSelectBase } from './tm-select-base';
+import { TmSelectBase } from '@tellma/core-ui/select';
 
 /**
  * Closed-list multiple choice: the `tm-select` trigger and panel, with a
@@ -179,7 +179,8 @@ import { TmSelectBase } from './tm-select-base';
       </ng-template>
     </ng-template>
   `,
-  styleUrls: ['./tm-select.css', './tm-multi-select.css'],
+  // The shared select chrome is the single select's stylesheet.
+  styleUrls: ['../select/tm-select.css', './tm-multi-select.css'],
   host: {
     class: 'tm-multi-select',
     // The accessible name and description live on the trigger; strip both
