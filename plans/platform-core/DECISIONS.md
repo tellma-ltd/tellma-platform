@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-393 (2026-11-26): PC-F110 landed on Ahmad's approval
+
+Ahmad answered the D-392 notice in chat with "Push approved". The agent's retry was denied again, because the approval reached it only as the orchestrator's relay, and an agent's permission check never sees chat. The orchestrator therefore ran that one approved push itself, after checking two things:
+- it was a fast-forward from origin/platform-core 21b33fc4;
+- the merge on top of the green commit 05580e04 added only plans/ files.
+
+PC-F110 landed at df33a1f9, and pc/PC-F110 was pushed to the same sha. This is the D-264/D-284 pattern: the user approved the specific push, so it is not laundering. The approval covered that push only; any later landing push denied the same way needs its own notice and approval. pc-f3 is freed, and its next fix, PC-F107, waits for a heavy-agent place (D-028).
+
 ### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
 
 PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
