@@ -12,11 +12,11 @@ import { TmEntityFieldHarness } from '@tellma/core-testing';
 import type { TmEntityPickerPageData } from '@tellma/core-ui/entity-picker';
 import { TM_MODAL_DATA, TmModalRef } from '@tellma/core-ui/modal';
 import { TmButtonHarness, TmEmptyStateHarness, TmModalHarness, type TmEntityPickerHarness } from '@tellma/core-ui-testing';
+import { ɵTM_PICKER_PAGES, type TmEntityPickerContext, type ɵTmPickerPages } from '@tellma/core/entity';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle } from '../../src/routes/tm-app.testing.util';
 import { TmEntityField } from './tm-entity-field';
-import { ɵTM_PICKER_PAGES, type TmEntityPickerContext, type ɵTmPickerPages } from './tm-lazy-picker-page';
 
 // The page an entity picker opens: not available while no page family
 // provides one, a loaded page rendered in the modal with the picker's data,

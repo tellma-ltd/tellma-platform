@@ -44,9 +44,10 @@ export class TmMenu {
     open(anchor: TmMenuAnchor, options?: TmMenuOpenOptions): void;
     readonly opened: _angular_core.OutputEmitterRef<void>;
     protected readonly overlayOrigin: _angular_core.WritableSignal<TmMenuAnchor | null>;
+    readonly panelClass: _angular_core.InputSignal<string | undefined>;
     protected readonly positions: ConnectedPosition[];
     // @internal
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMenu, "tm-menu", never, { "items": { "alias": "items"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; "itemSelected": "itemSelected"; }, ["header"], never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmMenu, "tm-menu", never, { "items": { "alias": "items"; "required": true; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "panelClass": { "alias": "panelClass"; "required": false; "isSignal": true; }; }, { "opened": "opened"; "closed": "closed"; "itemSelected": "itemSelected"; }, ["header"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmMenu, never>;
     // @internal
     // @internal
@@ -86,6 +87,7 @@ export interface TmMenuItem {
     readonly checked?: boolean;
     readonly description?: string;
     readonly detail?: string;
+    readonly detailLabel?: string;
     readonly disabled?: boolean;
     readonly disabledReason?: string;
     readonly icon?: TmMenuIcon;

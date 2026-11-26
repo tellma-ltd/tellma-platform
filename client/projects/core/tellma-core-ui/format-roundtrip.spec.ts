@@ -5,7 +5,8 @@
 
 import { tmEthiopicCalendar } from '@tellma/core-ui/calendar-ethiopic';
 import { tmUmalquraCalendar } from '@tellma/core-ui/calendar-umalqura';
-import { tmFormatDate, tmGregorianCalendar, tmParseDate } from '@tellma/core-ui/l10n';
+import { tmFormatDate, tmGregorianCalendar } from '@tellma/core-ui/l10n';
+import { tmParseDate } from '@tellma/core-ui/l10n-input';
 
 /**
  * The cross-calendar format→parse round-trip sweep — the identity the

@@ -79,8 +79,10 @@ export interface TmApiUpdates {
   check(): Promise<TmApiUpdateCheck>;
 }
 
-/** The update service as its lazy callers use it: the check, and the update and reload it allows. Internal. */
+/** The update service as its lazy callers use it: the check, the update and reload it allows, and the worker's version. Internal. */
 export interface TmWorkerUpdates extends TmApiUpdates {
+  /** The version the controlling worker serves this page, or `null` without one. */
+  readonly version: Signal<string | null>;
   /** Checks, and reloads into the new version on `ready`, or on `disabled` when no worker is in the way. */
   update(): Promise<TmApiUpdateCheck>;
   /** Reloads as the browser would, which a degraded worker sends to the network. */

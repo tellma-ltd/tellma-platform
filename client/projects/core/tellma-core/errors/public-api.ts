@@ -18,5 +18,10 @@ export { TmErrorPresenter } from './src/tm-error-presenter';
 export { tmClientOutdatedState as ɵtmClientOutdatedState } from './src/tm-error-presenter';
 export { TmErrorState } from './src/tm-error-state';
 export type { TmErrorAction, TmErrorContext, TmErrorView } from './src/tm-error-view';
-// The page behind the error views' Reload, which a test replaces; not for app code.
-export { TM_RELOAD_HOST as ɵTM_RELOAD_HOST, type TmReloadHost as ɵTmReloadHost } from './src/tm-error-updates';
+// The page behind the error views' Reload, which a test replaces, and Reload itself,
+// which the shell's About dialog shares; not for app code.
+export {
+  TM_RELOAD_HOST as ɵTM_RELOAD_HOST,
+  TmErrorUpdates as ɵTmErrorUpdates,
+  type TmReloadHost as ɵTmReloadHost,
+} from './src/tm-error-updates';

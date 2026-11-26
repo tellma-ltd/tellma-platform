@@ -178,6 +178,9 @@ export class TmLaunchTimer {
       }
     }
   `,
+  // The host fills `main`, so a page that scrolls inside itself, such as
+  // the search page's grid, can take the rest of its height; a taller page
+  // overflows it, and `main` scrolls as before.
   styles: `
     /* The page fills the shell's main, so a page whose body scrolls on its own can size it. */
     :host {

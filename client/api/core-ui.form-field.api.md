@@ -22,7 +22,7 @@ export class TmFormField {
     constructor();
     protected readonly anchoredError: _tellma_core_ui_overlay.TmAnchoredOverlay;
     protected readonly chromeless: _angular_core.Signal<boolean>;
-    protected readonly control: _angular_core.Signal<TmFormFieldControl | undefined>;
+    protected readonly control: _angular_core.Signal<_tellma_core_ui_contracts.TmFormFieldControl | undefined>;
     readonly error: _angular_core.InputSignal<string>;
     protected readonly errorIcon: lucide.IconNode;
     protected readonly errorId: string;

@@ -14,6 +14,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 using OpenIddict.Abstractions;
 using OpenIddict.EntityFrameworkCore.Models;
+using Serilog.Events;
+using System.Data;
 using System.Data.Common;
 using System.Net;
 using System.Text.Json;
@@ -33,7 +35,9 @@ namespace Tellma.Identity.IntegrationTests.Flows
     ///     authorization ends up covering every place either tab asked for, and the session holds
     ///     one registration of the client. Whatever authorizations a session's grants end up
     ///     with, a logout of the session revokes every one, including one a grant registers while
-    ///     the logout runs; a grant that loses to the logout gets no code.
+    ///     the logout runs; a grant that loses to the logout gets no code. A logout's revoke that
+    ///     loses to a grant's write to the same authorization is made again over what that grant
+    ///     wrote, and one that keeps losing is logged and audited rather than dropped.
     /// </summary>
     [Collection(SqlServerCollectionDefinition.Name)]
     [Trait("Category", "Integration")]
@@ -322,7 +326,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
             // racing a stream of others. The grant stops after three attempts, and the client is
             // told to try again rather than given a code the authorization does not record.
             using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idgrantlost", CliSeed);
-            AuthorizationWriteSaboteur saboteur = new(factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"]!);
+            AuthorizationWriteSaboteur saboteur = new(
+                factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"]!, AuthorizationWriteSaboteur.EveryUpdate);
             factory.ServiceOverrides.Add(services => services.ConfigureDbContext<TellmaIdentityDbContext>(
                 (_, builder) => builder.AddInterceptors(saboteur)));
             using OidcFlowClient flow = factory.CreateFlowClient();
@@ -341,6 +346,104 @@ namespace Tellma.Identity.IntegrationTests.Flows
             Assert.False(query.ContainsKey("code"));
             Assert.Equal(3, saboteur.Attempts);
             Assert.Equal([Tenant17], await CoveredResourcesAsync(factory));
+        }
+
+        [Fact]
+        public async Task A_logout_whose_revoke_loses_to_a_grant_revokes_the_authorization_as_that_grant_left_it()
+        {
+            // A grant of another tab extends the authorization to a second tenant between the
+            // logout's read of it and its revoke, so the revoke loses on the concurrency token.
+            // The logout reads the authorization again and revokes it as the grant left it.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrevokelost", CliSeed);
+            AuthorizationWriteSaboteur saboteur = new(
+                factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"]!,
+                AuthorizationWriteSaboteur.CliRevocations,
+                overtakes: 1,
+                extendsWith: Tenant18);
+            factory.ServiceOverrides.Add(services => services.ConfigureDbContext<TellmaIdentityDbContext>(
+                (_, builder) => builder.AddInterceptors(saboteur)));
+            using OidcFlowClient flow = factory.CreateFlowClient();
+            await ConsentTests.SignInAsync(factory, flow, "revoke@example.com");
+            string refreshToken = await RedeemAsync(flow, await AuthorizeForCodeAsync(flow, Tenant17, DefaultScope));
+
+            await SignOutAsync(flow);
+
+            // The first revoke lost and the second landed, over the grant's write rather than the
+            // copy read before it: the authorization is revoked and still covers both tenants.
+            Assert.Equal(2, saboteur.Attempts);
+            await AssertEndedAsync(factory, flow, [refreshToken]);
+            Assert.Equal([Tenant17, Tenant18], await CoveredResourcesAsync(factory));
+
+            // One successful revocation is audited, naming the authorization and the attempts.
+            AuditEvent revoked = Assert.Single(await RevocationAuditsAsync(factory, ClientId));
+            Assert.Equal("success", revoked.Outcome);
+            AssertRevocationDetails(revoked, Assert.Single(await AuthorizationIdsAsync(factory)), attempts: 2);
+        }
+
+        [Fact]
+        public async Task A_logout_whose_revoke_keeps_losing_logs_and_audits_the_authorization_it_left_valid()
+        {
+            // Every revoke the logout writes to the CLI's authorization is overtaken by another
+            // writer, as if a stream of grants kept extending it. The logout gives up on it after
+            // three attempts and goes on; the authorization it could not revoke is not dropped
+            // silently.
+            CapturingLogSink logs = new();
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idrevokegaveup", CliSeed);
+            AuthorizationWriteSaboteur saboteur = new(
+                factory.ConfigurationOverrides["TellmaIdentity:ConnectionString"]!, AuthorizationWriteSaboteur.CliRevocations);
+            factory.ServiceOverrides.Add(services =>
+            {
+                _ = services.ConfigureDbContext<TellmaIdentityDbContext>((_, builder) => builder.AddInterceptors(saboteur));
+                _ = services.AddSingleton<Serilog.Core.ILogEventSink>(logs);
+            });
+            using OidcFlowClient flow = factory.CreateFlowClient();
+
+            // The distribution the user signs in through takes back-channel logouts, so the
+            // logout has a delivery to make after its revokes.
+            await ConsentTests.SignInAsync(
+                factory, flow, "gaveup@example.com", new Uri(Origin + "/backchannel-logout"));
+            await RedeemAsync(flow, await AuthorizeForCodeAsync(flow, Tenant17, DefaultScope));
+            string authorizationId = Assert.Single(await AuthorizationIdsAsync(factory));
+
+            await SignOutAsync(flow);
+
+            // Three attempts, and the authorization is still valid.
+            Assert.Equal(3, saboteur.Attempts);
+            using (IServiceScope scope = factory.Services.CreateScope())
+            {
+                IOpenIddictAuthorizationManager authorizations = scope.ServiceProvider.GetRequiredService<IOpenIddictAuthorizationManager>();
+                object authorization = (await authorizations.FindByIdAsync(authorizationId, TestContext.Current.CancellationToken))!;
+                Assert.Equal(
+                    OpenIddictConstants.Statuses.Valid,
+                    await authorizations.GetStatusAsync(authorization, TestContext.Current.CancellationToken));
+            }
+
+            // The failure is audited against the user, the client and the session, naming the
+            // authorization left valid, and no success is recorded for it.
+            AuditEvent failed = Assert.Single(await RevocationAuditsAsync(factory, ClientId));
+            Assert.Equal("failure", failed.Outcome);
+            Assert.False(string.IsNullOrEmpty(failed.Subject), "The failure names no subject.");
+            Assert.False(string.IsNullOrEmpty(failed.Sid), "The failure names no session.");
+            AssertRevocationDetails(failed, authorizationId, attempts: 3);
+
+            // The distribution's authorization, registered under the same session, was revoked
+            // all the same.
+            AuditEvent distribution = Assert.Single(await RevocationAuditsAsync(factory, "acme"));
+            Assert.Equal("success", distribution.Outcome);
+            Assert.Equal(failed.Sid, distribution.Sid);
+
+            // The logout went on past the revoke it gave up on: deliveries start only once every
+            // revoke has run, whatever order the registrations come in, and the distribution
+            // received its logout token and the delivery was audited.
+            Assert.Single(factory.BackchannelLogouts.LogoutTokens);
+            AuditEvent delivered = Assert.Single(await AuditsAsync(factory, "BackchannelLogoutSent", "acme"));
+            Assert.Equal("success", delivered.Outcome);
+            Assert.Equal(failed.Sid, delivered.Sid);
+
+            // And it is logged as a warning naming the authorization.
+            Assert.Single(
+                logs.Messages(LogEventLevel.Warning),
+                message => message.Contains(authorizationId, StringComparison.Ordinal));
         }
 
         /// <summary>Boots a host with the CLI seeded and the given interceptors on its store context.</summary>
@@ -535,6 +638,32 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 .GroupBy(static row => row.Sid, StringComparer.Ordinal)
                 .Select(static session => session.Select(static row => row.AuthorizationId).Order(StringComparer.Ordinal).ToArray())
                 .OrderBy(static ids => ids.Length)];
+        }
+
+        /// <summary>The audit rows of every revocation recorded so far for a client.</summary>
+        private static Task<List<AuditEvent>> RevocationAuditsAsync(StandaloneFactory factory, string clientId)
+        {
+            return AuditsAsync(factory, "TokenRevoked", clientId);
+        }
+
+        /// <summary>The audit rows of an action recorded so far for a client.</summary>
+        private static async Task<List<AuditEvent>> AuditsAsync(StandaloneFactory factory, string action, string clientId)
+        {
+            using IServiceScope scope = factory.Services.CreateScope();
+            TellmaIdentityDbContext db = scope.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
+            return await db.Set<AuditEvent>()
+                .AsNoTracking()
+                .Where(row => row.Action == action && row.ClientId == clientId)
+                .ToListAsync(TestContext.Current.CancellationToken);
+        }
+
+        /// <summary>Asserts that a revocation's audit row names the authorization and the attempts it took.</summary>
+        private static void AssertRevocationDetails(AuditEvent audit, string authorizationId, int attempts)
+        {
+            Assert.NotNull(audit.DetailsJson);
+            using var details = JsonDocument.Parse(audit.DetailsJson);
+            Assert.Equal(authorizationId, details.RootElement.GetProperty("authorizationId").GetString());
+            Assert.Equal(attempts, details.RootElement.GetProperty("attempts").GetInt32());
         }
 
         /// <summary>The code a redirect back to the client carries, if it carries one.</summary>
@@ -744,17 +873,41 @@ namespace Tellma.Identity.IntegrationTests.Flows
         }
 
         /// <summary>
-        ///     Lets another writer change an authorization just before every save that updates it,
-        ///     so every such save loses on the authorization's concurrency token, and counts them.
+        ///     Lets another writer change an authorization just before a save that updates it, so
+        ///     that save loses on the authorization's concurrency token, and counts the saves. Only
+        ///     the updates it targets count, and only the first <paramref name="overtakes" /> of
+        ///     them are overtaken; the rest go through.
         /// </summary>
         /// <param name="connectionString">The store's connection string.</param>
-        private sealed class AuthorizationWriteSaboteur(string connectionString) : SaveChangesInterceptor
+        /// <param name="targets">Whether an update of an authorization, as it is about to be saved, is targeted.</param>
+        /// <param name="overtakes">How many targeted saves are overtaken.</param>
+        /// <param name="extendsWith">
+        ///     A resource the other writer adds to the authorization's covered set, as a concurrent
+        ///     grant extending it would; when null, it changes only the concurrency token.
+        /// </param>
+        private sealed class AuthorizationWriteSaboteur(
+            string connectionString,
+            Func<OpenIddictEntityFrameworkCoreAuthorization, bool> targets,
+            int overtakes = int.MaxValue,
+            string? extendsWith = null) : SaveChangesInterceptor
         {
-            /// <summary>How many authorization updates were attempted.</summary>
+            /// <summary>How many targeted saves were attempted.</summary>
             private int _attempts;
 
-            /// <summary>How many authorization updates were attempted.</summary>
+            /// <summary>How many targeted saves were attempted.</summary>
             public int Attempts => Volatile.Read(ref _attempts);
+
+            /// <summary>Targets every update of an authorization.</summary>
+            public static Func<OpenIddictEntityFrameworkCoreAuthorization, bool> EveryUpdate { get; } = static _ => true;
+
+            /// <summary>
+            ///     Targets the updates that write an authorization of the CLI's revoked. The
+            ///     distribution the user signed in through is registered under the same session,
+            ///     and its authorization is revoked by the same logout, undisturbed.
+            /// </summary>
+            public static Func<OpenIddictEntityFrameworkCoreAuthorization, bool> CliRevocations { get; } =
+                static authorization => authorization.Status == OpenIddictConstants.Statuses.Revoked
+                    && authorization.Application?.ClientId == ClientId;
 
             /// <inheritdoc />
             public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
@@ -764,12 +917,12 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 List<string> updated = eventData.Context is { } context
                     ? [.. context.ChangeTracker
                         .Entries<OpenIddictEntityFrameworkCoreAuthorization>()
-                        .Where(static entry => entry.State == EntityState.Modified)
+                        .Where(entry => entry.State == EntityState.Modified && targets(entry.Entity))
                         .Select(static entry => entry.Entity.Id!)]
                     : [];
-                if (updated.Count > 0)
+                if (updated.Count == 0 || Interlocked.Increment(ref _attempts) > overtakes)
                 {
-                    Interlocked.Increment(ref _attempts);
+                    return await base.SavingChangesAsync(eventData, result, cancellationToken);
                 }
 
                 foreach (string id in updated)
@@ -778,10 +931,17 @@ namespace Tellma.Identity.IntegrationTests.Flows
                     await using SqlConnection connection = new(connectionString);
                     await connection.OpenAsync(cancellationToken);
                     await using SqlCommand command = new(
-                        "UPDATE [idsvr].[OpenIddictAuthorizations] SET [ConcurrencyToken] = CONVERT(nvarchar(50), NEWID()) WHERE [Id] = @id;",
+                        $$"""
+                        UPDATE [idsvr].[OpenIddictAuthorizations]
+                           SET [ConcurrencyToken] = CONVERT(nvarchar(50), NEWID()),
+                               [Properties] = CASE WHEN @resource IS NULL THEN [Properties]
+                                                   ELSE JSON_MODIFY([Properties], 'append $."{{AuthorizationResources.Property}}"', @resource) END
+                         WHERE [Id] = @id;
+                        """,
                         connection);
                     command.Parameters.AddWithValue("@id", id);
-                    await command.ExecuteNonQueryAsync(cancellationToken);
+                    command.Parameters.Add("@resource", SqlDbType.NVarChar, 4000).Value = (object?)extendsWith ?? DBNull.Value;
+                    Assert.Equal(1, await command.ExecuteNonQueryAsync(cancellationToken));
                 }
 
                 return await base.SavingChangesAsync(eventData, result, cancellationToken);

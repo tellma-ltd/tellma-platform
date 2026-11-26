@@ -9,7 +9,7 @@ import { TmFakeSession } from '@tellma/core-testing';
 import { TmApiError } from '@tellma/core';
 
 import { TmFakeApiUpdates, tmFakeUpdatesProviders } from '../../src/api/tm-api.testing.util';
-import { tmAppRig, tmNavigate, tmSettle, type TmAppRig } from '../../src/routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, tmSettleUntil, type TmAppRig } from '../../src/routes/tm-app.testing.util';
 import { TmErrorPresenter } from './tm-error-presenter';
 import { TmErrorState } from './tm-error-state';
 import { TM_RELOAD_HOST } from './tm-error-updates';
@@ -28,6 +28,8 @@ async function setUp(): Promise<TmStateRig> {
   const updates = new TmFakeApiUpdates();
   const rig = await tmAppRig({ providers: [...tmFakeUpdatesProviders(updates), { provide: TM_RELOAD_HOST, useValue: updates }] });
   await tmNavigate('/17/centers');
+  // The centers' search page lands with its lazily loaded chunk.
+  await tmSettleUntil(() => document.querySelector('tm-search-host') !== null, 'the search page lands');
   return { ...rig, updates, presenter: TestBed.inject(TmErrorPresenter) };
 }
 

@@ -16,6 +16,7 @@ import { CheckboxStory } from './checkbox/checkbox-story';
 import { ConfirmStory } from './confirm/confirm-story';
 import { ChipStory } from './chip/chip-story';
 import { CopyStory } from './copy/copy-story';
+import { CounterStory } from './counter/counter-story';
 import { DatePickerStory } from './date-picker/date-picker-story';
 import { DateRangeStory } from './date-range/date-range-story';
 import { DateTimeStory } from './date-time/date-time-story';
@@ -110,7 +111,8 @@ export const SHOWCASE_STORIES: readonly ShowcaseStory[] = [
   { id: 'kbd', title: 'Keyboard keys (tm-kbd)', component: KbdStory },
   { id: 'button', title: 'Button (tmButton)', component: ButtonStory },
   { id: 'copy', title: 'Copy (tm-copy-button + tm-reference)', component: CopyStory },
-  { id: 'badge', title: 'Badges and counters (tm-badge + tm-counter)', component: BadgeStory },
+  { id: 'badge', title: 'Badge (tm-badge)', component: BadgeStory },
+  { id: 'counter', title: 'Counter (tm-counter)', component: CounterStory },
   { id: 'avatar', title: 'Avatar (tm-avatar)', component: AvatarStory },
   {
     id: 'progress',

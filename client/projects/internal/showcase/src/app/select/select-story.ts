@@ -7,7 +7,8 @@ import { Component, signal } from '@angular/core';
 import { form, FormField, required } from '@angular/forms/signals';
 
 import { TmFormField } from '@tellma/core-ui/form-field';
-import { TmMultiSelect, TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
+import { TmMultiSelect } from '@tellma/core-ui/multi-select';
 
 interface Country {
   readonly id: number;

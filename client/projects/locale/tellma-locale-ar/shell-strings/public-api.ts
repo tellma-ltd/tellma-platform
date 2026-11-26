@@ -1,7 +1,8 @@
 /**
  * The Arabic of the platform's shell, of @tellma/locale-ar: the shell
- * frame's, the tenantless shell's, the tenant picker's and the signed-out
- * page's strings under `tm`. A Tellma app's `tmArabic()` loads this entry
+ * frame's, the tenantless shell's, the tenant picker's, the signed-out
+ * page's, the tenant app bar's, the session menu's, the markers' and the
+ * About and Shortcuts dialogs' strings under `tm`. A Tellma app's `tmArabic()` loads this entry
  * point on the first switch to Arabic, beside
  * `@tellma/locale-ar/platform-strings` and `@tellma/locale-ar/strings`, and
  * merges it into the platform's table.

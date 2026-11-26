@@ -37,6 +37,8 @@ interface Run {
   readonly app: string;
   /** Whether ng build ran. */
   readonly ngBuilt: boolean;
+  /** The variables ng build ran with beyond the parent's environment, when it ran. */
+  readonly ngEnv: Readonly<Record<string, string>> | undefined;
 }
 
 /**
@@ -60,11 +62,13 @@ async function build(
   copies.push(app);
   change(app);
   let ngBuilt = false;
+  let ngEnv: Readonly<Record<string, string>> | undefined;
   const runner = fakeRunner({
     ...(options.data === undefined ? {} : { data: options.data }),
-    node: (args) => {
+    node: (args, processOptions) => {
       if (/ng\.js$/.test(args[0] ?? '')) {
         ngBuilt = true;
+        ngEnv = processOptions.env;
         return 1;
       }
       if (/config-check-runner\.js$/.test(args[0] ?? '') && options.realConfigCheck !== true) {
@@ -86,6 +90,7 @@ async function build(
     calls: runner.calls.map((call) => [call.command, ...call.args]),
     app,
     ngBuilt,
+    ngEnv,
   };
 }
 
@@ -193,6 +198,8 @@ describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
   it('reaches ng build when the sources pass, and exits 2 when it fails', async () => {
     const run = await build('passes', undefined, { args: ['-c', 'Release', '--no-dotnet-build'] });
     expect(run.ngBuilt).toBe(true);
+    // Angular's chunk optimizer runs on Rollup, whatever the number of lazy chunks or the caller's environment.
+    expect(run.ngEnv).toEqual({ NG_BUILD_OPTIMIZE_CHUNKS: 'true', NG_BUILD_CHUNKS_ROLLDOWN: 'false' });
     expect(run.code).toBe(TM_CLI_EXIT.failure);
     expect(run.err).toContain('ng build exited with code 1.');
     // The emit's options reach the Migrator's run.
@@ -210,6 +217,14 @@ describe('tellma-client build, before ng build', { timeout: 60_000 }, () => {
       '--',
       'emit-client-assets',
       join(run.app, 'generated'),
+    ]);
+    // ng build writes the chunk graph and defines the brand files' ratios for the app's code: the fixture's 120 by 24 wordmark and 24 px mark.
+    const ng = run.calls.find((call) => /ng\.js$/.test(call[1] ?? ''));
+    expect(ng?.slice(2)).toEqual([
+      'build',
+      '--stats-json',
+      '--define',
+      'TM_BRAND_RATIOS={"wordmark-on-dark":5,"wordmark-on-light":5,"mark-on-dark":1,"mark-on-light":1}',
     ]);
     // generated/root/ is fresh before ng build: the boot script, and no override of public/brand/.
     expect(readFileSync(join(run.app, 'generated', 'root', 'tm-boot.js'), 'utf8')).toContain('"defaultLanguage":"en"');

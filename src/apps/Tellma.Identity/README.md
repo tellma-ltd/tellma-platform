@@ -218,7 +218,12 @@ for a scope set no authorization holds creates its own, and so do two first gran
 The session registry therefore records every authorization a client's grants used under a session
 (`SessionClientAuthorizations`, keyed by session, client and authorization, beneath the session's
 `SessionClients` row), and a logout of the session, or sign-out everywhere, revokes them all before
-it delivers one back-channel logout token per client. `SessionClients.AuthorizationId` still holds
+it delivers one back-channel logout token per client. A revoke the store refuses on the
+authorization's concurrency token (a grant of another tab extended it after the logout read it) is
+made again over the authorization as it now stands, detaching the refused copy first, up to three
+attempts; one that still fails is logged as a warning and audited as `TokenRevoked` with outcome
+`failure` and the authorization's id, and the logout goes on. Each revocation's audit row carries
+the authorization's id and the attempts it took. `SessionClients.AuthorizationId` still holds
 the latest of them for one more release, because the previous engine release reads only that
 column during a rollout or after a rollback, and a logout revokes it too, which covers the
 registrations that release made. Grants of one session registering the same client at once both

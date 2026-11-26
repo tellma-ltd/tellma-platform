@@ -8,6 +8,7 @@ import {
   TmDisplayNames,
   TmEntities,
   TmLocalization,
+  type TmColumnPlan,
   type TmDecimal,
   type TmId,
   type TmJsonObject,
@@ -19,7 +20,7 @@ import { TmL10n, type TmZoneLabelMode } from '@tellma/core-ui';
 import { tmFormatDateTime, tmStripBidiControls, type TmDateStyle } from '@tellma/core-ui/l10n';
 
 import { ɵTM_VALUE_STRINGS_EN } from './tm-entity-strings';
-import { ɵtmPlanNames, type TmColumnPlan } from './tm-select-plan';
+import { ɵtmPlanNames } from './tm-select-plan';
 
 // Typed values as text (spec 0029 §12): one format per value descriptor, the
 // same on every surface, following the language, the regional formats, the
