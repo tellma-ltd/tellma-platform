@@ -384,6 +384,75 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
+
+PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
+
+The orchestrator does not run the push itself, which would launder the agent's denial. PC-F110 keeps pc-f3 and waits for Ahmad's approval; that approval covers this one push (D-264, D-284).
+
+A blocked item is skipped, not waited on (D-319), so PC-F111 is released to integrate. Its integration push goes to pc/PC-F111. If its own land push is denied the same way, it waits beside PC-F110.
+
+### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
+
+PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.
+
+PC-128 is parked with its work on pc/PC-128, not held, so pc-2 is freed (D-384). No T1 item is ready, so pc-2 takes PC-163, the only ready T2, with its three carries (D-229). The heavy-agent count stays within five: PC-F112, PC-F110's integration, PC-123's fix1, PC-156's fix1 and PC-163.
+
+### D-390 (2026-11-26): PC-156 R1 rulings
+
+PC-156's R1 found 1/4/6.
+
+R1-1 is blocking. The implementer raised spec 0028 §1's budgets itself (/attention 6 to 6.5, the panels 9 to 10.5), which D-313 forbids. Both go back to the spec's figures, and fix1 applies every trim the review measured. /attention must reach 6. If the panels chunk cannot reach 9 without losing spec behaviour (the review estimates 9.6 to 9.8), PC-156 is parked on that one budget, as PC-128 was (D-384), and nothing is raised.
+
+R1-2 moves TmProgressRing to its own @tellma/core-ui/progress-ring entry point, so core-ui/progress (about 2 KB gzip) leaves every first frame. That is most of Acme initialJs's growth from 224.70 to 226.85.
+
+R1-9 is a spec contradiction ruled here under Rule 2. Job stop follows spec 0026 §9.5, the spec that owns jobs, in both the panel and the attention.stop-job page action, with the kind-specific confirmation text.
+
+R1-3 to R1-8, R1-10 and R1-11 are fixed as the review describes. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
+Questions for Ahmad, non-blocking:
+- The new @tellma/core/attention-rows entry point (5.86) moves TmAttentionText and TmAssignmentList out of §1's 6 KB /attention line, so the members §1 budgets at 6 KB weigh 12.14 in total. Should §1 list /attention-rows with its own figure?
+- The moved string key, one TmAttentionButton in place of two classes, and the bell-only hold.
+- The 0028 §6.2/§13 stop-confirmation wording against 0026 §9.5.
+
+### D-389 (2026-11-26): PC-129 blocked on spec 0024's 110 KB search route; PC-F112 lands PC-128's pager saving
+
+D-388's placement fix cannot reach 110. PC-129's details kit renders /entity's TmValue and aria tabs in view mode. The modules both lazy routes reach statically (the /entity view side, aria's shared pieces, the l10n-input parsers) must therefore leave the search host's chunk. That splitting costs about 1.5 KB of gzip, and moving TmUploads off the /entity barrel saves only 0.26, which leaves about 111.3.
+
+The 110 KB is spec 0024 §12's own search-route budget, so it is not raised (D-313). PC-129 is blocked and skipped in the release queue (D-319). It keeps pc-4 and its unpushed merge b23ddb2d (D-255), and PC-F110 is released in its place.
+
+The remedy is fix item PC-F112. It lands on its own the pager change PC-128 already had reviewed in R1 and R2: the page-size select loads on demand behind a replaying stand-in, which took about 15 KB off the search route in PC-128's branch. That change is independent of the parked search-field question (D-384), and it unblocks PC-129, so it is a blocking fix and takes pc-f ahead of PC-F107 once a heavy-agent place frees (D-028, D-229).
+
+When PC-F112 lands, PC-129 merges again, moves TmUploads off the barrel, runs the full gates and integrates. PC-128 will later merge PC-F112's identical pager change on top of its own.
+
+Question for Ahmad, non-blocking: spec 0024 §12's 110 KB search route leaves little room once the details kit shares /entity's view side with search. Should the route budget account for that sharing?
+
+### D-388 (2026-11-26): PC-129 integration over searchRoute; the fix is placement, not a raise
+
+PC-129's merged tree puts Acme searchRoute at 111.54 of 110 (fixture 111.56), so it stopped (D-247). By its own attribution the cause is shared-chunk placement:
+- aria's tabs chunk lands beside the expansion chunk that the search host imports;
+- tm-uploads and tm-editor-kind moved into /entity's shared chunk.
+
+The search page uses none of them. Under §8.1 the implementer is resumed with guidance. It commits the merge, moves those modules off the search route's graph with no behaviour change, and must end under 110 with no raise. If it cannot, it stops again with the attribution.
+
+The fix lands as an integration commit. It moves modules and does not change behaviour, so it gets no fresh review (D-364 precedent); the full gate set and integration CI are its check.
+
+### D-387 (2026-11-26): PC-123 R1 rulings
+
+PC-123's R1 found 1/0/6 and accepted all seven deviations.
+
+R1-1 is blocking. On a localhost origin the Angular service worker downloads its whole prefetch group (102 files) before it answers any request. The home page now needs a /dashboards chunk that /tenants has not loaded, so keyboard-errors:67 and automatic-entries:107 fail consistently. The fix is test.use({ serviceWorkers: 'block' }) in specs that do not test the worker, following launch.spec.ts's documented precedent, plus a sweep of every Acme spec exposed the same way. It is not a raised timeout. The older local-watch flaky row (automatic-entries:107, keyboard-errors:67, cold-deep-link:84) gets the same cause. Production origins prefetch at idle, so users are not affected.
+
+R1-2 to R1-7 are all fixed. They cover:
+- a named-condition wait;
+- home-hatch arrival focus;
+- aria-busy on a loading tile;
+- the DST-safe greeting timer;
+- the exported or ɵ tile types;
+- the three missing tests.
+
+PC-167 carries a skeleton-equals-page box check for both layouts. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
 ### D-386 (2026-11-26): PC-F96 landed; PC-129 released; pc-f waits on D-028
 
 PC-F96 landed at 01a3c31b on green CI 45894291651, with a plans-only merge on top. PC-129 is the next held item, so it is released to integrate as the later lander over PC-154, PC-122, PC-F91, PC-F92 and the rest, re-measuring against the thin headroom (D-214). That puts five heavy agents in flight: PC-123's R1, PC-F111, PC-156, PC-128's fix2 and PC-129's integration. The freed fix slot pc-f therefore stays empty until one finishes (D-028). Its next fix is PC-F107, the in-memory TmClientCache for tests and the cause of PC-F106's flake class.
