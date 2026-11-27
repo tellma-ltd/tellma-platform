@@ -32,8 +32,8 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   signed-out page's, the tenant app bar's, the session menu's, the markers'
   and the About and Shortcuts dialogs' strings, in `shell-strings/strings-shell-ar.ts`, the
   `@tellma/locale-ar/shell-strings` entry point, the pinned bar's part, the
-  bar's chips and controls, its menus and popover and the Manage pins
-  dialog's strings, in `pins-strings/strings-pins-ar.ts`, the
+  bar's chips and controls, its menus and popover, the pin commands and the
+  Manage pins dialog's strings, in `pins-strings/strings-pins-ar.ts`, the
   `@tellma/locale-ar/pins-strings` entry point, the details page's part,
   its header's buttons and badges, status lines and discard question, in
   `details-strings/strings-details-ar.ts`, the
@@ -82,8 +82,9 @@ Copy this package's structure:
    the `shell`, `tenantless`, `tenantShell`, `shellOverlays`, `shellHistory`, `aboutDialog` and
    `shortcutsDialog` scopes the shell frame, the tenantless pages and the tenant
    shell register in English; `pins-strings/strings-pins-xx.ts` — the `pins`,
-   `pinOverlays` and `managePins` scopes the pinned bar, its menus and popover
-   and the Manage pins dialog register in English;
+   `pinOverlays`, `pinCommands` and `managePins` scopes the pinned bar, its
+   menus and popover, the pin commands and the Manage pins dialog register in
+   English;
    `details-strings/strings-details-xx.ts` — the `details`
    scope the details page registers in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
    and `pathPicker` scopes the expression editor and the path picker register in

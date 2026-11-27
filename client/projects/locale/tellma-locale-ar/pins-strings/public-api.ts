@@ -1,7 +1,9 @@
 /**
  * The Arabic of the pinned bar, of @tellma/locale-ar: the bar's chips, pin
  * control and Manage pins button under `tm.pins`, its menus and popover
- * under `tm.pinOverlays`, and the Manage pins dialog under `tm.managePins`.
+ * under `tm.pinOverlays`, the launcher's and the Shortcuts dialog's pin
+ * commands under `tm.pinCommands`, and the Manage pins dialog under
+ * `tm.managePins`.
  * A Tellma app's `tmArabic()` loads this entry point on the first switch to
  * Arabic, beside the other tables, and merges it into the platform's table.
  *

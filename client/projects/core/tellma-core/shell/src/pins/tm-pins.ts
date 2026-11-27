@@ -19,7 +19,6 @@ import {
   type TmPinsDoc,
 } from '@tellma/core';
 
-import type { TmLauncherCommand } from '../launcher/tm-launcher-commands';
 import {
   TM_PIN_LIMITS,
   tmCurrentPin,
@@ -78,6 +77,21 @@ export type TmPinsVia = 'control' | 'shortcut' | 'popover' | 'drag' | 'menu' | '
 
 /** Why the routed page cannot be pinned: no pinnable route, a link past the cap, or the pins at the cap. Internal. */
 export type TmPinRefusal = 'unpinnable' | 'long' | 'full';
+
+/** The tenant shell's pin controls, which the launcher's Pinned-band commands run. Internal. */
+export interface TmPinControls {
+  /** The pin control's state: whether the page is pinned, why the control is disabled, and whether it is inert. */
+  readonly control: Signal<{ readonly pinned: boolean; readonly reason: string | null; readonly inert: boolean }>;
+  /**
+   * Presses the pin control as the launcher's command does.
+   *
+   * @param via - The launcher's command.
+   * @param anchor - None: the popover opens on the pin control or the focused control.
+   */
+  press(via: 'menu', anchor: null): void;
+  /** Opens the Manage pins dialog. */
+  manage(): void;
+}
 
 /** How the change being made was made; the pin control's outside the shell's own calls. */
 let currentVia: TmPinsVia = 'control';
@@ -218,16 +232,16 @@ export class TmPins {
   /** Whether the pinned bar shows. */
   readonly visible: Signal<boolean> = this.#shown;
 
-  // The tenant shell's pin commands while one is rendered.
-  readonly #commands = signal<Signal<readonly TmLauncherCommand[]> | null>(null);
+  // The tenant shell's pin controls while one is rendered.
+  readonly #controls = signal<TmPinControls | null>(null);
 
   /**
-   * The launcher Pinned band's commands: the tenant shell's while it
-   * renders, else none.
+   * The tenant shell's pin controls while it renders, else `null`; the
+   * launcher's Pinned-band commands run them.
    *
    * @internal
    */
-  readonly ɵlauncherCommands: Signal<readonly TmLauncherCommand[]> = computed(() => this.#commands()?.() ?? []);
+  readonly ɵcontrols: Signal<TmPinControls | null> = this.#controls.asReadonly();
 
   /** Creates the service, which follows the routed URL. */
   constructor() {
@@ -248,13 +262,7 @@ export class TmPins {
   pinCurrent(): TmPinView {
     const refusal = untracked(this.ɵrefusal);
     if (refusal !== null) {
-      throw new Error(
-        refusal === 'full'
-          ? `The user already has ${TM_PIN_LIMITS.pins} pins.`
-          : refusal === 'long'
-            ? `The page's link is longer than the ${TM_PIN_LIMITS.url} characters a pin keeps.`
-            : 'The routed page cannot be pinned.',
-      );
+      throw new Error(`Cannot pin: ${refusal}.`);
     }
     const view = untracked(this.#view);
     const pin: TmPin = { id: tmNewPinId(idsOf(view)), url: tmPinUrl(untracked(this.#routed))!, title: this.#title() };
@@ -357,17 +365,17 @@ export class TmPins {
   }
 
   /**
-   * Hands the launcher the tenant shell's pin commands, for as long as that shell renders.
+   * Hands the launcher the tenant shell's pin controls, for as long as that shell renders.
    *
-   * @param commands - The commands.
+   * @param controls - The controls.
    * @returns Takes them back.
    * @internal
    */
-  ɵattach(commands: Signal<readonly TmLauncherCommand[]>): () => void {
-    this.#commands.set(commands);
+  ɵattach(controls: TmPinControls): () => void {
+    this.#controls.set(controls);
     return () => {
-      if (untracked(this.#commands) === commands) {
-        this.#commands.set(null);
+      if (untracked(this.#controls) === controls) {
+        this.#controls.set(null);
       }
     };
   }

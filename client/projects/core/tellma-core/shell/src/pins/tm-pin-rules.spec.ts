@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { TmNavigation, TmPreferences, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from '@tellma/core';
 
 import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../../src/routes/tm-app.testing.util';
+import { tmPinsRenameFolder } from './tm-manage-pins-dialog';
 import {
   TM_PIN_LIMITS,
   tmCurrentPin,
@@ -21,7 +22,6 @@ import {
   tmPinsOf,
   tmPinsRemove,
   tmPinsRemoveFolder,
-  tmPinsRenameFolder,
   tmPinsUpdate,
   tmPinsView,
   tmPinUrl,

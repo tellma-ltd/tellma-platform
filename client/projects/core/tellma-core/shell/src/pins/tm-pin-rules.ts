@@ -232,9 +232,14 @@ export function tmPinFolderNameProblem(
   return items.some((item) => item.folder !== undefined && item.id !== except && item.folder.trim().toLocaleLowerCase() === folded) ? 'duplicate' : null;
 }
 
-/** The error a refused folder name throws. */
-function nameError(problem: TmPinFolderNameProblem): RangeError {
-  return new RangeError(problem === 'duplicate' ? 'Another folder has this name.' : `A folder's name is 1 to ${TM_PIN_LIMITS.folder} characters.`);
+/**
+ * The error a refused folder name throws.
+ *
+ * @param problem - Why the name is refused.
+ * @returns The error, which names the problem.
+ */
+export function tmPinFolderNameError(problem: TmPinFolderNameProblem): RangeError {
+  return new RangeError(`Folder name: ${problem}.`);
 }
 
 /** The document of a list of items. */
@@ -286,7 +291,7 @@ function folderIndex(items: readonly TmPinItem[], folderId: string | null): numb
   }
   const at = items.findIndex((item) => item.id === folderId && 'folder' in item);
   if (at === -1) {
-    throw new RangeError(`No folder has the id '${folderId}'.`);
+    throw new RangeError(`No folder '${folderId}'.`);
   }
   return at;
 }
@@ -301,7 +306,7 @@ function folderIndex(items: readonly TmPinItem[], folderId: string | null): numb
  */
 export function tmPinsAppend(doc: TmPinsDoc, pin: TmPin): TmPinsDoc {
   if (tmPinsOf(doc.items).length >= TM_PIN_LIMITS.pins) {
-    throw new RangeError(`A user pins at most ${TM_PIN_LIMITS.pins} pages.`);
+    throw new RangeError(`Over ${TM_PIN_LIMITS.pins} pins.`);
   }
   return docOf([...doc.items, pin]);
 }
@@ -328,7 +333,7 @@ export function tmPinsUpdate(doc: TmPinsDoc, id: string, patch: { readonly label
   if (patch.label !== undefined) {
     const label = (patch.label ?? '').trim();
     if (length(label) > TM_PIN_LIMITS.label) {
-      throw new RangeError(`A pin's label is at most ${TM_PIN_LIMITS.label} characters.`);
+      throw new RangeError(`Label over ${TM_PIN_LIMITS.label} characters.`);
     }
     const bare: TmPin = { id: pin.id, url: pin.url, title: pin.title };
     next = label === '' ? bare : { ...bare, label };
@@ -365,7 +370,7 @@ export function tmPinsMove(doc: TmPinsDoc, id: string, to: { readonly folderId: 
     return doc;
   }
   if (top !== -1 && to.folderId !== null) {
-    throw new RangeError('A folder holds pins only, not other folders.');
+    throw new RangeError('Folders do not nest.');
   }
   const item = listAt(doc.items, at.folder)[at.index];
   const removed = withList(doc.items, at.folder, spliced(listAt(doc.items, at.folder), at.index, 1));
@@ -401,10 +406,10 @@ export function tmPinsRemove(doc: TmPinsDoc, id: string): TmPinsDoc {
 export function tmPinsAddFolder(doc: TmPinsDoc, folder: { readonly id: string; readonly name: string }): TmPinsDoc {
   const problem = tmPinFolderNameProblem(doc.items, folder.name);
   if (problem !== null) {
-    throw nameError(problem);
+    throw tmPinFolderNameError(problem);
   }
   if (doc.items.filter((item) => 'folder' in item).length >= TM_PIN_LIMITS.folders) {
-    throw new RangeError(`A user has at most ${TM_PIN_LIMITS.folders} folders.`);
+    throw new RangeError(`Over ${TM_PIN_LIMITS.folders} folders.`);
   }
   return docOf([...doc.items, { id: folder.id, folder: folder.name.trim(), items: [] }]);
 }
@@ -419,26 +424,4 @@ export function tmPinsAddFolder(doc: TmPinsDoc, folder: { readonly id: string; r
 export function tmPinsRemoveFolder(doc: TmPinsDoc, id: string): TmPinsDoc {
   const at = doc.items.findIndex((item) => item.id === id && 'folder' in item);
   return at === -1 ? doc : docOf(spliced(doc.items, at, 1, ...(doc.items[at] as TmPinFolder).items));
-}
-
-/**
- * Renames a folder.
- *
- * @param doc - The current document's view.
- * @param id - The folder's id.
- * @param name - The new name, which is trimmed.
- * @returns The next document, or the document itself when no folder has the id or the name is unchanged.
- * @throws RangeError for a name {@link tmPinFolderNameProblem} refuses.
- */
-export function tmPinsRenameFolder(doc: TmPinsDoc, id: string, name: string): TmPinsDoc {
-  const at = doc.items.findIndex((item) => item.id === id && 'folder' in item);
-  if (at === -1) {
-    return doc;
-  }
-  const problem = tmPinFolderNameProblem(doc.items, name, id);
-  if (problem !== null) {
-    throw nameError(problem);
-  }
-  const folder = doc.items[at] as TmPinFolder;
-  return folder.folder === name.trim() ? doc : docOf(spliced(doc.items, at, 1, { ...folder, folder: name.trim() }));
 }

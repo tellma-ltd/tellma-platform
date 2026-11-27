@@ -9,7 +9,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TestBed } from '@angular/core/testing';
 import { type TmLanguageDefinition, type TmLaunchDocs, TmPreferences, tmEnglish, tmPinsKey, type TmPinsDoc, TmUrls } from '@tellma/core';
 import { TmPinnedBarHarness, TmTenantShellHarness } from '@tellma/core-testing';
-import { TmToastStackHarness } from '@tellma/core-ui-testing';
+import { TmSelectHarness, TmToastStackHarness } from '@tellma/core-ui-testing';
 import { page } from 'vitest/browser';
 
 import { type TmAppRig, tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_T17, TM_T17_DOCS } from '../../../src/routes/tm-app.testing.util';
@@ -24,8 +24,10 @@ import { TM_PIN_OVERLAYS_LOAD, type TmPinOverlaysChunk } from './tm-pins-ui';
 // state change and a font swap, a font that loads late with no chip painted
 // before the fit), the current pin in More, nothing moving on hover, focus
 // or navigation from md up, the roving tab stop, folders and their menus,
-// revoked pins and their menus, the pin control and its popover or toast,
-// Alt+Shift+P, drag and drop, and Manage pins in every state of the bar.
+// revoked pins and their menus, the pin control and its popover (its folder
+// select, New folder…, Escape and an outside click) or toast, Alt+Shift+P
+// (focus after the last chip goes, nothing while frozen), drag and drop
+// along the bar (below md too), and Manage pins in every state of the bar.
 
 /** The fonts the bar waits for, which a test loads when it chooses. */
 class TmFakeFonts extends EventTarget {
@@ -135,6 +137,46 @@ function widthsAreMeasured(): boolean {
 async function frame(): Promise<void> {
   await new Promise((resolve) => requestAnimationFrame(resolve));
   await tmSettle();
+}
+
+/** Presses Alt+Shift+P where focus is. */
+function pressShortcut(): void {
+  (document.activeElement ?? document.body).dispatchEvent(
+    new KeyboardEvent('keydown', { key: 'P', code: 'KeyP', altKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+  );
+}
+
+/** The pin control. */
+function pinControl(): HTMLElement {
+  return document.querySelector<HTMLElement>('.tm-pinned-bar__control')!;
+}
+
+/** Types into a field of the pin popover. */
+function typeInto(field: HTMLInputElement, text: string): void {
+  field.value = text;
+  field.dispatchEvent(new Event('input'));
+}
+
+/** Submits the pin popover, as Done does. */
+function submitPopover(): void {
+  document.querySelector<HTMLFormElement>('.tm-pin-overlays__form')!.requestSubmit();
+}
+
+/** A chip of the bar by its pin's id. */
+function chipOf(id: string): HTMLElement {
+  return document.querySelector<HTMLElement>(`.tm-pinned-bar__list [data-tm-pin="${id}"]`)!;
+}
+
+/** Drags a chip over a point of another and drops it there. */
+function dragChip(from: string, to: string, at: (rect: DOMRect) => number): void {
+  const data = new DataTransfer();
+  const target = chipOf(to);
+  const rect = target.getBoundingClientRect();
+  const point = { clientX: at(rect), clientY: rect.top + rect.height / 2, bubbles: true, cancelable: true, dataTransfer: data };
+  chipOf(from).dispatchEvent(new DragEvent('dragstart', point));
+  target.dispatchEvent(new DragEvent('dragover', point));
+  target.dispatchEvent(new DragEvent('drop', point));
+  chipOf(from).dispatchEvent(new DragEvent('dragend', point));
 }
 
 describe('the pinned bar', () => {
@@ -275,6 +317,8 @@ describe('the pinned bar', () => {
           });
         },
       });
+      // The overlays' chunk preloads them as it lands, at idle after the first render.
+      await tmSettleUntil(() => preloaded.includes('/17/credit-review?q=2'), 'the pins preload');
       await tmSettle();
       expect(preloaded.filter((url) => url.startsWith('/17/credit-review?') || url === '/17/approvals')).toEqual([
         '/17/credit-review?q=1',
@@ -521,6 +565,56 @@ describe('the pinned bar', () => {
       ]);
     });
 
+    it('files the new pin in a folder from the popover, or in a new folder, refusing a taken name', async () => {
+      await start({ pins: twoFolders() });
+      await bar.clickControl();
+      await tmSettleUntil(() => document.querySelector('.tm-pin-overlays__popover') !== null, 'the popover opens');
+      const select = await loader.getHarness(TmSelectHarness);
+      expect(await select.getTriggerText()).toBe('No folder');
+      await select.selectOption('Daily');
+      submitPopover();
+      await tmSettle();
+      const added = TestBed.inject(TmPins).current()!.id;
+      expect(storedIds()).toEqual(['a0000001', `f0000001[a0000002 ${added}]`, 'f0000002[a0000003]']);
+      // On the pinned page, New folder… reveals its name field, which refuses a name taken.
+      await bar.openPopover();
+      await (await loader.getHarness(TmSelectHarness)).selectOption('New folder…');
+      await tmSettle();
+      const fields = document.querySelectorAll<HTMLInputElement>('.tm-pin-overlays__form input');
+      expect(fields).toHaveLength(2);
+      typeInto(fields[1], ' weekly ');
+      submitPopover();
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__form')!.textContent).toContain('A folder with this name exists');
+      typeInto(fields[1], 'Monthly');
+      submitPopover();
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
+      expect(TestBed.inject(TmPreferences).get(tmPinsKey)().items.at(-1)).toMatchObject({ folder: 'Monthly', items: [{ id: added }] });
+      expect(storedIds().slice(0, 3)).toEqual(['a0000001', 'f0000001[a0000002]', 'f0000002[a0000003]']);
+      expect(document.activeElement).toBe(pinControl());
+    });
+
+    it('keeps the pin on Escape or an outside click, focus going back to the control', async () => {
+      await start({ pins: FEW });
+      await bar.clickControl();
+      await tmSettleUntil(() => document.querySelector('.tm-pin-overlays__popover') !== null, 'the popover opens');
+      document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
+      expect(await bar.getChipLabels()).toEqual(['Receivables', 'Payables', 'Cash', 'Credit review']);
+      expect(document.activeElement).toBe(pinControl());
+      await bar.openPopover();
+      // A press on nothing focusable: focus falls to the page, and the popover closes.
+      (document.activeElement as HTMLElement).blur();
+      document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
+      expect(storedIds()).toHaveLength(4);
+      expect(document.activeElement).toBe(pinControl());
+    });
+
     it('says with a toast once that a pin went into More, moving no chip', async () => {
       await start();
       const before = geometry();
@@ -563,6 +657,50 @@ describe('the pinned bar', () => {
       ]);
     });
 
+    it('unpins the only chip with Alt+Shift+P, focus going to the pin control', async () => {
+      await start({ pins: doc(pin(1, 'Receivables')), url: '/17/credit-review?q=1' });
+      await (await bar.getChip('Receivables')).focus();
+      pressShortcut();
+      await tmSettle();
+      expect(storedIds()).toEqual([]);
+      expect(await bar.getEmptyText()).not.toBeNull();
+      expect(document.activeElement).toBe(pinControl());
+    });
+
+    it('leaves focus where it is when a pin arrives after the last chip went', async () => {
+      await start({ pins: doc(pin(1, 'Receivables')), url: '/17/credit-review?q=1' });
+      await (await bar.getChip('Receivables')).focus();
+      pressShortcut();
+      await tmSettle();
+      const field = document.createElement('input');
+      document.body.append(field);
+      try {
+        field.focus();
+        // Another tab's pin reaches this one through the preferences.
+        TestBed.inject(TmPreferences).set(tmPinsKey, doc(pin(2, 'Payables')));
+        await frame();
+        expect(await bar.getChipLabels()).toEqual(['Payables']);
+        expect(document.activeElement).toBe(field);
+      } finally {
+        field.remove();
+      }
+    });
+
+    it('does nothing on Alt+Shift+P while the tenant is frozen', async () => {
+      // On a pinned page, then on one that is not.
+      await start({ pins: FEW, state: 'Frozen', url: '/17/credit-review?q=1' });
+      pressShortcut();
+      await tmSettle();
+      expect([storedIds(), announced, events('tm.shell.pins-changed')]).toEqual([['a0000001', 'a0000002', 'a0000003'], [], []]);
+      TestBed.resetTestingModule();
+      await start({ pins: FEW, state: 'Frozen' });
+      pressShortcut();
+      await tmSettle();
+      expect(storedIds()).toEqual(['a0000001', 'a0000002', 'a0000003']);
+      expect(announced).toEqual([]);
+      expect(events('tm.shell.pins-changed')).toEqual([]);
+    });
+
     it('is disabled with a reason at the cap and while the tenant is frozen, and inert where nothing can be pinned', async () => {
       const full = doc(...Array.from({ length: TM_PIN_LIMITS.pins }, (_, n) => pin(n + 1)));
       await start({ pins: full });
@@ -594,23 +732,11 @@ describe('the pinned bar', () => {
     it('reorders a chip along the bar and files a pin in a folder, announcing each', async () => {
       await start({ pins: doc(pin(1, 'Receivables'), pin(2, 'Payables'), { id: 'f0000001', folder: 'Daily', items: [] }) });
       await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
-      const chip = (id: string): HTMLElement => document.querySelector<HTMLElement>(`[data-tm-pin="${id}"]`)!;
-      /** Drags a chip over a point of another and drops it there. */
-      const drag = (from: string, to: string, at: (rect: DOMRect) => number): void => {
-        const data = new DataTransfer();
-        const target = chip(to);
-        const rect = target.getBoundingClientRect();
-        const point = { clientX: at(rect), clientY: rect.top + rect.height / 2, bubbles: true, cancelable: true, dataTransfer: data };
-        chip(from).dispatchEvent(new DragEvent('dragstart', point));
-        target.dispatchEvent(new DragEvent('dragover', point));
-        target.dispatchEvent(new DragEvent('drop', point));
-        chip(from).dispatchEvent(new DragEvent('dragend', point));
-      };
-      drag('a0000002', 'a0000001', (rect) => rect.left + 2);
+      dragChip('a0000002', 'a0000001', (rect) => rect.left + 2);
       await tmSettle();
       expect(storedIds()).toEqual(['a0000002', 'a0000001', 'f0000001[]']);
       expect(announced).toContain('Moved Payables, position 1 of 3');
-      drag('a0000001', 'f0000001', (rect) => rect.left + rect.width / 2);
+      dragChip('a0000001', 'f0000001', (rect) => rect.left + rect.width / 2);
       await tmSettle();
       expect(storedIds()).toEqual(['a0000002', 'f0000001[a0000001]']);
       expect(announced).toContain('Moved Receivables to Daily');
@@ -618,6 +744,18 @@ describe('the pinned bar', () => {
         { op: 'move', via: 'drag', count: '1-5' },
         { op: 'move', via: 'drag', count: '1-5' },
       ]);
+    });
+
+    it('drops below md where the line shows, the current pill leading', async () => {
+      await start({ width: 600, pins: FEW, url: '/17/credit-review?q=3' });
+      await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
+      expect(await bar.getChipLabels()).toEqual(['Cash', 'Receivables', 'Payables']);
+      // Payables onto the inline end of the leading Cash: it shows second.
+      dragChip('a0000002', 'a0000003', (rect) => rect.right - 2);
+      await tmSettle();
+      expect(storedIds()).toEqual(['a0000002', 'a0000001', 'a0000003']);
+      expect(await bar.getChipLabels()).toEqual(['Cash', 'Payables', 'Receivables']);
+      expect(announced).toContain('Moved Payables, position 2 of 3');
     });
   });
 
@@ -627,13 +765,16 @@ describe('the pinned bar', () => {
       ['fitting', FEW],
       ['overflowing', MANY],
     ] as const) {
-      it(`opens the dialog from a bar that is ${state}`, async () => {
+      it(`opens the dialog from a bar that is ${state}, focus going back to Manage pins as it closes`, async () => {
         await start({ pins });
+        const manage = document.querySelectorAll<HTMLElement>('.tm-pinned-bar__control')[1];
+        manage.focus();
         const dialog = await bar.openManagePins();
         expect(await dialog.getTitle()).toBe('Manage pins');
         await dialog.close();
         await tmSettle();
         expect(document.querySelector('tm-manage-pins-dialog')).toBeNull();
+        expect(document.activeElement).toBe(manage);
       });
     }
 

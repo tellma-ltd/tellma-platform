@@ -3,23 +3,20 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { DestroyRef, DOCUMENT, inject, Injectable, InjectionToken, type Signal, signal, type Type, type ViewContainerRef } from '@angular/core';
-import { type TmShellSlot, TmTelemetry } from '@tellma/core';
+import { inject, Injectable, InjectionToken, type Signal, signal, type Type, type ViewContainerRef } from '@angular/core';
+import type { TmShellSlot } from '@tellma/core';
 
+import { TmDeferredHost } from '../tm-deferred-host';
 import type { TmShellMarker } from './tm-shell-identity';
 
 // The tenant shell's overlays (spec 0027 §7.2, §7.4, §8.10, §10, §11): the
 // session menu, the marker popovers, the slot panels and the About,
 // Shortcuts and Manage pins dialogs. Their code is a deferred chunk, so a
-// tenant route's first frame carries only the app bar's buttons. The chunk
-// loads when the browser is first idle after the shell renders, and on the
-// first hover or focus of any of its buttons, so it is in memory by the time
-// a click asks for it and the overlay opens in the click's frame; a click
-// that beats it opens the overlay as soon as it lands. Presses that beat it
-// collapse to their net effect rather than queue as toggles: two presses of
-// one button cancel out, and a press of another button replaces what waits.
-// The buttons keep their ARIA live from the overlays' own state once the
-// chunk is in.
+// tenant route's first frame carries only the app bar's buttons. It loads
+// through the shell's deferred host: at idle after the shell renders, and on
+// the first hover or focus of any of its buttons, with the presses that beat
+// it collapsed to their net effect. The buttons keep their ARIA live from
+// the overlays' own state once the chunk is in.
 
 /** A dialog the shell opens. */
 export type TmShellDialog = 'about' | 'shortcuts' | 'pins';
@@ -97,25 +94,18 @@ export const TM_SHELL_PANELS_LOAD = new InjectionToken<() => Promise<TmShellPane
  */
 @Injectable()
 export class TmShellOverlays {
-  readonly #load = inject(TM_SHELL_PANELS_LOAD);
-  readonly #telemetry = inject(TmTelemetry);
-  readonly #window = inject(DOCUMENT).defaultView;
-  readonly #panels = signal<TmShellPanels | null>(null);
   readonly #avatar = signal<Type<unknown> | null>(null);
-  #host: ViewContainerRef | null = null;
-  #loading: Promise<TmShellPanels | null> | null = null;
-  #pending: { readonly button: HTMLElement; readonly action: (panels: TmShellPanels) => void } | null = null;
-  #ended = false;
+  readonly #chunk = new TmDeferredHost('tm-shell-overlays', inject(TM_SHELL_PANELS_LOAD), (chunk: TmShellPanelsChunk, host) => {
+    const ref = host.createComponent(chunk.TmSessionPanels);
+    // Renders the host at once, so its menu and popovers have their inputs
+    // and views before the action that waited for the chunk runs.
+    ref.changeDetectorRef.detectChanges();
+    this.#avatar.set(chunk.TmSessionAvatar);
+    return ref.instance;
+  });
 
   /** The session button's loaded avatar component, or `null` until the chunk is in. */
   readonly avatar: Signal<Type<unknown> | null> = this.#avatar.asReadonly();
-
-  /** Creates the service, whose overlays end with the shell. */
-  constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.#ended = true;
-    });
-  }
 
   /**
    * Gives the overlays their host, beside the app bar's buttons, and loads
@@ -124,14 +114,12 @@ export class TmShellOverlays {
    * @param host - Where the overlays' host component renders.
    */
   attach(host: ViewContainerRef): void {
-    this.#host = host;
-    const idle = (run: () => void): unknown => (this.#window?.requestIdleCallback ? this.#window.requestIdleCallback(run) : setTimeout(run));
-    idle(() => void this.#panelsReady());
+    this.#chunk.attach(host);
   }
 
   /** Starts loading the overlays' chunk, as a hover or focus on one of their buttons does. */
   preload(): void {
-    void this.#panelsReady();
+    this.#chunk.preload();
   }
 
   /**
@@ -141,7 +129,7 @@ export class TmShellOverlays {
    * @returns `false` until the chunk is in.
    */
   isOpenFor(button: HTMLElement): boolean {
-    return this.#panels()?.isOpenFor(button) ?? false;
+    return this.#chunk.value()?.isOpenFor(button) ?? false;
   }
 
   /**
@@ -151,7 +139,7 @@ export class TmShellOverlays {
    * @returns `null` while none is open there.
    */
   controls(button: HTMLElement): string | null {
-    return this.#panels()?.controls(button) ?? null;
+    return this.#chunk.value()?.controls(button) ?? null;
   }
 
   /**
@@ -161,12 +149,7 @@ export class TmShellOverlays {
    * @param action - What to do with the overlays.
    */
   run(action: (panels: TmShellPanels) => void): void {
-    const panels = this.#panels();
-    if (panels !== null) {
-      action(panels);
-      return;
-    }
-    void this.#panelsReady().then((loaded) => loaded && action(loaded));
+    this.#chunk.run(action);
   }
 
   /**
@@ -181,54 +164,12 @@ export class TmShellOverlays {
    * @param opens - Whether the press only opens (the session button's arrows), so a pending press of that button does not cancel it.
    */
   press(button: HTMLElement, action: (panels: TmShellPanels) => void, opens = false): void {
-    const panels = this.#panels();
-    if (panels !== null) {
-      action(panels);
-      return;
-    }
-    this.#pending = !opens && this.#pending?.button === button ? null : { button, action };
-    // Every press waits on the same load; the first to resume runs what is left and clears it.
-    void this.#panelsReady().then((loaded) => {
-      const pending = this.#pending;
-      this.#pending = null;
-      if (loaded !== null && pending !== null) {
-        pending.action(loaded);
-      }
-    });
+    this.#chunk.press(button, action, opens);
   }
 
   /** Closes every open overlay, and drops a press that waits for the chunk. */
   closeAll(): void {
-    this.#pending = null;
-    this.#panels()?.closeAll();
-  }
-
-  /** Loads the chunk once and creates its host; `null` when it fails to load or the shell ended meanwhile. */
-  #panelsReady(): Promise<TmShellPanels | null> {
-    this.#loading ??= this.#load().then(
-      (chunk) => {
-        const host = this.#host;
-        if (this.#ended || host === null) {
-          // Before the bar hands over its host, a later gesture loads again.
-          this.#loading = null;
-          return null;
-        }
-        const ref = host.createComponent(chunk.TmSessionPanels);
-        // Renders the host at once, so its menu and popovers have their inputs
-        // and views before the action that waited for the chunk runs.
-        ref.changeDetectorRef.detectChanges();
-        const panels = ref.instance;
-        this.#avatar.set(chunk.TmSessionAvatar);
-        this.#panels.set(panels);
-        return panels;
-      },
-      (error: unknown) => {
-        // Offline, or after a deploy removed the chunk: the next gesture tries again.
-        this.#telemetry.error(error, { source: 'tm-shell-overlays' });
-        this.#loading = null;
-        return null;
-      },
-    );
-    return this.#loading;
+    this.#chunk.drop();
+    this.#chunk.value()?.closeAll();
   }
 }

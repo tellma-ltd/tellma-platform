@@ -7,10 +7,10 @@ import type { TmLocalization } from '@tellma/core';
 
 // The pinned bar's English strings, under `tm.pins` (spec 0027 §8): what the
 // bar and its controls name and say in the first frame, the reasons the pin
-// control is disabled, the launcher's pin commands, and what pinning and
-// unpinning announce or toast. The bar's menus and popover and the Manage
-// pins dialog register their own strings with their chunks. A language's
-// table that holds a key wins over them.
+// control is disabled, and what pinning and unpinning announce or toast. The
+// bar's menus and popover, the Manage pins dialog and the pin commands of the
+// launcher and the Shortcuts dialog register their own strings with their
+// chunks. A language's table that holds a key wins over them.
 
 /** The scope of the pinned bar's strings under `tm`. */
 const SCOPE = 'pins';
@@ -27,10 +27,6 @@ export const TM_PINS_STRINGS_EN = {
   edit: 'Edit pin',
   /** The button that opens the Manage pins dialog, and the dialog's title. */
   manage: 'Manage pins',
-  /** The launcher's command that opens the dialog. */
-  manageCommand: 'Manage pins…',
-  /** Alt+Shift+P's row in the Shortcuts dialog. */
-  toggle: 'Pin or unpin this page',
   /** The bar with no pins, and its short form on a phone. */
   empty: 'Nothing pinned yet. Use the pin button to pin this page.',
   emptyShort: 'Nothing pinned yet.',
@@ -42,11 +38,9 @@ export const TM_PINS_STRINGS_EN = {
   pinned: 'Pinned {label}',
   /** The announcement of a pin removed. */
   unpinned: 'Unpinned {label}',
-  /** A revoked chip's name and its menu's message, and an unavailable one's. */
+  /** A revoked chip's name, and an unavailable one's. */
   noAccessChip: '{label}, no access',
-  noAccess: 'You no longer have access to this page.',
   unavailableChip: '{label}, not available',
-  unavailable: "This page isn't available.",
 } as const;
 
 /**

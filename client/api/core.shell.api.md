@@ -122,8 +122,8 @@ export class TmPins {
     }): void;
     readonly visible: Signal<boolean>;
     // @internal
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPins, never>;
     // @internal
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPins, never>;
     // @internal
     static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmPins>;
     // @internal

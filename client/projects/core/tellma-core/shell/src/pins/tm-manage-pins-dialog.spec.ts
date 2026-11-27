@@ -18,9 +18,11 @@ import { TmPins } from './tm-pins';
 
 // The Manage pins dialog in a whole test app, opened from the pinned bar:
 // its rows with their icons, labels and locks, folders with their own lists,
-// reordering, Rename with its refusals, Move to, Remove with where focus
-// goes, New folder and its cap, the bar's switch, which applies at once, and
-// Save and Cancel, Save held while the tenant is frozen.
+// reordering, a pin dragged between the top list and a folder's, Rename with
+// its refusals, Move to, Remove with where focus goes, New folder and its
+// cap, the bar's switch, which applies at once, and Save (overwriting a
+// change made meanwhile), Cancel and Escape, Save held while the tenant is
+// frozen.
 
 /** A pins document of items. */
 function doc(...items: readonly unknown[]): TmPinsDoc {
@@ -83,6 +85,24 @@ async function renameTo(text: string): Promise<void> {
   field.dispatchEvent(new Event('input'));
   field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   await tmSettle();
+}
+
+/** A row's draggable element in its list. */
+function listRow(id: string): HTMLElement {
+  return dialog().querySelector<HTMLElement>(`[data-tm-row="${id}"]`)!.closest<HTMLElement>('.tm-reorder-list__row')!;
+}
+
+/** Drags a row onto a list's frame and drops it below another row of that list. */
+function dragRow(from: string, frame: HTMLElement, below: string): void {
+  const data = new DataTransfer();
+  const source = listRow(from);
+  const clientY = listRow(below).getBoundingClientRect().bottom - 1;
+  const init = { bubbles: true, cancelable: true, dataTransfer: data, clientY };
+  source.dispatchEvent(new DragEvent('dragstart', init));
+  frame.dispatchEvent(new DragEvent('dragenter', init));
+  frame.dispatchEvent(new DragEvent('dragover', init));
+  frame.dispatchEvent(new DragEvent('drop', init));
+  source.dispatchEvent(new DragEvent('dragend', init));
 }
 
 /** The stored pins' ids, a folder's as `id[pin ids]`. */
@@ -167,6 +187,44 @@ describe('the Manage pins dialog', () => {
     expect(document.querySelector('tm-manage-pins-dialog')).toBeNull();
     expect(storedIds()).toEqual(['a0000003', 'a0000001', 'a0000002']);
     expect(events('tm.shell.pins-changed')).toEqual([{ op: 'replace', via: 'dialog', count: '1-5' }]);
+  });
+
+  it("drags a pin from the top list into a folder's list, and back out", async () => {
+    await open();
+    const frames = (): HTMLElement[] => [...dialog().querySelectorAll<HTMLElement>('.tm-reorder-list__frame')];
+    dragRow('a0000001', frames()[1], 'a0000003');
+    await tmSettle();
+    expect(rowIds()).toEqual(['f0000001', 'a0000002', 'a0000003', 'a0000001', 'b0000001', 'b0000002']);
+    dragRow('a0000002', frames()[0], 'b0000002');
+    await tmSettle();
+    expect(rowIds()).toEqual(['f0000001', 'a0000003', 'a0000001', 'b0000001', 'b0000002', 'a0000002']);
+    footerButton('Save').click();
+    await tmSettle();
+    expect(storedIds()).toEqual(['f0000001[a0000003 a0000001]', 'b0000001', 'b0000002', 'a0000002']);
+  });
+
+  it('discards the copy on Escape', async () => {
+    await open();
+    rowButton('a0000001', 'Remove Receivables').click();
+    await tmSettle();
+    expect(rowIds()).not.toContain('a0000001');
+    dialog().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    await tmSettle();
+    expect(document.querySelector('tm-manage-pins-dialog')).toBeNull();
+    expect(storedIds()).toEqual(['a0000001', 'f0000001[a0000002 a0000003]', 'b0000001', 'b0000002']);
+    expect(events('tm.shell.pins-changed')).toEqual([]);
+  });
+
+  it('saves its copy over a change made meanwhile', async () => {
+    await open();
+    rowButton('a0000001', 'Remove Receivables').click();
+    await tmSettle();
+    // Another tab pins a page while the dialog is open.
+    TestBed.inject(TmPreferences).set(tmPinsKey, doc(...STORED.items, pin(9, 'Later')));
+    await tmSettle();
+    footerButton('Save').click();
+    await tmSettle();
+    expect(storedIds()).toEqual(['f0000001[a0000002 a0000003]', 'b0000001', 'b0000002']);
   });
 
   it('renames a pin, a blank name giving its derived label back, and a folder, refusing a duplicate', async () => {

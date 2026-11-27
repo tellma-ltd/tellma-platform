@@ -11,6 +11,7 @@ import { TM_ABOUT_DIALOG_STRINGS_EN } from './dialogs/tm-about-dialog';
 import { TM_SHORTCUTS_DIALOG_STRINGS_EN } from './dialogs/tm-shortcuts-dialog';
 import { TM_LAUNCHER_STRINGS_EN } from './launcher/tm-launcher-strings';
 import { TM_MANAGE_PINS_STRINGS_EN } from './pins/tm-manage-pins-dialog';
+import { TM_PIN_COMMANDS_STRINGS_EN } from './pins/tm-pin-commands-strings';
 import { TM_PIN_OVERLAYS_STRINGS_EN } from './pins/tm-pin-overlays';
 import { TM_PINS_STRINGS_EN } from './pins/tm-pins-strings';
 import { TM_SHELL_OVERLAYS_STRINGS_EN } from './session/tm-shell-overlays-strings';
@@ -34,6 +35,7 @@ const ENGLISH: Readonly<Record<string, readonly [english: unknown, arabic: Reado
   launcher: [TM_LAUNCHER_STRINGS_EN, TM_SHELL_STRINGS_AR],
   pins: [TM_PINS_STRINGS_EN, TM_PINS_STRINGS_AR],
   pinOverlays: [TM_PIN_OVERLAYS_STRINGS_EN, TM_PINS_STRINGS_AR],
+  pinCommands: [TM_PIN_COMMANDS_STRINGS_EN, TM_PINS_STRINGS_AR],
   managePins: [TM_MANAGE_PINS_STRINGS_EN, TM_PINS_STRINGS_AR],
 };
 

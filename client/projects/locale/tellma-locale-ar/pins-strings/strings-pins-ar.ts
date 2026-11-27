@@ -7,7 +7,8 @@ import type { TmStringTree } from '@tellma/core';
 
 // The Arabic of the pinned bar: the bar itself, which the tenant shell reads
 // under `tm.pins` in its first frame, the bar's menus and popover, under
-// `tm.pinOverlays`, and the Manage pins dialog, under `tm.managePins`. It is
+// `tm.pinOverlays`, the launcher's and the Shortcuts dialog's pin commands,
+// under `tm.pinCommands`, and the Manage pins dialog, under `tm.managePins`. It is
 // a table of its own beside the shell's, whose ceiling it would pass;
 // `tmArabic()` merges it under `tm` on the first switch to Arabic. Labels
 // and button names are verbal nouns, as Arabic interfaces write them; the
@@ -37,8 +38,8 @@ const NAMES = {
 
 /**
  * The Arabic of the pinned bar, under `tm`: the bar's chips, controls and
- * announcements, its menus and popover, and the Manage pins dialog. The
- * same shape as their English.
+ * announcements, its menus and popover, the pin commands, and the Manage
+ * pins dialog. The same shape as their English.
  */
 export const TM_PINS_STRINGS_AR: TmStringTree = {
   pins: {
@@ -47,8 +48,6 @@ export const TM_PINS_STRINGS_AR: TmStringTree = {
     pin: 'تثبيت هذه الصفحة',
     edit: 'تعديل التثبيت',
     manage: 'إدارة الصفحات المثبّتة',
-    manageCommand: 'إدارة الصفحات المثبّتة…',
-    toggle: 'تثبيت هذه الصفحة أو إلغاء تثبيتها',
     empty: `لا صفحات مثبّتة بعد. ${gendered('استخدم', 'استخدمي')} زر التثبيت لتثبيت هذه الصفحة.`,
     emptyShort: 'لا صفحات مثبّتة بعد.',
     tooLong: 'رابط هذه الصفحة أطول من أن يُثبَّت',
@@ -57,9 +56,11 @@ export const TM_PINS_STRINGS_AR: TmStringTree = {
     pinned: 'تم تثبيت {label}',
     unpinned: 'تم إلغاء تثبيت {label}',
     noAccessChip: '{label}، لا وصول',
-    noAccess: 'لم يعد لديك وصول إلى هذه الصفحة.',
     unavailableChip: '{label}، غير متاحة',
-    unavailable: 'هذه الصفحة غير متاحة.',
+  },
+  pinCommands: {
+    manage: 'إدارة الصفحات المثبّتة…',
+    toggle: 'تثبيت هذه الصفحة أو إلغاء تثبيتها',
   },
   pinOverlays: {
     pinned: 'تم التثبيت',
@@ -76,6 +77,8 @@ export const TM_PINS_STRINGS_AR: TmStringTree = {
     unpin: 'إلغاء التثبيت',
     movedTo: 'تم نقل {label} إلى {folder}',
     moved: 'تم نقل {label}، الموضع {index} من {count}',
+    noAccess: 'لم يعد لديك وصول إلى هذه الصفحة.',
+    unavailable: 'هذه الصفحة غير متاحة.',
   },
   managePins: {
     empty: 'لا صفحات مثبّتة بعد.',

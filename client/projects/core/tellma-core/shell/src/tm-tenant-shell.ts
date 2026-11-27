@@ -190,7 +190,7 @@ export class TmTenantShell {
     shortcuts.register({
       id: 'tm.pins.toggle',
       keys: 'Alt+Shift+P',
-      labelKey: 'tm.pins.toggle',
+      labelKey: 'tm.pinCommands.toggle',
       scope: 'global',
       run: () => pins.press('shortcut', null),
     });

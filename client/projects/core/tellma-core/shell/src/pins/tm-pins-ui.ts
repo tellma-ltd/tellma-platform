@@ -17,20 +17,20 @@ import {
   untracked,
   type ViewContainerRef,
 } from '@angular/core';
-import { TM_TOAST_FEEDBACK_MS, TmLocalization, TmTelemetry } from '@tellma/core';
+import { TM_TOAST_FEEDBACK_MS, TmLocalization } from '@tellma/core';
 import { TmToasts } from '@tellma/core-ui/toast';
 
 import { TmShellOverlays } from '../app-bar/tm-shell-overlays';
-import type { TmLauncherCommand } from '../launcher/tm-launcher-commands';
+import { TmDeferredHost } from '../tm-deferred-host';
 import { TM_PIN_LIMITS } from './tm-pin-rules';
-import { type TmPinFolderView, TmPins, tmPinsVia, type TmPinView } from './tm-pins';
+import { type TmPinControls, type TmPinFolderView, TmPins, tmPinsVia, type TmPinView } from './tm-pins';
 import { tmRegisterPinsStrings } from './tm-pins-strings';
 
 // The pins' controls in the tenant shell (spec 0027 §8.1, §8.5, §8.11,
 // §9.3): the pin control's state and its disabled reason, what a press of
-// it or Alt+Shift+P does, the launcher's Pinned-band commands, and the
-// loader of the bar's overlays. The menus, the popover and the drag code
-// are a deferred chunk that loads when the browser is first idle after the
+// it, Alt+Shift+P or the launcher's command does, and the bar's overlays.
+// The menus, the popover and the drag code are a deferred chunk on the
+// shell's deferred host: it loads when the browser is first idle after the
 // shell renders, and on the first hover or focus of the bar, so a press
 // finds it in memory; a press that beats it acts as soon as it lands.
 //
@@ -45,12 +45,14 @@ export type TmPinMenu =
   | { readonly kind: 'folder'; readonly id: string }
   | { readonly kind: 'revoked'; readonly id: string };
 
-/** What the bar gives its overlays: its element, its pin control and its unpin path. Internal. */
+/** What the bar gives its overlays: its element, its pin control, its order and its unpin path. Internal. */
 export interface TmPinnedBarPort {
   /** The bar's `nav`. */
   readonly element: HTMLElement;
   /** The pin control. */
   control(): HTMLElement | null;
+  /** The top-level items' ids in the order the bar shows them: stored order, and below md the current one first. */
+  order(): readonly string[];
   /**
    * Unpins a pin; when focus was on its chip or on what the chip opened,
    * it goes to the next chip, else the previous one, else the pin control.
@@ -120,26 +122,25 @@ export interface TmPinControlState {
 
 /**
  * The pins' controls in the tenant shell: the pin control's state and
- * press, Alt+Shift+P, the launcher's commands and the overlays' loader.
- * Provided by the tenant shell.
+ * press, Alt+Shift+P, the launcher's commands' actions and the bar's
+ * overlays. Provided by the tenant shell.
  */
 @Injectable()
-export class TmPinsUi {
+export class TmPinsUi implements TmPinControls {
   readonly #pins = inject(TmPins);
   readonly #l10n = inject(TmLocalization);
   readonly #toasts = inject(TmToasts);
   readonly #announcer = inject(LiveAnnouncer);
-  readonly #telemetry = inject(TmTelemetry);
   readonly #shellOverlays = inject(TmShellOverlays);
-  readonly #load = inject(TM_PIN_OVERLAYS_LOAD);
   readonly #document = inject(DOCUMENT);
-  readonly #overlays = signal<TmPinOverlays | null>(null);
-  #host: ViewContainerRef | null = null;
-  #loading: Promise<TmPinOverlays | null> | null = null;
+  readonly #chunk = new TmDeferredHost('tm-pins-ui', inject(TM_PIN_OVERLAYS_LOAD), (chunk: TmPinOverlaysChunk, host) => {
+    const ref = host.createComponent(chunk.TmPinOverlayHost);
+    // Renders the host at once, so its menus and popover exist before the action that waited runs.
+    ref.changeDetectorRef.detectChanges();
+    return ref.instance;
+  });
   #bar: TmPinnedBarPort | null = null;
   #detachBar: (() => void) | null = null;
-  #pending: { readonly anchor: HTMLElement; readonly menu: TmPinMenu } | null = null;
-  #ended = false;
 
   /** The pin just pinned while the bar shows, until the bar's next fit places it. */
   readonly pending = signal<string | null>(null);
@@ -155,31 +156,11 @@ export class TmPinsUi {
     return { pinned, reason, inert: reason === null && refusal === 'unpinnable' };
   });
 
-  /**
-   * The launcher's Pinned-band commands: "Pin this page" or "Edit pin"
-   * while the tenant takes writes, then "Manage pins…".
-   */
-  readonly commands: Signal<readonly TmLauncherCommand[]> = computed(() => {
-    const state = this.control();
-    const commands: TmLauncherCommand[] = [];
-    if (state.reason === null && !state.inert) {
-      commands.push({
-        id: state.pinned ? 'tm.pins.edit' : 'tm.pins.pin',
-        label: this.text(state.pinned ? 'edit' : 'pin'),
-        icon: 'pin',
-        run: () => this.press('menu', null),
-      });
-    }
-    commands.push({ id: 'tm.pins.manage', label: this.text('manageCommand'), icon: 'settings-2', run: () => this.manage() });
-    return commands;
-  });
-
-  /** Creates the controls, which hand the launcher their commands for the shell's life. */
+  /** Creates the controls, which the launcher's commands run for the shell's life. */
   constructor() {
     tmRegisterPinsStrings(this.#l10n);
-    const detach = this.#pins.ɵattach(this.commands);
+    const detach = this.#pins.ɵattach(this);
     inject(DestroyRef).onDestroy(() => {
-      this.#ended = true;
       detach();
       this.#detachBar?.();
     });
@@ -204,15 +185,12 @@ export class TmPinsUi {
    * @param host - Where the overlays' host component renders.
    */
   attach(host: ViewContainerRef): void {
-    this.#host = host;
-    const view = this.#document.defaultView;
-    const idle = (run: () => void): unknown => (view?.requestIdleCallback ? view.requestIdleCallback(run) : setTimeout(run));
-    idle(() => void this.#ready());
+    this.#chunk.attach(host);
   }
 
   /** Starts loading the overlays' chunk, as a hover or focus on the bar does. */
   preload(): void {
-    void this.#ready();
+    this.#chunk.preload();
   }
 
   /**
@@ -221,12 +199,7 @@ export class TmPinsUi {
    * @param action - What to do with them.
    */
   run(action: (overlays: TmPinOverlays) => void): void {
-    const overlays = this.#overlays();
-    if (overlays !== null) {
-      action(overlays);
-      return;
-    }
-    void this.#ready().then((loaded) => loaded !== null && action(loaded));
+    this.#chunk.run(action);
   }
 
   /**
@@ -238,20 +211,7 @@ export class TmPinsUi {
    * @param menu - Which menu.
    */
   toggleMenu(anchor: HTMLElement, menu: TmPinMenu): void {
-    const overlays = this.#overlays();
-    if (overlays !== null) {
-      overlays.toggleMenu(anchor, menu);
-      return;
-    }
-    this.#pending = this.#pending?.anchor === anchor ? null : { anchor, menu };
-    // Every press waits on the same load; the first to resume runs what is left and clears it.
-    void this.#ready().then((loaded) => {
-      const pending = this.#pending;
-      this.#pending = null;
-      if (loaded !== null && pending !== null) {
-        loaded.toggleMenu(pending.anchor, pending.menu);
-      }
-    });
+    this.#chunk.press(anchor, (overlays) => overlays.toggleMenu(anchor, menu));
   }
 
   /**
@@ -261,7 +221,7 @@ export class TmPinsUi {
    * @returns `false` until the chunk is in.
    */
   isOpenFor(anchor: HTMLElement): boolean {
-    return this.#overlays()?.isOpenFor(anchor) ?? false;
+    return this.#chunk.value()?.isOpenFor(anchor) ?? false;
   }
 
   /**
@@ -364,30 +324,5 @@ export class TmPinsUi {
   /** Says once that a pin whose chip does not show was pinned. */
   #toast(pin: TmPinView): void {
     this.#toasts.show({ tone: 'success', title: this.text('pinnedToast', { label: untracked(pin.label) }), duration: TM_TOAST_FEEDBACK_MS });
-  }
-
-  /** Loads the chunk once and creates its host; `null` when it fails to load or the shell ended meanwhile. */
-  #ready(): Promise<TmPinOverlays | null> {
-    this.#loading ??= this.#load().then(
-      (chunk) => {
-        const host = this.#host;
-        if (this.#ended || host === null) {
-          this.#loading = null;
-          return null;
-        }
-        const ref = host.createComponent(chunk.TmPinOverlayHost);
-        // Renders the host at once, so its menus and popover exist before the action that waited runs.
-        ref.changeDetectorRef.detectChanges();
-        this.#overlays.set(ref.instance);
-        return ref.instance;
-      },
-      (error: unknown) => {
-        // Offline, or after a deploy removed the chunk: the next gesture tries again.
-        this.#telemetry.error(error, { source: 'tm-pins-ui' });
-        this.#loading = null;
-        return null;
-      },
-    );
-    return this.#loading;
   }
 }

@@ -6,9 +6,22 @@
 /// <reference types="@tellma/core-tools/lucide-icons" />
 
 import { LiveAnnouncer } from '@angular/cdk/a11y';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, computed, DestroyRef, DOCUMENT, inject, signal, untracked, viewChild, ViewEncapsulation } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  computed,
+  DestroyRef,
+  DOCUMENT,
+  effect,
+  inject,
+  signal,
+  untracked,
+  viewChild,
+  ViewEncapsulation,
+} from '@angular/core';
 import { Router } from '@angular/router';
-import { TmLocalization, TmTelemetry } from '@tellma/core';
+import { TmLocalization, TmTelemetry, TmUrls } from '@tellma/core';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmDragDrop } from '@tellma/core-ui/drag-drop';
 import { TmFormField } from '@tellma/core-ui/form-field';
@@ -36,6 +49,9 @@ import type { TmPinMenu, TmPinnedBarPort, TmPinOverlays } from './tm-pins-ui';
 //   marks where it lands, and a pin held over a folder chip for 500 ms opens
 //   it, so the pin can drop inside.
 //
+// The chunk loads at idle after the shell's first render; from then on
+// every pin that opens loads its route's chunks at idle (spec 0027 §8.4).
+//
 // Its strings are registered here, under `tm.pinOverlays`. Every glyph is
 // drawn from its own data, so it registers no icon name.
 
@@ -62,7 +78,9 @@ export const TM_PIN_OVERLAYS_STRINGS_EN = {
   duplicate: 'A folder with this name exists',
   /** An empty folder's menu. */
   emptyFolder: 'No pages in this folder',
-  /** A revoked pin's menu item. */
+  /** A revoked pin's menu: why it does not open, an unavailable one's, and its item. */
+  noAccess: 'You no longer have access to this page.',
+  unavailable: "This page isn't available.",
   unpin: 'Unpin',
   /** What a drop announces: into a folder, and along the bar. */
   movedTo: 'Moved {label} to {folder}',
@@ -116,7 +134,7 @@ function nameOf(item: TmPinView | TmPinFolderView): string {
       }
     </tm-menu>
     <!-- The pin popover, on the pin control. -->
-    <tm-popover #popover size="sm" align="end" panelClass="tm-pin-overlays__popover" [aria-label]="title()" (closed)="editing.set(null)">
+    <tm-popover #popover size="sm" align="end" panelClass="tm-pin-overlays__popover" [aria-label]="title()" (closed)="closed()">
       <ng-template tmPopoverContent>
         <form class="tm-pin-overlays__form" (submit)="apply($event)">
           <h2 class="tm-pin-overlays__title">{{ title() }}</h2>
@@ -260,9 +278,24 @@ export class TmPinOverlayHost implements TmPinOverlays {
   // The bar, while one is attached.
   #bar: TmPinnedBarPort | null = null;
 
-  /** Creates the host, which registers its strings and releases its anchors at its end. */
+  /** Creates the host, which registers its strings, preloads the pins' routes and releases its anchors at its end. */
   constructor() {
     this.#l10n.ɵregisterStrings(SCOPE, TM_PIN_OVERLAYS_STRINGS_EN);
+
+    // --- Preloading: every pin that opens loads its route's chunks at idle, once ---
+    const urls = inject(TmUrls);
+    const preloaded = new Set<string>();
+    effect(() => {
+      for (const item of this.#pins.items()) {
+        for (const pin of 'folder' in item ? item.items : [item]) {
+          if (pin.state() === 'ok' && !preloaded.has(pin.href)) {
+            preloaded.add(pin.href);
+            untracked(() => urls.preload(pin.href));
+          }
+        }
+      }
+    });
+
     inject(DestroyRef).onDestroy(() => {
       this.#triggers.forEach((release) => release());
       this.closeAll();
@@ -336,6 +369,20 @@ export class TmPinOverlayHost implements TmPinOverlays {
   }
 
   // --- The popover ---
+
+  /**
+   * The popover closed. Escape and Done give focus back to the pin control
+   * themselves; an outside click on nothing focusable leaves it on the
+   * page, so it goes back to the control too.
+   */
+  protected closed(): void {
+    const anchor = untracked(this.editing)?.anchor;
+    this.editing.set(null);
+    const focused = this.#document.activeElement;
+    if (anchor?.isConnected && (focused === null || focused === this.#document.body)) {
+      anchor.focus();
+    }
+  }
 
   /**
    * Selects the name field's text the first time it takes focus after the popover opens.
@@ -430,7 +477,7 @@ export class TmPinOverlayHost implements TmPinOverlays {
 
   /** Why a revoked pin does not open. */
   #message(state: 'no-access' | 'unavailable'): string {
-    return this.#l10n.ɵtext(`tm.pins.${state === 'no-access' ? 'noAccess' : 'unavailable'}`)();
+    return this.text(state === 'no-access' ? 'noAccess' : 'unavailable');
   }
 
   /** Opens a pin from the menu, as a plain activation does. */
@@ -563,9 +610,14 @@ export class TmPinOverlayHost implements TmPinOverlays {
           light(null);
           const rtl = this.#l10n.dir() === 'rtl';
           const after = event.clientX > rect.left + rect.width / 2 !== rtl;
+          // The line sits in the bar's order, which below md leads with the
+          // current item: the drop lands before the item that follows the
+          // line there, at that item's stored place, else at the end.
+          const order = bar.order().filter((entry) => entry !== drag!.item.id);
+          const at = order.indexOf(id);
+          const before = order[at + (after ? 1 : 0)];
           const rest = items.filter((item) => item !== drag!.item);
-          const at = rest.findIndex((item) => item.id === id);
-          target = at === -1 ? null : { index: at + (after ? 1 : 0) };
+          target = at === -1 ? null : { index: before === undefined ? rest.length : rest.findIndex((item) => item.id === before) };
           line.style.display = target === null ? 'none' : 'block';
           line.style.left = `${(after !== rtl ? rect.right : rect.left) - 1}px`;
           line.style.top = `${rect.top + (rect.height - 20) / 2}px`;
@@ -648,6 +700,8 @@ export class TmPinOverlayHost implements TmPinOverlays {
     }
     tmPinsVia('drag', () => this.#pins.move(drag.item.id, { folderId: null, index: drop.index }));
     const count = untracked(this.#pins.items).length;
-    void this.#announcer.announce(this.text('moved', { label, index: drop.index + 1, count }), 'polite');
+    // The position the bar shows it at, which below md may differ from the stored one.
+    const shown = this.#bar?.order().indexOf(drag.item.id) ?? -1;
+    void this.#announcer.announce(this.text('moved', { label, index: (shown === -1 ? drop.index : shown) + 1, count }), 'polite');
   }
 }

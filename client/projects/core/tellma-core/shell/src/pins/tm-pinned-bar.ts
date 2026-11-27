@@ -6,7 +6,6 @@
 /// <reference types="@tellma/core-tools/lucide-icons" />
 
 import {
-  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -24,7 +23,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router, RouterLink, type UrlTree } from '@angular/router';
-import { TmLaunchCache, TmLocalization, TmTelemetry, TmUrls } from '@tellma/core';
+import { TmLaunchCache, TmLocalization, TmTelemetry } from '@tellma/core';
 import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
@@ -461,7 +460,6 @@ export class TmPinnedBar {
   readonly #pins = inject(TmPins);
   readonly #l10n = inject(TmLocalization);
   readonly #router = inject(Router);
-  readonly #urls = inject(TmUrls);
   readonly #telemetry = inject(TmTelemetry);
   readonly #cdr = inject(ChangeDetectorRef);
   readonly #md = inject(TmBreakpoints).atLeast('md');
@@ -602,7 +600,13 @@ export class TmPinnedBar {
         this.#faces();
         this.layout();
         const pending = this.ui.pending();
-        if (!this.#fontsReady() || this.measureEl() === undefined) {
+        const listed = this.measureEl() !== undefined;
+        // A removal that emptied the bar leaves no chip to move focus to: it goes to the pin control.
+        if (!listed && this.#refocus !== null) {
+          this.#refocus = null;
+          untracked(() => this.controlEl()?.nativeElement.focus());
+        }
+        if (!this.#fontsReady() || !listed) {
           return;
         }
         untracked(() => {
@@ -629,28 +633,11 @@ export class TmPinnedBar {
     });
     destroyRef.onDestroy(() => observer.disconnect());
 
-    // --- Preloading: after the first render, every pin that opens loads its route's chunks at idle ---
-    const preloaded = new Set<string>();
-    const rendered = signal(false);
-    afterNextRender(() => rendered.set(true));
-    effect(() => {
-      if (!rendered()) {
-        return;
-      }
-      for (const item of this.#pins.items()) {
-        for (const pin of 'folder' in item ? item.items : [item]) {
-          if (pin.state() === 'ok' && !preloaded.has(pin.href)) {
-            preloaded.add(pin.href);
-            untracked(() => this.#urls.preload(pin.href));
-          }
-        }
-      }
-    });
-
-    // --- The overlays: the bar's element, its control and its unpin path ---
+    // --- The overlays: the bar's element, its control, its order and its unpin path ---
     const port: TmPinnedBarPort = {
       element: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement,
       control: () => this.controlEl()?.nativeElement ?? null,
+      order: () => untracked(this.#ordered).map((row) => row.id),
       unpin: (id, via, refocus) => {
         const index = this.#chips().findIndex((chip) => chip.dataset['tmPin'] === id);
         tmPinsVia(via, () => this.#pins.remove(id));

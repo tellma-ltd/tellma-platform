@@ -21,7 +21,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { TmLocalization, TmNavigation, TmPreferences, tmPinsKey, type TmPin, type TmPinItem, type TmPinsDoc, TmUrls } from '@tellma/core';
+import { TmLocalization, TmNavigation, TmPreferences, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc, TmUrls } from '@tellma/core';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmDragPayload } from '@tellma/core-ui/drag-drop';
 import { TmFormField } from '@tellma/core-ui/form-field';
@@ -43,6 +43,7 @@ import Trash from 'lucide/dist/esm/icons/trash.mjs';
 import {
   TM_PIN_LIMITS,
   tmNewPinId,
+  tmPinFolderNameError,
   tmPinFolderNameProblem,
   tmPinHref,
   tmPinLabel,
@@ -51,7 +52,6 @@ import {
   tmPinsOf,
   tmPinsRemove,
   tmPinsRemoveFolder,
-  tmPinsRenameFolder,
   tmPinsUpdate,
   tmPinsView,
 } from './tm-pin-rules';
@@ -122,6 +122,30 @@ const KIND_ICONS: Readonly<Record<string, string>> = {
   create: 'plus',
   core: 'settings',
 };
+
+/**
+ * Renames a folder. The dialog's alone, so it ships in the dialog's chunk
+ * rather than with the bar's rules.
+ *
+ * @param doc - The current document's view.
+ * @param id - The folder's id.
+ * @param name - The new name, which is trimmed.
+ * @returns The next document, or the document itself when no folder has the id or the name is unchanged.
+ * @throws RangeError for a name {@link tmPinFolderNameProblem} refuses.
+ */
+export function tmPinsRenameFolder(doc: TmPinsDoc, id: string, name: string): TmPinsDoc {
+  const at = doc.items.findIndex((item) => item.id === id && 'folder' in item);
+  if (at === -1) {
+    return doc;
+  }
+  const problem = tmPinFolderNameProblem(doc.items, name, id);
+  if (problem !== null) {
+    throw tmPinFolderNameError(problem);
+  }
+  const folder = doc.items[at] as TmPinFolder;
+  const trimmed = name.trim();
+  return folder.folder === trimmed ? doc : { v: 1, items: doc.items.map((item, index) => (index === at ? { ...folder, folder: trimmed } : item)) };
+}
 
 /** What a pin's row shows: its label, whether it opens, and its icon. */
 interface TmManagedPin {
