@@ -33,11 +33,13 @@ export function injectTmDetails<T = TmJsonObject>(): TmDetailsContext<T>;
 
 // @public
 export class TmChildFiles {
+    constructor();
     readonly caption: InputSignal<string | undefined>;
     readonly collection: InputSignal<string>;
     protected readonly defer: ɵTmDeferTriggers;
     protected readonly failedText: i0.Signal<string>;
     readonly file: InputSignal<string>;
+    protected readonly loading: i0.Signal<boolean>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmChildFiles, "tm-child-files", never, { "collection": { "alias": "collection"; "required": true; "isSignal": true; }; "file": { "alias": "file"; "required": true; "isSignal": true; }; "caption": { "alias": "caption"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmChildFiles, never>;
 }

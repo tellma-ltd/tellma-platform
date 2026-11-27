@@ -13,7 +13,7 @@ import { TmFilePicker } from '@tellma/core-ui/files';
 import { TmFilePreview } from '@tellma/core-ui/file-preview';
 import { TmApiError, type TmBlobDescriptor, type TmJsonObject } from '@tellma/core';
 import { type TmFakeApiCall, type TmFakeDetails, type TmFakeDetailsOptions, tmFakeDetails } from '@tellma/core-testing';
-import { TmChipHarness } from '@tellma/core-ui-testing';
+import { TmCardHarness, TmChipHarness } from '@tellma/core-ui-testing';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
@@ -33,7 +33,9 @@ import {
 // drop zone whose files add their rows at once and upload under each row's
 // file path with a progress ring, the policy's refusals, a refused and a
 // failed upload on their row with a retry for the latter, removal that
-// aborts an upload and moves the later ones up, and inline captions.
+// aborts an upload and moves the later ones up, and inline captions. While
+// the record loads the placeholder stays, and the rows' errors reach the
+// card.
 
 /** Renders a layout in a details record's injector, as the page's frame does. */
 @Component({
@@ -117,7 +119,8 @@ describe("the details page's child files", () => {
   });
 
   /**
-   * Renders a layout over the invoice, landed, in view mode.
+   * Renders a layout over the invoice, landed, in view mode, and waits for
+   * the body unless the record is still loading.
    *
    * @param layout - The layout.
    * @param options - The context's options.
@@ -131,7 +134,9 @@ describe("the details page's child files", () => {
     const fixture = TestBed.createComponent(TmTestFilesHost);
     fixture.componentRef.setInput('layout', layout);
     fixture.componentRef.setInput('injector', injector);
-    await tmSettleUntil(() => (fixture.nativeElement as HTMLElement).querySelector('tm-child-files-body') !== null, 'the deferred body renders');
+    if (options.record !== undefined || !('record' in options)) {
+      await tmSettleUntil(() => (fixture.nativeElement as HTMLElement).querySelector('tm-child-files-body') !== null, 'the deferred body renders');
+    }
     await tmSettle();
     return { details, record: injector.get(TM_DETAILS_RECORD) as TmDetailsRecordState<TmJsonObject>, fixture, loader: TestbedHarnessEnvironment.loader(fixture) };
   }
@@ -239,6 +244,39 @@ describe("the details page's child files", () => {
     } finally {
       open.mockRestore();
     }
+  });
+
+  it('keeps the placeholder while the record loads, never an empty list, and shows the chips once it lands', async () => {
+    const rendered = await render(TmTestAttachmentsLayout, { record: undefined });
+    expect(element(rendered).querySelector('.tm-child-files__placeholder')).not.toBeNull();
+    expect(element(rendered).querySelector('tm-child-files-body')).toBeNull();
+    expect(element(rendered).textContent).not.toContain('No files');
+
+    rendered.details.land({ entity: TM_SALES_INVOICE, related: TM_SALES_INVOICE_RELATED });
+    await tmSettleUntil(() => element(rendered).querySelector('tm-child-files-body') !== null, 'the deferred body renders');
+    await tmSettle();
+    expect(element(rendered).querySelector('.tm-child-files__placeholder')).toBeNull();
+    const chips = await rendered.loader.getAllHarnesses(TmChipHarness);
+    expect(chips).toHaveLength(1);
+    expect(await chips[0]!.getLabel()).toBe('invoice.pdf (2 kB)');
+  });
+
+  it("reports a row's file error to its card once the row is touched, in edit mode only", async () => {
+    const rendered = await render();
+    const card = await rendered.loader.getHarness(TmCardHarness);
+    const form = rendered.record.form as unknown as Readonly<Record<string, Readonly<Record<number, Readonly<Record<string, () => { markAsTouched(): void }>>>>>>;
+    rendered.record.errors.set([{ segments: ['attachments', 0, 'fileId'], value: 501, error: { kind: 'server', message: 'This file expired. Choose it again.' } }]);
+    await tmSettle();
+    expect(await card.isInvalid()).toBe(false);
+
+    await edit(rendered);
+    form['attachments']![0]!['fileId']!().markAsTouched();
+    await tmSettle();
+    expect(await card.isInvalid()).toBe(true);
+
+    await rendered.details.cancel();
+    await tmSettle();
+    expect(await card.isInvalid()).toBe(false);
   });
 
   it('says so when the record has no attachments', async () => {

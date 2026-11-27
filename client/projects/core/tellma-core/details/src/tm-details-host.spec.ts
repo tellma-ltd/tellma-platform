@@ -804,6 +804,77 @@ describe('the details host', () => {
     expect(latest()!.details.mode()).toBe('view');
   });
 
+  it("waits in a clean edit for an upload in flight, then writes the file it staged", async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    const layout = latest()!;
+    rig.api.respond('customers/save', () => saved(5, 'Acme'));
+    let finish!: (blob: TmBlobDescriptor) => void;
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+
+    await manualChangeDetection(async () => {
+      // The pick is the edit's only change, and it has not arrived yet: Save neither leaves nor writes.
+      const run = layout.record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((resolve) => (finish = resolve)));
+      // As the image's editor does, the staged id becomes the field's value.
+      void run.then((staged) => layout.details.update((model) => ({ ...model, imageId: staged.id })));
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+      expect(layout.details.mode()).toBe('edit');
+      expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+
+      finish(blob);
+      expect(await invoked).toEqual({ outcome: 'done' });
+    });
+    const writes = rig.api.calls().filter((call) => call.route === 'customers/save');
+    expect(writes).toHaveLength(1);
+    expect(JSON.stringify(writes[0]!.body)).toContain('"imageId":88');
+  });
+
+  it('discards an upload in flight on Cancel: its late result writes nothing, and the next Save waits on nothing', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    const layout = latest()!;
+    const record = layout.record;
+    let finish!: (blob: TmBlobDescriptor) => void;
+    let aborted = false;
+    let wrote = false;
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+
+    await manualChangeDetection(async () => {
+      const run = record.uploads.start('imageId', (signal) => {
+        signal.addEventListener('abort', () => (aborted = true));
+        return new Promise<TmBlobDescriptor>((resolve) => (finish = resolve));
+      });
+      // As the image's editor does, a result would become the field's value.
+      const settled = run.then(
+        () => (wrote = true),
+        (error: unknown) => error,
+      );
+
+      // --- Cancel aborts the upload; its result, arriving after, is ignored ---
+      await page.click('cancel');
+      await tmSettle();
+      expect(layout.details.mode()).toBe('view');
+      expect(aborted).toBe(true);
+      expect(record.uploads.running().size).toBe(0);
+      finish(blob);
+      expect(await settled).toMatchObject({ name: 'AbortError' });
+    });
+    expect(wrote).toBe(false);
+    expect(record.uploads.staged('imageId')).toBeUndefined();
+    expect(record.model()).toBe(record.entity());
+
+    // --- The next edit's Save writes at once: nothing the cancelled edit started holds it ---
+    await page.click('edit');
+    layout.details.update((model) => ({ ...model, name: 'Renamed' }));
+    rig.api.respond('customers/save', () => saved(5, 'Renamed'));
+    expect(await TestBed.inject(TmPageActions).invoke('details.save', {}, 'user')).toEqual({ outcome: 'done' });
+    expect(rig.api.calls().filter((call) => call.route === 'customers/save')).toHaveLength(1);
+    expect(layout.details.mode()).toBe('view');
+  });
+
   it('ends Save cleanly when the page is left while the write runs', async () => {
     await start();
     const page = await openCustomer(5);

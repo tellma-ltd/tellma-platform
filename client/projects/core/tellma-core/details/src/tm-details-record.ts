@@ -458,12 +458,13 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
    * The id of a new child row: −1, −2 and so on through the record's life,
    * below every negative id its collections already hold, such as a
    * restored draft's new rows, so no two new rows share one. The server
-   * inserts a row with a negative id (spec 0031 §6.4). Internal: the kit's
-   * child grids and child files call it.
+   * inserts a row with a negative id. Internal: the kit's child grids and
+   * child files call it.
    *
    * @returns The id.
    */
   ɵnewRowId(): number {
+    // A negative id is a new row to the server (spec 0031 §6.4).
     let lowest = this.#lastRowId;
     const model = untracked(this.model) as Readonly<Record<string, unknown>>;
     for (const child of this.descriptor.children) {

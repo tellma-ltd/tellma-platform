@@ -3,7 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, type DestroyRef, InjectionToken, type Signal, signal } from '@angular/core';
+import { computed, DestroyRef, inject, InjectionToken, type Signal, signal } from '@angular/core';
+import type { FieldTree } from '@angular/forms/signals';
+
+import { injectTmDetailsRecord } from './tm-details-record';
 
 // What holds a layout's fields (spec 0031 §6.6): a card or a tab. A field
 // reports whether it shows an error to the nearest one through DI, which
@@ -65,3 +68,23 @@ export class TmDetailsScope {
 
 /** The nearest card or tab. Internal: the kit's cards and tabs provide it; fields and inner scopes inject it. */
 export const TM_DETAILS_SCOPE = new InjectionToken<TmDetailsScope>('TM_DETAILS_SCOPE');
+
+/**
+ * Holds a child collection's errors on the nearest card or tab, from
+ * creation: in edit and create mode, the collection shows an error once a
+ * row holding one is touched or dirty. Internal: the child grid and the
+ * child files call it in their constructors, whether or not their deferred
+ * body has rendered.
+ *
+ * @param child - The collection's json name, such as `lines`; `undefined` for a collection the entity lacks.
+ */
+export function ɵtmHoldCollectionErrors(child: Signal<string | undefined>): void {
+  const record = injectTmDetailsRecord();
+  const invalid = computed(() => {
+    const json = child();
+    const form = record.form as unknown as Readonly<Record<string, FieldTree<unknown> | undefined>>;
+    const state = json === undefined ? undefined : form[json]?.();
+    return record.mode() !== 'view' && state !== undefined && state.invalid() && (state.touched() || state.dirty());
+  });
+  inject(TM_DETAILS_SCOPE, { optional: true })?.hold(invalid, inject(DestroyRef));
+}

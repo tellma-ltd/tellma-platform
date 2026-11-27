@@ -6,9 +6,12 @@
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Injector, input, type Type } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import type { HarnessLoader } from '@angular/cdk/testing';
+import { By } from '@angular/platform-browser';
+import { Router } from '@angular/router';
+import { type HarnessLoader, TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import type { TmJsonObject } from '@tellma/core';
+import { TmGrid } from '@tellma/core-ui/grid';
 import { TmChildGridHarness, type TmFakeDetails, type TmFakeDetailsOptions, tmFakeDetails } from '@tellma/core-testing';
 import { TmCardHarness } from '@tellma/core-ui-testing';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
@@ -31,7 +34,8 @@ import {
 // links, the registration once its rows render and its reveal(), new rows
 // from the placeholder row with negative ids and the layout's defaults,
 // deleting rows with the grid's commands, the exact live totals, and a
-// height that holds while typing and changes only with the mode.
+// box that holds across view mode, Edit, typing and Cancel, changing only
+// when a record lands.
 
 /** Renders a layout in a details record's injector, as the page's frame does. */
 @Component({
@@ -73,6 +77,14 @@ class TmTestLinesLayout {
   template: `<tm-details-card><tm-child-grid collection="Lines" [columns]="['Description', 'Amount']" readonly /></tm-details-card>`,
 })
 class TmTestFixedLinesLayout {}
+
+/** The lines in a card that starts collapsed. */
+@Component({
+  selector: 'tm-test-collapsed-lines-layout',
+  imports: [TmDetailsKit],
+  template: `<tm-details-card id="lines" titleKey="Acme_SalesInvoiceLine_Plural" collapsible collapsed><tm-child-grid collection="Lines" [columns]="['Description', 'Amount']" /></tm-details-card>`,
+})
+class TmTestCollapsedLinesLayout {}
 
 /** The lines below the fold, under a tall spacer. */
 @Component({
@@ -166,6 +178,30 @@ describe("the details page's child grid", () => {
   }
 
   /**
+   * The frame's height for a number of body rows: the header, the rows, the scroller's border and the status band.
+   *
+   * @param rendered - The rendering.
+   * @param bodyRows - The body rows the frame shows.
+   * @returns The height, in pixels.
+   */
+  function frameHeight(rendered: TmTestRendered, bodyRows: number): number {
+    const host = rendered.fixture.nativeElement.querySelector('tm-child-grid') as HTMLElement;
+    return rowHeight(rendered) * (bodyRows + 1) + 2 + parseFloat(getComputedStyle(host).getPropertyValue('--grid-status-height'));
+  }
+
+  /**
+   * The frame's box on the page, and where the totals under it start.
+   *
+   * @param rendered - The rendering.
+   * @returns The frame's edges and size, and the totals' top edge.
+   */
+  function frameBox(rendered: TmTestRendered): { readonly top: number; readonly left: number; readonly width: number; readonly height: number; readonly totals: number } {
+    const root = rendered.fixture.nativeElement as HTMLElement;
+    const { top, left, width, height } = root.querySelector('tm-child-grid .tm-child-grid__frame')!.getBoundingClientRect();
+    return { top, left, width, height, totals: root.querySelector('tm-child-grid .tm-child-grid__totals')!.getBoundingClientRect().top };
+  }
+
+  /**
    * Enters edit mode and waits for the grid to edit.
    *
    * @param rendered - The rendering.
@@ -209,7 +245,7 @@ describe("the details page's child grid", () => {
     const before = await child.getHeight();
 
     expect(await child.getState()).toBe('placeholder');
-    expect(before).toBe(rowHeight(rendered) * 5 + 2);
+    expect(before).toBe(frameHeight(rendered, 4));
 
     rendered.details.land({ entity: TM_SALES_INVOICE, related: TM_SALES_INVOICE_RELATED });
     await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('tm-child-grid tm-grid [role="row"]') !== null, 'the grid renders its rows');
@@ -229,6 +265,56 @@ describe("the details page's child grid", () => {
     await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('tm-child-grid tm-grid [role="row"]') !== null, 'the grid renders its rows');
     expect(await child.getState()).toBe('grid');
     expect(rendered.record.collections().get('Lines')!.ready()).toBe(true);
+  });
+
+  it('keeps the grid of a collapsed card a placeholder until the card expands', async () => {
+    const rendered = await render(TmTestCollapsedLinesLayout, { record: undefined });
+    rendered.details.land({ entity: TM_SALES_INVOICE, related: TM_SALES_INVOICE_RELATED });
+    await tmSettle();
+    const child = await rendered.loader.getHarness(TmChildGridHarness);
+    const card = await rendered.loader.getHarness(TmCardHarness);
+    expect(await card.isExpanded()).toBe(false);
+    expect(await child.getState()).toBe('placeholder');
+    expect(rendered.record.collections().get('Lines')?.ready() ?? false).toBe(false);
+
+    await card.toggle();
+    await tmSettleUntil(() => rendered.fixture.nativeElement.querySelector('tm-child-grid tm-grid [role="row"]') !== null, 'the grid renders its rows');
+    expect(await child.getState()).toBe('grid');
+  });
+
+  it("keeps the grid's state by entity and collection, and its content by record: new for a record not yet saved", async () => {
+    const saved = await render(TmTestLinesLayout);
+    const grid = saved.fixture.debugElement.query(By.directive(TmGrid)).componentInstance as TmGrid<unknown>;
+    expect(grid.gridId()).toBe('details:acme.SalesInvoice:Lines');
+    expect(grid.contentKey()).toBe(7);
+    saved.fixture.destroy();
+
+    const created = await render(TmTestLinesLayout, { mode: 'create', record: undefined });
+    await tmSettleUntil(() => created.fixture.debugElement.query(By.directive(TmGrid)) !== null, 'the grid renders');
+    const fresh = created.fixture.debugElement.query(By.directive(TmGrid)).componentInstance as TmGrid<unknown>;
+    expect(fresh.gridId()).toBe('details:acme.SalesInvoice:Lines');
+    expect(fresh.contentKey()).toBe('new');
+  });
+
+  it("follows a view-mode navigation cell's link with Enter", async () => {
+    const rendered = await render(TmTestLinesLayout);
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+    try {
+      const grid = await (await rendered.loader.getHarness(TmChildGridHarness)).getGrid();
+      // The keyboard reaches the Center cell from its neighbour, so no pointer touches the link; Enter then follows it.
+      await grid.clickCell(0, 1);
+      await grid.pressKeys(TestKey.LEFT_ARROW);
+      expect(await grid.getActiveCell()).toEqual({ row: 0, col: 0 });
+      expect(navigate).not.toHaveBeenCalled();
+      await grid.pressKeys(TestKey.ENTER);
+      await tmSettle();
+
+      expect(navigate).toHaveBeenCalledTimes(1);
+      expect(router.serializeUrl(navigate.mock.calls[0]![0] as Parameters<Router['serializeUrl']>[0])).toBe('/17/centers/4');
+    } finally {
+      navigate.mockRestore();
+    }
   });
 
   it('registers the collection once its rows render, with what it displays', async () => {
@@ -271,19 +357,20 @@ describe("the details page's child grid", () => {
     expect(rendered.record.collections().get('Lines')!.reveal(99)).toBe(false);
   });
 
-  it('adds a line from the placeholder row with a negative id and the defaults; the totals follow and the height holds while typing', async () => {
+  it('adds a line from the placeholder row with a negative id and the defaults; the totals follow and the box holds across Edit and typing', async () => {
     const rendered = await render(TmTestLinesLayout);
     const child = await rendered.loader.getHarness(TmChildGridHarness);
     const viewHeight = await child.getHeight();
+    const viewBox = frameBox(rendered);
     await edit(rendered);
     const grid = await child.getGrid();
     const editHeight = await child.getHeight();
 
     expect(await child.isEditable()).toBe(true);
     expect(await grid.hasPlaceholderRow()).toBe(true);
-    // Two lines and the placeholder row fit the four rows the frame shows at least; the status band joins in edit mode.
-    expect(viewHeight).toBe(rowHeight(rendered) * 5 + 2);
-    expect(editHeight).toBeGreaterThan(viewHeight);
+    // Two lines and the placeholder row fit the four rows the frame shows at least; view mode reserves the band and the row Edit adds.
+    expect(viewHeight).toBe(frameHeight(rendered, 4));
+    expect(frameBox(rendered)).toEqual(viewBox);
 
     // --- Typing in the placeholder row adds a line, three times over ---
     for (const [row, amount] of [[2, '5'], [3, '7.25'], [4, '0.05']] as const) {
@@ -296,12 +383,31 @@ describe("the details page's child grid", () => {
     expect(lines(rendered)[2]).not.toHaveProperty('salesInvoiceId');
     expect(await child.getTotals()).toEqual({ 'Total Amount': '1,012.60' });
     expect(await child.getHeight()).toBe(editHeight);
+    expect(frameBox(rendered)).toEqual(viewBox);
     expect(rendered.details.dirty()).toBe(true);
 
-    // --- The height is set again at the next mode change ---
+    // --- The height is set again when the saved record lands: five lines and the reserved placeholder row ---
     rendered.details.save();
     await tmSettle();
-    expect(await child.getHeight()).toBe(rowHeight(rendered) * 6 + 2);
+    expect(await child.getHeight()).toBe(frameHeight(rendered, 6));
+  });
+
+  it('keeps the box of view mode after lines added in Edit are cancelled', async () => {
+    const rendered = await render(TmTestLinesLayout);
+    const child = await rendered.loader.getHarness(TmChildGridHarness);
+    const viewBox = frameBox(rendered);
+    await edit(rendered);
+    const grid = await child.getGrid();
+    await grid.openEditor(2, 2, 'type', '5');
+    await grid.commitEditor('enter');
+    await tmSettle();
+    expect(lines(rendered)).toHaveLength(3);
+
+    await rendered.details.cancel();
+    await tmSettle();
+    expect(await child.isEditable()).toBe(false);
+    expect(lines(rendered)).toHaveLength(2);
+    expect(frameBox(rendered)).toEqual(viewBox);
   });
 
   it("deletes lines with the grid's commands, and the totals follow", async () => {

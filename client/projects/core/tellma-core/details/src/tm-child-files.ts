@@ -8,6 +8,8 @@ import { TmLocalization } from '@tellma/core';
 
 import { ɵTmChildFilesBody } from './tm-child-files-body';
 import { ɵtmDeferTriggers } from './tm-details-defer';
+import { injectTmDetailsRecord } from './tm-details-record';
+import { ɵtmHoldCollectionErrors } from './tm-details-scope';
 
 // A child collection of files (spec 0031 §6.5), such as a sales invoice's
 // attachments. This part loads with the details route and holds only the
@@ -15,6 +17,10 @@ import { ɵtmDeferTriggers } from './tm-details-defer';
 // a chunk of their own once the list enters the viewport, prefetched once
 // the browser is idle, as the child grid's does (§6.4), so a record whose
 // files sit below the fold or on another tab never loads them up front.
+// While the record loads with nothing held, the placeholder stays, as the
+// grid's does, so no empty list shows before the files land (§3.3). The
+// rows' errors reach the card and tab from creation, before the body
+// renders.
 
 /**
  * A child collection of files as a list of chips: each a download link
@@ -53,16 +59,22 @@ import { ɵtmDeferTriggers } from './tm-details-defer';
     }
   `,
   template: `
-    @defer (when defer.visible()) {
-      <tm-child-files-body [collection]="collection()" [file]="file()" [caption]="caption()" />
-    } @placeholder {
+    @if (loading()) {
+      <!-- The record loads with nothing held: the placeholder, never an empty list -->
       <div class="tm-child-files__placeholder" aria-hidden="true"></div>
-    } @error {
-      <p class="tm-child-files__failed" role="alert">{{ failedText() }}</p>
+    } @else {
+      @defer (when defer.visible()) {
+        <tm-child-files-body [collection]="collection()" [file]="file()" [caption]="caption()" />
+      } @placeholder {
+        <div class="tm-child-files__placeholder" aria-hidden="true"></div>
+      } @error {
+        <p class="tm-child-files__failed" role="alert">{{ failedText() }}</p>
+      }
     }
   `,
 })
 export class TmChildFiles {
+  readonly #record = injectTmDetailsRecord();
   readonly #l10n = inject(TmLocalization);
 
   /** The child collection's name, such as `Attachments`. */
@@ -77,6 +89,15 @@ export class TmChildFiles {
   /** When the body's chunk loads: once the list enters the viewport, prefetched once the browser is idle. */
   protected readonly defer = ɵtmDeferTriggers(() => import('./tm-child-files-body'));
 
+  /** Whether the record loads with nothing held: the placeholder, and no body. */
+  protected readonly loading = computed(() => this.#record.status() === 'loading' && !this.#record.landed());
+
   /** The failed load's message. */
   protected readonly failedText = computed(() => this.#l10n.ɵtext('tm.details.filesFailed')());
+
+  /** Holds the rows' errors on the enclosing card or tab. */
+  constructor() {
+    // --- The rows' file and caption errors show on the card and tab, whether or not the body has rendered ---
+    ɵtmHoldCollectionErrors(computed(() => this.#record.descriptor.child(this.collection())?.json));
+  }
 }

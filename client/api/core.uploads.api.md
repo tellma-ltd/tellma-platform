@@ -30,6 +30,7 @@ export function tmUploadFailure(error: unknown, text: TmServerText): TmUploadFai
 export class TmUploads {
     constructor();
     cancel(path: string): void;
+    cancelAll(): void;
     progress(path: string): number | null;
     removeRow(collection: string, index: number): void;
     readonly running: Signal<ReadonlySet<string>>;

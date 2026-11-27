@@ -63,7 +63,7 @@ export class TmChildGridHarness extends ComponentHarness {
     return this.locatorFor(TmGridHarness)();
   }
 
-  /** The frame's height in pixels: the header, the rows shown, the border and an editable grid's status band. */
+  /** The frame's height in pixels: the header, the rows shown, the border and the status band a grid that edits in some mode reserves. */
   async getHeight(): Promise<number> {
     return (await (await this.locatorFor('.tm-child-grid__frame')()).getDimensions()).height;
   }

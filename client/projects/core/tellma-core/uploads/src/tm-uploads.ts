@@ -87,7 +87,7 @@ export class TmUploads {
    * @param path - The field's path.
    * @param upload - The upload, given the signal that aborts it and the callback that reports the share sent.
    * @returns The staged blob.
-   * @throws The upload's error, or an `AbortError` when a later upload, a removal or the host aborted it.
+   * @throws The upload's error, or an `AbortError` when a later upload, a removal, `cancelAll` or the host aborted it.
    */
   async start(path: string, upload: (signal: AbortSignal, progress: (sent: number) => void) => Promise<TmBlobDescriptor>): Promise<TmBlobDescriptor> {
     this.cancel(path);
@@ -132,6 +132,22 @@ export class TmUploads {
         return next;
       });
     }
+  }
+
+  /**
+   * Discards every upload of the form, as Cancel does with its changes:
+   * each upload in flight aborts, so its result is ignored, and every
+   * staged blob clears.
+   *
+   * @example
+   * ```ts
+   * uploads.cancelAll(); // running() is empty and staged('imageId') is undefined
+   * ```
+   */
+  cancelAll(): void {
+    this.#running().forEach((running) => running.controller.abort());
+    this.#running.set(new Map());
+    this.#staged.set(new Map());
   }
 
   /**

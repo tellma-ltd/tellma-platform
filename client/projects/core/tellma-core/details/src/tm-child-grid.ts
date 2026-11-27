@@ -8,7 +8,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   effect,
   inject,
   input,
@@ -19,7 +18,6 @@ import {
   type Signal,
   untracked,
 } from '@angular/core';
-import type { FieldTree } from '@angular/forms/signals';
 import { ɵtmControlSize } from '@tellma/core-ui';
 import {
   type TmChildDescriptor,
@@ -37,7 +35,7 @@ import { ɵtmChildGridTotal } from './tm-child-grid-totals';
 import { TmChildGridView } from './tm-child-grid-view';
 import { ɵtmDeferTriggers } from './tm-details-defer';
 import { injectTmDetailsRecord, tmDevMode } from './tm-details-record';
-import { TM_DETAILS_SCOPE } from './tm-details-scope';
+import { ɵtmHoldCollectionErrors } from './tm-details-scope';
 
 // A child collection as one grid (spec 0031 §6.4). This part loads with
 // the details route: the frame of a fixed height, the same-geometry
@@ -45,9 +43,12 @@ import { TM_DETAILS_SCOPE } from './tm-details-scope';
 // and tab. The grid itself renders in a deferred chunk once the frame
 // enters the viewport, prefetched once the browser is idle (the semantics
 // of `on viewport; prefetch on idle`, through signals). The height is
-// set when the record lands and at each mode change, from the rows and the
-// placeholder row, between 4 rows and `maxRows`, plus the header; typing
-// never moves it, and beyond it the grid scrolls inside.
+// set when the record lands, from the rows and the placeholder row, between
+// 4 rows and `maxRows`, plus the header and the status band. View mode
+// reserves the placeholder row and the band too, so the frame's box is the
+// same in view mode, in Edit and after Cancel (spec 0031 §18's stable
+// layout); typing never moves it, and beyond it the grid scrolls inside. A
+// grid that never edits has neither, and no mode moves it either.
 
 /** The fewest body rows the frame shows. */
 const MIN_ROWS = 4;
@@ -89,6 +90,7 @@ interface TmChildGridTotalView {
     '[class.tm-child-grid--sm]': "size() === 'sm'",
     '[class.tm-child-grid--lg]': "size() === 'lg'",
     '[class.tm-child-grid--editable]': 'editable()',
+    '[class.tm-child-grid--readonly]': 'readonly()',
     '[style.--tm-child-grid-rows]': 'rows()',
     '[attr.data-tm-collection]': 'child()?.name ?? null',
   },
@@ -96,7 +98,7 @@ interface TmChildGridTotalView {
     :host {
       display: block;
       min-inline-size: 0;
-      --tm-child-grid-status: 0px;
+      --tm-child-grid-status: var(--grid-status-height);
     }
 
     /* The grid's own row heights, by the size the grid draws at. */
@@ -108,9 +110,9 @@ interface TmChildGridTotalView {
       --grid-row-height: var(--grid-row-height-lg);
     }
 
-    /* An editable grid has its status band below the rows. */
-    :host(.tm-child-grid--editable) {
-      --tm-child-grid-status: var(--grid-status-height);
+    /* A grid that never edits has no status band to reserve. */
+    :host(.tm-child-grid--readonly) {
+      --tm-child-grid-status: 0px;
     }
 
     /* The frame: the header, the rows shown, the scroller's border and the status band. */
@@ -265,7 +267,7 @@ export class TmChildGrid {
   /** Whether the grid edits: in edit and create mode, unless it is read-only. */
   protected readonly editable = computed(() => this.#record.mode() !== 'view' && !this.readonly());
 
-  /** The body rows the frame shows, set when the record lands and at each mode change. */
+  /** The body rows the frame shows, set when the record lands. */
   protected readonly rows = signal(MIN_ROWS);
 
   /** The failed load's message. */
@@ -298,26 +300,20 @@ export class TmChildGrid {
     });
   });
 
-  /** Sets the frame's height at each landing and mode change, and reports the collection's errors to its card and tab. */
+  /** Sets the frame's height at each landing, and reports the collection's errors to its card and tab. */
   constructor() {
-    // --- The height: the rows and the placeholder row, at least 4, at most maxRows; fixed while typing ---
+    // --- The height: the rows and the placeholder row, at least 4, at most maxRows; fixed across modes and while typing ---
     effect(() => {
       this.#record.landed();
       this.#record.entity();
-      const editable = this.editable();
       const max = Math.max(MIN_ROWS, this.maxRows());
-      const count = untracked(this.#modelRows).length + (editable ? 1 : 0);
+      // View mode reserves the placeholder row Edit adds; a grid that never edits has none.
+      const count = untracked(this.#modelRows).length + (this.readonly() ? 0 : 1);
       this.rows.set(Math.min(max, Math.max(MIN_ROWS, count)));
     });
 
     // --- The collection's rows show their errors once touched or dirty; the card and tab hold them from creation ---
-    const invalid = computed(() => {
-      const child = this.child();
-      const form = this.#record.form as unknown as Readonly<Record<string, FieldTree<unknown> | undefined>>;
-      const state = child === undefined ? undefined : form[child.json]?.();
-      return this.#record.mode() !== 'view' && state !== undefined && state.invalid() && (state.touched() || state.dirty());
-    });
-    inject(TM_DETAILS_SCOPE, { optional: true })?.hold(invalid, inject(DestroyRef));
+    ɵtmHoldCollectionErrors(computed(() => this.child()?.json));
   }
 }
 

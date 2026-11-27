@@ -148,6 +148,30 @@ describe('TmUploads', () => {
     expect(uploads.staged('attachments.0.fileId')).toEqual(blob(10));
   });
 
+  it('discards every upload and staged blob at once, and a result arriving after stages nothing', async () => {
+    const { uploads } = host();
+    const image = deferred();
+    const file = deferred();
+    uploads.stage('logoId', blob(5));
+    const imageRun = uploads.start('imageId', image.run);
+    const fileRun = uploads.start('attachments.0.fileId', file.run);
+
+    uploads.cancelAll();
+    expect(image.signal().aborted).toBe(true);
+    expect(file.signal().aborted).toBe(true);
+    expect(uploads.running().size).toBe(0);
+    expect(uploads.staged('logoId')).toBeUndefined();
+
+    // An upload that ignores its signal and resolves anyway is still refused, and stages nothing.
+    image.resolve(blob(1));
+    file.resolve(blob(2));
+    await expect(imageRun).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(fileRun).rejects.toMatchObject({ name: 'AbortError' });
+    expect(uploads.staged('imageId')).toBeUndefined();
+    expect(uploads.staged('attachments.0.fileId')).toBeUndefined();
+    expect(uploads.running().size).toBe(0);
+  });
+
   it('aborts what is in flight when its host ends', () => {
     const { uploads, end } = host();
     const upload = deferred();

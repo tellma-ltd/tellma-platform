@@ -474,9 +474,10 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Leaves edit mode: asks first when there are changes, then resets the
-   * working copy to the base, clears the draft and focuses Edit. In create
-   * mode it leaves the page instead: Back, else the search page.
+   * Leaves edit mode: asks first when there are changes, then aborts the
+   * edit's uploads and drops their staged files, resets the working copy to
+   * the base, clears the draft and focuses Edit. In create mode it leaves
+   * the page instead: Back, else the search page.
    *
    * @returns `false` when the user kept editing.
    */
@@ -492,6 +493,8 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (this.#destroyed || this.#record() !== record) {
       return true;
     }
+    // --- The edit's uploads are discarded with it: none finishing later writes into the restored record ---
+    record.uploads.cancelAll();
     this.#clearDraft(record);
     if (record.mode() === 'create') {
       await this.#leave(record);
@@ -505,10 +508,12 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Saves the record: a clean edit returns to view mode and sends nothing;
-   * otherwise, once the record's uploads have finished, one write through
-   * the source, whose read-back becomes the server copy. A create lands on
-   * the new record's page. A failure keeps the edit and shows the error.
+   * Saves the record: a clean edit with no upload in flight returns to view
+   * mode and sends nothing; otherwise, once the record's uploads have
+   * finished, one write through the source, whose read-back becomes the
+   * server copy. An edit left clean by failed uploads stays, showing the
+   * failures. A create lands on the new record's page. A failure keeps the
+   * edit and shows the error.
    *
    * @returns `true` once saved and back in view mode.
    */
@@ -517,10 +522,9 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (record === null || record.mode() === 'view' || !record.landed() || this.#busy()) {
       return false;
     }
-    if (record.mode() === 'edit' && !record.dirty()) {
-      record.base.set(null);
-      record.mode.set('view');
-      this.#afterRender(() => this.ɵfocusEdit());
+    // An upload in flight is a change still arriving: its field takes the staged id only once it lands.
+    if (record.mode() === 'edit' && !record.dirty() && untracked(record.uploads.running).size === 0) {
+      this.#leaveClean(record);
       return true;
     }
     const mode = record.mode();
@@ -528,6 +532,10 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     try {
       // --- The uploads finish first, so the body carries their staged ids (spec 0031 §8.1 step 2) ---
       if (!(await this.#uploadsSettled(record))) {
+        return false;
+      }
+      // Uploads that all failed leave nothing to write; the edit stays, showing each failure on its field.
+      if (mode === 'edit' && !record.dirty()) {
         return false;
       }
       const saved = await record.source.write({
@@ -777,6 +785,17 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       return;
     }
     await this.#environment.get(Router).navigateByUrl(this.#urls.search(record.source.entity));
+  }
+
+  /**
+   * Leaves an edit with no changes: back to view mode, sending nothing, with focus on Edit.
+   *
+   * @param record - The record.
+   */
+  #leaveClean(record: TmDetailsRecordState<T>): void {
+    record.base.set(null);
+    record.mode.set('view');
+    this.#afterRender(() => this.ɵfocusEdit());
   }
 
   /**
