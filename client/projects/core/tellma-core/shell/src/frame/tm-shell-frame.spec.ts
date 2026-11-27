@@ -31,6 +31,38 @@ function rows(): string[] {
   return ['--tm-app-bar-height', '--tm-banner-height', '--tm-pinned-bar-height'].map(row);
 }
 
+/**
+ * Logs one line of the document's focus state and main's focusability, for a temporary diagnosis
+ * of a focus move that fails only in CI.
+ *
+ * @param label - Where in the test the line was logged.
+ */
+function logFocusState(label: string): void {
+  const active = document.activeElement;
+  const main = document.getElementById('tm-main');
+  const style = main === null ? null : getComputedStyle(main);
+  const box = main?.getBoundingClientRect();
+  console.log(
+    `TM-DIAG ${label} ` +
+      JSON.stringify({
+        active: active === null ? null : `${active.tagName}#${active.id}.${String(active.className)}`,
+        hasFocus: document.hasFocus(),
+        main: main !== null,
+        connected: main?.isConnected ?? null,
+        tabIndex: main?.tabIndex ?? null,
+        inert: main?.inert ?? null,
+        inertAncestor: main?.closest('[inert]')?.tagName ?? null,
+        display: style?.display ?? null,
+        visibility: style?.visibility ?? null,
+        size: box === undefined ? null : `${box.width}x${box.height}`,
+        mains: document.querySelectorAll('#tm-main').length,
+        openDialog: document.querySelector('dialog[open]') !== null,
+        modal: document.querySelector(':modal') !== null,
+        top: window.top === window,
+      }),
+  );
+}
+
 describe('the shell frame', () => {
   afterEach(() => TestBed.resetTestingModule());
 
@@ -51,12 +83,21 @@ describe('the shell frame', () => {
     // The skip link is the first thing the keyboard reaches.
     const first = document.querySelector<HTMLElement>('a[href], button, [tabindex="0"]');
     expect(first?.textContent?.trim()).toBe('Skip to content');
+    // Temporary diagnosis: the passing baseline of the focus state.
+    logFocusState('baseline');
   });
 
   it('moves focus to main from the skip link, leaving the URL alone', async () => {
     await open();
     const url = document.location.href;
+    // Temporary diagnosis: on a failure, the state after focusing main directly.
+    onTestFailed(() => {
+      document.getElementById('tm-main')?.focus();
+      logFocusState('after-direct-focus');
+    });
+    logFocusState('before-click');
     document.querySelector<HTMLAnchorElement>('.tm-shell-frame__skip')!.click();
+    logFocusState('after-click');
     expect(document.activeElement?.id).toBe('tm-main');
     expect(document.location.href).toBe(url);
   });
