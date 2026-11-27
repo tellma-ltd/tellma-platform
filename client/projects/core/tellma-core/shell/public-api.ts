@@ -11,7 +11,9 @@
  * the markers' popovers, the slots' panels and the About and Shortcuts
  * dialogs it opens ship in deferred chunks, so this entry point exports the
  * session menu's type alone. The launcher's service ships here, and its
- * panel, index and search in a deferred chunk of their own.
+ * panel, index and search in a deferred chunk of their own. So do the
+ * user's pins, which the tenant shell's pinned bar shows; the bar's menus,
+ * its popover and the Manage pins dialog ship in deferred chunks.
  *
  * @packageDocumentation
  */
@@ -24,6 +26,7 @@
 export { TmAppBar } from './src/app-bar/tm-app-bar';
 export { TmTenantShell } from './src/tm-tenant-shell';
 export { TmLauncher, type TmLauncherCloseReason, type TmLauncherVia } from './src/launcher/tm-launcher';
+export { TmPins, type TmPinFolderView, type TmPinView } from './src/pins/tm-pins';
 // The launcher's surface, as its deferred chunk implements it; not for app code.
 export type { TmLauncherSurface as ɵTmLauncherSurface } from './src/launcher/tm-launcher';
 // The session menu, as a type: the class loads with the overlays' chunk.

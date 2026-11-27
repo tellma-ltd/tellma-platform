@@ -8,12 +8,29 @@ import { TestBed } from '@angular/core/testing';
 import { TmNavigation, TmPreferences, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from '@tellma/core';
 
 import { tmAppRig, tmNavigate, tmSettle, TM_T17_DOCS } from '../../../src/routes/tm-app.testing.util';
-import { TM_PIN_LIMITS, tmCurrentPin, tmNewPinId, tmPinHref, tmPinLabel, tmPinsView, tmPinUrl } from './tm-pin-rules';
+import { tmPinsRenameFolder } from './tm-manage-pins-dialog';
+import {
+  TM_PIN_LIMITS,
+  tmCurrentPin,
+  tmNewPinId,
+  tmPinFolderNameProblem,
+  tmPinHref,
+  tmPinLabel,
+  tmPinsAddFolder,
+  tmPinsAppend,
+  tmPinsMove,
+  tmPinsOf,
+  tmPinsRemove,
+  tmPinsRemoveFolder,
+  tmPinsUpdate,
+  tmPinsView,
+  tmPinUrl,
+} from './tm-pin-rules';
 
 // The pinned bar's rules: the view's validation and caps, what a pin
-// captures of a routed URL, the current-pin and label rules and the id
-// generator; then stored pins in a whole test app, judged by the navigation
-// registry.
+// captures of a routed URL, the current-pin and label rules, the id
+// generator, and each edit's next document with its refusals; then stored
+// pins in a whole test app, judged by the navigation registry.
 
 /** A pin of an id and a URL, with the members a test sets. */
 function pin(id: string, url: string, patch: Partial<TmPin> = {}): TmPin {
@@ -164,6 +181,97 @@ describe("the pinned bar's rules", () => {
       for (let n = 0; n < 50; n++) {
         expect(tmNewPinId(new Set())).toMatch(/^[0-9a-hjkmnp-tv-z]{8}$/);
       }
+    });
+  });
+
+  describe('the edits', () => {
+    const start = doc(
+      pin('a0000001', 'customers'),
+      folder('f0000001', 'Daily', [pin('a0000002', 'centers'), pin('a0000003', 'approvals')]),
+      pin('a0000004', 'credit-review'),
+    );
+
+    it('appends a pin at the top level, refusing a 31st', () => {
+      expect(ids(tmPinsAppend(start, pin('a0000005', 'currencies')))).toEqual(['a0000001', 'f0000001[a0000002 a0000003]', 'a0000004', 'a0000005']);
+      const full = doc(
+        ...Array.from({ length: 25 }, (_, n) => pin(id(n), 'customers')),
+        folder('f0000001', 'Filed', Array.from({ length: 5 }, (_, n) => pin(id(50 + n), 'centers'))),
+      );
+      expect(() => tmPinsAppend(full, pin('a0000099', 'currencies'))).toThrow(RangeError);
+    });
+
+    it('renames a pin, trimmed, and a blank or null label gives the derived one back', () => {
+      const named = tmPinsUpdate(start, 'a0000002', { label: '  Daily centers ' });
+      expect(tmPinsOf(named.items)[1]).toEqual({ id: 'a0000002', url: 'centers', title: 'Title a0000002', label: 'Daily centers' });
+      expect(tmPinsOf(tmPinsUpdate(named, 'a0000002', { label: '  ' }).items)[1]).toEqual({ id: 'a0000002', url: 'centers', title: 'Title a0000002' });
+      expect(tmPinsOf(tmPinsUpdate(named, 'a0000002', { label: null }).items)[1]).not.toHaveProperty('label');
+      expect(tmPinsUpdate(named, 'a0000002', { label: 'Daily centers' })).toBe(named);
+      expect(() => tmPinsUpdate(start, 'a0000001', { label: 'x'.repeat(TM_PIN_LIMITS.label + 1) })).toThrow(RangeError);
+      // Lengths count characters.
+      expect(tmPinsOf(tmPinsUpdate(start, 'a0000001', { label: '📌'.repeat(TM_PIN_LIMITS.label) }).items)[0].label).toBe('📌'.repeat(TM_PIN_LIMITS.label));
+    });
+
+    it('files a pin at the end of a folder or of the top level', () => {
+      expect(ids(tmPinsUpdate(start, 'a0000001', { folderId: 'f0000001' }))).toEqual(['f0000001[a0000002 a0000003 a0000001]', 'a0000004']);
+      expect(ids(tmPinsUpdate(start, 'a0000002', { folderId: null }))).toEqual(['a0000001', 'f0000001[a0000003]', 'a0000004', 'a0000002']);
+      expect(tmPinsUpdate(start, 'a0000002', { folderId: 'f0000001' })).toBe(start);
+      expect(tmPinsUpdate(start, 'zzzzzzzz', { label: 'Gone' })).toBe(start);
+      expect(() => tmPinsUpdate(start, 'a0000001', { folderId: 'f0000009' })).toThrow(RangeError);
+    });
+
+    it('moves a pin within a list and between lists, and a folder along the top level, clamping the index', () => {
+      expect(ids(tmPinsMove(start, 'a0000004', { folderId: null, index: 0 }))).toEqual(['a0000004', 'a0000001', 'f0000001[a0000002 a0000003]']);
+      expect(ids(tmPinsMove(start, 'a0000003', { folderId: 'f0000001', index: 0 }))).toEqual(['a0000001', 'f0000001[a0000003 a0000002]', 'a0000004']);
+      expect(ids(tmPinsMove(start, 'a0000001', { folderId: 'f0000001', index: 1 }))).toEqual(['f0000001[a0000002 a0000001 a0000003]', 'a0000004']);
+      expect(ids(tmPinsMove(start, 'a0000002', { folderId: null, index: 99 }))).toEqual(['a0000001', 'f0000001[a0000003]', 'a0000004', 'a0000002']);
+      expect(ids(tmPinsMove(start, 'f0000001', { folderId: null, index: -4 }))).toEqual(['f0000001[a0000002 a0000003]', 'a0000001', 'a0000004']);
+      expect(tmPinsMove(start, 'a0000001', { folderId: null, index: 0 })).toBe(start);
+      expect(tmPinsMove(start, 'zzzzzzzz', { folderId: null, index: 0 })).toBe(start);
+    });
+
+    it('refuses a folder into a folder, and a folder that does not exist', () => {
+      const two = tmPinsAddFolder(start, { id: 'f0000002', name: 'Weekly' });
+      expect(() => tmPinsMove(two, 'f0000002', { folderId: 'f0000001', index: 0 })).toThrow(RangeError);
+      expect(() => tmPinsMove(start, 'a0000001', { folderId: 'f0000009', index: 0 })).toThrow(RangeError);
+    });
+
+    it('removes a pin from the top level or a folder', () => {
+      expect(ids(tmPinsRemove(start, 'a0000001'))).toEqual(['f0000001[a0000002 a0000003]', 'a0000004']);
+      expect(ids(tmPinsRemove(start, 'a0000003'))).toEqual(['a0000001', 'f0000001[a0000002]', 'a0000004']);
+      expect(tmPinsRemove(start, 'f0000001')).toBe(start);
+    });
+
+    it('adds a folder at the end, its name trimmed, refusing a bad name and an eleventh folder', () => {
+      const added = tmPinsAddFolder(start, { id: 'f0000002', name: '  Weekly ' });
+      expect(added.items.at(-1)).toEqual({ id: 'f0000002', folder: 'Weekly', items: [] });
+      expect(() => tmPinsAddFolder(start, { id: 'f0000002', name: 'daily' })).toThrow(RangeError);
+      expect(() => tmPinsAddFolder(start, { id: 'f0000002', name: ' ' })).toThrow(RangeError);
+      const ten = doc(...Array.from({ length: TM_PIN_LIMITS.folders }, (_, n) => folder(`f${String(n).padStart(7, '0')}`, `Folder ${n}`, [])));
+      expect(() => tmPinsAddFolder(ten, { id: 'f0000099', name: 'Eleventh' })).toThrow(RangeError);
+    });
+
+    it('removes a folder, whose pins take its place in order', () => {
+      expect(ids(tmPinsRemoveFolder(start, 'f0000001'))).toEqual(['a0000001', 'a0000002', 'a0000003', 'a0000004']);
+      expect(tmPinsRemoveFolder(start, 'a0000001')).toBe(start);
+    });
+
+    it('renames a folder, its own name aside, refusing a bad one', () => {
+      const two = tmPinsAddFolder(start, { id: 'f0000002', name: 'Weekly' });
+      expect((tmPinsRenameFolder(two, 'f0000001', ' Every day ').items[1] as TmPinFolder).folder).toBe('Every day');
+      expect((tmPinsRenameFolder(two, 'f0000001', 'DAILY').items[1] as TmPinFolder).folder).toBe('DAILY');
+      expect(tmPinsRenameFolder(two, 'f0000001', 'Daily')).toBe(two);
+      expect(tmPinsRenameFolder(two, 'a0000001', 'Pin')).toBe(two);
+      expect(() => tmPinsRenameFolder(two, 'f0000001', 'weekly')).toThrow(RangeError);
+      expect(() => tmPinsRenameFolder(two, 'f0000001', 'x'.repeat(TM_PIN_LIMITS.folder + 1))).toThrow(RangeError);
+    });
+
+    it("judges a folder name: blank, past 40 characters, or another folder's ignoring case", () => {
+      expect(tmPinFolderNameProblem(start.items, '   ')).toBe('blank');
+      expect(tmPinFolderNameProblem(start.items, 'x'.repeat(TM_PIN_LIMITS.folder + 1))).toBe('long');
+      expect(tmPinFolderNameProblem(start.items, ` ${'x'.repeat(TM_PIN_LIMITS.folder)} `)).toBeNull();
+      expect(tmPinFolderNameProblem(start.items, ' dAILY ')).toBe('duplicate');
+      expect(tmPinFolderNameProblem(start.items, 'Daily', 'f0000001')).toBeNull();
+      expect(tmPinFolderNameProblem(start.items, 'Weekly')).toBeNull();
     });
   });
 

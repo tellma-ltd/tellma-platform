@@ -15,8 +15,8 @@
     "migrator": "../Tellma.Distro.Acme.Migrator",
     "budgets": {
       "initialJs": {
-        "warn": 228,
-        "note": "The warn line is the app's measure rounded up to the next 0.5 KB, so growth shows as a warning well before the 260 KB error line: 227.78 KB on a clean build with the bell and the tray."
+        "warn": 237,
+        "note": "The warn line is the app's measure rounded up to the next 0.5 KB, so growth shows as a warning well before the 260 KB error line: 236.87 KB on a clean build with the bell and the tray and the pinned bar."
       }
     }
   },

@@ -74,21 +74,30 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             Assert.Equal(0, host.Rows.Renewals);
         }
 
-        /// <summary>Requests that are background activity, by how they are marked.</summary>
-        /// <returns>Each case's name.</returns>
-        public static TheoryData<string> BackgroundRequests()
+        /// <summary>Requests that are background activity, by how they are marked, and the status each is served with.</summary>
+        /// <returns>Each case's name and status.</returns>
+        public static TheoryData<string, HttpStatusCode> BackgroundRequests()
         {
-            return ["activity header", "client telemetry", "hub negotiate"];
+            return new()
+            {
+                { "activity header", HttpStatusCode.OK },
+                { "client telemetry", HttpStatusCode.BadRequest },
+                { "hub negotiate", HttpStatusCode.OK },
+            };
         }
 
         [Theory]
         [MemberData(nameof(BackgroundRequests))]
-        public async Task A_background_request_renews_neither_cookie_nor_row(string kind)
+        public async Task A_background_request_renews_neither_cookie_nor_row(string kind, HttpStatusCode status)
         {
             await using TellmaTestHost host = await TellmaTestHost.StartAsync();
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromDays(30));
             DateTimeOffset before = host.Rows.ExpiresAt(session.Key)!.Value;
-            host.Time.Advance(TimeSpan.FromDays(4));
+
+            // The negotiate is a tenant request, and four days is far past the tenant snapshot's
+            // staleness bound: the move waits for the snapshot to be confirmed again, so the request
+            // reaches its endpoint rather than meeting the snapshot stale.
+            await host.AdvanceAsync(TimeSpan.FromDays(4));
 
             using HttpRequestMessage request = kind switch
             {
@@ -103,6 +112,8 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
 
             using HttpResponseMessage response = await host.Client.SendAsync(request, TestContext.Current.CancellationToken);
 
+            // Served by its endpoint, never refused for a stale snapshot, then neither renewed.
+            Assert.Equal(status, response.StatusCode);
             Assert.False(SignInFlow.Parse(response).ContainsKey(host.SessionCookieName));
             Assert.False(SignInFlow.Parse(response).ContainsKey(TellmaAuthentication.ProfileCookieName));
             Assert.Equal(before, host.Rows.ExpiresAt(session.Key));

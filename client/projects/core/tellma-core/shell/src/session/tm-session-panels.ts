@@ -40,10 +40,11 @@ import { tmRegisterShellOverlaysStrings } from './tm-shell-overlays-strings';
 // - one marker popover, 280 px, re-anchored to whichever marker opened it;
 // - one slot popover of size md from lg up; below lg, and from the session
 //   menu's rows, a slot opens its panel in an end drawer instead;
-// - the About and Shortcuts dialogs, TmModal dialogs of size md (full screen
-//   below sm), each in a deferred chunk of its own, which open at once with
-//   a placeholder in their final geometry; About's heights differ by width
-//   and language, so these styles set them on its modal's pane.
+// - the About, Shortcuts and Manage pins dialogs, TmModal dialogs of size
+//   md (full screen below sm), each in a deferred chunk of its own, which
+//   open at once with a placeholder in their final geometry; About's heights
+//   differ by width and language, so these styles set them on its modal's
+//   pane.
 //
 // Every overlay closes on Escape or an outside click and returns focus to
 // its button. A slot's panel loads on first open, or on the first hover or
@@ -60,6 +61,7 @@ export const TM_SHELL_DIALOGS_LOAD = new InjectionToken<Readonly<Record<TmShellD
     factory: () => ({
       about: () => import('../dialogs/tm-about-dialog').then((chunk) => chunk.TmAboutDialog),
       shortcuts: () => import('../dialogs/tm-shortcuts-dialog').then((chunk) => chunk.TmShortcutsDialog),
+      pins: () => import('../pins/tm-manage-pins-dialog').then((chunk) => chunk.TmManagePinsDialog),
     }),
   },
 );
@@ -69,10 +71,14 @@ export const TM_SHELL_DIALOGS_LOAD = new InjectionToken<Readonly<Record<TmShellD
  * arrives. About's differs by width and language, so it is a custom property
  * that the rules below set on its modal's pane, with that pane's class.
  */
-const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = { about: 'var(--tm-session-panels-about-height)', shortcuts: '30rem' };
+const DIALOG_HEIGHTS: Readonly<Record<TmShellDialog, string>> = {
+  about: 'var(--tm-session-panels-about-height)',
+  shortcuts: '30rem',
+  pins: '26rem',
+};
 
 /** Each dialog's modal pane class, which About's heights hang on. */
-const DIALOG_PANES: Readonly<Record<TmShellDialog, string | undefined>> = { about: 'tm-session-panels__about', shortcuts: undefined };
+const DIALOG_PANES: Readonly<Record<TmShellDialog, string | undefined>> = { about: 'tm-session-panels__about', shortcuts: undefined, pins: undefined };
 
 /** A slot panel's loaded component. */
 async function slotComponent(slot: TmShellSlot): Promise<Type<unknown>> {
@@ -336,9 +342,8 @@ export class TmSessionPanels implements TmShellPanels {
   openDialog(dialog: TmShellDialog): void {
     // The page's shortcuts are those registered as the dialog opens; About
     // takes the support tools, for its Diagnostics tab.
-    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : { support: this.#support };
-    const title =
-      dialog === 'about' ? this.#l10n.ɵtext('tm.shellOverlays.dialogs.about')() : this.#l10n.ɵtext('tm.shellOverlays.dialogs.shortcuts')();
+    const inputs = dialog === 'shortcuts' ? { registered: untracked(this.#shortcuts.active) } : dialog === 'about' ? { support: this.#support } : {};
+    const title = this.#l10n.ɵtext(dialog === 'pins' ? 'tm.pins.manage' : `tm.shellOverlays.dialogs.${dialog}`)();
     const data: TmShellLazyContentData = { load: this.#dialogs[dialog], inputs, height: DIALOG_HEIGHTS[dialog] };
     this.#track(this.#modal.open(TmShellLazyContent, { size: 'md', title, data, panelClass: DIALOG_PANES[dialog] }));
   }

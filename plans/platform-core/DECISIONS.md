@@ -384,6 +384,54 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-417 — PC-163's integrate moves the initialJs warn lines above spec 0024 §12's 230 KB, a D-414 deviation (2026-11-27)
+
+On the merged tree, Acme's initialJs measures 236.87 KB and the fixture's 236.14 KB, up from 227.80 after PC-128. The growth is the pinned bar's eager code (PC-163) together with the bell, tray and dashboards already on platform-core. Under D-403/D-412 the warn lines follow the measurement: Acme goes from 228 to 237 and the fixture from 227.5 to 236.5. The error line stays at 260. Both warn lines are now above spec 0024 §12's stated 230 KB but within D-414's 1.25 × ceiling of 287.5, so they are accepted and listed for Ahmad as a deviation. ./shell, at 19.35 of its 19.5 ceiling, is likewise above spec 0027's 16 KB but within 1.25 × 16 = 20 (the D-403 raise, now also covered by D-414). No other ceiling was raised.
+
+### D-416 — PC-128 lands on green; the chromium-ar layout shift becomes PC-F116, non-blocking until it recurs (2026-11-27)
+
+PC-128's CI fix 63aa86cb (search-input in the additions-axe registry) went green in CI 46046844859, including acme-client (ubuntu-latest) chromium-ar. The layout-shift failure in CI 46040395983 did not recur. The implementer's local work ruled out the leads it could test (no reproduction in 30 runs or under 1-3x throttling; web-font delay and fallback metrics change only the slot's width), and found no PC-128 code path that renders a sm control at md height. So, as in D-410, PC-128 lands on green with the cause open. PC-F116 records the leads. Under D-413 it is non-blocking while it has failed only once, and it becomes blocking, ahead of T1/T2, if it fails again in any integration.
+
+### D-415 — PC-128's integrate CI: a gh api log sweep was denied; no other route (2026-11-27)
+
+PC-128's integrate CI 46040395983 failed on two of its own tests. The first is fixed: the new @tellma/core-ui/search-input folder was unclassified in the additions-axe registry and now joins OLDER_FOLDERS, since it has no UI of its own. The second, in chromium-ar layout-shift.spec.ts:206, shows two shifts in which the page-header end slot goes from 30 to 38 px and back. It does not reproduce locally (30/30). The implementer tried to count failures in other green runs' acme-client logs through gh api and was denied. gh api is forbidden in this run, so this is not a permission notification for Ahmad, and the orchestrator does not take another route to the same logs (as in D-408). The implementer pushes the registry fix first so CI gives a fresh data point. It then root-causes from code and local evidence: Linux Arabic font metrics on a text line box (CI's slot is 321 px wide against 328.69 locally), and PerformanceObserver entries that arrive after the release frame. Under D-011, a product shift is fixed in the product, and a test that counts pre-release entries is fixed by comparing each entry's startTime with the release.
+
+### D-414 — Ahmad: bundle headroom up to 25% over the spec's number, flagged as a deviation (2026-11-27)
+
+Ahmad, in chat: "some bundle headroom is acceptable up to 25% of the stated number in the spec, but flag it as a deviation." This replaces D-313's stop when a budget reaches the spec's stated number. Raises within the new ceiling no longer park waiting for Ahmad.
+- The ceiling is 1.25 × the number the spec states for that budget. For example, core "." with the spec's 55 KB cap may now go up to 68.75 KB.
+- Each raise is still sized by D-031: first take honest savings in the code the checkpoint touches, add a budgetNotes entry, raise by at most what the checkpoint adds rounded up to 0.5 KB, and have the reviewer check the measurement.
+- A raise that only absorbs accidental growth is still never allowed.
+- Any budget that ends above the spec's number is a deviation. It is listed in the checkpoint's deviations for Ahmad, with the spec section, the stated number, the new figure and the bytes' cause.
+- While the ceiling holds, the D-031 third-raise re-split rule is suspended: re-splits cost tokens and wall time, and Ahmad's ruling sets the bound instead.
+- Above 1.25 ×, the item stops and reports, as before.
+- PC-167's carry "'.' has no raise left" is superseded: it may raise under this rule.
+
+### D-413 — Ahmad: non-blocking fixes wait behind T1/T2; token share by fixes measured (2026-11-27)
+
+Ahmad asked whether fixes take a growing share of the token budget, and ruled: "hold non-blocking fixes behind T1/T2." The weekly limit runs out before Tuesday's reset, so tokens, not wall time, are the constraint.
+- Measured from the subagent and orchestrator transcripts (relative cost: input 1, cache write 1.25, cache read 0.1, output 5), the share of spend going to PC-F items, per 48 h window ending at the given time:
+  - 2026-11-21 17:00: 11%
+  - 2026-11-23 17:00: 16%
+  - 2026-11-25 17:00: 19%
+  - 2026-11-27 17:00: 32%
+- In the last window, about 17 points of the 32 were CI flake and CI-infrastructure fixes (PC-F95, F96, F99, F105–F107, F109–F111, F113, F115), about 9 points were first-frame budget fixes (F91, F92, F102, F112), and about 6 points were genuine gaps found in review (F88, F89, F94, F100, F103, F114).
+- Ruling:
+  - A fix item starts, takes a slot, or integrates ahead of T1/T2 only if it is blocking. Blocking means it keeps CI red for other items or blocks a T1/T2 item's spec'd work.
+  - Every other fix row is recorded as "todo (non-blocking, D-413)" and waits until no T1/T2 item is ready to start or integrate.
+  - The fix slots stay free for blocking fixes. The D-140 T3 fill may still use an idle fix slot, because T3 is checkpoint work, not fix overhead.
+  - This is stricter than D-229, which ranked non-blocking fixes after T1/T2 but still let them fill fix slots in parallel.
+- Already-built fix items keep their work, but non-blocking ones queue behind T1/T2 integrations. PC-F100 (held), PC-F103 (held) and PC-F114 (fix1) are non-blocking, so PC-163 integrates before them. PC-F100 keeps pc-2 under D-255 while it waits. If more T1 work becomes ready and no T1 slot is free, PC-F100 yields pc-2.
+- Reviewers raise a finding as a new fix row only when it is outside the checkpoint's own scope. In-scope findings stay in that checkpoint's fix rounds.
+
+### D-412 — PC-156's integrate raises core "." to 55 and lowers the initialJs warn lines (2026-11-27)
+
+On the merged tree core "." measures 54.55 against its 54.5 ceiling: platform-core alone was at 54.50 after PC-123, and PC-156's primary additions (the page action's accepts check, the invocation's confirmation arguments with a cancel key, TmBanners.ɵshowable) add about 0.05 after a 0.01 saving. The orchestrator accepts the raise to 55.0 under D-031 (+0.5, the addition rounded up to 0.5). 55.0 equals the spec's 55 KB cap on the primary, so it is the last raise this budget can take: later items that grow "." must find savings or stop and report (D-313), and PC-167's carry says so. locale-ar "." goes from 0.55 to 0.6 because the merge gives it both the dashboards and the attention imports (0.56). Per D-403, PC-156 integrates first, so it sets the Acme and fixture initialJs warn lines to the merged measure rounded up to 0.5: 227.78 gives 228 and 227.07 gives 227.5. Both lines go down, because PC-163 is not merged yet; PC-163 re-measures at its integrate. build.fixture.spec's budgets() helper now overlays each case's levels on the fixture's own budgets rather than replacing them.
+
+### D-411 — PC-F115 held; it integrates next, ahead of the held T1 items (2026-11-27)
+
+PC-F115 found the skip-link flake's cause: tm-support-dump.spec and tm-diagnostics-panel.spec (PC-154) left a vi.spyOn on HTMLAnchorElement.prototype.click, and Vitest's browser runner with isolate:false keeps spies across files, so the skip link's click() was a no-op whenever either spec ran earlier in the same worker. The fix sets restoreMocks, unstubGlobals and unstubEnvs in the shared Vitest preset, adds behavioural canaries to core's and Acme's unit projects, and makes both specs restore their own spies. R1 confirmed the cause in Vitest 4.1.9's source and by forced order (0 blocking, 1 major, 1 minor; fix1 44cd7464 closed both), so no R2. Because the flake can turn any integration's CI red, PC-F115 is a blocking fix and integrates immediately after PC-156 lands, before PC-128, PC-F100, PC-F103 and PC-163 (D-229 puts blocking fixes first). The flaky-table row is marked root-caused when it lands.
+
 ### D-410 — PC-123 lands on green with the skip-link cause open; PC-F115 is the next fix (2026-11-27)
 
 PC-123 reverted both diagnostics, fixed its own home launcher flake in the product (the open launcher holds the page's arrival focus move through ɵTmPageFocus and runs it on close before its give-back; specs 0024 §4.4 and 0027 are silent, so it is a deviation for Ahmad), and integrated as 9a077e95, which CI 45982721583 passed in full. That is done by D-154, so it lands. The skip-link failure is not explained: neither the stale-frame nor the page-focus hypothesis held, the project is zoneless, and it reproduces in about 1 of 5 local full-core runs. Its frequency on CI depends on the size-ordered file schedule, so it can recur on any integrate. PC-F115 is therefore treated as blocking: it takes the first fix slot that frees, ahead of PC-F113 and PC-F114 (D-229). Until it lands, a red CI on that test alone is handled by D-292 (merge and integrate again) and not counted against the item.

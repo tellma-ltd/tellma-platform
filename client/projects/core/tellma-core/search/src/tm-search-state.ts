@@ -7,6 +7,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   effect,
+  untracked,
   inject,
   InjectionToken,
   input,
@@ -22,8 +23,17 @@ import { TmLocalization, TmTelemetry, type TmApiError } from '@tellma/core';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 
-// The results region's states (spec 0030 §5.3): each a `tm-empty-state`
-// with a polite live region, or the error view of any other failed read.
+import type { TmSearchKeys } from './tm-search-keys';
+
+// The results region's states (spec 0030 §5.3): each a `tm-empty-state`,
+// or the error view of any other failed read. They render no live region
+// of their own: the host says each state once per settled answer, through
+// the page's one live region and its pause (§5.2), so typing into an empty
+// result is never read out mid-burst, and a state the held answer still
+// shows while a read runs is not said again. The error view is said here,
+// once its chunk lands, since only the error views know its text. (§5.3
+// asks for a polite live region per state; §5.2's single region with its
+// pause wins here.)
 // The error views load with the first error they present (`/errors` is
 // lazy), so a failed read renders them into a slot once their chunk lands,
 // and a line with Try again of its own while the chunk cannot load. The host
@@ -113,7 +123,7 @@ export type TmSearchRegionState =
       }
       <!-- No rows yet, with the way to add the first one. -->
       @case ('no-data') {
-        <tm-empty-state size="panel" icon="inbox" live="polite" [heading]="text.noData()">
+        <tm-empty-state size="panel" icon="inbox" [heading]="text.noData()">
           {{ text.noDataMessage() }}
           @if (shown.create; as create) {
             <a tmButton tmEmptyStateActions variant="primary" [routerLink]="create.href">{{ create.label }}</a>
@@ -122,7 +132,7 @@ export type TmSearchRegionState =
       }
       <!-- Nothing matches: clear the filters, else the search. -->
       @case ('no-matches') {
-        <tm-empty-state size="panel" icon="search-x" live="polite" [heading]="text.noMatches()">
+        <tm-empty-state size="panel" icon="search-x" [heading]="text.noMatches()">
           {{ text.noMatchesMessage() }}
           @if (shown.clear === 'filters') {
             <button tmButton tmEmptyStateActions type="button" (click)="clear.emit('filters')">{{ text.clearFilters() }}</button>
@@ -133,11 +143,11 @@ export type TmSearchRegionState =
       }
       <!-- A drill-through link whose filter is missing or bad. -->
       @case ('invalid-link') {
-        <tm-empty-state size="panel" icon="circle-alert" tone="error" live="polite" [heading]="text.invalidLink()" />
+        <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.invalidLink()" />
       }
       <!-- A column or filter that fails for some rows, and why. -->
       @case ('calculation') {
-        <tm-empty-state size="panel" icon="circle-alert" tone="error" live="polite" [heading]="text.calculation()">
+        <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.calculation()">
           @if (shown.reason === 'divide-by-zero') {
             {{ text.divideByZero() }}
           } @else if (shown.reason === 'overflow') {
@@ -148,7 +158,7 @@ export type TmSearchRegionState =
       <!-- An invalid filter, the user's or code's: the first diagnostic, its token as left-to-right code. -->
       @default {
         @if (shown.kind === 'invalid-filter' || shown.kind === 'invalid-code') {
-          <tm-empty-state size="panel" icon="circle-alert" tone="error" live="polite" [heading]="text.invalidFilter()">
+          <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.invalidFilter()">
             @if (shown.message) {
               <span class="tm-search-state__message">{{ shown.message }}</span>
             }
@@ -196,6 +206,9 @@ export class TmSearchState {
   /** The state. */
   readonly state: InputSignal<TmSearchRegionState> = input.required<TmSearchRegionState>();
 
+  /** The page's keys, whose live region says the error view once it loads; `null`, it is silent. */
+  readonly speaker: InputSignal<TmSearchKeys | null> = input<TmSearchKeys | null>(null);
+
   /** Emits when the user asks to clear the filters or the search text. */
   readonly clear: OutputEmitterRef<'filters' | 'search'> = output<'filters' | 'search'>();
 
@@ -222,7 +235,7 @@ export class TmSearchState {
   /** Whether the error views failed to load. */
   protected readonly errorViewsMissing = this.#errorViewsMissing.asReadonly();
 
-  /** Renders the error view of a failed read once the error views load. */
+  /** Renders the error view of a failed read once the error views load, and says it. */
   constructor() {
     // --- The error view, from the lazily loaded error views; a line of its own when they fail to load ---
     const telemetry = inject(TmTelemetry);
@@ -246,6 +259,12 @@ export class TmSearchState {
             const state = slot.createComponent(TmErrorState);
             state.setInput('view', view);
             state.setInput('size', 'panel');
+            // The page's live region says it, after the keys pause.
+            state.setInput('live', 'off');
+            const speaker = untracked(this.speaker);
+            if (speaker !== null) {
+              speaker.speak(join(view.title(), view.message()));
+            }
             state.instance.retry.subscribe(() => this.retry.emit());
           }
         },
@@ -259,4 +278,41 @@ export class TmSearchState {
       );
     });
   }
+}
+
+/**
+ * What the live region says for a state: its heading, then its detail;
+ * `null` for the error view, which its own text says once it loads.
+ *
+ * @param l10n - The localization, for the states' strings.
+ * @param shown - The state.
+ * @returns The message, or `null`.
+ */
+export function tmSearchStateMessage(l10n: TmLocalization, shown: TmSearchRegionState): string | null {
+  const text = (key: string): string => l10n.ɵtext(`tm.search.${key}`)();
+  switch (shown.kind) {
+    case 'error':
+      return null;
+    case 'no-data':
+      return join(text('noData'), text('noDataMessage'));
+    case 'no-matches':
+      return join(text('noMatches'), text('noMatchesMessage'));
+    case 'invalid-link':
+      return text('invalidLink');
+    case 'calculation':
+      return join(text('calculation'), shown.reason === 'divide-by-zero' ? text('divideByZero') : shown.reason === 'overflow' ? text('overflow') : null);
+    default:
+      return join(text('invalidFilter'), shown.message);
+  }
+}
+
+/**
+ * A state's heading and its detail as one message, the heading ended as a sentence.
+ *
+ * @param heading - The heading.
+ * @param detail - The detail; `null` for none.
+ * @returns The message.
+ */
+function join(heading: string, detail: string | null): string {
+  return detail === null || detail === '' ? heading : `${heading}. ${detail}`;
 }

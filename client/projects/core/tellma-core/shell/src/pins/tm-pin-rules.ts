@@ -7,9 +7,10 @@ import type { TmPin, TmPinFolder, TmPinItem, TmPinsDoc } from '@tellma/core';
 
 // The pinned bar's rules over the pins model (spec 0027 §8.2, §8.3): which
 // stored items the bar shows, what a pin of the routed page captures, the
-// URL a pin opens, the current pin and a chip's label, and new ids. An item
-// that fails a rule (its shape, id, lengths, the caps or the one-level rule)
-// leaves the view but stays stored until the next write.
+// URL a pin opens, the current pin and a chip's label, new ids, and the
+// edits that make each next document. An item that fails a rule (its shape,
+// id, lengths, the caps or the one-level rule) leaves the view but stays
+// stored until the next write.
 
 /** The pins model's caps: pins and folders per user and tenant, and the members' lengths in characters. */
 export const TM_PIN_LIMITS = Object.freeze({ pins: 30, folders: 10, url: 512, title: 80, label: 40, folder: 40 } as const);
@@ -187,4 +188,240 @@ export function tmCurrentPin(items: readonly TmPinItem[], routed: string | null)
  */
 export function tmPinLabel(pin: TmPin, entryLabel: (href: string) => string | undefined, tenantId: number): string {
   return pin.label ?? (pin.url.includes('?') ? undefined : entryLabel(tmPinHref(tenantId, pin.url))) ?? pin.title;
+}
+
+// --- Edits: each takes a document of valid items (the view) and returns the next one ---
+// Every write starts from the view, so an item that fails a rule leaves the
+// stored value at the next write, as the model promises.
+
+/** Why a folder name is refused: blank, past 40 characters, or the name of another folder ignoring case. */
+export type TmPinFolderNameProblem = 'blank' | 'long' | 'duplicate';
+
+/**
+ * The pins of a document's items, those in folders included, in the bar's order.
+ *
+ * @param items - The items.
+ * @returns The pins.
+ */
+export function tmPinsOf(items: readonly TmPinItem[]): readonly TmPin[] {
+  return items.flatMap((item) => ('folder' in item ? item.items : [item]));
+}
+
+/**
+ * Judges a folder name: trimmed, it must be 1 to 40 characters and unique
+ * among the folders ignoring case.
+ *
+ * @param items - The top-level items: a document's, or the bar's views of them.
+ * @param name - The name, as typed.
+ * @param except - The id of the folder being renamed, whose own name does not count.
+ * @returns The problem, or `null` for a name that may be used.
+ */
+export function tmPinFolderNameProblem(
+  items: readonly { readonly id: string; readonly folder?: string }[],
+  name: string,
+  except: string | null = null,
+): TmPinFolderNameProblem | null {
+  const trimmed = name.trim();
+  if (trimmed === '') {
+    return 'blank';
+  }
+  if (length(trimmed) > TM_PIN_LIMITS.folder) {
+    return 'long';
+  }
+  const folded = trimmed.toLocaleLowerCase();
+  return items.some((item) => item.folder !== undefined && item.id !== except && item.folder.trim().toLocaleLowerCase() === folded) ? 'duplicate' : null;
+}
+
+/**
+ * The error a refused folder name throws.
+ *
+ * @param problem - Why the name is refused.
+ * @returns The error, which names the problem.
+ */
+export function tmPinFolderNameError(problem: TmPinFolderNameProblem): RangeError {
+  return new RangeError(`Folder name: ${problem}.`);
+}
+
+/** The document of a list of items. */
+function docOf(items: readonly TmPinItem[]): TmPinsDoc {
+  return { v: 1, items };
+}
+
+/** A copy of a list with `count` items at `start` replaced by `insert`. */
+function spliced<T>(list: readonly T[], start: number, count: number, ...insert: T[]): readonly T[] {
+  const next = [...list];
+  next.splice(start, count, ...insert);
+  return next;
+}
+
+/**
+ * Where a pin sits: the index of its folder among the items, `-1` at the
+ * top level, and its index in that list; `null` when no pin has the id.
+ */
+function locate(items: readonly TmPinItem[], id: string): { readonly folder: number; readonly index: number } | null {
+  for (const [at, item] of items.entries()) {
+    if (!('folder' in item)) {
+      if (item.id === id) {
+        return { folder: -1, index: at };
+      }
+      continue;
+    }
+    const index = item.items.findIndex((pin) => pin.id === id);
+    if (index !== -1) {
+      return { folder: at, index };
+    }
+  }
+  return null;
+}
+
+/** The list at a folder's index: the top level for `-1`, else the folder's pins. */
+function listAt(items: readonly TmPinItem[], folder: number): readonly TmPinItem[] {
+  return folder === -1 ? items : (items[folder] as TmPinFolder).items;
+}
+
+/** The items with the list at a folder's index (the top level for `-1`) replaced. */
+function withList(items: readonly TmPinItem[], folder: number, list: readonly TmPinItem[]): readonly TmPinItem[] {
+  return folder === -1 ? list : spliced(items, folder, 1, { ...(items[folder] as TmPinFolder), items: list as readonly TmPin[] });
+}
+
+/** The index of a folder among the items, `-1` for `null` (the top level). */
+function folderIndex(items: readonly TmPinItem[], folderId: string | null): number {
+  if (folderId === null) {
+    return -1;
+  }
+  const at = items.findIndex((item) => item.id === folderId && 'folder' in item);
+  if (at === -1) {
+    throw new RangeError(`No folder '${folderId}'.`);
+  }
+  return at;
+}
+
+/**
+ * Appends a pin at the top level.
+ *
+ * @param doc - The current document's view.
+ * @param pin - The new pin.
+ * @returns The next document.
+ * @throws RangeError when the user already has 30 pins.
+ */
+export function tmPinsAppend(doc: TmPinsDoc, pin: TmPin): TmPinsDoc {
+  if (tmPinsOf(doc.items).length >= TM_PIN_LIMITS.pins) {
+    throw new RangeError(`Over ${TM_PIN_LIMITS.pins} pins.`);
+  }
+  return docOf([...doc.items, pin]);
+}
+
+/**
+ * Changes a pin's label or folder. A label is trimmed, and a blank or
+ * `null` one removes the user's own name; another folder takes the pin at
+ * its end, and `null` at the end of the top level. A pin no item has, or a
+ * change to what the pin already holds, returns the document itself.
+ *
+ * @param doc - The current document's view.
+ * @param id - The pin's id.
+ * @param patch - The label (`undefined` keeps it) and the folder (`undefined` keeps it).
+ * @returns The next document.
+ * @throws RangeError for a label past 40 characters or a folder no item has.
+ */
+export function tmPinsUpdate(doc: TmPinsDoc, id: string, patch: { readonly label?: string | null; readonly folderId?: string | null }): TmPinsDoc {
+  const at = locate(doc.items, id);
+  if (at === null) {
+    return doc;
+  }
+  const pin = listAt(doc.items, at.folder)[at.index] as TmPin;
+  let next = pin;
+  if (patch.label !== undefined) {
+    const label = (patch.label ?? '').trim();
+    if (length(label) > TM_PIN_LIMITS.label) {
+      throw new RangeError(`Label over ${TM_PIN_LIMITS.label} characters.`);
+    }
+    const bare: TmPin = { id: pin.id, url: pin.url, title: pin.title };
+    next = label === '' ? bare : { ...bare, label };
+  }
+  const target = patch.folderId === undefined ? at.folder : folderIndex(doc.items, patch.folderId);
+  if (next.label === pin.label && target === at.folder) {
+    return doc;
+  }
+  if (target === at.folder) {
+    return docOf(withList(doc.items, at.folder, spliced(listAt(doc.items, at.folder), at.index, 1, next)));
+  }
+  // Another list: out of this one, onto the end of the other. Taking a pin
+  // out of the top level may shift the folders, so the target is found again.
+  const removed = withList(doc.items, at.folder, spliced(listAt(doc.items, at.folder), at.index, 1));
+  const into = folderIndex(removed, patch.folderId ?? null);
+  return docOf(withList(removed, into, [...listAt(removed, into), next]));
+}
+
+/**
+ * Moves a pin or a folder. A folder stays at the top level, since folders
+ * hold pins only. The index is the item's position in the target list once
+ * moved, clamped to its ends.
+ *
+ * @param doc - The current document's view.
+ * @param id - The pin's or folder's id.
+ * @param to - The target folder, `null` for the top level, and the index there.
+ * @returns The next document, or the document itself when no item has the id or the item is already there.
+ * @throws RangeError when a folder would go into a folder, or the target folder does not exist.
+ */
+export function tmPinsMove(doc: TmPinsDoc, id: string, to: { readonly folderId: string | null; readonly index: number }): TmPinsDoc {
+  const top = doc.items.findIndex((item) => item.id === id && 'folder' in item);
+  const at = top === -1 ? locate(doc.items, id) : { folder: -1, index: top };
+  if (at === null) {
+    return doc;
+  }
+  if (top !== -1 && to.folderId !== null) {
+    throw new RangeError('Folders do not nest.');
+  }
+  const item = listAt(doc.items, at.folder)[at.index];
+  const removed = withList(doc.items, at.folder, spliced(listAt(doc.items, at.folder), at.index, 1));
+  const target = folderIndex(removed, to.folderId);
+  const list = listAt(removed, target);
+  const index = Math.max(0, Math.min(Math.trunc(to.index), list.length));
+  if (target === at.folder && index === at.index) {
+    return doc;
+  }
+  return docOf(withList(removed, target, spliced(list, index, 0, item)));
+}
+
+/**
+ * Removes a pin, from the top level or a folder.
+ *
+ * @param doc - The current document's view.
+ * @param id - The pin's id.
+ * @returns The next document, or the document itself when no pin has the id.
+ */
+export function tmPinsRemove(doc: TmPinsDoc, id: string): TmPinsDoc {
+  const at = locate(doc.items, id);
+  return at === null ? doc : docOf(withList(doc.items, at.folder, spliced(listAt(doc.items, at.folder), at.index, 1)));
+}
+
+/**
+ * Appends a folder at the top level.
+ *
+ * @param doc - The current document's view.
+ * @param folder - The folder's id and name, which is trimmed.
+ * @returns The next document.
+ * @throws RangeError for a name {@link tmPinFolderNameProblem} refuses, or an eleventh folder.
+ */
+export function tmPinsAddFolder(doc: TmPinsDoc, folder: { readonly id: string; readonly name: string }): TmPinsDoc {
+  const problem = tmPinFolderNameProblem(doc.items, folder.name);
+  if (problem !== null) {
+    throw tmPinFolderNameError(problem);
+  }
+  if (doc.items.filter((item) => 'folder' in item).length >= TM_PIN_LIMITS.folders) {
+    throw new RangeError(`Over ${TM_PIN_LIMITS.folders} folders.`);
+  }
+  return docOf([...doc.items, { id: folder.id, folder: folder.name.trim(), items: [] }]);
+}
+
+/**
+ * Removes a folder; its pins take its place at the top level, in order.
+ *
+ * @param doc - The current document's view.
+ * @param id - The folder's id.
+ * @returns The next document, or the document itself when no folder has the id.
+ */
+export function tmPinsRemoveFolder(doc: TmPinsDoc, id: string): TmPinsDoc {
+  const at = doc.items.findIndex((item) => item.id === id && 'folder' in item);
+  return at === -1 ? doc : docOf(spliced(doc.items, at, 1, ...(doc.items[at] as TmPinFolder).items));
 }

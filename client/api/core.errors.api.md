@@ -40,6 +40,7 @@ export class TmErrorState {
         readonly label: Signal<string>;
         readonly url: string;
     } | null>;
+    readonly live: _angular_core.InputSignal<"off" | "polite">;
     protected readonly message: Signal<string>;
     protected readonly pending: _angular_core.WritableSignal<boolean>;
     protected reloadAnyway(): void;
@@ -48,7 +49,7 @@ export class TmErrorState {
     readonly size: _angular_core.InputSignal<"page" | "panel">;
     protected readonly updating: Signal<string>;
     readonly view: _angular_core.InputSignal<TmErrorView>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmErrorState, "tm-error-state", never, { "view": { "alias": "view"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "link": { "alias": "link"; "required": false; "isSignal": true; }; }, { "retry": "retry"; }, never, never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmErrorState, "tm-error-state", never, { "view": { "alias": "view"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "live": { "alias": "live"; "required": false; "isSignal": true; }; "link": { "alias": "link"; "required": false; "isSignal": true; }; }, { "retry": "retry"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmErrorState, never>;
 }
 

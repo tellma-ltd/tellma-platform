@@ -23,7 +23,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/radio` | `tm-radio-group` + `tm-radio` — one value from a visible list of native radios, with arrow keys mapped to the live direction |
 | `@tellma/core-ui/segmented` | `tm-segmented` + `tm-segment` — the same native radios as a compact track of segments; icon segments drop their labels below a container width |
 | `@tellma/core-ui/switch` | `tm-switch` — an on/off setting: a native checkbox with `role="switch"` |
-| `@tellma/core-ui/search-field` | `tm-search-field` + `input[tmSearch]` — search-as-you-type with leading and trailing edges and an undoable clear (global stylesheet) |
+| `@tellma/core-ui/search-input` | `input[tmSearch]` — search-as-you-type on a native input in any chrome: leading and trailing edges, held keys, IME, and an undoable clear (global stylesheet) |
+| `@tellma/core-ui/search-field` | `tm-search-field` — `input[tmSearch]` in field chrome with a magnifier and a reserved clear slot |
 | `@tellma/core-ui/date-range` | `tm-date-range` + `tmDateRangeOrder` — a from–to pair of coupled date pickers |
 | `@tellma/core-ui/date-time` | `tm-time-field` + `tm-date-time-field` — a typed time of day, and an instant as a date and a time in an explicit zone that is always named |
 | `@tellma/core-ui/form-field` | `tm-form-field` — label/hint/message chrome around any control. Validation messages are an anchored popover shown while the control holds focus, never a row under the field, so an error can never reflow the page; the words themselves live in a permanently rendered visually-hidden live region |

@@ -278,15 +278,20 @@ namespace Tellma.Core.AspNetCore.Tests.Blobs
             }
 
             // --- Past the deadline the connection is aborted, the object let go, and the permit freed ---
-            _ = await host.Time.AdvanceToAsync(mark, due);
+            // The deadline is past the tenant snapshot's staleness bound: the move waits for the
+            // snapshot to be confirmed again, so the downloads below wait on the permit alone.
+            _ = await host.AdvanceToAsync(mark, due);
             Assert.True(await Patience.WaitAsync(zeros.Released.Task));
 
-            // The permit is released as the endpoint returns, a moment after the object; ask until it is.
+            // The permit is released as the endpoint returns, a moment after the object; ask until it
+            // is. Only the held permit's refusal is a reason to ask again: any other answer, a stale
+            // snapshot's 503 among them, fails the test.
             HttpStatusCode answered = HttpStatusCode.TooManyRequests;
             for (var waited = Stopwatch.StartNew(); answered != HttpStatusCode.NotModified && waited.Elapsed < Patience.Limit;)
             {
                 using HttpResponseMessage next = await host.Client.SendAsync(HeldCopy(cookie), Token);
                 answered = next.StatusCode;
+                Assert.Contains(answered, (HttpStatusCode[])[HttpStatusCode.TooManyRequests, HttpStatusCode.NotModified]);
                 if (answered != HttpStatusCode.NotModified)
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(100), Token);

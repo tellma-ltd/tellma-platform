@@ -59,6 +59,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     readonly gridId: _angular_core.InputSignal<string>;
     readonly loading: _angular_core.InputSignalWithTransform<boolean, unknown>;
     readonly loadingDef: Signal<TmGridLoadingDef | undefined>;
+    readonly menuRowId: Signal<TmRowId | null>;
     moveActiveRow(by: 'first' | 'last' | number): void;
     readonly newRow: _angular_core.InputSignal<((parent?: T) => T) | undefined>;
     readonly orderBy: _angular_core.ModelSignal<TmGridSort | null>;

@@ -76,8 +76,8 @@ describe('the shell frame', () => {
     const router = TestBed.inject(Router);
     await router.navigateByUrl('/17');
     await tmSettleUntil(() => document.querySelector('tm-tenant-shell tm-shell-frame tm-app-bar') !== null, 'the tenant shell renders its app bar');
-    // The tenant shell's frame draws its app bar's row too, so the rows hold across the switch.
-    await tmSettleUntil(() => rows().join() === '40px,0px,0px', "the tenant shell's rows are written");
+    // The tenant shell's frame draws its app bar's row too, and opens the pinned bar's, which shows by default.
+    await tmSettleUntil(() => rows().join() === '40px,0px,32px', "the tenant shell's rows are written");
     await router.navigateByUrl('/tenants');
     await tmSettleUntil(() => document.querySelector('tm-tenant-shell') === null, 'the tenant shell ends');
     await tmSettleUntil(() => rows().join() === '40px,0px,0px', "the picker's rows are written again");

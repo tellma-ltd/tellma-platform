@@ -43,7 +43,7 @@ const LABELS: Readonly<Partial<Record<TmErrorAction, string>>> = {
       [icon]="view().icon"
       [tone]="view().tone === 'error' ? 'error' : 'neutral'"
       [size]="size()"
-      live="polite"
+      [live]="live()"
     >
       @if (message(); as message) {
         <p class="tm-error-state__message">{{ message }}</p>
@@ -104,6 +104,12 @@ export class TmErrorState {
 
   /** `page` centres the state in the remaining height; `panel` is the compact form. Default `page`. */
   readonly size = input<'page' | 'panel'>('page');
+
+  /**
+   * Whether the state is a polite live region, read out as it shows: `off`
+   * for a host that announces it itself, on its own timing. Default `polite`.
+   */
+  readonly live = input<'off' | 'polite'>('polite');
 
   /** The host's way out, shown first as the main action, such as a details page's link to its list; `null` for none. */
   readonly link = input<{ readonly label: Signal<string>; readonly url: string } | null>(null);

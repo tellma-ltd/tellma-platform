@@ -226,6 +226,13 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
   readonly activeDescendantId: Signal<string | null>;
   /** The visible row count: how far PageDown and PageUp move. */
   readonly pageStep: Signal<number>;
+  /**
+   * The data row the context menu was last opened on: a data cell's or a
+   * row header's row; `null` when it opened on a column header or the
+   * row-end cell. Items in `extraMenuItems` read it to act on that row, and
+   * to leave the menu when it names none.
+   */
+  readonly menuRowId: Signal<TmRowId | null>;
 
   constructor() {
     const elementRef = inject(ElementRef) as ElementRef<HTMLElement>;
@@ -291,6 +298,7 @@ export abstract class TmGridBase<T> implements TmGridDriverTarget {
     this.controlsId = signal(this.core.scrollerId).asReadonly();
     this.activeDescendantId = this.core.activeDescendantId;
     this.pageStep = this.core.pageSize;
+    this.menuRowId = this.core.menuRowId;
 
     if (typeof ngDevMode !== 'undefined' && ngDevMode) {
       // Exactly one of data/field must be bound — a configuration error,

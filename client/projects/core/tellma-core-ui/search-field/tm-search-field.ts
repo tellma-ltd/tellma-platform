@@ -25,8 +25,7 @@ import { TM_UI_TRANSLATE, type TmControlSize } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmInput } from '@tellma/core-ui/input';
-
-import { TmSearch } from './tm-search';
+import { TmSearch } from '@tellma/core-ui/search-input';
 
 /**
  * The search box of pages and panels: a magnifier, the search input and a

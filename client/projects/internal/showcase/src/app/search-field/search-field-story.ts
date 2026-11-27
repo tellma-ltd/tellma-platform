@@ -7,7 +7,8 @@ import { Component, computed, signal } from '@angular/core';
 
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
-import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSearch } from '@tellma/core-ui/search-input';
 
 /**
  * tm-search-field demo host: the composed field with its value and emitted
