@@ -14,7 +14,7 @@ import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmFormFieldHarness } from '@tellma/core-ui-testing';
 
 import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmEntityField } from './tm-entity-field';
 import { TmEntityMultiField } from './tm-entity-multi-field';
 
@@ -182,12 +182,13 @@ describe('TmEntityField', () => {
   });
 
   it('shows a chosen row by its display name once read', async () => {
-    const { loader, fixture } = await startHost(SYSTEM, { centerId: 3 });
+    const { loader, rig, fixture } = await startHost(SYSTEM, { centerId: 3 });
     const field = await (await within(loader, 'center')).getHarness(TmEntityFieldHarness);
-    await vi.waitFor(async () => {
-      await settle(fixture);
-      expect(await field.getText()).toBe('C');
-    });
+    // The read flushes on a frame and its code is in the entity model's chunk,
+    // which each read loads first; the picker then shows the name.
+    await tmSettleUntil(() => rig.names.label('gl.Center', 3)() !== null, 'the chosen center is named');
+    await settle(fixture);
+    expect(await field.getText()).toBe('C');
   });
 
   it('forwards the field’s state to the picker, which tm-form-field labels and marks', async () => {

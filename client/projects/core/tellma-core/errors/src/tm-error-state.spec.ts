@@ -140,12 +140,17 @@ describe('TmErrorState', () => {
     suspended.componentRef.setInput('view', presenter.describe(new TmApiError({ kind: 'tenant-unavailable', status: 403 }), { kind: 'read' }));
     await tmSettle();
     expect((suspended.nativeElement as HTMLElement).textContent).toContain('Acme is suspended');
+    const before = rig.router.url;
     button(suspended, 'Switch tenant').click();
-    await vi.waitFor(() => expect(rig.router.url).toBe('/tenants'));
+    // The picker's route loads the shell's chunk before the navigation ends.
+    await tmSettleUntil(() => rig.router.url !== before, 'the navigation ends');
+    expect(rig.router.url).toBe('/tenants');
 
     const challenge = { acr: 'mfa', maxAge: 300 };
     const stepUp = await render(rig, new TmApiError({ kind: 'step-up', status: 401, code: 'step-up-required', challenge }));
     button(stepUp, 'Continue').click();
-    await vi.waitFor(() => expect(TestBed.inject(TmFakeSession).signIns()).toEqual([{ stepUp: challenge }]));
+    const session = TestBed.inject(TmFakeSession);
+    await tmSettleUntil(() => session.signIns().length > 0, 'the sign-in starts');
+    expect(session.signIns()).toEqual([{ stepUp: challenge }]);
   });
 });
