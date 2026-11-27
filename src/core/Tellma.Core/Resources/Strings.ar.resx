@@ -299,7 +299,7 @@
     <value>مرفق</value>
   </data>
   <data name="Core_BlobState_Released" xml:space="preserve">
-    <value>محرَّر</value>
+    <value>مُفرَج عنه</value>
   </data>
   <data name="Core_BlobState_Deleting" xml:space="preserve">
     <value>قيد الحذف</value>
@@ -672,7 +672,7 @@
     <value>تاريخ انتهاء الحجز</value>
   </data>
   <data name="Core_Job_LeaseOwner" xml:space="preserve">
-    <value>يعمل على</value>
+    <value>تعمل على</value>
   </data>
   <data name="Core_Job_StartedAt" xml:space="preserve">
     <value>تاريخ البدء</value>
