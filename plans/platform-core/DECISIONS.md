@@ -384,6 +384,36 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-394 (2026-11-26): Ahmad's ruling on PC-128: option (c), raise the ./search cap to fit
+
+Ahmad answered D-384 in chat: "Go with option C, increase the cap to fit". Spec 0030 §1's route-chunk figure is revised for the search page, so the search field and type-to-search stay as specified and ./search's ceiling is sized to what it weighs. That is his authorization for the raise D-313 and D-373 withheld from the orchestrator.
+
+The orchestrator does not edit docs/. Bringing spec 0030 §1's figure in line is Ahmad's edit, and the run's measured figure is reported to him once PC-128 lands.
+
+How PC-128 resumes. With the cap no longer the constraint, the eager sibling @tellma/core/search-view has no purpose; it only split one eager weight across two lines (R2-2). So:
+- ./search-view is folded back into ./search, and its entry point, budget line and API report are retired.
+- ./search's ceiling is set to its clean-build measure rounded up to the next 0.5 (about 23.5 to 24 by fix1's 23.51).
+- ARCHITECTURE.md drops the "eager sibling, pending a budget ruling" text.
+- Nothing else changes.
+
+PC-128 has spent its three implementer rounds (§4.4), so this change gets a fresh R1 before it integrates (D-384). PC-128 is T1, so it takes the next T1 slot that frees (pc-1, pc-3 or pc-2). It cannot take a fix slot (D-229), and the heavy-agent limit holds (D-028).
+
+### D-393 (2026-11-26): PC-F110 landed on Ahmad's approval
+
+Ahmad answered the D-392 notice in chat with "Push approved". The agent's retry was denied again, because the approval reached it only as the orchestrator's relay, and an agent's permission check never sees chat. The orchestrator therefore ran that one approved push itself, after checking two things:
+- it was a fast-forward from origin/platform-core 21b33fc4;
+- the merge on top of the green commit 05580e04 added only plans/ files.
+
+PC-F110 landed at df33a1f9, and pc/PC-F110 was pushed to the same sha. This is the D-264/D-284 pattern: the user approved the specific push, so it is not laundering. The approval covered that push only; any later landing push denied the same way needs its own notice and approval. pc-f3 is freed, and its next fix, PC-F107, waits for a heavy-agent place (D-028).
+
+### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
+
+PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
+
+The orchestrator does not run the push itself, which would launder the agent's denial. PC-F110 keeps pc-f3 and waits for Ahmad's approval; that approval covers this one push (D-264, D-284).
+
+A blocked item is skipped, not waited on (D-319), so PC-F111 is released to integrate. Its integration push goes to pc/PC-F111. If its own land push is denied the same way, it waits beside PC-F110.
+
 ### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
 
 PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.

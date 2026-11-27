@@ -28,6 +28,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -40,6 +41,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -72,6 +74,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-testing/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -84,6 +87,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-testing/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -116,6 +120,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -128,6 +133,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui/tsconfig.spec.json",
             "browsers": [
               "chromiumHeadless"
@@ -160,6 +166,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui-tokens/tsconfig.spec.json",
             "exclude": [
               "**/*.csp.spec.ts"
@@ -169,6 +176,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui-tokens/tsconfig.spec.json",
             "include": [
               "**/*.csp.spec.ts"
@@ -198,6 +206,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui-testing/tsconfig.spec.json",
             "exclude": [
               "**/*.csp.spec.ts"
@@ -207,6 +216,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/core/tellma-core-ui-testing/tsconfig.spec.json",
             "include": [
               "**/*.csp.spec.ts"
@@ -236,6 +246,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/locale/tellma-locale-ar/tsconfig.spec.json",
             "exclude": [
               "**/*.csp.spec.ts"
@@ -245,6 +256,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "tsConfig": "projects/locale/tellma-locale-ar/tsconfig.spec.json",
             "include": [
               "**/*.csp.spec.ts"
@@ -323,6 +335,7 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "exclude": [
               "**/*.csp.spec.ts"
             ]
@@ -331,6 +344,7 @@
         "test-csp": {
           "builder": "@angular/build:unit-test",
           "options": {
+            "runnerConfig": "vitest-base.config.mjs",
             "include": [
               "**/*.csp.spec.ts"
             ]

@@ -14,6 +14,7 @@ and one theme delta. Everything else, from the routes to the service worker, the
 | `src/styles.css` | The platform's stylesheets and Arabic's fonts, by import, then Acme's one theme delta, `--color-primary` in `@layer tm.theme` |
 | `public/` | `manifest.webmanifest`, the favicon and the three PNG icons (192, 512, maskable 512) |
 | `generated/` | Gitignored: the client metadata, string packs and loaders module the Migrator emits, and `tellma-entities.d.ts`, the typed entity model every `tsconfig` includes so rows and paths type-check by entity name |
+| `vitest-base.config.mjs` | The unit runner's configuration, which the test target names: `@tellma/core-tools`' Vitest preset, whose watchdog ends a run that stops making progress and reports what was pending |
 | `Tellma.Distro.Acme.Client.esproj` | The MSBuild project the web project references, so `dotnet publish` builds the app into its `wwwroot` |
 
 Acme ships no brand files of its own, so the build copies the platform's defaults from
