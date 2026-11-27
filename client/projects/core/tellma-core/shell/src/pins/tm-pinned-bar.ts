@@ -23,7 +23,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router, RouterLink, type UrlTree } from '@angular/router';
-import { TmLaunchCache, TmLocalization, TmTelemetry } from '@tellma/core';
+import { TmLaunchCache, TmLocalization, TmShell, TmTelemetry } from '@tellma/core';
 import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
@@ -162,6 +162,7 @@ function sameLayout(a: TmPinnedBarLayout | null, b: TmPinnedBarLayout): boolean 
                     <a
                       class="tm-pinned-bar__chip"
                       [class.tm-pinned-bar__chip--current]="row.id === currentRow()"
+                      [draggable]="frozen() === null"
                       [routerLink]="row.link"
                       [attr.aria-current]="row.id === currentRow() ? 'page' : null"
                       [attr.aria-label]="row.name"
@@ -175,8 +176,8 @@ function sameLayout(a: TmPinnedBarLayout | null, b: TmPinnedBarLayout): boolean 
                     <button
                       #chip
                       type="button"
-                      draggable="true"
                       class="tm-pinned-bar__chip"
+                      [draggable]="frozen() === null"
                       [class.tm-pinned-bar__chip--current]="row.id === currentRow()"
                       [class.tm-pinned-bar__chip--revoked]="row.kind === 'revoked'"
                       aria-haspopup="menu"
@@ -245,6 +246,8 @@ function sameLayout(a: TmPinnedBarLayout | null, b: TmPinnedBarLayout): boolean 
           class="tm-pinned-bar__control"
           [class.tm-pinned-bar__control--pinned]="state().pinned"
           [attr.aria-label]="controlLabel()"
+          [attr.aria-haspopup]="state().pinned ? 'dialog' : null"
+          [attr.aria-expanded]="state().pinned ? ui.isOpenFor(control) : null"
           [attr.aria-keyshortcuts]="keys"
           [tmTooltip]="controlLabel()"
           [disabledReason]="state().reason"
@@ -464,6 +467,7 @@ export class TmPinnedBar {
   readonly #cdr = inject(ChangeDetectorRef);
   readonly #md = inject(TmBreakpoints).atLeast('md');
   readonly #fonts = inject(TM_PINNED_BAR_FONTS);
+  readonly #immersive = inject(TmShell).immersive;
   /** The track the chips fit in. */
   private readonly trackEl = viewChild<ElementRef<HTMLElement>>('track');
   /** The list of chips. */
@@ -509,6 +513,9 @@ export class TmPinnedBar {
   /** The pin control's state. */
   protected readonly state = this.ui.control;
 
+  /** Why the tenant's maintenance holds every edit, so no chip drags; `null` while it takes writes. */
+  protected readonly frozen = this.#pins.ɵfrozen;
+
   /** The pin control's name. */
   protected readonly controlLabel = computed(() => this.text(this.state().pinned ? 'edit' : 'pin'));
 
@@ -529,11 +536,10 @@ export class TmPinnedBar {
     }),
   );
 
-  /** The item that holds the routed page's pin: the pin, or its folder. */
-  protected readonly currentRow = computed(() => {
-    const current = this.#pins.current();
-    return current === null ? null : (current.folderId ?? current.id);
-  });
+  /** The item that holds the pin whose chip marks the routed page: the pin, or its folder. */
+  protected readonly currentRow = computed(
+    () => this.#pins.items().find((item) => ('folder' in item ? item.items.some((pin) => pin.current()) : item.current()))?.id ?? null,
+  );
 
   /** The items in the bar's order: stored order, and below md the current one first. */
   readonly #ordered = computed(() => {
@@ -598,6 +604,7 @@ export class TmPinnedBar {
         this.#l10n.language();
         this.#l10n.dir();
         this.#faces();
+        this.#immersive();
         this.layout();
         const pending = this.ui.pending();
         const listed = this.measureEl() !== undefined;
@@ -610,6 +617,11 @@ export class TmPinnedBar {
           return;
         }
         untracked(() => {
+          // Out of the document, as on an immersive page, every width reads 0: read again once back.
+          if (!this.measureEl()!.nativeElement.isConnected) {
+            this.#widths = null;
+            return;
+          }
           this.#read();
           if (!this.#fit()) {
             this.#settled(pending);
@@ -740,7 +752,7 @@ export class TmPinnedBar {
   #fit(): boolean {
     const track = this.trackEl()?.nativeElement;
     const widths = this.#widths;
-    if (track === undefined || widths === null) {
+    if (track === undefined || widths === null || !track.isConnected) {
       return false;
     }
     const rows = untracked(this.#ordered);

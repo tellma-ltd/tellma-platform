@@ -10,7 +10,9 @@ import { tmRegisterPinCommandsStrings } from '../pins/tm-pin-commands-strings';
 import { TmPins } from '../pins/tm-pins';
 
 // The launcher Pinned band's commands (spec 0027 §9.3): "Pin this page" (or
-// "Edit pin") while the tenant takes writes, then "Manage pins…". They run
+// "Edit pin"), then "Manage pins…", once the pins have loaded. A pin
+// command the pin control holds (the cap, a long link, the tenant's
+// maintenance) stays listed and says why in a toast when chosen. They run
 // the tenant shell's pin controls, which the pins service holds while that
 // shell renders, and follow the routed page, so they are a signal. They are
 // built here, in the launcher panel's chunk, so the shell's first frame
@@ -42,13 +44,14 @@ export const TM_LAUNCHER_COMMANDS = new InjectionToken<Signal<readonly TmLaunche
     tmRegisterPinCommandsStrings(l10n);
     return computed(() => {
       const controls = pins.ɵcontrols();
-      if (controls === null) {
+      // Before the pins load, nothing may edit them.
+      if (controls === null || pins.ɵrefusal() === 'cold') {
         return [];
       }
       const state = controls.control();
       const commands: TmLauncherCommand[] = [];
-      // A disabled or inert pin control offers no pin command; Manage pins stays.
-      if (state.reason === null && !state.inert) {
+      // A page with nothing to pin offers no pin command; Manage pins stays.
+      if (!state.inert) {
         commands.push({
           id: state.pinned ? 'tm.pins.edit' : 'tm.pins.pin',
           label: l10n.ɵtext(state.pinned ? 'tm.pins.edit' : 'tm.pins.pin')(),

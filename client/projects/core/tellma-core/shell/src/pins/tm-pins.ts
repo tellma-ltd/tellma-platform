@@ -58,7 +58,7 @@ export interface TmPinView {
   readonly label: Signal<string>;
   /** Whether the pin opens: `ok`, `no-access` when its permission check fails, `unavailable` when no visible route matches. */
   readonly state: Signal<'ok' | 'no-access' | 'unavailable'>;
-  /** Whether the pin is the routed page's. */
+  /** Whether the pin's chip marks the routed page: the page's own pin, else a pin of its path with no query or fragment. */
   readonly current: Signal<boolean>;
 }
 
@@ -75,8 +75,12 @@ export interface TmPinFolderView {
 /** How a pins change was made, as `tm.shell.pins-changed` reports it. Internal. */
 export type TmPinsVia = 'control' | 'shortcut' | 'popover' | 'drag' | 'menu' | 'dialog';
 
-/** Why the routed page cannot be pinned: no pinnable route, a link past the cap, or the pins at the cap. Internal. */
-export type TmPinRefusal = 'unpinnable' | 'long' | 'full';
+/**
+ * Why the routed page cannot be pinned: the pins not loaded yet, the tenant
+ * under maintenance, no pinnable route, a link past the cap, or the pins at
+ * the cap. Internal.
+ */
+export type TmPinRefusal = 'cold' | 'frozen' | 'unpinnable' | 'long' | 'full';
 
 /** The tenant shell's pin controls, which the launcher's Pinned-band commands run. Internal. */
 export interface TmPinControls {
@@ -166,8 +170,14 @@ export class TmPins {
   /** The stored document's valid items, which every edit starts from. */
   readonly #view = computed(() => tmPinsView(this.#stored()));
 
-  /** The id of the routed page's pin, or `null`. */
+  /** The id of the pin whose chip marks the routed page, or `null`. */
   readonly #currentId = computed(() => tmCurrentPin(this.#view().items, tmPinUrl(this.#routed()))?.id ?? null);
+
+  /** The id of the routed page's own pin, its query and `#d=` matching too, or `null`. */
+  readonly #ownId = computed(() => {
+    const url = tmPinUrl(this.#routed());
+    return tmPinsOf(this.#view().items).find((pin) => pin.url === url)?.id ?? null;
+  });
 
   /** The top-level pins and folders, in the bar's order; none outside a tenant. */
   readonly items: Signal<readonly (TmPinView | TmPinFolderView)[]> = computed(() => {
@@ -184,9 +194,14 @@ export class TmPins {
     );
   });
 
-  /** The routed page's pin, or `null`. */
+  /**
+   * The routed page's own pin: the one whose link is the routed page's,
+   * its query and `#d=` included, or `null`. A filtered view of a pinned
+   * page has none, so it pins as a pin of its own; its chip still marks the
+   * page.
+   */
   readonly current: Signal<TmPinView | null> = computed(() => {
-    const id = this.#currentId();
+    const id = this.#ownId();
     return (
       this.items()
         .flatMap((item) => ('folder' in item ? item.items : [item]))
@@ -200,6 +215,13 @@ export class TmPins {
    * @internal
    */
   readonly ɵrefusal: Signal<TmPinRefusal | null> = computed(() => {
+    // Before the launch documents land, the stored pins are unknown: a write would replace them.
+    if (!this.#cache.warm()) {
+      return 'cold';
+    }
+    if (this.ɵfrozen() !== null) {
+      return 'frozen';
+    }
     const url = this.#routed();
     const capture = tmPinUrl(url);
     if (capture === null || this.#urls.describe(url)?.pinnable !== true) {
@@ -213,8 +235,8 @@ export class TmPins {
 
   /**
    * Why the pins cannot change while the tenant is under maintenance, which
-   * holds the pin control and the Manage pins dialog's Save; `null` while
-   * the tenant takes writes.
+   * holds every edit and the controls that make them; `null` while the
+   * tenant takes writes.
    *
    * @internal
    */
@@ -226,7 +248,7 @@ export class TmPins {
     return this.#l10n.ɵtext('tm.entity.tenantFrozen', { tenant: names?.[this.#l10n.contentSlot() - 1] ?? names?.[0] ?? '' })();
   });
 
-  /** Whether the routed page can be pinned: a pinnable route, a link within the cap, and fewer than 30 pins. */
+  /** Whether the routed page can be pinned: the pins loaded, the tenant taking writes, a pinnable route, a link within the cap, and fewer than 30 pins. */
   readonly canPinCurrent: Signal<boolean> = computed(() => this.ɵrefusal() === null);
 
   /** Whether the pinned bar shows. */
@@ -283,7 +305,7 @@ export class TmPins {
     const view = untracked(this.#view);
     const renamed = patch.label === undefined ? view : tmPinsUpdate(view, id, { label: patch.label });
     const filed = patch.folderId === undefined ? renamed : tmPinsUpdate(renamed, id, { folderId: patch.folderId });
-    if (filed === view) {
+    if (filed === view || this.#held()) {
       return;
     }
     this.#prefs.set(tmPinsKey, filed);
@@ -321,7 +343,7 @@ export class TmPins {
    * @param visible - Whether the bar shows.
    */
   setVisible(visible: boolean): void {
-    if (untracked(this.#shown) === visible) {
+    if (untracked(this.#shown) === visible || this.#held()) {
       return;
     }
     this.#prefs.set(tmPinnedBarVisibleKey, visible);
@@ -359,6 +381,9 @@ export class TmPins {
    * @param doc - The new document.
    */
   replace(doc: TmPinsDoc): void {
+    if (this.#held()) {
+      return;
+    }
     const next = tmPinsView(doc);
     this.#prefs.set(tmPinsKey, next);
     this.#report('replace', next);
@@ -382,11 +407,17 @@ export class TmPins {
 
   /** Writes a document that differs from the stored view, and reports the change. */
   #write(next: TmPinsDoc, op: 'add' | 'remove' | 'move' | 'folder'): void {
-    if (next === untracked(this.#view)) {
+    if (next === untracked(this.#view) || this.#held()) {
       return;
     }
     this.#prefs.set(tmPinsKey, next);
     this.#report(op, next);
+  }
+
+  /** Whether the edits are held: before the pins load, and while the tenant is under maintenance. */
+  #held(): boolean {
+    const refusal = untracked(this.ɵrefusal);
+    return refusal === 'cold' || refusal === 'frozen';
   }
 
   /** Reports a change, with how it was made and the pins it leaves. */

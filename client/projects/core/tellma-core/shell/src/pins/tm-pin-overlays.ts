@@ -82,7 +82,7 @@ export const TM_PIN_OVERLAYS_STRINGS_EN = {
   noAccess: 'You no longer have access to this page.',
   unavailable: "This page isn't available.",
   unpin: 'Unpin',
-  /** What a drop announces: into a folder, and along the bar. */
+  /** What a drop or the popover's folder announces: into a folder, and along the bar. */
   movedTo: 'Moved {label} to {folder}',
   moved: 'Moved {label}, position {index} of {count}',
 } as const;
@@ -194,7 +194,8 @@ export class TmPinOverlayHost implements TmPinOverlays {
   readonly #dragDrop = inject(TmDragDrop);
   readonly #document = inject(DOCUMENT);
   readonly #changeDetector = inject(ChangeDetectorRef);
-  readonly #triggers = new Map<HTMLElement, () => void>();
+  /** Releases the anchor registered with the menu, then the popover's. */
+  readonly #anchors: (() => void)[] = [() => undefined, () => undefined];
   /** The chips' menu. */
   private readonly menu = viewChild.required<TmMenu>('menu');
   /** The pin popover. */
@@ -272,7 +273,8 @@ export class TmPinOverlayHost implements TmPinOverlays {
       return folder === null ? [] : this.#folderRows(folder);
     }
     const pin = this.#revoked();
-    return pin === null ? [] : [{ id: 'unpin', label: this.text('unpin'), icon: PinOff, action: () => this.#unpin(pin) }];
+    // The tenant's maintenance holds the unpin, with its reason.
+    return pin === null ? [] : [{ id: 'unpin', label: this.text('unpin'), icon: PinOff, disabledReason: this.#pins.ɵfrozen() ?? undefined, action: () => this.#unpin(pin) }];
   });
 
   // The bar, while one is attached.
@@ -286,18 +288,16 @@ export class TmPinOverlayHost implements TmPinOverlays {
     const urls = inject(TmUrls);
     const preloaded = new Set<string>();
     effect(() => {
-      for (const item of this.#pins.items()) {
-        for (const pin of 'folder' in item ? item.items : [item]) {
-          if (pin.state() === 'ok' && !preloaded.has(pin.href)) {
-            preloaded.add(pin.href);
-            untracked(() => urls.preload(pin.href));
-          }
+      for (const pin of this.#pins.items().flatMap((item) => ('folder' in item ? item.items : [item]))) {
+        if (pin.state() === 'ok' && !preloaded.has(pin.href)) {
+          preloaded.add(pin.href);
+          untracked(() => urls.preload(pin.href));
         }
       }
     });
 
     inject(DestroyRef).onDestroy(() => {
-      this.#triggers.forEach((release) => release());
+      this.#anchors.forEach((release) => release());
       this.closeAll();
     });
   }
@@ -320,10 +320,10 @@ export class TmPinOverlayHost implements TmPinOverlays {
       chips.close();
       return;
     }
-    this.#register(anchor, () => chips.ɵregisterTrigger(anchor));
+    this.#register(0, () => chips.ɵregisterTrigger(anchor));
     this.opened.set({ menu, anchor });
     // The menu reads its rows as it opens: render them first.
-    this.#render();
+    this.#changeDetector.detectChanges();
     chips.open(anchor, { restoreFocus: anchor });
   }
 
@@ -334,7 +334,7 @@ export class TmPinOverlayHost implements TmPinOverlays {
       return;
     }
     const name = untracked(pin.label);
-    this.#register(anchor, () => this.popover().ɵregisterTrigger(anchor));
+    this.#register(1, () => this.popover().ɵregisterTrigger(anchor));
     this.editing.set({ id, mode, anchor, name });
     this.name.set(name);
     this.folder.set(pin.folderId ?? '');
@@ -378,8 +378,7 @@ export class TmPinOverlayHost implements TmPinOverlays {
   protected closed(): void {
     const anchor = untracked(this.editing)?.anchor;
     this.editing.set(null);
-    const focused = this.#document.activeElement;
-    if (anchor?.isConnected && (focused === null || focused === this.#document.body)) {
+    if (anchor?.isConnected && this.#document.activeElement === this.#document.body) {
       anchor.focus();
     }
   }
@@ -398,8 +397,8 @@ export class TmPinOverlayHost implements TmPinOverlays {
 
   /**
    * Done, or Enter in a field: applies the name and the folder, creating a
-   * new folder first, then closes the popover, which gives focus back to
-   * the pin control.
+   * new folder first, announces where a refiled pin went, then closes the
+   * popover, which gives focus back to the pin control.
    *
    * @param event - The form's submit.
    */
@@ -430,6 +429,10 @@ export class TmPinOverlayHost implements TmPinOverlays {
       const folderId = folder === NEW_FOLDER ? this.#pins.addFolder(untracked(this.folderName)) : folder === '' ? null : folder;
       this.#pins.update(pin.id, { label, folderId: folderId === pin.folderId ? undefined : folderId });
     });
+    const filed = this.#find(pin.id);
+    if (filed !== null && filed.folderId !== pin.folderId) {
+      this.#moved(pin.id, untracked(filed.label));
+    }
     this.popover().close();
   }
 
@@ -488,30 +491,29 @@ export class TmPinOverlayHost implements TmPinOverlays {
 
   /** A pin by id, at the top level or in a folder; `null` when it is gone. */
   #find(id: string): TmPinView | null {
-    for (const item of untracked(this.#pins.items)) {
-      const found = 'folder' in item ? item.items.find((pin) => pin.id === id) : item.id === id ? item : undefined;
-      if (found !== undefined) {
-        return found;
-      }
-    }
-    return null;
+    return (
+      untracked(this.#pins.items)
+        .flatMap((item) => ('folder' in item ? item.items : [item]))
+        .find((pin) => pin.id === id) ?? null
+    );
   }
 
-  /** A folder by id; `null` when it is gone. */
-  #folder(id: string): TmPinFolderView | null {
+  /** A folder by id; `null` when it is gone, or for no id. */
+  #folder(id: string | null | undefined): TmPinFolderView | null {
     return this.folders().find((folder) => folder.id === id) ?? null;
   }
 
-  /** Registers an anchor with its overlay once, so a press on it is the anchor's, not an outside press. */
-  #register(anchor: HTMLElement, register: () => () => void): void {
-    if (!this.#triggers.has(anchor)) {
-      this.#triggers.set(anchor, register());
-    }
-  }
-
-  /** Renders the host's view at once, as an open that reads its inputs needs. */
-  #render(): void {
-    this.#changeDetector.detectChanges();
+  /**
+   * Registers the anchor an overlay opens on, so a press on it is the
+   * anchor's, not an outside press. Chips come and go as the pins change,
+   * so each overlay holds only its latest anchor: the one before is let go.
+   *
+   * @param overlay - The menu (0) or the popover (1).
+   * @param register - Registers the anchor, returning its release.
+   */
+  #register(overlay: 0 | 1, register: () => () => void): void {
+    this.#anchors[overlay]();
+    this.#anchors[overlay] = register();
   }
 
   // --- Drag and drop along the bar ---
@@ -692,16 +694,21 @@ export class TmPinOverlayHost implements TmPinOverlays {
   /** Moves a dragged item where it was dropped, and announces where it went. */
   #drop(drag: TmBarDrag, drop: TmBarDrop): void {
     this.#dragDrop.ɵmarkDropped(drag.id);
-    const label = nameOf(drag.item);
-    if ('folder' in drop) {
-      tmPinsVia('drag', () => this.#pins.move(drag.item.id, { folderId: drop.folder.id, index: drop.folder.items.length }));
-      void this.#announcer.announce(this.text('movedTo', { label, folder: drop.folder.folder }), 'polite');
-      return;
-    }
-    tmPinsVia('drag', () => this.#pins.move(drag.item.id, { folderId: null, index: drop.index }));
-    const count = untracked(this.#pins.items).length;
-    // The position the bar shows it at, which below md may differ from the stored one.
-    const shown = this.#bar?.order().indexOf(drag.item.id) ?? -1;
-    void this.#announcer.announce(this.text('moved', { label, index: (shown === -1 ? drop.index : shown) + 1, count }), 'polite');
+    const id = drag.item.id;
+    tmPinsVia('drag', () =>
+      this.#pins.move(id, 'folder' in drop ? { folderId: drop.folder.id, index: drop.folder.items.length } : { folderId: null, index: drop.index }),
+    );
+    this.#moved(id, nameOf(drag.item));
+  }
+
+  /** Announces where a moved item is: in its folder, else its position along the bar. */
+  #moved(id: string, label: string): void {
+    const folder = this.#folder(this.#find(id)?.folderId);
+    // The order the bar shows, which below md may differ from the stored one.
+    const order = this.#bar?.order() ?? untracked(this.#pins.items).map((item) => item.id);
+    void this.#announcer.announce(
+      folder === null ? this.text('moved', { label, index: order.indexOf(id) + 1, count: order.length }) : this.text('movedTo', { label, folder: folder.folder }),
+      'polite',
+    );
   }
 }

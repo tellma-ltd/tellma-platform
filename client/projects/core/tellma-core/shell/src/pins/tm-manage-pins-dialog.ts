@@ -14,6 +14,7 @@ import {
   Component,
   computed,
   DestroyRef,
+  DOCUMENT,
   ElementRef,
   inject,
   Injector,
@@ -287,6 +288,7 @@ interface TmManagedPin {
       @if (!folder) {
         <button
           #moveButton
+          data-tm-move
           tmButton
           variant="ghost"
           size="sm"
@@ -316,8 +318,8 @@ interface TmManagedPin {
     <!-- The Move to menu, shared by the pins' buttons. -->
     <tm-menu #moveMenu [items]="moveItems()" [aria-label]="moveLabel()" />
 
-    <!-- The bar's switch, which applies at once, above the footer. -->
-    <tm-switch class="tm-manage-pins__switch" [checked]="visible()" (checkedChange)="pins.setVisible($event)">{{ text('showBar') }}</tm-switch>
+    <!-- The bar's switch, which applies at once, above the footer; held with Save while the tenant is frozen. -->
+    <tm-switch class="tm-manage-pins__switch" [checked]="visible()" [disabled]="frozen() !== null" (checkedChange)="pins.setVisible($event)">{{ text('showBar') }}</tm-switch>
     <div tmModalFooter>
       <button #newFolderButton tmButton variant="ghost" class="tm-manage-pins__new" [disabledReason]="foldersFull()" (click)="newFolder()">
         {{ text('newFolder') }}
@@ -509,6 +511,14 @@ export class TmManagePinsDialog {
     const registry = inject(TmIconRegistry);
     void import('../launcher/tm-launcher-icons').then((chunk) => chunk.tmRegisterLauncherIcons(registry));
     inject(DestroyRef).onDestroy(() => this.#releaseEscape?.());
+    // The bar's switch can take the opener away with the bar: focus then
+    // falls to the page, so it goes to the main region instead.
+    const document = inject(DOCUMENT);
+    void this.ref.closed.then(() => {
+      if (document.activeElement === null || document.activeElement === document.body) {
+        document.getElementById('tm-main')?.focus();
+      }
+    });
   }
 
   /**
@@ -677,11 +687,13 @@ export class TmManagePinsDialog {
     menu.open(button, { restoreFocus: button });
   }
 
-  /** Files a pin at the end of a folder, or of the top level, and announces it. */
+  /** Files a pin at the end of a folder, or of the top level, announces it, and keeps focus on its Move to. */
   #moveTo(moving: { readonly id: string; readonly label: string }, folderId: string | null): void {
     const doc = untracked(this.doc);
     const folder = folderId === null ? null : (doc.items.find((item) => item.id === folderId) as Extract<TmPinItem, { readonly folder: string }>);
     this.doc.set(tmPinsUpdate(doc, moving.id, { folderId }));
+    // The row moves to another list, so its Move to button is a new one: focus follows it.
+    afterNextRender(() => this.#host.querySelector<HTMLElement>(`[data-tm-row="${moving.id}"] [data-tm-move]`)?.focus(), { injector: this.#injector });
     const message = folder === null ? this.text('movedOut', { label: moving.label }) : this.text('movedTo', { label: moving.label, folder: folder.folder });
     void this.#announcer.announce(message, 'polite');
   }

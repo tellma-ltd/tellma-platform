@@ -17,7 +17,7 @@ import {
   untracked,
   type ViewContainerRef,
 } from '@angular/core';
-import { TM_TOAST_FEEDBACK_MS, TmLocalization } from '@tellma/core';
+import { TM_TOAST_FEEDBACK_MS, TmLocalization, TmShell } from '@tellma/core';
 import { TmToasts } from '@tellma/core-ui/toast';
 
 import { TmShellOverlays } from '../app-bar/tm-shell-overlays';
@@ -133,6 +133,7 @@ export class TmPinsUi implements TmPinControls {
   readonly #announcer = inject(LiveAnnouncer);
   readonly #shellOverlays = inject(TmShellOverlays);
   readonly #document = inject(DOCUMENT);
+  readonly #immersive = inject(TmShell).immersive;
   readonly #chunk = new TmDeferredHost('tm-pins-ui', inject(TM_PIN_OVERLAYS_LOAD), (chunk: TmPinOverlaysChunk, host) => {
     const ref = host.createComponent(chunk.TmPinOverlayHost);
     // Renders the host at once, so its menus and popover exist before the action that waited runs.
@@ -147,13 +148,14 @@ export class TmPinsUi implements TmPinControls {
 
   /** The pin control's state. */
   readonly control: Signal<TmPinControlState> = computed(() => {
+    const refusal = this.#pins.ɵrefusal();
     const pinned = this.#pins.current() !== null;
-    const refusal = pinned ? null : this.#pins.ɵrefusal();
     // The tenant's maintenance holds every pin control, whatever the page.
     const reason =
       this.#pins.ɵfrozen() ??
-      (refusal === 'long' ? this.text('tooLong') : refusal === 'full' ? this.text('full', { count: TM_PIN_LIMITS.pins }) : null);
-    return { pinned, reason, inert: reason === null && refusal === 'unpinnable' };
+      (pinned ? null : refusal === 'long' ? this.text('tooLong') : refusal === 'full' ? this.text('full', { count: TM_PIN_LIMITS.pins }) : null);
+    // Before the pins load nothing may change them; a page with no pinnable route has nothing to pin.
+    return { pinned, reason, inert: reason === null && (refusal === 'cold' || (!pinned && refusal === 'unpinnable')) };
   });
 
   /** Creates the controls, which the launcher's commands run for the shell's life. */
@@ -253,8 +255,9 @@ export class TmPinsUi implements TmPinControls {
   /**
    * A press of the pin control, Alt+Shift+P or the launcher's command. On
    * an unpinned page it pins the page; on a pinned one, Alt+Shift+P unpins
-   * it and the others open the Edit pin popover. A press while the control
-   * is disabled does nothing.
+   * it and the others open the Edit pin popover, which a second press of
+   * the control closes. A press while the control is disabled does nothing,
+   * and the shortcut and the launcher's command then say why in a toast.
    *
    * @param via - What was pressed: the control, the shortcut or the launcher's command.
    * @param anchor - What the popover opens on when the bar is hidden: the control that has focus.
@@ -262,12 +265,23 @@ export class TmPinsUi implements TmPinControls {
   press(via: 'control' | 'shortcut' | 'menu', anchor: HTMLElement | null): void {
     const state = untracked(this.control);
     if (state.reason !== null || state.inert) {
+      // The control shows its own reason; the others have none to show.
+      if (state.reason !== null && via !== 'control') {
+        this.#toasts.show({ tone: 'warning', title: state.reason, duration: TM_TOAST_FEEDBACK_MS });
+      }
+      return;
+    }
+    const bar = this.#shown();
+    const control = bar?.control() ?? null;
+    // The control toggles the popover it opened.
+    if (via === 'control' && control !== null && this.isOpenFor(control)) {
+      this.run((overlays) => overlays.closeAll());
       return;
     }
     const current = untracked(this.#pins.current);
     if (current === null) {
       const pin = tmPinsVia(via, () => this.#pins.pinCurrent());
-      if (this.#bar !== null) {
+      if (bar !== null) {
         // The bar's next fit says whether the chip shows.
         this.pending.set(pin.id);
       } else {
@@ -279,15 +293,15 @@ export class TmPinsUi implements TmPinControls {
       const label = untracked(current.label);
       const focused = this.#document.activeElement;
       const onChip = focused instanceof HTMLElement && focused.dataset['tmPin'] === current.id;
-      if (this.#bar !== null) {
-        this.#bar.unpin(current.id, 'shortcut', onChip);
+      if (bar !== null) {
+        bar.unpin(current.id, 'shortcut', onChip);
       } else {
         tmPinsVia('shortcut', () => this.#pins.remove(current.id));
       }
       void this.#announcer.announce(this.text('unpinned', { label }), 'polite');
       return;
     }
-    const target = this.#bar?.control() ?? anchor ?? (this.#document.activeElement as HTMLElement | null);
+    const target = control ?? anchor ?? (this.#document.activeElement as HTMLElement | null);
     if (target !== null) {
       this.run((overlays) => overlays.openPopover(target, current.id, 'edit'));
     }
@@ -304,7 +318,7 @@ export class TmPinsUi implements TmPinControls {
   reveal(id: string, shows: boolean): void {
     this.pending.set(null);
     const pin = untracked(this.#pins.items).find((item) => item.id === id) as TmPinView | undefined;
-    const control = this.#bar?.control() ?? null;
+    const control = this.#shown()?.control() ?? null;
     if (pin === undefined) {
       return;
     }
@@ -319,6 +333,11 @@ export class TmPinsUi implements TmPinControls {
   /** Opens the Manage pins dialog. */
   manage(): void {
     this.#shellOverlays.run((panels) => panels.openDialog('pins'));
+  }
+
+  /** The bar while it shows: an immersive page keeps it rendered but out of the document. */
+  #shown(): TmPinnedBarPort | null {
+    return untracked(this.#immersive) ? null : this.#bar;
   }
 
   /** Says once that a pin whose chip does not show was pinned. */

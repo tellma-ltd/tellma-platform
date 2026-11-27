@@ -272,12 +272,15 @@ describe('the Manage pins dialog', () => {
     await tmSettle();
     expect(rowIds()).toEqual(['f0000001', 'a0000002', 'a0000003', 'a0000001', 'b0000001', 'b0000002']);
     expect(announced).toContain('Moved Receivables to Daily');
+    // Focus stays on the moved row's Move to, now in the folder's list.
+    expect(document.activeElement).toBe(rowButton('a0000001', 'Move Receivables to'));
     rowButton('a0000002', 'Move Payables to').click();
     await tmSettle();
     await (await loader.getHarness(new HarnessPredicate(TmMenuHarness, {}))).clickItem('No folder');
     await tmSettle();
     expect(rowIds().at(-1)).toBe('a0000002');
     expect(announced).toContain('Moved Payables out of its folder');
+    expect(document.activeElement).toBe(rowButton('a0000002', 'Move Payables to'));
   });
 
   it('removes a row, focus going to the next row, else the previous one, else New folder', async () => {
@@ -317,10 +320,16 @@ describe('the Manage pins dialog', () => {
     expect(TestBed.inject(TmPins).visible()).toBe(false);
     expect(document.querySelector('tm-pinned-bar')).toBeNull();
     expect(events('tm.shell.pinned-bar-toggled')).toEqual([{ visible: false }]);
+    // The opener went with the bar: focus goes to the main region as the dialog closes.
+    footerButton('Cancel').click();
+    await tmSettle();
+    expect(document.querySelector('tm-manage-pins-dialog')).toBeNull();
+    expect(document.activeElement).toBe(document.getElementById('tm-main'));
   });
 
-  it('holds Save while the tenant is frozen', async () => {
+  it("holds Save and the bar's switch while the tenant is frozen", async () => {
     await open(STORED, 'Frozen');
+    expect(await (await loader.getHarness(TmSwitchHarness)).isDisabled()).toBe(true);
     const buttons = await loader.getAllHarnesses(new HarnessPredicate(TmButtonHarness, { selector: '[tmModalFooter] button' }));
     const texts = await Promise.all(buttons.map(async (button) => button.getText()));
     expect(await buttons[texts.indexOf('Save')].getDisabledReason()).toBe('Acme is under maintenance.');

@@ -6,13 +6,16 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { type HarnessLoader, TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
+import { DestroyRef, EnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { type TmLanguageDefinition, type TmLaunchDocs, TmPreferences, tmEnglish, tmPinsKey, type TmPinsDoc, TmUrls } from '@tellma/core';
+import { TmApiError, type TmLanguageDefinition, type TmLaunchDocs, TmPreferences, TmShell, tmEnglish, tmPinsKey, type TmPinsDoc, TmUrls } from '@tellma/core';
 import { TmPinnedBarHarness, TmTenantShellHarness } from '@tellma/core-testing';
 import { TmSelectHarness, TmToastStackHarness } from '@tellma/core-ui-testing';
+import { TmMenu } from '@tellma/core-ui/menu';
 import { page } from 'vitest/browser';
 
 import { type TmAppRig, tmAppRig, tmNavigate, tmSettle, tmSettleUntil, TM_T17, TM_T17_DOCS } from '../../../src/routes/tm-app.testing.util';
+import { TM_LAUNCHER_COMMANDS } from '../launcher/tm-launcher-commands';
 import { TM_PIN_LIMITS } from './tm-pin-rules';
 import { TM_PINNED_BAR_FONTS } from './tm-pinned-bar';
 import { TmPins } from './tm-pins';
@@ -27,7 +30,10 @@ import { TM_PIN_OVERLAYS_LOAD, type TmPinOverlaysChunk } from './tm-pins-ui';
 // revoked pins and their menus, the pin control and its popover (its folder
 // select, New folder…, Escape and an outside click) or toast, Alt+Shift+P
 // (focus after the last chip goes, nothing while frozen), drag and drop
-// along the bar (below md too), and Manage pins in every state of the bar.
+// along the bar (below md too, a folder's menu opened by a held drag),
+// Manage pins in every state of the bar, a filtered view of a pinned page,
+// the tenant's maintenance, an immersive page, and no edit before the pins
+// load.
 
 /** The fonts the bar waits for, which a test loads when it chooses. */
 class TmFakeFonts extends EventTarget {
@@ -576,6 +582,7 @@ describe('the pinned bar', () => {
       await tmSettle();
       const added = TestBed.inject(TmPins).current()!.id;
       expect(storedIds()).toEqual(['a0000001', `f0000001[a0000002 ${added}]`, 'f0000002[a0000003]']);
+      expect(announced).toContain('Moved Credit review to Daily');
       // On the pinned page, New folder… reveals its name field, which refuses a name taken.
       await bar.openPopover();
       await (await loader.getHarness(TmSelectHarness)).selectOption('New folder…');
@@ -592,7 +599,17 @@ describe('the pinned bar', () => {
       expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
       expect(TestBed.inject(TmPreferences).get(tmPinsKey)().items.at(-1)).toMatchObject({ folder: 'Monthly', items: [{ id: added }] });
       expect(storedIds().slice(0, 3)).toEqual(['a0000001', 'f0000001[a0000002]', 'f0000002[a0000003]']);
+      expect(announced).toContain('Moved Credit review to Monthly');
       expect(document.activeElement).toBe(pinControl());
+      // No folder takes it back out.
+      await bar.openPopover();
+      await (await loader.getHarness(TmSelectHarness)).selectOption('No folder');
+      submitPopover();
+      await tmSettle();
+      expect(storedIds().at(-1)).toBe(added);
+      // Back on the bar, it is announced at its place there, the last.
+      const count = storedIds().length;
+      expect(announced).toContain(`Moved Credit review, position ${count} of ${count}`);
     });
 
     it('keeps the pin on Escape or an outside click, focus going back to the control', async () => {
@@ -613,6 +630,85 @@ describe('the pinned bar', () => {
       expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
       expect(storedIds()).toHaveLength(4);
       expect(document.activeElement).toBe(pinControl());
+    });
+
+    it("carries the popover trigger's ARIA on a pinned page, where a second press closes the popover", async () => {
+      await start({ pins: FEW, url: '/17/credit-review?q=1' });
+      expect([pinControl().getAttribute('aria-haspopup'), pinControl().getAttribute('aria-expanded')]).toEqual(['dialog', 'false']);
+      await bar.openPopover();
+      expect(pinControl().getAttribute('aria-expanded')).toBe('true');
+      typeInto(document.querySelector<HTMLInputElement>('.tm-pin-overlays__form input')!, 'Half typed');
+      pinControl().click();
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
+      expect(pinControl().getAttribute('aria-expanded')).toBe('false');
+      expect(await bar.getChipLabels()).toEqual(['Receivables', 'Payables', 'Cash']);
+      // On a page not pinned, the control is a plain button.
+      TestBed.resetTestingModule();
+      await start({ pins: FEW });
+      expect([pinControl().getAttribute('aria-haspopup'), pinControl().getAttribute('aria-expanded')]).toEqual([null, null]);
+    });
+
+    it("pins a filtered view of a pinned page as a pin of its own, the page's chip still marked", async () => {
+      await start({ pins: doc({ id: 'b0000009', url: 'credit-review', title: 'All reviews' }, pin(2, 'Payables')), url: '/17/credit-review?q=1' });
+      expect(await bar.getControl()).toMatchObject({ name: 'Pin this page', pinned: false });
+      expect(await bar.getCurrentChipLabel()).toBe('Credit review');
+      pressShortcut();
+      await tmSettle();
+      expect(storedIds()).toHaveLength(3);
+      expect(storedIds().slice(0, 2)).toEqual(['b0000009', 'a0000002']);
+      expect(await bar.getControl()).toMatchObject({ name: 'Edit pin', pinned: true });
+    });
+
+    it('says why with a toast when Alt+Shift+P or the launcher cannot pin, the bar hidden', async () => {
+      const full = doc(...Array.from({ length: TM_PIN_LIMITS.pins }, (_, n) => pin(n + 1)));
+      await start({ pins: full });
+      TestBed.inject(TmPins).setVisible(false);
+      await tmSettle();
+      pressShortcut();
+      await tmSettle();
+      const reason = "You've pinned 30 pages. Unpin one to add another.";
+      const toasts = await loader.getHarness(TmToastStackHarness);
+      expect(await Promise.all((await toasts.getToasts()).map(async (toast) => toast.getTitle()))).toEqual([reason]);
+      // The launcher still lists the command, which says the same.
+      const commands = TestBed.inject(TM_LAUNCHER_COMMANDS)();
+      expect(commands.map((command) => command.label)).toEqual(['Pin this page', 'Manage pins…']);
+      commands[0].run();
+      await tmSettle();
+      expect(await Promise.all((await toasts.getToasts()).map(async (toast) => toast.getTitle()))).toEqual([reason, reason]);
+      expect(storedIds()).toHaveLength(TM_PIN_LIMITS.pins);
+    });
+
+    it('fits again after an immersive page, and says with a toast that a pin made meanwhile was pinned', async () => {
+      await start({ pins: FEW });
+      const shell = TestBed.inject(TmShell);
+      const holder = TestBed.inject(EnvironmentInjector).get(DestroyRef);
+      shell.setImmersive(true, holder);
+      await tmSettle();
+      pressShortcut();
+      await tmSettle();
+      expect(storedIds()).toHaveLength(4);
+      const toasts = await loader.getHarness(TmToastStackHarness);
+      expect(await Promise.all((await toasts.getToasts()).map(async (toast) => toast.getTitle()))).toEqual(['Pinned Credit review.']);
+      expect(document.querySelector('.tm-pin-overlays__popover')).toBeNull();
+      shell.setImmersive(false, holder);
+      await frame();
+      expect(await bar.getChipLabels()).toEqual(['Receivables', 'Payables', 'Cash', 'Credit review']);
+      expect(widthsAreMeasured()).toBe(true);
+      expect(fitsTrack()).toBe(true);
+    });
+
+    it("holds a drag and a revoked pin's Unpin while the tenant is frozen", async () => {
+      await start({ pins: doc(pin(1, 'Receivables'), { id: 'b0000001', url: 'approvals', title: 'Approvals' }, pin(2, 'Cash')), state: 'Frozen' });
+      await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
+      expect(['a0000001', 'b0000001', 'a0000002'].map((id) => chipOf(id).draggable)).toEqual([false, false, false]);
+      // A drop that still arrives changes nothing.
+      dragChip('a0000002', 'a0000001', (rect) => rect.left + 2);
+      await tmSettle();
+      expect(storedIds()).toEqual(['a0000001', 'b0000001', 'a0000002']);
+      const menu = await bar.openMenu('Approvals');
+      expect(await menu.getDisabledReason('Unpin')).toBe('Acme is under maintenance.');
+      expect(events('tm.shell.pins-changed')).toEqual([]);
     });
 
     it('says with a toast once that a pin went into More, moving no chip', async () => {
@@ -746,6 +842,45 @@ describe('the pinned bar', () => {
       ]);
     });
 
+    /** Starts dragging a chip and holds it over the middle of a folder chip. */
+    function holdOver(from: string, folder: string): DataTransfer {
+      const data = new DataTransfer();
+      const target = chipOf(folder);
+      const rect = target.getBoundingClientRect();
+      const point = { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2, bubbles: true, cancelable: true, dataTransfer: data };
+      chipOf(from).dispatchEvent(new DragEvent('dragstart', point));
+      target.dispatchEvent(new DragEvent('dragover', point));
+      return data;
+    }
+
+    it("opens a folder's menu when a pin is held over its chip for 500 ms, and drops the pin inside it", async () => {
+      await start({ pins: doc(pin(1, 'Receivables'), { id: 'f0000001', folder: 'Daily', items: [pin(2, 'Payables'), pin(3, 'Cash')] }) });
+      await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
+      const source = chipOf('a0000001');
+      const data = holdOver('a0000001', 'f0000001');
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await tmSettleUntil(() => document.querySelector('.tm-pin-overlays__menu') !== null, "the folder's menu opens");
+      const row = document.querySelectorAll<HTMLElement>('.tm-pin-overlays__menu .tm-menu__item')[1];
+      const point = { bubbles: true, cancelable: true, dataTransfer: data };
+      row.dispatchEvent(new DragEvent('dragover', point));
+      row.dispatchEvent(new DragEvent('drop', point));
+      source.dispatchEvent(new DragEvent('dragend', point));
+      await tmSettle();
+      expect(storedIds()).toEqual(['f0000001[a0000002 a0000003 a0000001]']);
+      expect(announced).toContain('Moved Receivables to Daily');
+    });
+
+    it('opens no menu when the pin leaves the folder chip before 500 ms', async () => {
+      await start({ pins: doc(pin(1, 'Receivables'), { id: 'f0000001', folder: 'Daily', items: [pin(2, 'Payables')] }) });
+      await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
+      const data = holdOver('a0000001', 'f0000001');
+      chipOf('f0000001').dispatchEvent(new DragEvent('dragleave', { bubbles: true, relatedTarget: document.body, dataTransfer: data }));
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      await tmSettle();
+      expect(document.querySelector('.tm-pin-overlays__menu')).toBeNull();
+      chipOf('a0000001').dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: data }));
+    });
+
     it('drops below md where the line shows, the current pill leading', async () => {
       await start({ width: 600, pins: FEW, url: '/17/credit-review?q=3' });
       await tmSettleUntil(() => document.querySelector('tm-pin-overlays') !== null, 'the overlays land');
@@ -778,6 +913,29 @@ describe('the pinned bar', () => {
       });
     }
 
+    it("lets go of a folder chip's anchor, removed with its folder, when the next menu opens", async () => {
+      const released: string[] = [];
+      const register = TmMenu.prototype.ɵregisterTrigger;
+      vi.spyOn(TmMenu.prototype, 'ɵregisterTrigger').mockImplementation(function (this: TmMenu, element: Element) {
+        const release = register.call(this, element);
+        const id = (element as HTMLElement).dataset['tmPin'] ?? '';
+        return () => {
+          released.push(id);
+          release();
+        };
+      });
+      await start({ pins: twoFolders() });
+      await bar.openMenu('Daily');
+      // A second press of the chip closes its menu, then the folder goes.
+      await (await bar.getChip('Daily')).click();
+      await tmSettle();
+      TestBed.inject(TmPins).removeFolder('f0000001');
+      await tmSettle();
+      expect(released).toEqual([]);
+      await bar.openMenu('Weekly');
+      expect(released).toEqual(['f0000001']);
+    });
+
     it('is gone with the bar while it is hidden, which the tenant shell does not render', async () => {
       await start({ pins: FEW });
       TestBed.inject(TmPins).setVisible(false);
@@ -786,6 +944,42 @@ describe('the pinned bar', () => {
       expect(await shell.getPinnedBar()).toBeNull();
     });
   });
+});
+
+describe('the pins before the launch documents land', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  for (const outcome of ['pending', 'failed'] as const) {
+    it(`take no edit while the sync is ${outcome}: Alt+Shift+P, the launcher's commands and every write`, async () => {
+      const rig = await tmAppRig({ cold: true, strings: STRINGS });
+      rig.api.respond(
+        'client/sync',
+        outcome === 'pending'
+          ? () => new Promise(() => undefined)
+          : () => {
+              throw new TmApiError({ kind: 'server', status: 500 });
+            },
+      );
+      await tmNavigate('/17/credit-review');
+      await tmSettleUntil(() => document.querySelector('tm-pinned-bar nav') !== null, 'the pinned bar renders');
+      if (outcome === 'failed') {
+        await tmSettleUntil(() => document.querySelector('tm-tenant-shell main tm-error-state') !== null, 'the error state renders');
+      }
+      pressShortcut();
+      await tmSettle();
+      const pins = TestBed.inject(TmPins);
+      expect(pins.canPinCurrent()).toBe(false);
+      expect(() => pins.pinCurrent()).toThrow(Error);
+      pins.addFolder('Daily');
+      pins.setVisible(false);
+      pins.replace(doc(pin(1)));
+      await tmSettle();
+      expect(TestBed.inject(TM_LAUNCHER_COMMANDS)()).toEqual([]);
+      const prefs = TestBed.inject(TmPreferences);
+      expect([prefs.get(tmPinsKey)().items, prefs.ɵdirty()]).toEqual([[], []]);
+      expect(rig.api.calls().filter((call) => call.route.startsWith('users/me/preferences'))).toEqual([]);
+    });
+  }
 });
 
 /** Two folders, for the presses made before the overlays land. */
