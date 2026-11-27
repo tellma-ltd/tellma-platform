@@ -384,6 +384,81 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-396 — PC-156 R2 rulings; park on spec 0028 §1 (2026-11-26)
+
+R2 found 1 blocking, 1 major and 9 minor issues. R2-1 (blocking) is the panels chunk: 10.37 against spec 0028 §1's 9. Spec budgets are not the orchestrator's to raise (D-313). The neutral trims (shared skeleton, owner lookup moved into the calls chunk, deduped strings and CSS, the icon-gate artifact) go to fix2. Moving the page contexts to an on-open chunk changes behaviour, so it is not taken. The ceiling stays 9, and PC-156 parks after fix2 on its measured figure. Ahmad was notified with three options: a 10.5 cap, a 10.0 cap if every trim lands, or on-open page contexts at 9.
+
+Everything else goes to fix2, the third and last implementer round:
+- R2-2: the silent busy refusal; invoke no longer waits on the server.
+- R2-3: "Keep running" is restored through a cancel label on the action's confirm, and the TmPageAction.confirm widening is recorded in ARCHITECTURE.md.
+- R2-4: confirm.args is guarded; an unknown job id is refused.
+- R2-5: the calls chunk is warmed at idle.
+- R2-6: TmOutcomeToasts returns a synchronous handle again, and a chunk failure goes to telemetry.
+- R2-7 to R2-11: the minors, including root-causing the flaky Review test (D-011).
+
+While PC-156 is parked, its pc-1 worktree keeps its branch. The next free T1 slot goes to PC-128 (D-394).
+
+### D-395 — PC-123 R2 rulings (2026-11-26)
+
+R2 found 0 blocking, 0 major and 2 minor issues. Both minors (R2-1, the home-hatch preload test; R2-2, the discriminating display-zone test and the midnight re-render test) go to fix2. A minor fix2 needs no R3; PC-123 then holds.
+
+warm-launch:82 under the lazy-delay harness is a harness artifact. Plain runs put it at 152-296 ms against 1 s, and the harness adds the same two 300 ms waits whether or not modules are already loaded. No preload is added, because a modulepreload would cost about 11 KB of initialJs for every family. warm-launch is not removed from the harnessed set now. A harnessed warm-launch miss is not a checkpoint finding unless the plain run also misses.
+
+PC-167 carries two items: settle TmDashboardTile's public inputs, and find room on "." (0 B left), either by equal savings or by a D-031 raise of at most 55.0.
+
+### D-394 (2026-11-26): Ahmad's ruling on PC-128: option (c), raise the ./search cap to fit
+
+Ahmad answered D-384 in chat: "Go with option C, increase the cap to fit". Spec 0030 §1's route-chunk figure is revised for the search page, so the search field and type-to-search stay as specified and ./search's ceiling is sized to what it weighs. That is his authorization for the raise D-313 and D-373 withheld from the orchestrator.
+
+The orchestrator does not edit docs/. Bringing spec 0030 §1's figure in line is Ahmad's edit, and the run's measured figure is reported to him once PC-128 lands.
+
+How PC-128 resumes. With the cap no longer the constraint, the eager sibling @tellma/core/search-view has no purpose; it only split one eager weight across two lines (R2-2). So:
+- ./search-view is folded back into ./search, and its entry point, budget line and API report are retired.
+- ./search's ceiling is set to its clean-build measure rounded up to the next 0.5 (about 23.5 to 24 by fix1's 23.51).
+- ARCHITECTURE.md drops the "eager sibling, pending a budget ruling" text.
+- Nothing else changes.
+
+PC-128 has spent its three implementer rounds (§4.4), so this change gets a fresh R1 before it integrates (D-384). PC-128 is T1, so it takes the next T1 slot that frees (pc-1, pc-3 or pc-2). It cannot take a fix slot (D-229), and the heavy-agent limit holds (D-028).
+
+### D-393 (2026-11-26): PC-F110 landed on Ahmad's approval
+
+Ahmad answered the D-392 notice in chat with "Push approved". The agent's retry was denied again, because the approval reached it only as the orchestrator's relay, and an agent's permission check never sees chat. The orchestrator therefore ran that one approved push itself, after checking two things:
+- it was a fast-forward from origin/platform-core 21b33fc4;
+- the merge on top of the green commit 05580e04 added only plans/ files.
+
+PC-F110 landed at df33a1f9, and pc/PC-F110 was pushed to the same sha. This is the D-264/D-284 pattern: the user approved the specific push, so it is not laundering. The approval covered that push only; any later landing push denied the same way needs its own notice and approval. pc-f3 is freed, and its next fix, PC-F107, waits for a heavy-agent place (D-028).
+
+### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
+
+PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
+
+The orchestrator does not run the push itself, which would launder the agent's denial. PC-F110 keeps pc-f3 and waits for Ahmad's approval; that approval covers this one push (D-264, D-284).
+
+A blocked item is skipped, not waited on (D-319), so PC-F111 is released to integrate. Its integration push goes to pc/PC-F111. If its own land push is denied the same way, it waits beside PC-F110.
+
+### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
+
+PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.
+
+PC-128 is parked with its work on pc/PC-128, not held, so pc-2 is freed (D-384). No T1 item is ready, so pc-2 takes PC-163, the only ready T2, with its three carries (D-229). The heavy-agent count stays within five: PC-F112, PC-F110's integration, PC-123's fix1, PC-156's fix1 and PC-163.
+
+### D-390 (2026-11-26): PC-156 R1 rulings
+
+PC-156's R1 found 1/4/6.
+
+R1-1 is blocking. The implementer raised spec 0028 §1's budgets itself (/attention 6 to 6.5, the panels 9 to 10.5), which D-313 forbids. Both go back to the spec's figures, and fix1 applies every trim the review measured. /attention must reach 6. If the panels chunk cannot reach 9 without losing spec behaviour (the review estimates 9.6 to 9.8), PC-156 is parked on that one budget, as PC-128 was (D-384), and nothing is raised.
+
+R1-2 moves TmProgressRing to its own @tellma/core-ui/progress-ring entry point, so core-ui/progress (about 2 KB gzip) leaves every first frame. That is most of Acme initialJs's growth from 224.70 to 226.85.
+
+R1-9 is a spec contradiction ruled here under Rule 2. Job stop follows spec 0026 §9.5, the spec that owns jobs, in both the panel and the attention.stop-job page action, with the kind-specific confirmation text.
+
+R1-3 to R1-8, R1-10 and R1-11 are fixed as the review describes. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
+Questions for Ahmad, non-blocking:
+- The new @tellma/core/attention-rows entry point (5.86) moves TmAttentionText and TmAssignmentList out of §1's 6 KB /attention line, so the members §1 budgets at 6 KB weigh 12.14 in total. Should §1 list /attention-rows with its own figure?
+- The moved string key, one TmAttentionButton in place of two classes, and the bell-only hold.
+- The 0028 §6.2/§13 stop-confirmation wording against 0026 §9.5.
+
 ### D-389 (2026-11-26): PC-129 blocked on spec 0024's 110 KB search route; PC-F112 lands PC-128's pager saving
 
 D-388's placement fix cannot reach 110. PC-129's details kit renders /entity's TmValue and aria tabs in view mode. The modules both lazy routes reach statically (the /entity view side, aria's shared pieces, the l10n-input parsers) must therefore leave the search host's chunk. That splitting costs about 1.5 KB of gzip, and moving TmUploads off the /entity barrel saves only 0.26, which leaves about 111.3.
