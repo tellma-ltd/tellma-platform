@@ -477,14 +477,19 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
    * Leaves edit mode: asks first when there are changes, then aborts the
    * edit's uploads and drops their staged files, resets the working copy to
    * the base, clears the draft and focuses Edit. In create mode it leaves
-   * the page instead: Back, else the search page.
+   * the page instead: Back, else the search page. While Save runs, it
+   * refuses.
    *
-   * @returns `false` when the user kept editing.
+   * @returns `false` when the user kept editing, or Save is running.
    */
   async cancel(): Promise<boolean> {
     const record = this.#record();
     if (record === null || record.mode() === 'view') {
       return true;
+    }
+    // Save owns the record while it waits for uploads and writes; a hatch's cancel() then changes nothing.
+    if (this.#busy()) {
+      return false;
     }
     if (record.dirty() && !(await this.#discard())) {
       return false;
@@ -511,9 +516,11 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
    * Saves the record: a clean edit with no upload in flight returns to view
    * mode and sends nothing; otherwise, once the record's uploads have
    * finished, one write through the source, whose read-back becomes the
-   * server copy. An edit left clean by failed uploads stays, showing the
-   * failures. A create lands on the new record's page. A failure keeps the
-   * edit and shows the error.
+   * server copy. While a file's upload has failed, or when one Save waited
+   * for fails, nothing is written: the edit stays, the failure shows on its
+   * field, and the page says why. A create lands on the new record's page.
+   * A failure keeps the edit and shows the error. Uploads still running
+   * when the write lands abort.
    *
    * @returns `true` once saved and back in view mode.
    */
@@ -522,21 +529,38 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (record === null || record.mode() === 'view' || !record.landed() || this.#busy()) {
       return false;
     }
+    // --- A file whose upload failed holds Save until it is retried or removed: nothing is written without it ---
+    if (untracked(record.uploads.failed).size > 0) {
+      this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
+      return false;
+    }
     // An upload in flight is a change still arriving: its field takes the staged id only once it lands.
     if (record.mode() === 'edit' && !record.dirty() && untracked(record.uploads.running).size === 0) {
       this.#leaveClean(record);
       return true;
     }
     const mode = record.mode();
+    const failures = untracked(record.uploads.failures);
     this.#busy.set(true);
     try {
       // --- The uploads finish first, so the body carries their staged ids (spec 0031 §8.1 step 2) ---
       if (!(await this.#uploadsSettled(record))) {
         return false;
       }
-      // Uploads that all failed leave nothing to write; the edit stays, showing each failure on its field.
-      if (mode === 'edit' && !record.dirty()) {
+      // Cancel refuses while Save waits, but a record whose mode changed meanwhile has nothing of this Save to write.
+      if (record.mode() !== mode) {
         return false;
+      }
+      // An upload Save waited for failed, even one its editor dismissed as refused: the edit stays,
+      // showing the failure on its field. Spec 0031 §8.1 step 2 does not say; this keeps the user's file.
+      if (untracked(record.uploads.failures) !== failures || untracked(record.uploads.failed).size > 0) {
+        this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
+        return false;
+      }
+      // An upload that landed with nothing else changed, and whose field took no new id, leaves nothing to write.
+      if (mode === 'edit' && !record.dirty()) {
+        this.#leaveClean(record);
+        return true;
       }
       const saved = await record.source.write({
         model: record.ɵsaveBody(),
@@ -546,6 +570,8 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       });
       this.#remember(record.source.entity, saved);
       this.#clearDraft(record);
+      // An upload started while the write ran belongs to nothing saved: it aborts, so no late result writes into the saved record.
+      record.uploads.cancelAll();
       // A page left while the write ran shows nothing of it.
       if (this.#destroyed) {
         return true;

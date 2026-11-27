@@ -4,13 +4,19 @@
 // LICENSE file in the root directory of this source tree.
 
 import { computed, type Signal } from '@angular/core';
-import { TmApiError, type TmProblemError, type TmServerText } from '@tellma/core';
+import { TmApiError, type TmApiErrorKind, type TmProblemError, type TmServerText } from '@tellma/core';
 
 // What a failed upload says on its field (spec 0031 §6.3 step 5): an
-// abort says nothing; a file the server refuses (`blob-rejected`, or any
-// other answer in the 4xx range with a problem) says why, through the
+// abort says nothing; a file the server refuses says why, through the
 // server's text for its first item, else the problem's title; anything
-// else may pass on a retry, which the field offers.
+// else may pass on a retry, which the field offers. The error's kind
+// decides, not its status: a refusal is an answer about the file or the
+// request as sent (`blob-rejected` is a validation failure, whatever its
+// status), while a busy server (429 is `unavailable`), a step-up, a lost
+// connection or a server error is a failure a retry mends.
+
+/** The kinds of error that refuse the file as sent, which no retry mends. */
+const REFUSALS: ReadonlySet<TmApiErrorKind> = new Set<TmApiErrorKind>(['validation', 'bad-request', 'limit', 'forbidden']);
 
 /** What a failed upload says on its field. */
 export type TmUploadFailure =
@@ -40,7 +46,7 @@ export function tmUploadFailure(error: unknown, text: TmServerText): TmUploadFai
   if ((error instanceof DOMException && error.name === 'AbortError') || (error instanceof TmApiError && error.kind === 'cancelled')) {
     return { kind: 'aborted' };
   }
-  const problem = error instanceof TmApiError && error.status >= 400 && error.status < 500 ? error.problem : null;
+  const problem = error instanceof TmApiError && REFUSALS.has(error.kind) ? error.problem : null;
   if (problem === null) {
     return { kind: 'failed' };
   }

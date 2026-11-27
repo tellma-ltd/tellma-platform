@@ -172,6 +172,56 @@ describe('TmUploads', () => {
     expect(uploads.running().size).toBe(0);
   });
 
+  it('lists a path whose upload failed, counting it, until it uploads again, is cancelled, cleared or dismissed; an abort is no failure', async () => {
+    const { uploads } = host();
+    const fail = async (path: string): Promise<void> => {
+      const upload = deferred();
+      const run = uploads.start(path, upload.run);
+      upload.reject(new Error('The connection dropped.'));
+      await expect(run).rejects.toThrow('The connection dropped.');
+    };
+
+    await fail('imageId');
+    await fail('logoId');
+    await fail('coverId');
+    await fail('iconId');
+    expect([...uploads.failed()].sort()).toEqual(['coverId', 'iconId', 'imageId', 'logoId']);
+    expect(uploads.failures()).toBe(4);
+
+    // An upload again, a cancel, a cleared path and a dismissal each clear one; the count only grows.
+    const again = deferred();
+    const retried = uploads.start('imageId', again.run);
+    expect(uploads.failed().has('imageId')).toBe(false);
+    uploads.cancel('logoId');
+    uploads.stage('coverId', null);
+    uploads.dismiss('iconId');
+    expect(uploads.failed().size).toBe(0);
+    expect(uploads.failures()).toBe(4);
+
+    // The retry aborted by a later pick fails nothing, though its upload rejects as it honours the abort.
+    void uploads.start('imageId', deferred().run).catch(() => undefined);
+    expect(again.signal().aborted).toBe(true);
+    again.reject(new DOMException('Aborted', 'AbortError'));
+    await expect(retried).rejects.toThrow('Aborted');
+    expect(uploads.failed().size).toBe(0);
+    expect(uploads.failures()).toBe(4);
+  });
+
+  it('moves a failed row up with its row, drops the removed row’s failure, and clears every failure on cancelAll', async () => {
+    const { uploads } = host();
+    for (const index of [0, 1, 2]) {
+      const upload = deferred();
+      const run = uploads.start(`attachments.${index}.fileId`, upload.run);
+      upload.reject(new Error('Failed'));
+      await expect(run).rejects.toThrow();
+    }
+
+    uploads.removeRow('attachments', 1);
+    expect([...uploads.failed()].sort()).toEqual(['attachments.0.fileId', 'attachments.1.fileId']);
+    uploads.cancelAll();
+    expect(uploads.failed().size).toBe(0);
+  });
+
   it('aborts what is in flight when its host ends', () => {
     const { uploads, end } = host();
     const upload = deferred();

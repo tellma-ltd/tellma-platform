@@ -21,6 +21,7 @@ import {
 } from '@angular/core';
 import type { FieldTree } from '@angular/forms/signals';
 import type { TmControlSize } from '@tellma/core-ui';
+import { TmButton } from '@tellma/core-ui/button';
 import { TmGrid, TmGridColumn, TmGridDisplayDef } from '@tellma/core-ui/grid';
 import {
   type TmChildDescriptor,
@@ -31,6 +32,7 @@ import {
   type TmId,
   type TmJson,
   type TmJsonObject,
+  TmLocalization,
   type TmVisibleData,
 } from '@tellma/core';
 import { type TmGridColumnConfig, ɵtmGridColumnFor, tmSelectPlan, TmValue } from '@tellma/core/entity';
@@ -94,13 +96,19 @@ function loadEditableColumns(): Promise<TmEditableColumnFor> {
   return editableColumns;
 }
 
+/** The edit columns' loader, which a test may replace to fail or delay the load. Internal. */
+export const ɵtmChildGridEditLoader: {
+  /** Loads the editing entry point and resolves its editable columns. */
+  load: () => Promise<TmEditableColumnFor>;
+} = { load: loadEditableColumns };
+
 /**
  * The grid of a child collection, rendered by `tm-child-grid` in a deferred
  * chunk. Internal: a layout writes `tm-child-grid`.
  */
 @Component({
   selector: 'tm-child-grid-view',
-  imports: [TmGrid, TmGridColumn, TmGridDisplayDef, TmValue],
+  imports: [TmButton, TmGrid, TmGridColumn, TmGridDisplayDef, TmValue],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-child-grid-view' },
   styles: `
@@ -108,6 +116,27 @@ function loadEditableColumns(): Promise<TmEditableColumnFor> {
     .tm-child-grid-view__grid {
       display: block;
       block-size: 100%;
+    }
+
+    :host {
+      position: relative;
+    }
+
+    /* The edit side's failed load, over the grid's status band: the message in the error colour, then Try again. */
+    .tm-child-grid-view__failed {
+      position: absolute;
+      inset-inline: var(--border-width);
+      inset-block-end: var(--border-width);
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      block-size: var(--grid-status-height);
+      margin: 0;
+      padding-inline: var(--space-3);
+      background: var(--surface-card);
+      color: var(--error);
+      font-size: var(--text-sm);
     }
   `,
   template: `
@@ -119,7 +148,7 @@ function loadEditableColumns(): Promise<TmEditableColumnFor> {
       [data]="field() === undefined ? none : undefined"
       [rowId]="rowId"
       [readonly]="!editable()"
-      [newRow]="editable() ? newRow : undefined"
+      [newRow]="adds() ? newRow : undefined"
       [size]="size()"
     >
       @for (column of gridColumns(); track column.plan.key) {
@@ -156,6 +185,14 @@ function loadEditableColumns(): Promise<TmEditableColumnFor> {
         </tm-grid-column>
       }
     </tm-grid>
+
+    @if (failed()) {
+      <!-- The edit side failed to load in edit mode: say so, and offer the load again -->
+      <p class="tm-child-grid-view__failed">
+        <span role="alert">{{ failedText() }}</span>
+        <button tmButton type="button" variant="ghost" size="sm" (click)="retry()">{{ retryText() }}</button>
+      </p>
+    }
   `,
 })
 export class TmChildGridView {
@@ -163,6 +200,7 @@ export class TmChildGridView {
   readonly #injector = inject(Injector);
   readonly #entities = inject(TmEntities);
   readonly #names = inject(TmDisplayNames);
+  readonly #l10n = inject(TmLocalization);
   readonly #scope = inject(TM_DETAILS_SCOPE, { optional: true });
 
   /** The child collection. */
@@ -191,6 +229,21 @@ export class TmChildGridView {
 
   /** The editing entry point's editable columns, once loaded. */
   readonly #editableColumnFor = signal<TmEditableColumnFor | null>(null);
+
+  /** Whether the placeholder row adds rows: once the grid edits and its edit columns have loaded. */
+  protected readonly adds = computed(() => this.editable() && this.#editableColumnFor() !== null);
+
+  /** Whether the last load of the edit columns failed. */
+  readonly #loadFailed = signal(false);
+
+  /** Whether the grid should edit but its edit columns failed to load: the message and Try again show. */
+  protected readonly failed = computed(() => this.editable() && this.#loadFailed() && this.#editableColumnFor() === null);
+
+  /** The failed load's message. */
+  protected readonly failedText = computed(() => this.#l10n.ɵtext('tm.details.listEditorFailed')());
+
+  /** The failed load's retry label. */
+  protected readonly retryText = computed(() => this.#l10n.ɵtext('tm.details.retry')());
 
   /** The child entity's descriptor. */
   readonly #descriptor = computed(() => this.#entities.get(this.child().entity));
@@ -272,12 +325,7 @@ export class TmChildGridView {
       const mayEdit = !this.readonly() && (this.editable() || this.#record.can.edit());
       this.#record.mode();
       if (mayEdit && this.#editableColumnFor() === null) {
-        untracked(() =>
-          loadEditableColumns().then(
-            (columnFor) => this.#editableColumnFor.set(columnFor),
-            () => undefined,
-          ),
-        );
+        untracked(() => this.#loadEdit());
       }
     });
 
@@ -292,6 +340,22 @@ export class TmChildGridView {
         destroyRef,
       );
     });
+  }
+
+  /** Loads the edit columns again after a failed load: the failed load's Try again. */
+  protected retry(): void {
+    this.#loadEdit();
+  }
+
+  /** Loads the edit columns; a failure shows in edit mode, and a failed prefetch in view mode shows nothing. */
+  #loadEdit(): void {
+    ɵtmChildGridEditLoader.load().then(
+      (columnFor) => {
+        this.#loadFailed.set(false);
+        this.#editableColumnFor.set(columnFor);
+      },
+      () => this.#loadFailed.set(true),
+    );
   }
 
   /**

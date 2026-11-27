@@ -18,6 +18,7 @@ import {
   type Type,
   untracked,
 } from '@angular/core';
+import { TmButton } from '@tellma/core-ui/button';
 import { TmChip } from '@tellma/core-ui/chip';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmImage } from '@tellma/core-ui/image';
@@ -141,6 +142,12 @@ function loadEditor(): Promise<Type<unknown>> {
   return editorType;
 }
 
+/** The edit side's loader, which a test may replace to fail or delay the load. Internal. */
+export const ɵtmChildFilesEditorLoader: {
+  /** Loads the edit side and resolves its component. */
+  load: () => Promise<Type<unknown>>;
+} = { load: loadEditor };
+
 /**
  * The body of `tm-child-files`: the chips, and the edit side in edit and
  * create mode. Internal: `tm-child-files` renders it once it nears the
@@ -148,7 +155,7 @@ function loadEditor(): Promise<Type<unknown>> {
  */
 @Component({
   selector: 'tm-child-files-body',
-  imports: [NgComponentOutlet, TmChip, TmIcon, TmImage],
+  imports: [NgComponentOutlet, TmButton, TmChip, TmIcon, TmImage],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-child-files-body' },
   styles: `
@@ -196,6 +203,17 @@ function loadEditor(): Promise<Type<unknown>> {
       margin: 0;
       font-size: var(--text-sm);
     }
+
+    /* The edit side's failed load, in place of the drop zone: the message in the error colour, then Try again. */
+    .tm-child-files__failed-edit {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-2);
+      margin: 0 0 var(--space-2);
+      color: var(--error);
+      font-size: var(--text-sm);
+    }
   `,
   template: `
     @if (ref.shape() !== undefined) {
@@ -203,6 +221,13 @@ function loadEditor(): Promise<Type<unknown>> {
         <!-- Edit mode: the drop zone, the rows' progress, remove buttons and captions -->
         <ng-container *ngComponentOutlet="component; inputs: { files: ref }" />
       } @else {
+        @if (failed()) {
+          <!-- The edit side failed to load in edit mode: say so in place of the drop zone, and offer the load again -->
+          <p class="tm-child-files__failed-edit">
+            <span role="alert">{{ failedText() }}</span>
+            <button tmButton type="button" variant="ghost" size="sm" (click)="retry()">{{ retryText() }}</button>
+          </p>
+        }
         <!-- View mode, and edit mode until its side loads: the chips -->
         @if (ref.items().length > 0) {
           <ul class="tm-child-files__list">
@@ -325,6 +350,18 @@ export class ɵTmChildFilesBody {
   /** The edit side's component, once loaded. */
   protected readonly editor = signal<Type<unknown> | null>(null);
 
+  /** Whether the last load of the edit side failed. */
+  readonly #loadFailed = signal(false);
+
+  /** Whether the list edits but its edit side failed to load: the message and Try again show. */
+  protected readonly failed = computed(() => this.editing() && this.#loadFailed() && this.editor() === null);
+
+  /** The failed load's message. */
+  protected readonly failedText = computed(() => this.#l10n.ɵtext('tm.details.listEditorFailed')());
+
+  /** The failed load's retry label. */
+  protected readonly retryText = computed(() => this.#l10n.ɵtext('tm.details.retry')());
+
   /** The text of an empty list. */
   protected readonly noneText = computed(() => this.#l10n.ɵtext('tm.details.noFiles')());
 
@@ -404,14 +441,25 @@ export class ɵTmChildFilesBody {
       const mayEdit = this.#record.can.edit();
       const mode = this.#record.mode();
       if ((mayEdit || mode !== 'view') && this.editor() === null) {
-        untracked(() =>
-          loadEditor().then(
-            (component) => this.editor.set(component),
-            () => undefined,
-          ),
-        );
+        untracked(() => this.#loadEdit());
       }
     });
+  }
+
+  /** Loads the edit side again after a failed load: the failed load's Try again. */
+  protected retry(): void {
+    this.#loadEdit();
+  }
+
+  /** Loads the edit side; a failure shows in edit mode, and a failed prefetch in view mode shows nothing. */
+  #loadEdit(): void {
+    ɵtmChildFilesEditorLoader.load().then(
+      (component) => {
+        this.#loadFailed.set(false);
+        this.editor.set(component);
+      },
+      () => this.#loadFailed.set(true),
+    );
   }
 
   /**

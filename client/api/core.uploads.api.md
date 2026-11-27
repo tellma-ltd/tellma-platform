@@ -31,6 +31,9 @@ export class TmUploads {
     constructor();
     cancel(path: string): void;
     cancelAll(): void;
+    dismiss(path: string): void;
+    readonly failed: Signal<ReadonlySet<string>>;
+    readonly failures: Signal<number>;
     progress(path: string): number | null;
     removeRow(collection: string, index: number): void;
     readonly running: Signal<ReadonlySet<string>>;

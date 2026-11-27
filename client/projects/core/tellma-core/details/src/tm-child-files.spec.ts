@@ -17,7 +17,7 @@ import { TmCardHarness, TmChipHarness } from '@tellma/core-ui-testing';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
-import { ɵTmChildFilesBody } from './tm-child-files-body';
+import { ɵTmChildFilesBody, ɵtmChildFilesEditorLoader } from './tm-child-files-body';
 import { TmDetailsKit } from './tm-details-kit';
 import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-record';
 import {
@@ -331,7 +331,7 @@ describe("the details page's child files", () => {
     expect(held).toHaveLength(1);
   });
 
-  it("shows the server's reason on a refused upload's row, with no retry", async () => {
+  it("drops a refused upload's row, so no row without a file is saved, and gives the server's reason among the refusals", async () => {
     const rendered = await render();
     await edit(rendered);
     await drop(rendered, pdf('a.pdf'));
@@ -345,10 +345,11 @@ describe("the details page's child files", () => {
       }),
     );
     await tmSettle();
-    expect(rows(rendered)[1]).toContain('The PDF must be signed.');
-    expect(rowButton(rendered, 1, 'Try again')).toBeUndefined();
-    expect(attachments(rendered)[1]).toMatchObject({ id: -1, fileId: null });
+    expect(element(rendered).querySelector('.tm-child-files-editor__refusals')?.textContent?.trim()).toBe('a.pdf: The PDF must be signed.');
+    expect(attachments(rendered).map((row) => row['id'])).toEqual([31]);
+    expect(rows(rendered)).toHaveLength(1);
     expect(rendered.record.uploads.running().size).toBe(0);
+    expect(rendered.record.uploads.failed().size).toBe(0);
   });
 
   it('offers a retry after an upload fails on the server, and stages the file on the retry', async () => {
@@ -359,15 +360,58 @@ describe("the details page's child files", () => {
     held[0]!.reject(new TmApiError({ kind: 'server', status: 500 }));
     await tmSettle();
     expect(rows(rendered)[1]).toContain('Upload failed');
+    // The row stays, listed failed, which holds Save until it is retried or removed.
+    expect(attachments(rendered)[1]).toMatchObject({ id: -1, fileId: null });
+    expect([...rendered.record.uploads.failed()]).toEqual(['attachments.1.fileId']);
 
     rowButton(rendered, 1, 'Try again')!.click();
     await tmSettle();
     expect(held).toHaveLength(2);
     expect(rows(rendered)[1]).not.toContain('Upload failed');
+    expect(rendered.record.uploads.failed().size).toBe(0);
     held[1]!.resolve(blob(603, 'a.pdf'));
     await tmSettle();
     expect(attachments(rendered)[1]).toMatchObject({ id: -1, fileId: 603 });
     expect(rowButton(rendered, 1, 'Try again')).toBeUndefined();
+  });
+
+  it('clears a failed row from the failures once it is removed', async () => {
+    const rendered = await render();
+    await edit(rendered);
+    await drop(rendered, pdf('a.pdf'));
+    held[0]!.reject(new TmApiError({ kind: 'unavailable', status: 429, code: 'rate-limited', problem: { code: 'rate-limited', status: 429, instance: 'trace-2', title: 'Too many requests' } }));
+    await tmSettle();
+    // A busy server is a failure a retry mends, not a refusal.
+    expect(rowButton(rendered, 1, 'Try again')).toBeDefined();
+    expect(rendered.record.uploads.failed().size).toBe(1);
+
+    await manualChangeDetection(async () => (await rendered.loader.getAllHarnesses(TmChipHarness))[1]!.remove());
+    await tmSettle();
+    expect(attachments(rendered).map((row) => row['id'])).toEqual([31]);
+    expect(rendered.record.uploads.failed().size).toBe(0);
+  });
+
+  it('says so in edit mode when its edit side fails to load, and loads it on Try again', async () => {
+    const load = ɵtmChildFilesEditorLoader.load;
+    try {
+      ɵtmChildFilesEditorLoader.load = () => Promise.reject(new Error('The chunk failed to load.'));
+      const rendered = await render();
+      // The view-mode prefetch fails quietly.
+      expect(element(rendered).querySelector('.tm-child-files__failed-edit')).toBeNull();
+
+      rendered.details.edit();
+      await tmSettleUntil(() => element(rendered).querySelector('.tm-child-files__failed-edit') !== null, 'the failure shows');
+      const failure = element(rendered).querySelector('.tm-child-files__failed-edit')!;
+      expect(failure.querySelector('[role="alert"]')?.textContent?.trim()).toBe("This list couldn't be loaded for editing.");
+      expect(element(rendered).querySelector('tm-child-files-editor')).toBeNull();
+
+      ɵtmChildFilesEditorLoader.load = load;
+      failure.querySelector('button')!.click();
+      await tmSettleUntil(() => element(rendered).querySelector('tm-child-files-editor tm-dropzone') !== null, 'the drop zone shows');
+      expect(element(rendered).querySelector('.tm-child-files__failed-edit')).toBeNull();
+    } finally {
+      ɵtmChildFilesEditorLoader.load = load;
+    }
   });
 
   it("removes a row, aborting its upload, and the later rows' uploads move up with them", async () => {

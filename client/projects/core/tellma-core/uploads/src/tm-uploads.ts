@@ -13,6 +13,10 @@ import type { TmBlobDescriptor } from '@tellma/core';
 // and drafts, and the share each upload has sent, for its progress ring.
 // A child row's path holds its index (`attachments.2.fileId`), so removing
 // a row moves the later rows' entries up with their rows (spec 0031 §6.5).
+// A path whose last upload failed stays failed until it uploads again, is
+// cancelled, cleared, dismissed or removed, so Save can refuse while a file
+// the user picked has not arrived; the count of failures tells Save whether
+// any upload it waited for failed, even one its editor dismissed at once.
 // A form's host provides one; an editor outside any host uploads alone.
 
 /** An upload in flight: what aborts it, and the share of the file it has sent. */
@@ -48,8 +52,20 @@ export class TmUploads {
   /** The blob each path's last upload staged. */
   readonly #staged = signal<ReadonlyMap<string, TmBlobDescriptor>>(new Map());
 
+  /** The paths whose last upload failed, as a map so a removed row's entries move like the others. */
+  readonly #failed = signal<ReadonlyMap<string, true>>(new Map());
+
+  /** The failures so far. */
+  readonly #failures = signal(0);
+
   /** The paths with an upload in flight. */
   readonly running: Signal<ReadonlySet<string>> = computed(() => new Set(this.#running().keys()));
+
+  /** The paths whose last upload failed, other than by an abort, and that nothing has cleared since. */
+  readonly failed: Signal<ReadonlySet<string>> = computed(() => new Set(this.#failed().keys()));
+
+  /** How many uploads have failed, other than by an abort, since the form began; it only grows. */
+  readonly failures: Signal<number> = this.#failures.asReadonly();
 
   constructor() {
     // A host that goes away takes its uploads with it.
@@ -81,8 +97,10 @@ export class TmUploads {
   /**
    * Runs an upload for a path, listing the path as running until it
    * settles. A new upload for a path aborts the one in flight there, whose
-   * result is then ignored. A successful upload stages its blob, under the
-   * path its row has moved to if a row before it was removed meanwhile.
+   * result is then ignored, and clears the path's failure. A successful
+   * upload stages its blob, under the path its row has moved to if a row
+   * before it was removed meanwhile; a failed one, other than by an abort,
+   * lists the path as failed.
    *
    * @param path - The field's path.
    * @param upload - The upload, given the signal that aborts it and the callback that reports the share sent.
@@ -104,6 +122,14 @@ export class TmUploads {
       controller.signal.throwIfAborted();
       this.stage(this.#pathOf(controller) ?? path, blob);
       return blob;
+    } catch (error) {
+      // --- A failure the upload's own abort did not cause marks the path its row holds now ---
+      const at = this.#pathOf(controller);
+      if (at !== null && !controller.signal.aborted) {
+        this.#failed.update((failed) => new Map(failed).set(at, true));
+        this.#failures.update((count) => count + 1);
+      }
+      throw error;
     } finally {
       // Only the upload's own entry leaves, wherever its row has moved; a later upload has replaced an aborted one.
       const at = this.#pathOf(controller);
@@ -118,11 +144,12 @@ export class TmUploads {
   }
 
   /**
-   * Aborts the upload in flight for a path, if any.
+   * Aborts the upload in flight for a path, if any, and clears its failure.
    *
    * @param path - The field's path.
    */
   cancel(path: string): void {
+    this.dismiss(path);
     const running = this.#running().get(path);
     if (running !== undefined) {
       running.controller.abort();
@@ -137,27 +164,46 @@ export class TmUploads {
   /**
    * Discards every upload of the form, as Cancel does with its changes:
    * each upload in flight aborts, so its result is ignored, and every
-   * staged blob clears.
+   * staged blob and failure clears.
    *
    * @example
    * ```ts
-   * uploads.cancelAll(); // running() is empty and staged('imageId') is undefined
+   * uploads.cancelAll(); // running() and failed() are empty, and staged('imageId') is undefined
    * ```
    */
   cancelAll(): void {
     this.#running().forEach((running) => running.controller.abort());
     this.#running.set(new Map());
     this.#staged.set(new Map());
+    this.#failed.set(new Map());
   }
 
   /**
-   * Stages a blob for a path, as a successful upload does, or clears it.
-   * A host restoring a draft stages the blobs the draft held.
+   * Clears a path's failure without staging anything: its editor has shown
+   * a refusal that no retry mends, and the field keeps the value it had.
+   *
+   * @param path - The field's path.
+   */
+  dismiss(path: string): void {
+    if (this.#failed().has(path)) {
+      this.#failed.update((failed) => {
+        const next = new Map(failed);
+        next.delete(path);
+        return next;
+      });
+    }
+  }
+
+  /**
+   * Stages a blob for a path, as a successful upload does, or clears it;
+   * either way the path's failure clears. A host restoring a draft stages
+   * the blobs the draft held.
    *
    * @param path - The field's path.
    * @param blob - The blob, or `null` to clear the path.
    */
   stage(path: string, blob: TmBlobDescriptor | null): void {
+    this.dismiss(path);
     this.#staged.update((staged) => {
       const next = new Map(staged);
       if (blob === null) {
@@ -171,8 +217,8 @@ export class TmUploads {
 
   /**
    * Follows the removal of a child row: the row's uploads abort and its
-   * staged blobs clear, and every later row's entries move up one index
-   * with their row, as the form's paths do.
+   * staged blobs and failures clear, and every later row's entries move up
+   * one index with their row, as the form's paths do.
    *
    * @param collection - The collection's path, such as `attachments`.
    * @param index - The removed row's index.
@@ -191,6 +237,7 @@ export class TmUploads {
     }
     this.#running.update((running) => shifted(running, collection, index));
     this.#staged.update((staged) => shifted(staged, collection, index));
+    this.#failed.update((failed) => shifted(failed, collection, index));
   }
 
   /**

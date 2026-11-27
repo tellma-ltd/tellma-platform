@@ -24,8 +24,10 @@ import { injectTmDetailsRecord } from './tm-details-record';
 // against its kind's policy, adds its row `{ id: −n, fileId: null }` at
 // once and uploads through the form's uploads, under the row's file path,
 // so the form is pending and Save waits; the row's file is set once the
-// blob is staged. A refused file says why at once; a refused upload says
-// the server's reason on its row; a failed one offers a retry. Removing a
+// blob is staged. A refused file says why at once; a refused upload leaves
+// the model, so no row without a file is saved, and says the server's
+// reason among the refusals; a failed one keeps its row with a retry, and
+// the form's uploads hold Save until it is retried or removed. Removing a
 // row aborts its upload, and the later rows' uploads move up with them.
 
 /** A field without errors. */
@@ -307,15 +309,28 @@ export class ɵTmChildFilesEditor {
    */
   protected remove(item: ɵTmChildFileItem): void {
     const shape = untracked(this.files().shape);
+    if (shape !== undefined) {
+      this.#removeAt(shape, item.index, item.id);
+    }
+  }
+
+  /**
+   * Removes the row at an index from the model, with its uploads, and forgets its upload's state.
+   *
+   * @param shape - The collection's shape.
+   * @param index - The row's index now.
+   * @param id - The row's id.
+   */
+  #removeAt(shape: ɵTmChildFilesShape, index: number, id: TmId): void {
     const collection = this.#collection();
-    if (shape === undefined || collection === undefined) {
+    if (collection === undefined) {
       return;
     }
-    this.#formUploads.removeRow(shape.child.json, item.index);
+    this.#formUploads.removeRow(shape.child.json, index);
     const state = collection();
-    state.value.update((rows) => (rows ?? []).filter((_, index) => index !== item.index));
+    state.value.update((rows) => (rows ?? []).filter((_, at) => at !== index));
     state.markAsDirty();
-    this.#forget(item.id);
+    this.#forget(id);
   }
 
   /**
@@ -364,8 +379,18 @@ export class ɵTmChildFilesEditor {
         if (failure.kind === 'aborted') {
           return;
         }
-        const message = failure.kind === 'rejected' ? untracked(failure.message) : untracked(this.#l10n.ɵtext('tm.value.uploadFailed'));
-        this.#uploads.update((uploads) => new Map(uploads).set(id, { file, failure: message, retryable: failure.kind === 'failed' }));
+        // --- A refused file leaves the model, so no row without a file is saved; its reason joins the refusals ---
+        if (failure.kind === 'rejected') {
+          const at = this.#indexOf(shape, id);
+          if (at !== -1) {
+            this.#removeAt(shape, at, id);
+          }
+          const refusal = untracked(this.#l10n.ɵtext('tm.details.fileRefused', { name: file.name, message: untracked(failure.message) }));
+          this.refusals.update((refusals) => [...refusals, refusal]);
+          return;
+        }
+        // A failure a retry may mend keeps its row, which holds Save through the form's uploads until it is retried or removed.
+        this.#uploads.update((uploads) => new Map(uploads).set(id, { file, failure: untracked(this.#l10n.ɵtext('tm.value.uploadFailed')), retryable: true }));
       },
     );
   }

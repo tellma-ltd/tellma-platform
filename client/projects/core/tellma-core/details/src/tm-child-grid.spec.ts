@@ -18,6 +18,7 @@ import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 
 import { tmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
+import { ɵtmChildGridEditLoader } from './tm-child-grid-view';
 import { TmDetailsKit } from './tm-details-kit';
 import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-record';
 import {
@@ -440,6 +441,53 @@ describe("the details page's child grid", () => {
     await rendered.details.cancel();
     await tmSettle();
     expect(await card.isInvalid()).toBe(false);
+  });
+
+  it("holds the card's error only for an error the grid shows: a new line's untouched required cell stays quiet", async () => {
+    const rendered = await render(TmTestLinesLayout);
+    await edit(rendered);
+    const card = await rendered.loader.getHarness(TmCardHarness);
+    const grid = await (await rendered.loader.getHarness(TmChildGridHarness)).getGrid();
+
+    // --- A new line typed in its Description: its Amount is required, empty and untouched ---
+    await grid.openEditor(2, 1, 'type', 'Freight');
+    await grid.commitEditor('enter');
+    await tmSettle();
+    expect(lines(rendered)[2]).toMatchObject({ id: -1, description: 'Freight', amount: null });
+    expect(await grid.getErrorCount()).toBe(0);
+    expect(await card.isInvalid()).toBe(false);
+
+    // --- Once the Amount is touched, the grid shows its error, and so does the card ---
+    const form = rendered.details.form as unknown as Readonly<Record<string, Readonly<Record<number, Readonly<Record<string, () => { markAsTouched(): void }>>>>>>;
+    form['lines']![2]!['amount']!().markAsTouched();
+    await tmSettle();
+    expect(await grid.getErrorCount()).toBe(1);
+    expect(await card.isInvalid()).toBe(true);
+  });
+
+  it('says so over the status band when its edit columns fail to load, and loads them on Try again', async () => {
+    const load = ɵtmChildGridEditLoader.load;
+    try {
+      ɵtmChildGridEditLoader.load = () => Promise.reject(new Error('The chunk failed to load.'));
+      const rendered = await render(TmTestLinesLayout);
+      const root = rendered.fixture.nativeElement as HTMLElement;
+      // The view-mode prefetch fails quietly.
+      expect(root.querySelector('.tm-child-grid-view__failed')).toBeNull();
+
+      rendered.details.edit();
+      await tmSettleUntil(() => root.querySelector('.tm-child-grid-view__failed') !== null, 'the failure shows');
+      const failure = root.querySelector('.tm-child-grid-view__failed')!;
+      expect(failure.querySelector('[role="alert"]')?.textContent?.trim()).toBe("This list couldn't be loaded for editing.");
+      // No row can be added through read-only columns, so the placeholder row waits for them.
+      expect(root.querySelector('tm-child-grid .tm-grid__row--placeholder')).toBeNull();
+
+      ɵtmChildGridEditLoader.load = load;
+      failure.querySelector('button')!.click();
+      await tmSettleUntil(() => root.querySelector('tm-child-grid .tm-grid__row--placeholder') !== null, 'the placeholder row shows');
+      expect(root.querySelector('.tm-child-grid-view__failed')).toBeNull();
+    } finally {
+      ɵtmChildGridEditLoader.load = load;
+    }
   });
 
   it('stays read-only in edit mode when the layout says so', async () => {

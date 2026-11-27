@@ -295,6 +295,11 @@ describe('the details host', () => {
     return { card: await card.isInvalid(), tab: document.querySelector('.tm-details-tabs__name')?.textContent?.trim() ?? null };
   }
 
+  /** What the page's polite status region says. */
+  function live(): string {
+    return document.querySelector('.tm-details__live')?.textContent?.trim() ?? '';
+  }
+
   /** What the status strip's notice says, or `null` while it shows none. */
   function notice(): string | null {
     return document.querySelector('.tm-details__notice')?.textContent?.trim() ?? null;
@@ -873,6 +878,207 @@ describe('the details host', () => {
     expect(await TestBed.inject(TmPageActions).invoke('details.save', {}, 'user')).toEqual({ outcome: 'done' });
     expect(rig.api.calls().filter((call) => call.route === 'customers/save')).toHaveLength(1);
     expect(layout.details.mode()).toBe('view');
+  });
+
+  it('writes nothing when the upload a dirty edit waited for fails, and holds Save until the file is tried again', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    const layout = latest()!;
+    layout.details.update((model) => ({ ...model, name: 'Renamed' }));
+    rig.api.respond('customers/save', () => saved(5, 'Renamed'));
+    let fail!: (error: unknown) => void;
+
+    await manualChangeDetection(async () => {
+      const run = layout.record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((_, reject) => (fail = reject)));
+      void run.catch(() => undefined);
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+      fail(new TmApiError({ kind: 'server', status: 500 }));
+      expect(await invoked).toEqual({ outcome: 'cancelled' });
+      await tmSettle();
+    });
+    // The edit stays, so the field keeps its failure in view, and the page says why nothing was saved.
+    expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+    expect(layout.details.mode()).toBe('edit');
+    expect([...layout.record.uploads.failed()]).toEqual(['imageId']);
+    expect(live()).toBe("Nothing was saved: a file didn't upload.");
+
+    // --- While the file stays failed, Save refuses at once ---
+    expect(await TestBed.inject(TmPageActions).invoke('details.save', {}, 'user')).toEqual({ outcome: 'cancelled' });
+    expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+
+    // --- Once the file uploads again, Save writes it ---
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+    await layout.record.uploads.start('imageId', () => Promise.resolve(blob)).then((staged) => layout.details.update((model) => ({ ...model, imageId: staged.id })));
+    expect(await TestBed.inject(TmPageActions).invoke('details.save', {}, 'user')).toEqual({ outcome: 'done' });
+    const writes = rig.api.calls().filter((call) => call.route === 'customers/save');
+    expect(writes).toHaveLength(1);
+    expect(JSON.stringify(writes[0]!.body)).toContain('"imageId":88');
+  });
+
+  it('keeps a clean edit when the upload it waited for is refused, though its editor dismissed the refusal', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    const layout = latest()!;
+    let refuse!: (error: unknown) => void;
+
+    await manualChangeDetection(async () => {
+      const run = layout.record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((_, reject) => (refuse = reject)));
+      // As the image's editor does with a refusal: it shows the reason, and the field keeps its value.
+      void run.catch(() => layout.record.uploads.dismiss('imageId'));
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+      refuse(new TmApiError({ kind: 'validation', status: 415, code: 'blob-rejected', problem: { code: 'blob-rejected', status: 415, instance: 'trace-1', title: 'Refused' } }));
+      expect(await invoked).toEqual({ outcome: 'cancelled' });
+    });
+    expect(layout.details.mode()).toBe('edit');
+    expect(layout.record.uploads.failed().size).toBe(0);
+    expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+
+    // The refusal was shown; the next Save of the clean edit goes back to view mode.
+    expect(await TestBed.inject(TmPageActions).invoke('details.save', {}, 'user')).toEqual({ outcome: 'done' });
+    expect(layout.details.mode()).toBe('view');
+  });
+
+  it('writes nothing in create mode when an upload fails', async () => {
+    await start();
+    await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    const layout = latest()!;
+    layout.details.update((model) => ({ ...model, name: 'New one' }));
+    let fail!: (error: unknown) => void;
+
+    await manualChangeDetection(async () => {
+      void layout.record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((_, reject) => (fail = reject))).catch(() => undefined);
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+      fail(new TmApiError({ kind: 'offline', status: 0 }));
+      expect(await invoked).toEqual({ outcome: 'cancelled' });
+    });
+    expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+    expect(layout.details.mode()).toBe('create');
+    expect(TestBed.inject(Router).url).toBe('/17/customers/new');
+  });
+
+  it('aborts an upload started while the write runs, so nothing it returns reaches the saved record', async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    const layout = latest()!;
+    const record = layout.record;
+    layout.details.update((model) => ({ ...model, name: 'Renamed' }));
+    let answer!: (result: TmJsonObject) => void;
+    rig.api.respond('customers/save', () => new Promise<TmJsonObject>((resolve) => (answer = resolve)));
+    let finish!: (blob: TmBlobDescriptor) => void;
+    let wrote = false;
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+
+    await manualChangeDetection(async () => {
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+      // A pick while the write runs: as the image's editor does, its result would become the field's value.
+      const settled = record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((resolve) => (finish = resolve))).then(
+        () => (wrote = true),
+        (error: unknown) => error,
+      );
+      answer(saved(5, 'Renamed'));
+      expect(await invoked).toEqual({ outcome: 'done' });
+      expect(record.uploads.running().size).toBe(0);
+      finish(blob);
+      expect(await settled).toMatchObject({ name: 'AbortError' });
+    });
+    expect(wrote).toBe(false);
+    expect(layout.details.mode()).toBe('view');
+    expect(record.model()).toBe(record.entity());
+    expect(record.uploads.staged('imageId')).toBeUndefined();
+  });
+
+  it('refuses a cancel() while Save waits for an upload in create mode, and Save then writes once', async () => {
+    await start();
+    await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    const layout = latest()!;
+    layout.details.update((model) => ({ ...model, name: 'New one' }));
+    rig.api.respond('customers/save', () => saved(6, 'New one'));
+    let finish!: (blob: TmBlobDescriptor) => void;
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+
+    await manualChangeDetection(async () => {
+      void layout.record.uploads
+        .start('imageId', () => new Promise<TmBlobDescriptor>((resolve) => (finish = resolve)))
+        .then((staged) => layout.details.update((model) => ({ ...model, imageId: staged.id })));
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+
+      // A hatch's cancel() while Save waits changes nothing: the page stays, and the upload runs on.
+      expect(await layout.details.cancel()).toBe(false);
+      expect(layout.details.mode()).toBe('create');
+      expect(TestBed.inject(Router).url).toBe('/17/customers/new');
+      expect([...layout.record.uploads.running()]).toEqual(['imageId']);
+
+      finish(blob);
+      expect(await invoked).toEqual({ outcome: 'done' });
+    });
+    const writes = rig.api.calls().filter((call) => call.route === 'customers/save');
+    expect(writes).toHaveLength(1);
+    expect(JSON.stringify(writes[0]!.body)).toContain('"imageId":88');
+  });
+
+  it('aborts an upload in flight when Cancel leaves a new record, writing nothing', async () => {
+    await start();
+    const page = await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    const record = latest()!.record;
+    let aborted = false;
+
+    await manualChangeDetection(async () => {
+      void record.uploads
+        .start('imageId', (signal) => {
+          signal.addEventListener('abort', () => (aborted = true));
+          return new Promise<TmBlobDescriptor>(() => undefined);
+        })
+        .catch(() => undefined);
+      await page.click('cancel');
+      await tmSettle();
+    });
+    expect(aborted).toBe(true);
+    expect(record.uploads.running().size).toBe(0);
+    expect(TestBed.inject(Location).path()).toBe('/17');
+    expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+  });
+
+  it('aborts an upload in flight once the Discard question is answered, restoring the server copy', async () => {
+    await start();
+    const page = await openCustomer(5);
+    const root = TestbedHarnessEnvironment.documentRootLoader(router.fixture);
+    await page.click('edit');
+    const layout = latest()!;
+    const record = layout.record;
+    layout.details.update((model) => ({ ...model, name: 'Renamed' }));
+    let aborted = false;
+
+    await manualChangeDetection(async () => {
+      void record.uploads
+        .start('imageId', (signal) => {
+          signal.addEventListener('abort', () => (aborted = true));
+          return new Promise<TmBlobDescriptor>(() => undefined);
+        })
+        .catch(() => undefined);
+      await page.click('cancel');
+      await tmSettleUntil(() => document.querySelector('tm-confirm-content') !== null, 'the Discard question opens');
+      const confirm = await root.getHarness(TmConfirmHarness);
+      // The question is open: nothing is discarded yet.
+      expect(aborted).toBe(false);
+      await confirm.choose('Discard changes');
+      await tmSettle();
+    });
+    expect(aborted).toBe(true);
+    expect(record.uploads.running().size).toBe(0);
+    expect(layout.details.mode()).toBe('view');
+    expect(record.model()).toBe(record.entity());
+    expect(layout.details.model()['name']).toBe('Customer 5');
   });
 
   it('ends Save cleanly when the page is left while the write runs', async () => {

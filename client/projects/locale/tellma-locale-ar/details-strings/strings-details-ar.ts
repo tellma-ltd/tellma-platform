@@ -32,6 +32,7 @@ export const TM_DETAILS_STRINGS_AR: TmStringTree = {
     loading: 'جارٍ التحميل',
     editing: 'تعديل {name}',
     saved: 'تم الحفظ',
+    uploadsFailed: 'لم يُحفظ شيء: تعذّر رفع ملف.',
     refreshFailed: 'تعذّر تحديث هذا السجل. تغييراتك محفوظة.',
     retry: 'إعادة المحاولة',
     discard: {
@@ -46,6 +47,7 @@ export const TM_DETAILS_STRINGS_AR: TmStringTree = {
     audit: 'معلومات التدقيق',
     aside: 'معلومات ذات صلة',
     editorFailed: 'تعذّر تحميل هذا الحقل للتعديل.',
+    listEditorFailed: 'تعذّر تحميل هذه القائمة للتعديل.',
     total: 'إجمالي {label}',
     totals: 'الإجماليات',
     tableFailed: 'تعذّر تحميل هذا الجدول.',

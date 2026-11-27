@@ -184,6 +184,15 @@ describe('tm-value', () => {
     expect(link.hasAttribute('download')).toBe(true);
   });
 
+  it("shows a file's size beside its name, from the blob's row", async () => {
+    const { show, rig } = await start();
+    const file = await show(rig.entities.resolve('core.OutgoingEmailAttachment', 'File')!, { id: 51, fileName: 'invoice.pdf', size: '1536' });
+    expect(file.querySelector('a')?.textContent?.trim()).toBe('invoice.pdf');
+    expect(file.querySelector('.tm-value__size')?.textContent?.trim()).toBe('1.5 kB');
+    const unsized = await show(rig.entities.resolve('core.OutgoingEmailAttachment', 'File')!, { id: 51, fileName: 'invoice.pdf' });
+    expect(unsized.querySelector('.tm-value__size')).toBeNull();
+  });
+
   it('shows a plan’s group and navigation cells', async () => {
     const { show, rig } = await start();
     const plan = TestBed.runInInjectionContext(() => tmSelectPlan(rig.entities.get('acme.Customer'), ['Name', 'Currency']));

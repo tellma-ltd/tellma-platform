@@ -655,11 +655,13 @@ export class TmValueEditor {
           return;
         }
         this.uploading.set(false);
-        // The server refused the file: its reason, which no retry mends.
+        // The server refused the file: its reason, which no retry mends; the field keeps its value, so Save may go on.
         if (failure.kind === 'rejected') {
           this.#local.set([{ kind: 'upload', message: untracked(failure.message) }]);
+          this.#uploads?.dismiss(path);
           return;
         }
+        // A failure a retry may mend stays listed in the host's uploads, which holds Save until it is retried or cleared.
         this.#fail('upload', 'tm.value.uploadFailed');
         this.#retry.set(() => this.#upload(policy, file));
       },
