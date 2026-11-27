@@ -4,12 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Location } from '@angular/common';
-import { Injectable } from '@angular/core';
+import { Injectable, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { TmClientCache, type TmClientCacheArea } from '@tellma/core-ui';
 import { TmBusyOverlay } from '@tellma/core-ui/busy-overlay';
 import { TmConfirm, type TmConfirmYesNoOptions } from '@tellma/core-ui/confirm';
 import { TmToasts } from '@tellma/core-ui/toast';
-import { TmFakeSession } from '@tellma/core-testing';
+import { TmFakeClientCache, TmFakeSession } from '@tellma/core-testing';
 
 import { TmApiError } from '../api/tm-api-error';
 import { TM_NOW } from '../app/tm-now';
@@ -29,7 +30,9 @@ import { TmFakeSessionHost } from './tm-session.testing.util';
 
 // The session's flows in a whole test app, signed in as the test user. The
 // user's other tabs are scripted on the tab bus: each answers a drafts query
-// with what the spec sets, and the spec plays their session messages.
+// with what the spec sets, and the spec plays their session messages. The
+// clean-up sweeps the testing providers' client cache, whose stores are kept
+// in memory; one spec at the end runs it over the browser's own stores.
 
 /** The test user's other tabs: what each answers a drafts query with. */
 interface TmOtherTab {
@@ -87,10 +90,19 @@ interface TmFlowsRig extends TmAppRig {
   readonly paths: TmSessionPaths;
   readonly flows: TmSessionFlows;
   readonly drafts: TmSessionStorage;
+  readonly cache: TmFakeClientCache;
+}
+
+/** How a spec sets the test app up. */
+interface TmFlowsOptions {
+  /** The boot script's result, when the spec sets one. */
+  readonly boot?: Partial<TmBootResult>;
+  /** More providers, after the rig's. */
+  readonly providers?: readonly Provider[];
 }
 
 /** Starts the test app signed in as the test user, with the flows loaded. */
-async function setUp(options: { boot?: Partial<TmBootResult> } = {}): Promise<TmFlowsRig> {
+async function setUp(options: TmFlowsOptions = {}): Promise<TmFlowsRig> {
   const host = new TmFakeSessionHost();
   host.cookieJar = tmProfileCookies(TM_TEST_SUB, 'en');
   const confirm = new TmRecordingConfirm();
@@ -103,6 +115,7 @@ async function setUp(options: { boot?: Partial<TmBootResult> } = {}): Promise<Tm
       // Read through the global, so a spec's fake clock moves it.
       { provide: TM_NOW, useValue: () => Date.now() },
       ...(options.boot === undefined ? [] : [{ provide: TM_BOOT_RESULT, useValue: options.boot }]),
+      ...(options.providers ?? []),
     ],
   });
   // The first render loads the flows' chunk, as the app's does.
@@ -121,6 +134,7 @@ async function setUp(options: { boot?: Partial<TmBootResult> } = {}): Promise<Tm
     paths: TestBed.inject(TmSessionPaths),
     flows: TestBed.inject(TmSessionFlows),
     drafts: TestBed.inject(TM_DRAFTS_STORAGE)!,
+    cache: TestBed.inject(TmFakeClientCache),
   };
 }
 
@@ -147,6 +161,40 @@ function drafts(rig: TmFlowsRig): number {
   return tmStorageKeys(rig.drafts, TM_DRAFT_KEY_PREFIX).length;
 }
 
+/** A draft key of the test user's, as session storage holds it. */
+const DRAFT_KEY = `${tmDraftPrefix(TM_TEST_SUB)}17:gl.Center:5`;
+
+/**
+ * Gives the client cache a store of each kind the clean-up meets: the
+ * images cache and the service worker's, the store's database and a
+ * feature's, the boot record and a feature's key, and in session storage
+ * the sign-in's key and a draft.
+ */
+function seedStores(rig: TmFlowsRig): void {
+  rig.cache.add('cache-storage', 'tm-images-v1', 'ngsw:/:db:control');
+  rig.cache.add('indexeddb', 'tm-app', 'tm-feature');
+  rig.cache.add('local-storage', 'tm.boot', 'tm.feature');
+  rig.cache.add('session-storage', 'tm.login', DRAFT_KEY);
+}
+
+/** What the client cache's stores hold now, by area. */
+function stores(rig: TmFlowsRig): Record<TmClientCacheArea, readonly string[]> {
+  return {
+    'cache-storage': rig.cache.names('cache-storage'),
+    indexeddb: rig.cache.names('indexeddb'),
+    'local-storage': rig.cache.names('local-storage'),
+    'session-storage': rig.cache.names('session-storage'),
+  };
+}
+
+/** What a sign-out's clean-up leaves of the seeded stores: the store's database, the boot record and the service worker's cache. */
+const SIGNED_OUT_STORES: Record<TmClientCacheArea, readonly string[]> = {
+  'cache-storage': ['ngsw:/:db:control'],
+  indexeddb: ['tm-app'],
+  'local-storage': ['tm.boot'],
+  'session-storage': [],
+};
+
 /** The open session-ended dialog, or `null`. */
 function endedDialog(): HTMLElement | null {
   return document.querySelector<HTMLElement>('[role="alertdialog"]');
@@ -165,6 +213,7 @@ describe('TmSessionFlows', () => {
       const rig = await setUp();
       rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
       draft(rig, '17:gl.Center:5');
+      seedStores(rig);
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.paths.expired('401');
       expect(rig.paths.state()).toBe('expired');
@@ -174,6 +223,9 @@ describe('TmSessionFlows', () => {
       expect(rig.host.cookieWrites).toEqual([TM_PROFILE_COOKIE_DELETE]);
       expect(rig.bus.session().at(-1)).toEqual({ type: 'session.expired', sub: TM_TEST_SUB });
       expect(drafts(rig)).toBe(1);
+      // The browser's stores lose all but the store's database, the boot record and the drafts.
+      expect(rig.cache.sweeps()).toHaveLength(1);
+      expect(stores(rig)).toEqual({ ...SIGNED_OUT_STORES, 'session-storage': [DRAFT_KEY] });
       expect(rig.store.boot.read()).toMatchObject({ sub: TM_TEST_SUB, lastTenantId: 17 });
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.expired', props: { source: '401' } }]);
     });
@@ -254,7 +306,7 @@ describe('TmSessionFlows', () => {
       rig.bus.receive({ type: 'session.expired', sub: TM_TEST_SUB });
       await tmSettleUntil(() => endedDialog() !== null, 'the session-ended dialog opened');
       expect(rig.paths.state()).toBe('expired');
-      expect([sessionSweeps(sweep), rig.host.cookieWrites, drafts(rig)]).toEqual([[], [], 1]);
+      expect([sessionSweeps(sweep), rig.cache.sweeps(), rig.host.cookieWrites, drafts(rig)]).toEqual([[], [], [], 1]);
     });
 
     it('reloads a tab that saw the session end once the user signs in again elsewhere', async () => {
@@ -326,6 +378,7 @@ describe('TmSessionFlows', () => {
       rig.bus.tabs.push({ dirty: 0, busy: false });
       rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
       rig.api.respond('/bff/logout', { redirectUrl: 'https://id.example/connect/endsession?id_token_hint=x' });
+      seedStores(rig);
       const overlay = vi.spyOn(TestBed.inject(TmBusyOverlay), 'run');
       const sweep = vi.spyOn(rig.store, 'sweep');
       let settled = false;
@@ -342,6 +395,7 @@ describe('TmSessionFlows', () => {
       const logout = rig.api.calls().find((call) => call.route === '/bff/logout');
       expect(logout).toMatchObject({ kind: 'write', body: { scope: 'global' } });
       expect(sessionSweeps(sweep)).toEqual([['session-ended']]);
+      expect(stores(rig)).toEqual(SIGNED_OUT_STORES);
       expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: null });
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.signed-out', props: { origin: 'self' } }]);
     });
@@ -406,13 +460,13 @@ describe('TmSessionFlows', () => {
         }),
       ]);
       const queries = rig.bus.types().filter((type) => type === 'drafts.query').length;
-      // The confirmed sign-out leaves once the clean-up has swept the
-      // browser's CacheStorage and IndexedDB, whose answers no fake clock
-      // moves: an advance of any length yields one real task, and one more
-      // per timer it fires, which a slow disk outlasts. So the spec waits on
-      // the leave itself, with the fake clock held where the confirm left
-      // it: a second wait for the save would stop at its first query's
-      // window, and the tab would never leave.
+      // The confirmed sign-out leaves once its clean-up has settled. An
+      // advance of any length bounds that only by a count of real tasks (one,
+      // and one more per timer it fires), which a clean-up over the browser's
+      // own stores would outlast. So the spec waits on the leave itself, with
+      // the fake clock held where the confirm left it: a second wait for the
+      // save would stop at its first query's window, and the tab would never
+      // leave.
       await tmWaitUntil(() => rig.host.assigned.length > 0, () => vi.advanceTimersByTimeAsync(0), 'the tab left for the signed-out page');
       expect(rig.host.assigned).toEqual(['/signed-out']);
       expect(rig.bus.types().filter((type) => type === 'drafts.query').length).toBe(queries);
@@ -469,6 +523,7 @@ describe('TmSessionFlows', () => {
     it("follows another tab's sign-out to the signed-out page, clearing its own session storage", async () => {
       const rig = await setUp();
       draft(rig, '17:gl.Center:5');
+      seedStores(rig);
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.bus.receive({ type: 'session.signing-out', sub: TM_TEST_SUB });
       rig.bus.receive({ type: 'session.signed-out', sub: TM_TEST_SUB });
@@ -476,6 +531,13 @@ describe('TmSessionFlows', () => {
       expect(rig.host.replaced).toEqual(['/signed-out']);
       expect(drafts(rig)).toBe(0);
       expect(sessionSweeps(sweep)).toEqual([]);
+      // The signing-out tab swept the shared stores; this tab sweeps its own session storage alone.
+      expect(stores(rig)).toEqual({
+        'cache-storage': ['tm-images-v1', 'ngsw:/:db:control'],
+        indexeddb: ['tm-app', 'tm-feature'],
+        'local-storage': ['tm.boot', 'tm.feature'],
+        'session-storage': [],
+      });
       expect(rig.host.cookieWrites).toEqual([TM_PROFILE_COOKIE_DELETE]);
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.signed-out', props: { origin: 'other-tab' } }]);
     });
@@ -483,14 +545,34 @@ describe('TmSessionFlows', () => {
     it('signs every tab out when the session ended elsewhere: this tab cleans up for all and tells them', async () => {
       const rig = await setUp();
       rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
+      seedStores(rig);
       const sweep = vi.spyOn(rig.store, 'sweep');
       rig.paths.ɵsignedOutElsewhere();
       await tmSettleUntil(() => rig.host.replaced.length > 0, 'the tab left for the signed-out page');
       expect(rig.host.replaced).toEqual(['/signed-out']);
       expect(sessionSweeps(sweep)).toEqual([['session-ended']]);
+      expect(stores(rig)).toEqual(SIGNED_OUT_STORES);
       expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: null });
       expect(rig.bus.session()).toEqual([{ type: 'session.signed-out', sub: TM_TEST_SUB }]);
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.signed-out', props: { origin: 'elsewhere' } }]);
+    });
+
+    it("leaves only once the browser's stores are swept, and clears the boot record after the sweep", async () => {
+      const rig = await setUp();
+      rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
+      rig.api.respond('/bff/logout', {});
+      let release = (): void => undefined;
+      rig.cache.clearResult = new Promise<void>((resolve) => (release = resolve));
+      void rig.paths.ɵsignOut();
+      await tmSettleUntil(() => rig.cache.sweeps().length > 0, 'the clean-up swept the stores');
+      // Held at the sweep: the tab stays, the other tabs are not told yet, and the boot record still names the user.
+      await tmSettle();
+      expect([rig.host.assigned, rig.bus.types().includes('session.signed-out'), rig.store.boot.read().sub]).toEqual([[], false, TM_TEST_SUB]);
+      release();
+      await tmSettleUntil(() => rig.host.assigned.length > 0, 'the tab left for the signed-out page');
+      expect(rig.host.assigned).toEqual(['/signed-out']);
+      expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: null });
+      expect(rig.bus.types().at(-1)).toBe('session.signed-out');
     });
   });
 
@@ -522,6 +604,66 @@ describe('TmSessionFlows', () => {
       await vi.advanceTimersByTimeAsync(TM_SIGNING_OUT_LIFT_MS);
       expect(rig.paths.state()).toBe('expired');
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.expired', props: { source: 'cookie' } }]);
+    });
+  });
+
+  describe("over the browser's own stores", () => {
+    // The one spec whose clean-up runs the real TmClientCache, over this
+    // test page's CacheStorage, IndexedDB and web storage. Its stores carry
+    // a "test-flows" marker; the sweep also takes any tm store an earlier
+    // spec left, as a real session's end would. Its answers come in real
+    // time, so the spec waits on the state the path produces.
+    const NAME = 'tm-test-flows';
+    const KEY = 'tm.test-flows';
+    const DRAFT = `${tmDraftPrefix(TM_TEST_SUB)}test-flows`;
+
+    /** Creates an empty IndexedDB database and closes the connection. */
+    function createDatabase(name: string): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(name);
+        request.onsuccess = () => {
+          request.result.close();
+          resolve();
+        };
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    /** Deletes an IndexedDB database, settling however the delete ends. */
+    function deleteDatabase(name: string): Promise<void> {
+      return new Promise((resolve) => {
+        const request = indexedDB.deleteDatabase(name);
+        const settle = (): void => resolve();
+        request.onsuccess = settle;
+        request.onerror = settle;
+        request.onblocked = settle;
+      });
+    }
+
+    afterEach(async () => {
+      await caches.delete(NAME);
+      await deleteDatabase(NAME);
+      localStorage.removeItem(KEY);
+      sessionStorage.removeItem(KEY);
+      sessionStorage.removeItem(DRAFT);
+    });
+
+    it("takes the expired user's stores off the browser, keeping the drafts", async () => {
+      const rig = await setUp({ providers: [{ provide: TmClientCache, useClass: TmClientCache }] });
+      await caches.open(NAME);
+      await createDatabase(NAME);
+      localStorage.setItem(KEY, 'value');
+      sessionStorage.setItem(KEY, 'value');
+      sessionStorage.setItem(DRAFT, '{"v":1}');
+
+      rig.paths.expired('401');
+      await tmSettleUntil(() => rig.bus.types().includes('session.expired'), 'the other tabs were told of the expiry');
+
+      expect(await caches.has(NAME)).toBe(false);
+      expect((await indexedDB.databases()).map((database) => database.name)).not.toContain(NAME);
+      expect([localStorage.getItem(KEY), sessionStorage.getItem(KEY), sessionStorage.getItem(DRAFT)]).toEqual([null, null, '{"v":1}']);
+      // The real cache ran, not the testing providers' fake.
+      expect(rig.cache.sweeps()).toEqual([]);
     });
   });
 });

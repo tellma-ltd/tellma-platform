@@ -185,6 +185,22 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
 
 // @public
+export class TmFakeClientCache implements TmClientCacheSurface {
+    add(area: TmClientCacheArea, ...names: string[]): void;
+    clearAll(options?: TmClientCacheClearOptions): Promise<void>;
+    clearResult: Promise<void>;
+    names(area: TmClientCacheArea): readonly string[];
+    readonly sweeps: Signal<readonly TmFakeClientCacheSweep[]>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeClientCache, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeClientCache>;
+}
+
+// @public
+export interface TmFakeClientCacheSweep {
+    readonly deleted: Readonly<Record<TmClientCacheArea, readonly string[]>>;
+}
+
+// @public
 export interface TmFakeDetails<T> extends TmDetailsContext<T> {
     readonly busy: WritableSignal<boolean>;
     readonly calls: Signal<readonly TmFakeDetailsCall[]>;
