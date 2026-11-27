@@ -269,7 +269,9 @@ export function tmPrintSearchQuery(query: TmSearchQuery, defaults: TmSearchDefau
  * @returns The `#d=` fragment, with its `#`.
  */
 export function tmPrintListPayload(payload: TmListPayload): string {
-  return fragmentOf(payload.cols === undefined ? { filter: payload.filter } : { filter: payload.filter, cols: payload.cols });
+  // JSON drops a member whose value is undefined, so a payload without
+  // columns prints as the filter alone.
+  return fragmentOf({ filter: payload.filter, cols: payload.cols });
 }
 
 /** Compares two strings ordinally, for the canonical order of `f.*` and `x.*`. */

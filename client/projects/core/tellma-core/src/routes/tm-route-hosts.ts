@@ -35,16 +35,24 @@ export interface TmShellComponents {
 interface TmShellModule {
   /** The shell's components' loaders, by name. */
   readonly ɵTM_SHELL: TmShellComponents;
+  /**
+   * The tenant shell, the module's own export. The shell's build does not
+   * check this member, as it checks {@link TmShellComponents}; the tenant
+   * route's unit test fails without it.
+   */
+  readonly TmTenantShell: Type<unknown>;
 }
 
 /**
  * The shell's components that have loaded, by name: each is kept once its
- * own loader settles, since a loader may load a chunk of its own.
+ * own loader settles, since a loader may load a chunk of its own, and the
+ * tenant shell, which is in the module, as soon as the module arrives.
  */
 const loaded: { -readonly [Name in keyof TmShellComponents]?: Type<unknown> } = {};
 
 /**
- * Loads a component of `@tellma/core/shell`.
+ * Loads a component of `@tellma/core/shell`, and with it the tenant shell,
+ * which is in the shell's module.
  *
  * The specifier is cast so that TypeScript does not resolve it: the shell
  * imports this entry point, and the package build would report the dynamic
@@ -59,8 +67,15 @@ const loaded: { -readonly [Name in keyof TmShellComponents]?: Type<unknown> } = 
 export function tmShellComponent(name: keyof TmShellComponents): TmLazyComponent {
   return () =>
     (import('@tellma/core/shell' as string) as Promise<TmShellModule>)
-      .then((shell) => shell.ɵTM_SHELL[name]())
-      .then((component) => (loaded[name] = component));
+      .then((shell) => {
+        // Whichever component brings the module in also settles the tenant
+        // shell, which is in the module itself. The picker comes through this
+        // module, so by its first frame the tenant route returns the shell
+        // itself, and the first entry into a tenant paints its skeleton in the
+        // click's frame (spec 0024 §4.4), with no preload to race the click.
+        loaded.TmTenantShell = shell.TmTenantShell;
+        return shell.ɵTM_SHELL[name]().then((component) => (loaded[name] = component));
+      });
 }
 
 /**
@@ -75,17 +90,8 @@ export function tmShellRoute(name: keyof TmShellComponents): () => Type<unknown>
   // A later entry into a route whose component is already in memory
   // activates within the click's task, so its first frame shows the route
   // (spec 0024 §4.4); a promise would wait a task, and miss that frame.
-  const load = tmShellComponent(name);
-  return () => loaded[name] ?? load();
+  return () => loaded[name] ?? tmShellComponent(name)();
 }
-
-/**
- * Loads the tenant shell, the tenant route's component. Internal:
- * `TmUrls.preload` calls this one loader for every tenant route, so the
- * route's first entry, such as Connect on the picker, finds the shell in
- * memory and its skeleton paints in the click's frame.
- */
-export const TM_TENANT_SHELL: TmLazyComponent = tmShellComponent('TmTenantShell');
 
 /** The page every family without an entry point of its own renders for now. */
 const placeholder = tmShellComponent('TmPagePlaceholder');
