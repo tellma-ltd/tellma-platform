@@ -74,7 +74,12 @@ restores nothing between files: a spy one file left on a prototype, such as a mo
 `HTMLAnchorElement.prototype.click`, would stay in force for the files that follow it in the same
 page, and which files those are depends on how the run splits them between its workers. A spy or
 stub that several tests share must therefore be made in `beforeEach`, not in `beforeAll` or at the
-top of the file.
+top of the file. The restore runs before the next test, not at the end of a file: a spy a file's
+last test leaves behind is still live while the next file in the page is imported and runs its
+`beforeAll` hooks. A spec therefore still restores a spy it makes on state the page shares, such as
+a prototype or `URL`, at the end of the test that made it (`onTestFinished(() => spy.mockRestore())`
+or a `finally`). `src/tm-unit-runner.spec.ts` in `@tellma/core`, and its copy in the reference
+distribution's client, fail if the restore stops reaching their project.
 
 Vitest's own limits fail a test or a hook that runs too long, inside the browser, and a browser
 session that does not connect within a minute. Nothing bounds the other phases of a browser-mode
