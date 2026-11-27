@@ -23,8 +23,8 @@ import { tmPrepareDashboards } from './tm-dashboard-setup';
 /** The part of the day a greeting names. */
 export type TmTimeOfDay = 'morning' | 'afternoon' | 'evening';
 
-/** The hours at which the greeting changes, and midnight, where the date does. */
-const BOUNDARIES = [0, 5, 12, 17];
+/** The hours at which the greeting changes, and the day's end at midnight, where the date does. */
+const BOUNDARIES = [5, 12, 17, 24];
 
 /** An hour, the longest the greeting's timer waits, in milliseconds. */
 const HOUR = 3_600_000;
@@ -69,7 +69,8 @@ export function tmTimeOfDay(hour: number): TmTimeOfDay {
  */
 export function tmUntilNextBoundary(now: number, timeZone: string): number {
   const at = timeOfDayMs(now, timeZone);
-  const next = BOUNDARIES.map((hour) => hour * HOUR).find((boundary) => boundary > at) ?? 24 * HOUR;
+  // A time of day is under 24:00, so the day's end is always among the boundaries still ahead.
+  const next = Math.min(...BOUNDARIES.map((hour) => hour * HOUR).filter((boundary) => boundary > at));
   return Math.max(1, Math.min(HOUR, next - at));
 }
 

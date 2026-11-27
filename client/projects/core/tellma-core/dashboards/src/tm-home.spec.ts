@@ -202,17 +202,38 @@ describe('the tenant home', () => {
   });
 
   it("titles the page with the greeting, the user's name isolated, over today's date in the display zone", async () => {
+    // 00:30 on Friday in Riyadh, still Thursday in UTC and in every zone west of UTC+3, so a
+    // date read in UTC or in the machine's zone shows the wrong weekday.
+    now = Date.UTC(2026, 10, 26, 21, 30);
     await start();
     const harness = await tmNavigate('/17');
     await tmSettleUntil(() => greeting(harness) !== '', 'the greeting renders');
 
     expect(TestBed.inject(TmLocalization).timeZone()).toBe('Asia/Riyadh');
+    expect(new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' }).format(now)).toBe('Thursday');
     const title = page(harness).querySelector('h1')!;
     expect(title.hasAttribute('tmPageTitle')).toBe(true);
     expect(title.querySelector('bdi')?.textContent).toBe('Farah');
-    expect(page(harness).querySelector('.tm-home-greeting__date')?.textContent).toContain(
-      'Thursday',
-    );
+    const date = page(harness).querySelector('.tm-home-greeting__date')?.textContent;
+    expect(date).toContain('Friday');
+    expect(date).not.toContain('Thursday');
+  });
+
+  it("shows the next day's date from midnight in the display zone", async () => {
+    // Half a second before midnight in Riyadh; midnight there is 21:00 UTC, still Thursday in
+    // UTC and in every zone west of UTC+3.
+    now = Date.UTC(2026, 10, 26, 20, 59, 59, 500);
+    await start();
+    const harness = await tmNavigate('/17');
+    await tmSettleUntil(() => greeting(harness) !== '', 'the greeting renders');
+    const date = (): string => page(harness).querySelector('.tm-home-greeting__date')?.textContent ?? '';
+    expect(date()).toContain('Thursday');
+
+    now = Date.UTC(2026, 10, 26, 21, 0, 0);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await tmSettle();
+    expect(date()).toContain('Friday');
+    expect(greeting(harness)).toBe('Good evening, Farah');
   });
 
   it("names the user by the name in the active content slot, else the record's first", async () => {
@@ -271,6 +292,14 @@ describe('the tenant home', () => {
     }
     expect(at).toBe(morning);
     expect(Math.max(...waits)).toBeLessThanOrEqual(HOUR);
+  });
+
+  it('waits for midnight in the display zone as the day ends, an hour at most', () => {
+    // 23:30 and 23:59:59.5 in Riyadh, three hours ahead of UTC.
+    expect(tmUntilNextBoundary(Date.UTC(2026, 10, 26, 20, 30), 'Asia/Riyadh')).toBe(HOUR / 2);
+    expect(tmUntilNextBoundary(Date.UTC(2026, 10, 26, 20, 59, 59, 500), 'Asia/Riyadh')).toBe(500);
+    // 22:00 waits its hour cap rather than the two hours to midnight.
+    expect(tmUntilNextBoundary(Date.UTC(2026, 10, 26, 19, 0), 'Asia/Riyadh')).toBe(HOUR);
   });
 
   it("lists the recent pages as links with their launcher icons, else their family's, and preloads one on hover or focus", async () => {
