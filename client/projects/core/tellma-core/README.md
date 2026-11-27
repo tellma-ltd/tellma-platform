@@ -662,7 +662,9 @@ versions, Reload while the server is newer, the copyright and the legal links, a
 that loads the Diagnostics panel from `@tellma/core/support` on its first selection, or shows the
 offline line with Copy diagnostics' shortcut when that cannot load) and the Shortcuts dialog (`Mod+/`: the
 general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
-in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
+in their final geometry. A tenant switch creates a new shell and clears the launcher's text. While
+the launcher is open, a page that renders after a navigation leaves focus in it: the page's focus
+move waits, and runs as the launcher closes, before the launcher gives focus back.
 
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
