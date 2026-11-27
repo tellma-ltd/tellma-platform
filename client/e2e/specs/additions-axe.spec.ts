@@ -53,8 +53,12 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
  * of their own (the avatar's story scans the faces they draw), l10n's input
  * side, its parsers, split out of l10n with no UI either, and the keys
  * grammar, split out of kbd's entry point with no UI of its own (the kbd
- * story draws and matches the combinations it defines). A new folder must
- * join this list or the additions, so that none is skipped unclassified.
+ * story draws and matches the combinations it defines), and the search
+ * input's directive, split out of the search field's entry point so that a
+ * page or a launcher with chrome of its own takes it without the field, with
+ * no UI of its own (the search field's story scans the input it drives). A
+ * new folder must join this list or the additions, so that none is skipped
+ * unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
   'alert',
@@ -95,6 +99,7 @@ const OLDER_FOLDERS: readonly string[] = [
   'private',
   'progress-ring',
   'providers',
+  'search-input',
   'select',
   'spinner',
   'styles',
