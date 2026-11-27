@@ -384,6 +384,31 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-401 — PC-163 parked; PC-F100 fills pc-2 (2026-11-26)
+
+PC-163's fix1 (04f063e2) landed all six neutral trims and fixed R1-2 to R1-5. ./shell measures 19.06 against spec 0027's 16. Its ceiling is 19.5, the package's own figure. Acme initialJs is 233.66 (fixture 232.90) against spec 0024's 230 warn line. PC-163 parks with pc/PC-163 kept, and Ahmad was sent the final figures.
+
+check_deps lists no ready T1 or T2 item, only T3s. D-229 puts non-blocking fixes before T3, so PC-F100 (the route skeleton on first tenant entry, ready since PC-118 landed) starts in pc-2. pc/PC-163 also touches ./shell, but it is not on platform-core, and PC-F100 does not build on it.
+
+### D-400 — PC-156 parked; PC-128 resumes in pc-1 (2026-11-26)
+
+PC-156's fix2 (14caf229) addressed R2-1 to R2-11. The panels chunk measures 10.05 against spec 0028 §1's 9. The trims alone reached 10.00; keeping /attention (5.99 of 6) and tm-attention-calls (1.49 of 1.5) under their ceilings cost 0.05. So the 10.0 option no longer fits, and Ahmad was sent an update: a 10.5 cap, or on-open page contexts at 9.
+
+PC-156 parks with pc/PC-156 kept. When it resumes, lint:test is re-run, because fix2 did not re-run it after its last edits.
+
+pc-1 frees, and per D-394 PC-128 resumes there on pc/PC-128 (94b802aa). It folds ./search-view into ./search and sets ./search's ceiling to its measure rounded up to the next 0.5. It merges platform-core once PC-F112 lands. Platform-core's side wins the pager overlap, except that PC-128 keeps its tm-select-base preventDefault. A fresh R1 follows.
+
+### D-399 — PC-163 R1 rulings; park on spec 0027 and spec 0024 budgets (2026-11-26)
+
+R1 found 1 blocking, 1 major and 3 minor issues. R1-1, the blocking one: ./shell measures 19.48 against spec 0027's 16 KB, and Acme initialJs 234.05 (fixture 233.29) against spec 0024 §12's 230 warn line. Neither can be reached without bending spec 0027:
+- option (a) bends §8.4;
+- the press, reveal and toast part of option (b) cannot move under §8.5 and §14;
+- option (c) breaks §14, §7.5 and §8.7.
+
+fix1 takes the neutral trims (about 0.45 KB) and R1-2 to R1-5. Its ./shell ceiling is set to the clean-build measure rounded up to the next 0.5, because this ceiling is the package's own, not the spec's. The 230 warn line is left untouched. PC-163 then parks. Ahmad was notified with three options: raise both, accept (a) plus the roving keys from (b) for about 18.0/232.5, or accept (c).
+
+The pin e2e is not in this checkpoint. It needs a dedicated seeded principal per project, which is carried to the shell e2e work. New public API went to Ahmad for review: @tellma/locale-ar/pins-strings, TmMenuLink.current and TmReorderList.itemKind.
+
 ### D-398 — PC-F111 landed; PC-F112 released; PC-F99 and PC-F107 start (2026-11-26)
 
 PC-F111 landed as f598b284. Its first integration went stale when PC-F110 landed lockfile changes. It re-integrated, and the re-integration found and fixed a lint:test race: lucide-icon-paths walked the fake-emit fixtures/run-* copies, which PC-F110's specs create and delete.
