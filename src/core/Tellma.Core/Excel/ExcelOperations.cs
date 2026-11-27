@@ -114,8 +114,10 @@ namespace Tellma.Core.Excel
             ArgumentNullException.ThrowIfNull(request);
 
             // A request the job could never run is refused here, before it is enqueued: its source,
-            // its named filters and its plan, whose columns compile under the request's context.
+            // its ceilings, its named filters and its plan, whose columns compile under the
+            // request's context. Its filters, ordering and search compile only in the run.
             _exports.CheckDisplay(_target, request);
+            ExportSources.CheckLimits(request, _limits);
             QueryShape.CheckNamedFilters(request.NamedFilters, _service.Descriptor.NamedFilters);
             ExcelJobStarts starts = _starts();
             return starts.ExportAsync(new DisplayExportJobArguments(_service.Descriptor.Resource, starts.Culture, request), cancellationToken);
@@ -155,8 +157,10 @@ namespace Tellma.Core.Excel
             ArgumentNullException.ThrowIfNull(request);
 
             // A request the job could never run is refused here, before it is enqueued: its source,
-            // its named filters and its plan, whose columns, keys and collections the entity has.
+            // its ceilings, its named filters and its plan, whose columns, keys and collections the
+            // entity has. Its filters, ordering and search compile only in the run.
             _exports.CheckEditable(_target, request);
+            ExportSources.CheckLimits(request, _limits);
             QueryShape.CheckNamedFilters(request.NamedFilters, _service.Descriptor.NamedFilters);
             ExcelJobStarts starts = _starts();
             return starts.ExportAsync(new ForImportExportJobArguments(_service.Descriptor.Resource, starts.Culture, request), cancellationToken);

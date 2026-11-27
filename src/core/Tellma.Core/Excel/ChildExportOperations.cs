@@ -35,14 +35,19 @@ namespace Tellma.Core.Excel
         /// <summary>Resolves the scope's start of the background route, called only when it runs.</summary>
         private readonly Func<ExcelJobStarts> _starts;
 
+        /// <summary>The root stack's ceilings, which the surface reads its rows under.</summary>
+        private readonly StackLimits _limits;
+
         /// <summary>Binds the operations to the child's query surface.</summary>
         /// <param name="exports">The scope's export runner.</param>
         /// <param name="children">The scope's child query service.</param>
         /// <param name="resource">The surface's resource, the child entity's name.</param>
         /// <param name="entity">The child entity's metadata.</param>
         /// <param name="starts">Resolves the scope's start of the background route, called only when it runs.</param>
-        internal ChildExportOperations(ExcelExports exports, IChildQueryService children, string resource, EntityMetadata entity, Func<ExcelJobStarts> starts)
+        /// <param name="limits">The root stack's ceilings, which the surface reads its rows under.</param>
+        internal ChildExportOperations(ExcelExports exports, IChildQueryService children, string resource, EntityMetadata entity, Func<ExcelJobStarts> starts, StackLimits limits)
         {
+            _limits = limits ?? throw new ArgumentNullException(nameof(limits));
             ArgumentNullException.ThrowIfNull(children);
             ArgumentException.ThrowIfNullOrWhiteSpace(resource);
             ArgumentNullException.ThrowIfNull(entity);
@@ -87,9 +92,11 @@ namespace Tellma.Core.Excel
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            // A request the job could never run is refused here, before it is enqueued: its source
-            // and its plan, whose columns compile under the request's context.
+            // A request the job could never run is refused here, before it is enqueued: its source,
+            // its ceilings and its plan, whose columns compile under the request's context. Its
+            // filters, ordering and search compile only in the run.
             _exports.CheckDisplay(_target, request);
+            ExportSources.CheckLimits(request, _limits);
             ExcelJobStarts starts = _starts();
             return starts.ExportAsync(new DisplayExportJobArguments(_resource, starts.Culture, request), cancellationToken);
         }
@@ -109,7 +116,8 @@ namespace Tellma.Core.Excel
                 services.GetRequiredService<IChildQueryService>(),
                 surface.Resource,
                 entity,
-                services.GetRequiredService<ExcelJobStarts>);
+                services.GetRequiredService<ExcelJobStarts>,
+                surface.Limits);
         }
     }
 }

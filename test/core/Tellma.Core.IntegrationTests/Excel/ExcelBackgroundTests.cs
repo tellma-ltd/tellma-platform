@@ -4,7 +4,9 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Microsoft.Extensions.Logging.Testing;
+using System.Diagnostics.Metrics;
 using System.Globalization;
 using System.Text.Json;
 using Tellma.Core.Abstractions.Access;
@@ -71,6 +73,7 @@ namespace Tellma.Core.IntegrationTests.Excel
         public async Task An_export_start_runs_in_the_background_inserting_an_export_row_that_owns_its_committed_file_and_notifies_its_requester()
         {
             await SeedWidgetsAsync(3);
+            using MetricCollector<long> exported = Collector(ExcelTelemetryNames.ExportRows);
 
             // --- The start enqueues a labelled job and no row ---
             JobAccepted accepted = Assert.IsType<JobAccepted>(await InvokeAsync(ImporterId, Widgets, "export/start", new ExportRequest
@@ -105,8 +108,10 @@ namespace Tellma.Core.IntegrationTests.Excel
             JsonElement arguments = JsonSerializer.SerializeToElement(notice.Arguments, TellmaJson.Options);
             Assert.Equal((fileId, 3), (arguments.GetProperty("fileId").GetInt32(), arguments.GetProperty("rowCount").GetInt32()));
 
-            // --- The success completed the progress ---
+            // --- The success completed the progress, and the rows were counted as a background export's ---
             Assert.Equal((byte?)100, (await fixture.JobAsync(accepted.JobId)).ProgressPercent);
+            CollectedMeasurement<long> rows = Assert.Single(exported.GetMeasurementSnapshot());
+            Assert.Equal((3L, true), (rows.Value, (bool)rows.Tags[ExcelTelemetryNames.BackgroundTag]!));
         }
 
         [Fact]
@@ -158,6 +163,22 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal(nameof(JobStatus.Pending), (await fixture.JobAsync(export.JobId)).Status);
             Assert.Equal(TenantProblemCodes.ReadOnly, refused.Code);
             Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Imports];"));
+
+            // --- The worker runs the export on the read-only tenant: its row and file persist through the job frame ---
+            fixture.Tenant.State = TenantState.ReadOnly;
+            try
+            {
+                Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+            }
+            finally
+            {
+                fixture.Tenant.State = TenantState.Active;
+            }
+
+            Dictionary<string, object?> row = await fixture.RowAsync("[core].[Exports]", Invariant($"[JobId] = {export.JobId}"));
+            Assert.Equal(1, (int)row["RowCount"]!);
+            Assert.Equal(nameof(BlobState.Committed), await fixture.TextAsync(Invariant($"SELECT [State] FROM [core].[Blobs] WHERE [Id] = {(int)row["FileId"]!};")));
+            _ = Assert.Single(fixture.Notices.Raised, static notice => notice.Type == ExcelJobs.ExportReadyType);
         }
 
         [Fact]
@@ -171,6 +192,7 @@ namespace Tellma.Core.IntegrationTests.Excel
                 (plan.Sheets[1].Sheet, [Row(("Widget.Id", -1), ("Id", -10), ("Ordinal", 1)), Row(("Widget.Id", -5), ("Id", -50), ("Ordinal", 1))]));
 
             // --- The start inserts the row, which owns the upload, with its job ---
+            using MetricCollector<long> imported = Collector(ExcelTelemetryNames.ImportRows);
             JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
             Dictionary<string, object?> started = await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}"));
             Assert.Equal((accepted.JobId, null), ((int)started["JobId"]!, started["ResultJson"]));
@@ -197,6 +219,8 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal((CoreResources.Import, accepted.ResourceId), (notice.TargetResource, notice.TargetId));
             JsonElement arguments = JsonSerializer.SerializeToElement(notice.Arguments, TellmaJson.Options);
             Assert.Equal(("import.xlsx", 5, 0), (arguments.GetProperty("fileName").GetString(), arguments.GetProperty("rowCount").GetInt32(), arguments.GetProperty("errorCount").GetInt32()));
+            CollectedMeasurement<long> rows = Assert.Single(imported.GetMeasurementSnapshot());
+            Assert.Equal((5L, true), (rows.Value, (bool)rows.Tags[ExcelTelemetryNames.BackgroundTag]!));
         }
 
         [Fact]
@@ -207,6 +231,9 @@ namespace Tellma.Core.IntegrationTests.Excel
             string parent = plan.Sheets[0].Columns.Single(static column => column.Path == "Parent.Code").Column;
             byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Node(-1, "NA", null), Node(-2, "NB", -1L), Node(-3, "NC", -2L)]));
             StartImportRequest request = new() { ColumnMappings = [new ImportColumnMapping(plan.Sheets[0].Sheet, parent, "Parent.Id")] };
+
+            using MetricCollector<long> chunks = Collector(ExcelTelemetryNames.ImportChunks);
+            using MetricCollector<long> resumes = Collector(ExcelTelemetryNames.ImportResumed);
 
             // --- The second chunk's first save crashes the attempt ---
             int crashes = 0;
@@ -235,6 +262,10 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal(3, outcome.Inserted);
             Assert.Equal([new RowRange(2, 4)], outcome.CommittedRowRanges);
             Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "ImportResumed" && record.GetStructuredStateValue("NextRow") == "1");
+
+            // --- Three chunks across the two attempts, counted once as the import ended; one resume ---
+            Assert.Equal(3L, Assert.Single(chunks.GetMeasurementSnapshot()).Value);
+            Assert.Equal(1L, Assert.Single(resumes.GetMeasurementSnapshot()).Value);
         }
 
         [Fact]
@@ -477,6 +508,7 @@ namespace Tellma.Core.IntegrationTests.Excel
             (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
             byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [.. Enumerable.Range(1, 8).Select(static index => Widget(null, Invariant($"K-{index}")))]));
             JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+            using MetricCollector<long> chunks = Collector(ExcelTelemetryNames.ImportChunks);
 
             // --- The requester cancels while the third chunk validates, and the handler reads it at once ---
             _ = fixture.Probe.Arm("K-5", new WidgetSaveArm
@@ -502,6 +534,7 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal([new RowRange(2, 7)], outcome.CommittedRowRanges);
             Assert.Equal(8, (int)row["RowCount"]!);
             Assert.DoesNotContain(fixture.Notices.Raised, static notice => notice.Type == ExcelJobs.ImportCompletedType);
+            Assert.Equal(3L, Assert.Single(chunks.GetMeasurementSnapshot()).Value);
         }
 
         [Fact]
@@ -662,6 +695,65 @@ namespace Tellma.Core.IntegrationTests.Excel
             _ = await Assert.ThrowsAsync<BadRequestException>(() => InvokeAsync(ImporterId, Widgets, "export-for-import/start", new ExportForImportRequest { Ids = [], Columns = ["NoSuchColumn"] }));
 
             Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_background_export_whose_filter_does_not_compile_fails_once_with_the_diagnostics_code()
+        {
+            await SeedWidgetsAsync(1);
+            ExportRequest request = new() { Columns = [new ExportColumn("Code", Header: null)], Filters = ["Code = = 'X'"] };
+
+            // --- The synchronous route refuses the filter; the start cannot, since filters compile only in the run ---
+            InvalidQueryException synchronous = await Assert.ThrowsAsync<InvalidQueryException>(() => InvokeAsync(ImporterId, Widgets, "export", request));
+            JobAccepted accepted = Assert.IsType<JobAccepted>(await InvokeAsync(ImporterId, Widgets, "export/start", request));
+
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Failed, synchronous.Diagnostics[0].Code);
+            Assert.Equal(1, (await fixture.JobAsync(accepted.JobId)).Attempts);
+            Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Exports];"));
+        }
+
+        [Fact]
+        public async Task An_export_start_above_its_search_or_ids_ceiling_is_refused_before_any_job_is_queued()
+        {
+            LimitExceededException search = await Assert.ThrowsAsync<LimitExceededException>(
+                () => InvokeAsync(ImporterId, Widgets, "export/start", new ExportRequest { Columns = [new ExportColumn("Code", Header: null)], Search = new string('a', 5_000) }));
+            LimitExceededException ids = await Assert.ThrowsAsync<LimitExceededException>(
+                () => InvokeAsync(ImporterId, Widgets, "export-for-import/start", new ExportForImportRequest { Ids = [.. Enumerable.Range(1, 50_000).Select(static id => (long)id)] }));
+            LimitExceededException childSearch = await Assert.ThrowsAsync<LimitExceededException>(
+                () => InvokeAsync(ImporterId, Parts, "export/start", new ExportRequest { Columns = [new ExportColumn("Ordinal", Header: null)], Search = new string('a', 5_000) }));
+
+            Assert.Equal((LimitNames.MaxSearchLength, LimitNames.MaxIds, LimitNames.MaxSearchLength), (search.Limit, ids.Limit, childSearch.Limit));
+            Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        [Fact]
+        public async Task A_background_export_above_the_file_kinds_size_fails_once_as_too_large_and_writes_no_row()
+        {
+            // --- Rows of text that compresses poorly, so the workbook passes the narrowed size ---
+            await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"""
+                WITH [n] AS (SELECT TOP (2000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [i] FROM sys.all_objects AS [a] CROSS JOIN sys.all_objects AS [b])
+                INSERT INTO [fixture].[Widgets] ([Id], [Code], [Kind], [Name], [Subject], [Price], [CreatedAt], [CreatedById], [ModifiedAt], [ModifiedById])
+                SELECT 20000 + [i], CONCAT('T', [i]), 'Plain', CONCAT(NEWID(), NEWID(), NEWID(), NEWID(), NEWID(), NEWID()), CONCAT('t', [i]), 1, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId}, SYSDATETIMEOFFSET(), {WellKnownIds.SystemUserId} FROM [n];
+                """));
+
+            JobAccepted accepted = Assert.IsType<JobAccepted>(await InvokeAsync(ImporterId, Widgets, "export/start", new ExportRequest
+            {
+                Columns = [new ExportColumn("Code", Header: null), new ExportColumn("Name", Header: null)],
+                OrderBy = "Code",
+            }));
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Failed, BlobRejectedException.TooLarge);
+
+            Assert.Equal(1, (await fixture.JobAsync(accepted.JobId)).Attempts);
+            Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Exports];"));
+            Assert.DoesNotContain(fixture.Notices.Raised, static notice => notice.Type == ExcelJobs.ExportReadyType);
+        }
+
+        /// <summary>Listens to one of the codec's instruments from now on.</summary>
+        /// <param name="instrument">The instrument's name.</param>
+        /// <returns>The collector, which the caller disposes.</returns>
+        private MetricCollector<long> Collector(string instrument)
+        {
+            return new MetricCollector<long>(fixture.Tenant.Services.GetRequiredService<IMeterFactory>(), ExcelTelemetryNames.MeterName, instrument);
         }
 
         /// <summary>A node workbook of two new nodes whose link rows name each other by sheet identity.</summary>

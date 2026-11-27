@@ -72,7 +72,7 @@ namespace Tellma.Core.Excel
             if (item.CancellationReason == JobCancellationReason.CancelRequested)
             {
                 string? stack = ExcelJobTargets.Import(services, item.Arguments<ImportJobArguments>().Resource)?.ExportTarget.Entity.Name;
-                await StopAsync(item, session: null, stack, chunks: 0).ConfigureAwait(false);
+                await StopAsync(item, session: null, stack, chunks: null).ConfigureAwait(false);
                 return;
             }
 
@@ -131,6 +131,7 @@ namespace Tellma.Core.Excel
             string? fileName = null;
             int lookups = 0;
             int chunks = 0;
+            bool counted = false;
             try
             {
                 // --- Pass 1: the whole file parsed, with no database, then what /start could not check ---
@@ -163,6 +164,7 @@ namespace Tellma.Core.Excel
                 int last = session.Order.Count - 1;
                 int parentCeiling = Math.Min(target.Limits.MaxSaveCount, target.Limits.MaxIds);
                 chunks = CommittedChunks(session, request.Atomic, target.Limits, next);
+                counted = true;
                 while (next <= last)
                 {
                     // A requested stop takes effect between chunks, so the chunk in flight commits.
@@ -231,17 +233,17 @@ namespace Tellma.Core.Excel
                 // A requested stop that cancelled the file's copy or its parse, or that landed while
                 // a chunk ran which then asked for confirmation or threw: the chunk rolled back, so the
                 // stop records the last committed checkpoint instead of retrying or waiting.
-                await StopAsync(item, session, entity.Name, chunks).ConfigureAwait(false);
+                await StopAsync(item, session, entity.Name, counted ? chunks : null).ConfigureAwait(false);
             }
             catch (Exception failure) when (Refusal(failure) is ImportException refused)
             {
                 // --- The errors, with the runs earlier chunks committed; the worker's notice reports the failure ---
                 ImportCheckpointState? committed = item.State<ImportCheckpointState>();
                 ImportFailure result = new([.. refused.Errors.Take(_options.MaxReportedErrors)], refused.TotalErrors, committed?.CommittedRowRanges ?? []);
-                await RecordAsync(row, Json(result), session?.Order.Count, refused.TotalErrors).ConfigureAwait(false);
+                await RecordAsync(row, Json(result), session?.Order.Count ?? row.RowCount, refused.TotalErrors).ConfigureAwait(false);
                 item.Fail(new JobError(ExcelErrorCodes.ImportFailed));
                 metrics.ImportRefused(entity.Name, refused.Errors);
-                metrics.ImportChunks(entity.Name, chunks);
+                RecordChunks(entity.Name, counted ? chunks : null, committed);
                 ExcelLog.ImportFailed(_logger, entity.Name, mode, refused.TotalErrors, refused.Errors[0].Code);
             }
         }
@@ -335,24 +337,35 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
+        ///     Records the chunks an ended or stopped import committed, when they are known: counted
+        ///     once the file was parsed and checked, or none because no checkpoint committed.
+        /// </summary>
+        /// <param name="entity">The imported entity's name, which tags the count; null when the resource is no longer importable.</param>
+        /// <param name="chunks">The chunks committed across the attempts; null when they were not counted.</param>
+        /// <param name="committed">The last committed checkpoint; null when none.</param>
+        private void RecordChunks(string? entity, int? chunks, ImportCheckpointState? committed)
+        {
+            // Counting earlier attempts' chunks needs the parse; an import that ended before it is
+            // recorded only when no chunk committed, so the histogram never holds a guessed zero.
+            if (entity is not null && (chunks is not null || committed is not { NextRow: > 0 }))
+            {
+                metrics.ImportChunks(entity, chunks ?? 0);
+            }
+        }
+
+        /// <summary>
         ///     Records a requested stop on the Import row: the last committed checkpoint's counts and
         ///     runs, marked stopped. The item is left unmarked, so the worker completes it cancelled.
         /// </summary>
         /// <param name="item">The job's item.</param>
         /// <param name="session">The parsed import; null when the stop came before the parse.</param>
         /// <param name="entity">The imported entity's name, which tags the chunk count; null when the resource is no longer importable.</param>
-        /// <param name="chunks">The chunks committed across the attempts, counted once the file was parsed.</param>
+        /// <param name="chunks">The chunks committed across the attempts; null when they were not counted.</param>
         /// <returns>A task that completes once the update is enlisted.</returns>
-        private async Task StopAsync(JobItem<Import> item, ImportSession? session, string? entity, int chunks)
+        private async Task StopAsync(JobItem<Import> item, ImportSession? session, string? entity, int? chunks)
         {
             ImportCheckpointState? committed = item.State<ImportCheckpointState>();
-
-            // Counting earlier attempts' chunks needs the parse; a stop before it records the count
-            // only when no chunk committed.
-            if (entity is not null && (session is not null || committed is not { NextRow: > 0 }))
-            {
-                metrics.ImportChunks(entity, chunks);
-            }
+            RecordChunks(entity, chunks, committed);
 
             ImportOutcome stopped = new(
                 committed?.Inserted ?? 0,

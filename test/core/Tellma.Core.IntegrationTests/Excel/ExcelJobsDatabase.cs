@@ -70,6 +70,9 @@ namespace Tellma.Core.IntegrationTests.Excel
         /// <summary>The warning's key.</summary>
         public const string WarningKey = "Test.ImportChecked";
 
+        /// <summary>The largest export file the suite's store admits: above every workbook its exports write but one.</summary>
+        public const long MaxExportFileBytes = 48 * 1024;
+
         /// <summary>The statements that clear what a test wrote.</summary>
         private const string ResetText = """
             DELETE FROM [core].[Imports];
@@ -133,7 +136,11 @@ namespace Tellma.Core.IntegrationTests.Excel
                 // stays audited in the job runner's own suite, whose database suspends the audit only
                 // in the tests that run batches side by side.
                 audit: false,
-                compose: static tellma => tellma.AddFeature(new ImportWarningFeature()),
+                // The export file kind is narrowed far below its production cap, so one large export
+                // is refused by the store while the suite's other workbooks stay well under it.
+                compose: static tellma => tellma
+                    .AddFeature(new ImportWarningFeature())
+                    .Blobs(static blobs => blobs.Kind(Export.FileKind, static policy => policy with { MaxSize = MaxExportFileBytes })),
                 cancellationToken: TestContext.Current.CancellationToken);
 
             // --- The tenant's settings and version tags, the members and their roles ---
@@ -161,6 +168,7 @@ namespace Tellma.Core.IntegrationTests.Excel
             Options.ImportChunkRows = ChunkRows;
             Options.MaxAtomicImportRows = defaults.MaxAtomicImportRows;
             Options.MaxExportRows = defaults.MaxExportRows;
+            Tenant.State = TenantState.Active;
             Notices.Clear();
             Probe.Clear();
             NodeHook.Validating = null;

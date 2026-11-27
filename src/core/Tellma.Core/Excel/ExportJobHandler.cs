@@ -83,22 +83,24 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
-        ///     The error a refusal of the run fails the job with: a denied read, a sheet above its
-        ///     cap, a file the store refuses, a query its rows cannot compute, or a request its plan
-        ///     refuses; null for any other failure, which the worker records or retries.
+        ///     The error a refusal of the run fails the job with: a denied read, a ceiling exceeded, a
+        ///     file the store refuses, a query its rows cannot compute, or a request its plan or its
+        ///     clauses refuse; null for any other failure, which the worker records or retries.
         /// </summary>
         /// <param name="failure">The failure.</param>
         /// <returns>The error, or null.</returns>
         private static JobError? Refusal(Exception failure)
         {
-            // The start plans the request before it enqueues it, so the last two are a backstop:
-            // a request its stack's metadata or named filters stopped admitting while it waited.
+            // The start plans the request's columns, paths and named filters and checks its ceilings,
+            // but its filters, ordering and search compile only here, and only the rows reveal a
+            // cell above its length or a sheet above its cap. These arms are what refuses those,
+            // and a request its stack stopped admitting while the job waited.
             return failure switch
             {
                 ForbiddenException forbidden => new JobError(forbidden.Code, forbidden.Arguments),
                 BadRequestException bad => new JobError(bad.Code, bad.Arguments),
                 InvalidQueryException { Diagnostics: [QueryexDiagnostic first, ..] } => new JobError(first.Code, Arguments(first)),
-                LimitExceededException exceeded when exceeded.Limit == ExcelErrorCodes.ExportRowLimitExceeded => new JobError(exceeded.Limit, exceeded.Arguments),
+                LimitExceededException exceeded => new JobError(exceeded.Limit, exceeded.Arguments),
                 BlobRejectedException rejected => new JobError(rejected.Code, rejected.Arguments),
                 ValidationException { Errors: [ValidationError { Code: ValidationCodes.QueryArithmeticFailed } arithmetic] } => new JobError(arithmetic.Code, arithmetic.Arguments),
                 _ => null,

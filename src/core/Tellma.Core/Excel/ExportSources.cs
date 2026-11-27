@@ -4,8 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using System.Globalization;
+using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Crud.Query;
 
 namespace Tellma.Core.Excel
 {
@@ -47,6 +49,31 @@ namespace Tellma.Core.Excel
                 : ids.Count == 0 && !template
                 ? throw Fault("The request names no ids; an export by ids names at least one.", "ids")
                 : new ExportSource.ByIds(ids, request.OrderBy);
+        }
+
+        /// <summary>
+        ///     Refuses a request above the ceilings its rows are read under: more ids than one read
+        ///     takes, or a search, once its bidi controls are stripped, longer than the surface admits.
+        /// </summary>
+        /// <param name="request">The request.</param>
+        /// <param name="limits">The surface's ceilings.</param>
+        /// <exception cref="LimitExceededException">The ids or the search exceed their ceiling.</exception>
+        public static void CheckLimits(ExportSourceRequest request, StackLimits limits)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(limits);
+
+            // The same refusals, under the same limit names, the run's row source and query shape raise.
+            if (request.Ids is { Count: int count } && count > limits.MaxIds)
+            {
+                throw new LimitExceededException(LimitNames.MaxIds, count, limits.MaxIds);
+            }
+
+            string? search = QueryShape.Strip(request.Search);
+            if (search is not null && search.Length > limits.MaxSearchLength)
+            {
+                throw new LimitExceededException(LimitNames.MaxSearchLength, search.Length, limits.MaxSearchLength);
+            }
         }
 
         /// <summary>Refuses a display request's columns: none, more than the maximum, a blank expression or an overlong header.</summary>
