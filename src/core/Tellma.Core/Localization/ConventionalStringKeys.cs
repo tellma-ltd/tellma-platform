@@ -64,7 +64,8 @@ namespace Tellma.Core.Localization
     ///         </item>
     ///         <item>
     ///             each notification type's <c>Notification_&lt;key&gt;</c>, <c>…_Detail</c> and
-    ///             <c>NotificationType_&lt;key&gt;</c>; each channel's
+    ///             <c>NotificationType_&lt;key&gt;</c>; each notification category's
+    ///             <c>NotificationCategory_&lt;category&gt;</c>; each channel's
     ///             <c>NotificationChannel_&lt;key&gt;</c>; each job handler's <c>JobHandler_&lt;key&gt;</c>;
     ///         </item>
     ///         <item>
@@ -235,7 +236,7 @@ namespace Tellma.Core.Localization
             keys.UnionWith(registry.Categories.Select(static category => category.LabelKey));
         }
 
-        /// <summary>The notification types' texts and settings labels, and the channels' labels.</summary>
+        /// <summary>The notification types' texts and settings labels, the categories' labels, and the channels' labels.</summary>
         /// <param name="keys">The keys so far.</param>
         /// <param name="types">The notification type registry.</param>
         /// <param name="channels">The notification channel registry.</param>
@@ -247,6 +248,7 @@ namespace Tellma.Core.Localization
                 keys.UnionWith([text, text + "_Detail", StringKeyConventions.FromDottedKey("NotificationType_", type.Key)]);
             }
 
+            keys.UnionWith(types.Categories.Select(static category => "NotificationCategory_" + category));
             keys.UnionWith(channels.All.Select(static channel => StringKeyConventions.FromDottedKey("NotificationChannel_", channel.Key)));
         }
 

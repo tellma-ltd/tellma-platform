@@ -10,6 +10,7 @@ own.
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`), the running build's identity (`TmAppVersion`) and the support facade (`TmSupport`: Report a problem, the diagnostic file and the dump's sections); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the outcome toasts (`TmOutcomeToasts`, whose toasts load as a chunk with the first outcome); and the bell's and the tray's app-bar buttons (`TmAttentionButton`, under `tm-bell-button` and `tm-tray-button`), whose panels load as a chunk of their own on first intent | eager, preloaded with the app |
 | `@tellma/core/attention-rows` | The attention rows the panels, the arrival toasts and the home page share: the server text of notifications, jobs and assignment captions (`TmAttentionText`), the assignment list (`tm-assignment-list`, in its tray and home variants, either party), `tmIcuArguments`, and the row anatomy and keyboard model the attention lists share | with the code that imports it |
+| `@tellma/core/attention-pages` | The attention pages' bodies: the Notifications section of My settings (`tm-notification-settings`, `TmNotificationSettings`), which edits the signed-in user's or, given a user id, another user's arrival pop-ups and each notification type's channels and saves every change itself, and its page (`tm-notification-settings-page`, `TmNotificationSettingsPage`), which the hub renders as the section's body and which publishes its page context | lazy, with the pages that show it |
 | `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button), its pinned bar and its states, and `TmPins`, the user's pins in the routed tenant; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the pinned bar's menus, popover and drag and drop, a lazy chunk the bar loads at idle; the About, Shortcuts and Manage pins dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
@@ -826,6 +827,37 @@ panel, the badges and the shown banners.
 The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the acting tab raises) and
 `TM_TOAST_ARRIVAL_MS` (6 s, an arriving notification or assignment).
 
+## Attention: the Notifications section of My settings
+
+`@tellma/core/attention-pages` holds the hub's Notifications section. `tm-notification-settings`
+reads the user's stored deviations (`notification-preferences/get`) and lays the client metadata's
+notification types out as one card per category, in the order of each category's first type: one
+row per type, one column per channel in registration order, the labels being the server's
+`NotificationCategory_*`, `NotificationType_*` and `NotificationChannel_*` text. A cell is a switch
+named "{type}, {channel}" showing the stored value, else the channel's default; a type the user
+cannot mute shows its inbox switch on, disabled and described "Always on", and a channel-only type
+shows "—" in the inbox column. Below md each type's switches stack under its label.
+
+Every change applies in its frame. 600 ms after the last one the section sends the whole set,
+omitting the cells at their defaults, with one save in flight and the latest state after it; the
+header reads "Saving…", "All changes saved", or "Couldn't save your changes" with Try again, and a
+`422` reloads the set and shows the 400 dialog. The pop-up card's switch is `notifications.toasts`
+through `TmPreferences`, applied at once. While `TmAttention.writable()` is false every control is
+disabled, with "You're offline" or the frozen tenant's reason as its tooltip and description, and
+the values stay; a read-only tenant saves the switches but disables "Send a test" with its reason.
+The test card has one row per channel beyond the inbox, with the address the channel would use (the
+contact email, else the email, for `email`) and "Send a test" (`users/me/test-notification`), whose
+result shows beside it and is announced politely.
+
+Given `[user]="id"`, the section reads and saves that user's set through
+`users/notification-preferences/get` and `save` and their pop-up value through
+`users/preferences/get` and `set`, at once, and has no test card; `[headingLevel]` sets its cards'
+heading level for a dialog. `tm-notification-settings-page` holds the signed-in user's section and
+publishes its page context: kind `settings`, route `/:t/me/notifications`, state
+`{ category: 'notifications', mode: 'edit', dirty }`, and the `notifications.settings.set`
+(`{ type, channel, enabled }`, saved like a click) and `notifications.settings.test` (`{ channel }`)
+actions. It has no form: a form's proposal never saves, and every change here does.
+
 ## Page context and page actions
 
 Every routed page and context-bearing dialog publishes one `TmPageContext`: its kind, route
@@ -1178,7 +1210,7 @@ the same seam. `@tellma/core/details` registers `tm.details` when its first page
 grid's label, beside the title the route reads from the primary) when its first component is. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, its arrival toasts' chunk registers
 `tm.arrivals` as it loads, and its panels' chunk registers `tm.attentionPanels`;
-`@tellma/core/attention-rows` registers `tm.attentionRows` with its first service or list. The seam itself costs the primary one method
+`@tellma/core/attention-rows` registers `tm.attentionRows` with its first service or list. `@tellma/core/attention-pages` registers `tm.attentionPages` when its first section or page is created. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Dashboards and the home page

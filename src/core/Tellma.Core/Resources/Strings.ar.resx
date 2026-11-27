@@ -1008,6 +1008,43 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>حذف الإشعارات القديمة</value>
   </data>
+  <!-- Notification settings: the categories' labels, the channels' labels and the types' labels -->
+  <data name="NotificationCategory_jobs" xml:space="preserve">
+    <value>المهام في الخلفية</value>
+  </data>
+  <data name="NotificationCategory_users" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
+  <data name="NotificationCategory_reports" xml:space="preserve">
+    <value>التقارير</value>
+  </data>
+  <data name="NotificationChannel_inbox" xml:space="preserve">
+    <value>داخل التطبيق</value>
+  </data>
+  <data name="NotificationChannel_email" xml:space="preserve">
+    <value>البريد الإلكتروني</value>
+  </data>
+  <data name="NotificationType_core_user_added" xml:space="preserve">
+    <value>أُضفت إلى شركة</value>
+  </data>
+  <data name="NotificationType_core_job_failed" xml:space="preserve">
+    <value>فشل مهمة</value>
+  </data>
+  <data name="NotificationType_core_job_pending-confirmation" xml:space="preserve">
+    <value>مهمة تنتظر تأكيدك لتحذيراتها</value>
+  </data>
+  <data name="NotificationType_core_job_held" xml:space="preserve">
+    <value>إيقاف مهامك مؤقتًا بعد انقطاع في الخدمة</value>
+  </data>
+  <data name="NotificationType_core_scheduler_gap" xml:space="preserve">
+    <value>توقف المهام في الخلفية لفترة</value>
+  </data>
+  <data name="NotificationType_core_schedule_paused" xml:space="preserve">
+    <value>إيقاف جدول مؤقتًا</value>
+  </data>
+  <data name="NotificationType_core_report_shared" xml:space="preserve">
+    <value>مشاركة تقرير معك</value>
+  </data>
   <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>رسائل البريد الصادرة</value>

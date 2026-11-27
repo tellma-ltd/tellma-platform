@@ -5,10 +5,11 @@
 
 import type { TmStringTree } from '@tellma/core';
 
-// The Arabic of the attention panels and rows: the bell's and the tray's
-// panels, under `tm.attentionPanels`, and the attention rows (an
+// The Arabic of the attention panels, rows and pages: the bell's and the
+// tray's panels, under `tm.attentionPanels`, the attention rows (an
 // assignment's caption title and the assignment list's lines), under
-// `tm.attentionRows`. It is a table of its own beside the platform's main
+// `tm.attentionRows`, and the Notifications section of My settings, under
+// `tm.attentionPages`. It is a table of its own beside the platform's main
 // one, so each one's ceiling holds; `tmArabic()` merges it under `tm` on the
 // first switch to Arabic. Labels and button names are verbal nouns, as
 // Arabic interfaces write them; the questions conjugate for the addressee.
@@ -26,9 +27,10 @@ function addressed(male: string, female: string): string {
 }
 
 /**
- * The Arabic of the attention panels and rows, under `tm`: the bell's
- * panel, its In progress section and the tray's panel, and the assignment
- * captions and list lines. The same shape as their English.
+ * The Arabic of the attention panels, rows and pages, under `tm`: the
+ * bell's panel, its In progress section and the tray's panel, the
+ * assignment captions and list lines, and the Notifications section of My
+ * settings. The same shape as their English.
  */
 export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
   attentionPanels: {
@@ -94,5 +96,36 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
       loading: 'جارٍ تحميل المهام المسندة',
     },
     separator: '، ',
+  },
+  attentionPages: {
+    // The Notifications section of My settings: the pop-up card, the grid and the save status.
+    settings: {
+      popups: 'الرسائل المنبثقة',
+      popupsLabel: 'إظهار رسالة منبثقة عند وصول إشعار أو مهمة مسندة',
+      type: 'الإشعار',
+      cell: '{type}، {channel}',
+      alwaysOn: 'مفعّل دائمًا',
+      noInbox: 'لا يظهر داخل التطبيق',
+      saving: 'جارٍ الحفظ…',
+      saved: 'تم حفظ كل التغييرات',
+      failed: 'تعذّر حفظ التغييرات',
+      retry: 'إعادة المحاولة',
+      loadFailed: 'تعذّر تحميل إعدادات الإشعارات.',
+    },
+    // The test delivery card; its hints ask the addressee to act.
+    test: {
+      heading: 'رسائل تجريبية',
+      send: 'إرسال رسالة تجريبية',
+      noAddress: 'لا يوجد عنوان',
+      sent: 'تم الإرسال',
+      noEmail: `${addressed('أضف', 'أضيفي')} عنوان بريد إلكتروني في ملفك الشخصي أولًا.`,
+      noContact: `${addressed('أضف', 'أضيفي')} عنوان تواصل في ملفك الشخصي أولًا.`,
+      notConfigured: '{channel} غير مُعدّ على هذا الخادم.',
+    },
+    // The section's page actions.
+    actions: {
+      set: 'تشغيل قناة إشعار أو إيقافها',
+      test: 'إرسال رسالة تجريبية',
+    },
   },
 };

@@ -264,7 +264,10 @@ export function tmTestMetadata(patch: Partial<TmClientMetadata> = {}): TmClientM
     notificationTypes: [
       { key: 'core.assignment', category: 'assignments', mutable: true, severity: 'Info', toast: true, inbox: true },
     ],
-    notificationChannels: [{ key: 'core.inbox', defaultEnabled: true }],
+    notificationChannels: [
+      { key: 'inbox', defaultEnabled: true },
+      { key: 'email', defaultEnabled: false },
+    ],
     clientEvents: ['core.notification'],
     jobHandlers: [{ key: 'core.notification-delivery', schedulable: false, commitsInSteps: false, labelKey: 'Job_NotificationDelivery' }],
     widgetTypes: ['core.recents', 'acme.cash-position'],

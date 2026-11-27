@@ -480,6 +480,46 @@ export interface TmLauncherOptionHarnessFilters extends BaseHarnessFilters {
 export type TmLauncherSurfaceKind = 'field' | 'panel' | 'sheet';
 
 // @public
+export type TmNotificationCellKind = 'locked' | 'none' | 'switch';
+
+// @public
+export interface TmNotificationCellState {
+    readonly checked: boolean;
+    readonly description: string | null;
+    readonly disabled: boolean;
+    readonly kind: TmNotificationCellKind;
+    readonly name: string;
+}
+
+// @public
+export class TmNotificationSettingsHarness extends ComponentHarness {
+    canRetry(): Promise<boolean>;
+    getCategories(): Promise<string[]>;
+    getCell(type: string, channel: string): Promise<TmNotificationCellState>;
+    getLockReason(): Promise<string | null>;
+    getPopupSwitch(): Promise<TmSwitchHarness>;
+    getStatus(): Promise<string>;
+    getTestRows(): Promise<TmNotificationTestRowState[]>;
+    hasLoadError(): Promise<boolean>;
+    hasTestDelivery(): Promise<boolean>;
+    static hostSelector: string;
+    retry(): Promise<void>;
+    sendTest(channel: string): Promise<void>;
+    toggleCell(type: string, channel: string): Promise<void>;
+}
+
+// @public
+export interface TmNotificationTestRowState {
+    readonly address: string | null;
+    readonly channel: string;
+    readonly disabled: boolean;
+    readonly link: string | null;
+    readonly pending: boolean;
+    readonly reason: string | null;
+    readonly result: string | null;
+}
+
+// @public
 export class TmPageContextHarness {
     action(id: string): TmPageAction | undefined;
     actions(): readonly TmPageAction[];

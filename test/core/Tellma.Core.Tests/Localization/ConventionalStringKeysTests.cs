@@ -40,10 +40,11 @@ namespace Tellma.Core.Tests.Localization
         [InlineData("Action_Activate")]
         [InlineData("Feature_core")]
         [InlineData("SettingCategory_general")]
-        // Notifications, channels, job handlers.
+        // Notifications, their categories, channels, job handlers.
         [InlineData("Notification_fixture_shipment_shipped")]
         [InlineData("Notification_fixture_shipment_shipped_Detail")]
         [InlineData("NotificationType_fixture_shipment_held")]
+        [InlineData("NotificationCategory_shipments")]
         [InlineData("NotificationChannel_sms")]
         [InlineData("JobHandler_fixture_probe")]
         // Calendars, value sets, the brand.

@@ -48,7 +48,8 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   part, the support dialog's and the Diagnostics panel's strings, in
   `support-strings/strings-support-ar.ts`, the
   `@tellma/locale-ar/support-strings` entry point, and the attention part,
-  the bell's and the tray's panels and the assignment rows, in
+  the bell's and the tray's panels, the assignment rows and the
+  Notifications section of My settings, in
   `attention-strings/strings-attention-ar.ts`, the
   `@tellma/locale-ar/attention-strings` entry point), which `tmArabic()` merges
   and hands the platform. `tmArabic()` loads the nine entry points at once on
@@ -99,9 +100,10 @@ Copy this package's structure:
    and `pathPicker` scopes the expression editor and the path picker register in
    English; `support-strings/strings-support-xx.ts` — the `supportHost` and
    `support` scopes the support dialog and the Diagnostics panel register in
-   English; `attention-strings/strings-attention-xx.ts` — the `attentionPanels`
-   and `attentionRows` scopes the bell's and the tray's panels and the
-   attention rows register in English.
+   English; `attention-strings/strings-attention-xx.ts` — the `attentionPanels`,
+   `attentionRows` and `attentionPages` scopes the bell's and the tray's
+   panels, the attention rows and the Notifications section register in
+   English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and its tables, loaded
    together with `import()` from the `platform-strings`, `shell-strings`,

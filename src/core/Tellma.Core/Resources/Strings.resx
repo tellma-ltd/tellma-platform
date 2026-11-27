@@ -1008,6 +1008,43 @@
   <data name="JobHandler_core_notification-retention" xml:space="preserve">
     <value>Deleting old notifications</value>
   </data>
+  <!-- Notification settings: the categories' labels, the channels' labels and the types' labels -->
+  <data name="NotificationCategory_jobs" xml:space="preserve">
+    <value>Background jobs</value>
+  </data>
+  <data name="NotificationCategory_users" xml:space="preserve">
+    <value>Users</value>
+  </data>
+  <data name="NotificationCategory_reports" xml:space="preserve">
+    <value>Reports</value>
+  </data>
+  <data name="NotificationChannel_inbox" xml:space="preserve">
+    <value>In the app</value>
+  </data>
+  <data name="NotificationChannel_email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="NotificationType_core_user_added" xml:space="preserve">
+    <value>You were added to a tenant</value>
+  </data>
+  <data name="NotificationType_core_job_failed" xml:space="preserve">
+    <value>A job failed</value>
+  </data>
+  <data name="NotificationType_core_job_pending-confirmation" xml:space="preserve">
+    <value>A job waits for you to confirm its warnings</value>
+  </data>
+  <data name="NotificationType_core_job_held" xml:space="preserve">
+    <value>Your jobs were paused after a service interruption</value>
+  </data>
+  <data name="NotificationType_core_scheduler_gap" xml:space="preserve">
+    <value>Background jobs stopped for a while</value>
+  </data>
+  <data name="NotificationType_core_schedule_paused" xml:space="preserve">
+    <value>A schedule was paused</value>
+  </data>
+  <data name="NotificationType_core_report_shared" xml:space="preserve">
+    <value>A report was shared with you</value>
+  </data>
   <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>Outgoing emails</value>

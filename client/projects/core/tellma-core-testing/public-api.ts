@@ -47,6 +47,12 @@ export {
   type TmLauncherOptionHarnessFilters,
   type TmLauncherSurfaceKind,
 } from './src/tm-launcher-harness';
+export {
+  type TmNotificationCellKind,
+  type TmNotificationCellState,
+  TmNotificationSettingsHarness,
+  type TmNotificationTestRowState,
+} from './src/tm-notification-settings-harness';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
 export {

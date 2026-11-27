@@ -43,6 +43,17 @@ const STRINGS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
     Excel_Export_Progress: '{done, number} of {total, number} rows',
     JobHandler_core_import: 'Importing',
     Assignment_gl_Center_Detail: 'Managed by {manager}',
+    // The Notifications section's labels: the categories, the types and the channels.
+    NotificationCategory_jobs: 'Background jobs',
+    NotificationCategory_sharing: 'Sharing',
+    NotificationCategory_centers: 'Centers',
+    NotificationType_core_export_ready: 'An export is ready',
+    NotificationType_core_job_failed: 'A job failed',
+    NotificationType_gl_center_shared: 'A center was shared with you',
+    NotificationType_gl_center_flagged: 'A center was flagged',
+    NotificationType_gl_center_digest: 'A daily digest of the centers',
+    NotificationChannel_inbox: 'In the app',
+    NotificationChannel_email: 'Email',
   },
   ar: {
     Notification_core_export_ready: 'التصدير جاهز',
