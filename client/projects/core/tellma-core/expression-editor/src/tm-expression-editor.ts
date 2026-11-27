@@ -28,7 +28,7 @@ import { tmQxLex, type TmQxTokenKind } from '@tellma/core/entity';
 import { TM_CELL_EDITOR_HOST, TM_ERROR_DISPLAY, TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
 import type { TmCellEditor, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
-import { tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmKeysMatch } from '@tellma/core-ui/keys';
 import { TmPopover, TmPopoverContent, TmPopoverTrigger } from '@tellma/core-ui/popover';
 
 import { injectTmQueryexDraft, type TmQueryexDraft, type TmQueryexStatus, type TmQxClause, type TmQxDiagnostic, type TmQxParameter } from './tm-queryex-draft';

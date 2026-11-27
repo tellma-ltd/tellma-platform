@@ -3,32 +3,32 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import {
-  ArrowLeft,
-  ArrowRight,
-  Check,
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-  CircleAlert,
-  CircleX,
-  HandCoins,
-  Inbox,
-  LayoutGrid,
-  List,
-  LogIn,
-  LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Redo,
-  Search,
-  SearchX,
-  Table2,
-  Undo,
-  X,
-} from 'lucide';
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
+import ArrowLeft from 'lucide/dist/esm/icons/arrow-left.mjs';
+import ArrowRight from 'lucide/dist/esm/icons/arrow-right.mjs';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import ChevronFirst from 'lucide/dist/esm/icons/chevron-first.mjs';
+import ChevronLast from 'lucide/dist/esm/icons/chevron-last.mjs';
+import ChevronLeft from 'lucide/dist/esm/icons/chevron-left.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
+import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
+import LayoutGrid from 'lucide/dist/esm/icons/layout-grid.mjs';
+import List from 'lucide/dist/esm/icons/list.mjs';
+import LogIn from 'lucide/dist/esm/icons/log-in.mjs';
+import LogOut from 'lucide/dist/esm/icons/log-out.mjs';
+import PanelLeftClose from 'lucide/dist/esm/icons/panel-left-close.mjs';
+import PanelLeftOpen from 'lucide/dist/esm/icons/panel-left-open.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import Redo from 'lucide/dist/esm/icons/redo.mjs';
+import Search from 'lucide/dist/esm/icons/search.mjs';
+import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
+import Table2 from 'lucide/dist/esm/icons/table-2.mjs';
+import Undo from 'lucide/dist/esm/icons/undo.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import type { TmIconSource } from '@tellma/core-ui/icon';
 

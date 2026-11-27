@@ -35,6 +35,18 @@ Playwright (Chromium):
   its navigation committed leaves nothing left to observe and the call hangs for its whole timeout.
   Which behaviour you get turns on a few milliseconds, so it passes until something unrelated
   changes the pace of the flow.
+- Press "Create a passkey" and "Sign in with a passkey" only through `PasskeyCeremonies`. Both are
+  `type="button"` controls whose only behaviour is a listener the page's scripts attach, and the
+  scripts load at the end of the body: the button is painted and actionable while the parser still
+  waits on them, so a plain locator click can land on a button with nothing behind it and the test
+  then times out waiting for a navigation. The helpers wait for the document's scripts
+  (`WaitForScriptsAsync`), and decide between the conditional and the explicit sign-in ceremony by
+  asking the browser whether it offers conditional mediation, never by waiting a fixed time and then
+  pressing. `PasskeyTests` and `SyncedPasskeyTierTests` hold every script back by a second
+  (`HoldBackScriptsAsync`), so a flow that stops waiting fails there on every run; the in-proc and
+  step-up runs keep the full pace. `PasskeyTests` also tells the browser it offers no conditional
+  mediation, so the explicit sign-in press, which the suite's Chromium would otherwise never make,
+  runs under that guard too.
 - Sign-in codes are rate-limited to 10 per IP per hour, and every test here reaches the server
   from the same loopback address, so the whole run shares one budget. The accessibility suite
   therefore signs in once and hands the session to every test that needs one

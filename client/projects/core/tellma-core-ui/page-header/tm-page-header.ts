@@ -3,8 +3,10 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, ViewEncapsulation } from '@angular/core';
-import { ChevronRight } from 'lucide';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
 
 import { TmIcon } from '@tellma/core-ui/icon';
 

@@ -47,8 +47,9 @@ import { tmRegisterTenantShellStrings } from './tm-tenant-shell-strings';
 // The app bar renders from the launch documents, so a warm launch's first
 // frame is complete with no request. A tenant switch closes the shell's
 // overlays, which end with the shell, and clears the launcher's text. The
-// shell registers the Shortcuts dialog's key and starts the arrival engine
-// (spec 0028 §8.2). The pinned bar's row stays closed until the pins land.
+// shell registers the launcher's and the Shortcuts dialog's keys and starts
+// the arrival engine (spec 0028 §8.2). The pinned bar's row stays closed
+// until the pins land.
 
 /**
  * The failures another part of the app answers: the tab's own cancel, the
@@ -143,14 +144,24 @@ export class TmTenantShell {
       const tenantId = this.#urls.tenantId();
       untracked(() => {
         if (tenantId !== null) {
-          launcher.enterTenant(tenantId);
+          launcher.ɵenterTenant(tenantId);
         }
         this.#enter(tenantId);
       });
     });
 
-    // --- The Shortcuts dialog's key ---
-    inject(TmShortcuts).register({
+    // --- The launcher's and the Shortcuts dialog's keys ---
+    // Registered for this shell's life: outside a tenant, the tenant picker
+    // takes Mod+K for its own search.
+    const shortcuts = inject(TmShortcuts);
+    shortcuts.register({
+      id: 'tm.launcher.open',
+      keys: 'Mod+K',
+      labelKey: 'tm.tenantShell.bar.search',
+      scope: 'global',
+      run: () => launcher.show('shortcut'),
+    });
+    shortcuts.register({
       id: 'tm.shortcuts.open',
       keys: 'Mod+/',
       labelKey: 'tm.shellOverlays.dialogs.shortcuts',

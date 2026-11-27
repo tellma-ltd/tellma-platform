@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   computed,
   createEnvironmentInjector,
@@ -35,11 +37,18 @@ import {
   TmServerText,
   TmSession,
   TmShellMain,
+  TmSupport,
   TmTelemetry,
   TmUrls,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { CircleAlert, Clock, Lock, RefreshCw, SearchX } from 'lucide';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import Clipboard from 'lucide/dist/esm/icons/clipboard.mjs';
+import Clock from 'lucide/dist/esm/icons/clock.mjs';
+import LifeBuoy from 'lucide/dist/esm/icons/life-buoy.mjs';
+import Lock from 'lucide/dist/esm/icons/lock.mjs';
+import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
+import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
 
 import { TmErrorState } from './tm-error-state';
 import { TM_ERROR_STRINGS_EN } from './tm-error-strings';
@@ -74,7 +83,15 @@ interface TmErrorRow {
 }
 
 /** The icons the views use, which the presenter registers unless a feature drew its own. */
-const ICONS = { 'circle-alert': CircleAlert, clock: Clock, lock: Lock, 'refresh-cw': RefreshCw, 'search-x': SearchX };
+const ICONS = {
+  'circle-alert': CircleAlert,
+  clipboard: Clipboard,
+  clock: Clock,
+  'life-buoy': LifeBuoy,
+  lock: Lock,
+  'refresh-cw': RefreshCw,
+  'search-x': SearchX,
+};
 
 /** The kinds whose write or action shows the 5xx dialog; the rest show the 400 dialog. */
 const FIVE_XX: ReadonlySet<string> = new Set(['offline', 'unavailable', 'client-outdated', 'server']);
@@ -355,16 +372,24 @@ export class TmErrorPresenter {
   }
 
   /**
-   * The 5xx dialog: the table's words, the reference, the details, and Try
-   * again or Reload. Reload gets the new version first: a failed download
-   * shows again with the failure's message, and from the second failure
-   * offers Reload anyway.
+   * The 5xx dialog: the table's words, the reference, the details with Copy
+   * diagnostics and, when support is enabled on a tenant route, Report this
+   * problem, and Try again or Reload. Reload gets the new version first: a
+   * failed download shows again with the failure's message, and from the
+   * second failure offers Reload anyway.
    */
   async #fiveXx(error: TmApiError, view: TmErrorView, retry: (() => void) | undefined): Promise<void> {
     const dialog = this.#injector.get(TmErrorDialog);
     const actions = untracked(view.actions);
     const text = (key: string): string => this.#l10n.ɵtext(`tm.errors.${key}`)();
     const state = { failures: 0, next: null as Promise<TmErrorDialogResult> | null };
+    // --- The support actions (spec 0026 §12.1); the dialog stays open beneath the support dialog ---
+    const facade = this.#injector.get(TmSupport);
+    const enabled = untracked(this.#injector.get(TmLaunchCache).distribution)?.support.enabled === true && untracked(this.#urls.tenantId) !== null;
+    const support: TmErrorDialogOptions['actions'] = [
+      { label: this.#l10n.ɵtext('tm.diagnostics.copy')(), icon: 'clipboard', run: () => facade.copyDiagnostics('dialog') },
+      ...(enabled ? [{ label: text('reportProblem'), icon: 'life-buoy', run: () => facade.open({ error }) }] : []),
+    ];
     const reload: TmErrorDialogButton = {
       label: text('reload'),
       pendingLabel: text('updating'),
@@ -390,6 +415,7 @@ export class TmErrorPresenter {
       message: state.failures > 0 ? text('updateFailed') : untracked(view.message),
       reference: view.traceId ?? undefined,
       details: this.#details(error, view),
+      actions: support,
       ...(actions.includes('reload')
         ? { primary: reload }
         : actions.includes('retry') && retry !== undefined

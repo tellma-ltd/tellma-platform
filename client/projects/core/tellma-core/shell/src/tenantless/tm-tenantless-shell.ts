@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
@@ -19,7 +21,7 @@ import { TmLaunchCache, TmLocalization, TmSession, ɵTmClientMetadataStore } fro
 import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmMenu, type TmMenuEntry, type TmMenuItem, TmMenuTrigger } from '@tellma/core-ui/menu';
-import { Globe } from 'lucide';
+import Globe from 'lucide/dist/esm/icons/globe.mjs';
 
 import { TmShellFrame } from '../frame/tm-shell-frame';
 import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';

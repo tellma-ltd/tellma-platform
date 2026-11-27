@@ -6,7 +6,7 @@
 import type { TemplateRef } from '@angular/core';
 
 import type { TmIconSource } from '@tellma/core-ui/icon';
-import type { TmKeys } from '@tellma/core-ui/kbd';
+import type { TmKeys } from '@tellma/core-ui/keys';
 
 /**
  * The leading icon of a menu row, in one of three forms:

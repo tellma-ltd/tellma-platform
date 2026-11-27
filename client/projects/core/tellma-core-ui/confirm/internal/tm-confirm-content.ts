@@ -3,8 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { Component, inject } from '@angular/core';
-import { CircleX, Info, TriangleAlert } from 'lucide';
+import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
+import Info from 'lucide/dist/esm/icons/info.mjs';
+import TriangleAlert from 'lucide/dist/esm/icons/triangle-alert.mjs';
 
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';

@@ -1,7 +1,7 @@
 # @tellma/core-tools
 
 Node build tooling for Tellma distributions: the `tellma-client` command and the ESLint,
-stylelint and TypeScript presets a distribution's client project extends. It is a Node ESM
+stylelint, TypeScript and Vitest presets a distribution's client project extends. It is a Node ESM
 package, built with `tsc -b` into `dist/`, and nothing in it ships to the browser.
 
 | Export | Holds |
@@ -11,6 +11,8 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `@tellma/core-tools/eslint` | The ESLint preset (default export), `tmEslintConfig(options)` to configure it, and the `tm` plugin (`tmEslintPlugin`) |
 | `@tellma/core-tools/stylelint` | The stylelint preset (default export) and the `tm/allowed-breakpoints` plugin |
 | `@tellma/core-tools/tsconfig.json` | The TypeScript preset: strict type checking and strict templates |
+| `@tellma/core-tools/vitest` | The Vitest preset (default export) for the Angular unit-test builder, `tmVitestConfig(options)` to configure it, and its watchdog reporter, `TmVitestWatchdog` (below) |
+| `@tellma/core-tools/lucide-icons` | Types only: the declaration of Lucide's per-icon modules (`lucide/dist/esm/icons/<name>.mjs`), which the `lucide` package does not type (below) |
 
 ## The ESLint rules
 
@@ -42,6 +44,81 @@ export { default } from '@tellma/core-tools/stylelint';
 // tsconfig.json
 { "extends": "@tellma/core-tools/tsconfig.json" }
 ```
+
+## The Vitest preset
+
+A distribution's unit tests run through Angular's unit-test builder, which reads the preset as its
+runner configuration: the project's `vitest-base.config.mjs` re-exports it, and the test target in
+`angular.json` names that file.
+
+```js
+// vitest-base.config.mjs
+export { default } from '@tellma/core-tools/vitest';
+```
+
+```json
+"test": { "builder": "@angular/build:unit-test", "options": { "runnerConfig": "vitest-base.config.mjs" } }
+```
+
+The preset names the reporters Vitest picks itself when none is named, since naming any would
+drop them: the agent reporter under a coding agent (as `std-env`, Vitest's own detection, finds
+one), else the default reporter, then on GitHub Actions the annotations reporter. After them comes
+`TmVitestWatchdog`. The unit-test builder's own `reporters` option, or `ng test --reporters`,
+replaces that whole list, the watchdog included.
+Vitest's own limits fail a test or a hook that runs too long, inside the browser, and a browser
+session that does not connect within a minute. Nothing bounds the other phases of a browser-mode
+run: the browser server's start, the import of a test file into the tester frame, the clean-up
+between files, or the close once the run is over. A run stuck in one of them prints nothing, and a
+CI step cancelled at its limit leaves no trace of what it waited for.
+
+The watchdog counts progress instead: a test file queued, collected, started or finished, a test
+or a hook starting or finishing, the browser server becoming ready. After 5 minutes without any
+(`stallMs`), or once the run is over, 2 minutes in which Vitest has not finished closing
+(`exitMs`; not in watch mode, which keeps Vitest open on purpose), it writes a report to standard
+error and ends the process with exit code 1. Once Vitest has closed, the watchdog disarms: the
+process may go on to other work, as `ng test` over several projects builds and runs each in turn,
+so a process that lingers after a clean close is left to the CI step's own limit. It stays off while the inspector is on (the builder's `--debug`),
+since a debugger paused at a breakpoint makes no progress either. The report lists:
+
+- the latest events with their times, and every test file, test and hook that started and has not
+  finished, with how long it has waited, as the workers and pages reported them: a page sends its
+  test events in batches, so when one of its frames does not answer, the report says the page may
+  be running a test it could not report;
+- for each browser project, how many sessions connected to the server, whether the browser is
+  launching, launched or gone, and each session's page: its URL, each frame's `document.readyState`
+  or that the frame did not answer within 5 seconds (its main thread is blocked), the requests it
+  made that have not finished, and its latest errors and failed requests;
+- the browser server's dependency optimizer: whether its scan still runs, and the dependencies it
+  is still bundling;
+- the kinds of Node handles keeping the process alive.
+
+So a request the page still waits for points at the server, a frame that does not answer at the
+page's own code, and a frame that answers with nothing open at a promise that never settles. The
+page details come from Vitest's Playwright provider; another provider is reported by name only.
+
+```js
+// vitest-base.config.mjs: a two-minute stall limit
+import { tmVitestConfig } from '@tellma/core-tools/vitest';
+
+export default tmVitestConfig({ watchdog: { stallMs: 120_000 } });
+```
+
+## Icons, one module each
+
+Import each Lucide icon from its own module, never from the `lucide` index. The index re-exports
+every icon, so once a module the first frame loads imports it, every icon is reachable from the
+first frame, and the bundler puts each icon a lazy chunk draws into a chunk the first frame loads.
+The `lucide` package types only its index; a file that imports icons one module each names this
+package's declaration of those modules once:
+
+```ts
+/// <reference types="@tellma/core-tools/lucide-icons" />
+import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
+```
+
+Each module's default export is the icon's data, the value the index exports under the icon's
+name, so it registers (`provideTellmaIcons`, a feature's `icons`) and draws (`<tm-icon [svg]>`) as
+it is. The declaration resolves `lucide` from the project that references it.
 
 ## The `tellma-client` commands
 
@@ -159,4 +236,5 @@ it Vitest's `describe` and `it` so that each valid and invalid case runs as a te
 `fixtures/source-maps.ts` writes source maps from plain runs of generated code, so the budget
 specs state which source each byte came from.
 The platform's own client workspace dogfoods every preset: its ESLint and stylelint configs
-register this package's rules, and its `tsconfig.json` extends the TypeScript preset.
+register this package's rules, its `tsconfig.json` extends the TypeScript preset, and every unit
+test target names its `vitest-base.config.mjs`, which re-exports the Vitest preset.

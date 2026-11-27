@@ -7,10 +7,10 @@ import { TestBed } from '@angular/core/testing';
 import { TmConfirm, type TmConfirmYesNoOptions } from '@tellma/core-ui/confirm';
 import { TmErrorDialog, type TmErrorDialogOptions, type TmErrorDialogResult } from '@tellma/core-ui/error-dialog';
 import { TmFakeSession, TmFakeTelemetry } from '@tellma/core-testing';
-import { TmApiError, TmEntities, TmLaunch, TmPageContexts, TmPermissions, TmShellMain } from '@tellma/core';
+import { TmApiError, TmClientStore, type TmDistributionInfo, TmEntities, TmLaunch, TmPageContexts, TmPermissions, TmShellMain, TmSupport } from '@tellma/core';
 
 import { TmFakeApiUpdates, tmFakeUpdatesProviders } from '../../src/api/tm-api.testing.util';
-import { tmAppRig, tmNavigate, tmSettle, TM_T17, type TmAppRig } from '../../src/routes/tm-app.testing.util';
+import { tmAppRig, tmNavigate, tmSettle, TM_T17, TM_TEST_SUB, type TmAppRig } from '../../src/routes/tm-app.testing.util';
 import { TmErrorPresenter } from './tm-error-presenter';
 import { TM_RELOAD_HOST } from './tm-error-updates';
 import { TmErrorState } from './tm-error-state';
@@ -68,8 +68,12 @@ interface TmPresenterRig extends TmAppRig {
   readonly fakeTelemetry: TmFakeTelemetry;
 }
 
-/** Starts the test app on `/17/centers` with the recorded dialogs. */
-async function setUp(): Promise<TmPresenterRig> {
+/**
+ * Starts the test app on `/17/centers` with the recorded dialogs.
+ *
+ * @param support - Whether the distribution document enables support requests; without one, none is stored.
+ */
+async function setUp(support?: boolean): Promise<TmPresenterRig> {
   const dialog = new TmRecordingErrorDialog();
   const confirm = new TmRecordingConfirm();
   const updates = new TmFakeApiUpdates();
@@ -81,6 +85,12 @@ async function setUp(): Promise<TmPresenterRig> {
       { provide: TM_RELOAD_HOST, useValue: updates },
     ],
   });
+  // --- The distribution document, stored before the launch reads it ---
+  if (support !== undefined) {
+    const document = { support: { enabled: support, providerAccess: false } } as TmDistributionInfo;
+    await TestBed.inject(TmClientStore).put({ kind: 'user', sub: TM_TEST_SUB }, 'distribution', { tag: null, savedAt: Date.now(), data: document });
+    rig.api.respond('/api/distribution-info', document);
+  }
   await tmNavigate('/17/centers');
   return {
     ...rig,
@@ -124,21 +134,21 @@ describe('TmErrorPresenter', () => {
 
     it('names a refused path from the query root, else shows it raw', async () => {
       const { presenter } = await setUp();
-      const refusal = forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Name' });
+      const refusal = forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Image' });
       const resource = TestBed.inject(TmPermissions).label('core.User')();
       const raw = presenter.describe(refusal, { kind: 'read' });
-      expect(raw.title()).toBe("You can't see Manager.Name here");
+      expect(raw.title()).toBe("You can't see Manager.Image here");
       expect(raw.message()).toBe(`It needs full “${resource}: Read” access. Ask your administrator to grant it.`);
       expect(raw.permission).toBe('core.User · Read');
 
-      // With the call's entity and the entity model loaded, the path reads as its labels.
+      // With the call's entity and the entity model loaded, the path reads as its labels: the
+      // center's manager (a user) and the user's image (a blob), two navigations deep.
       await TestBed.inject(TmEntities).load();
-      const named = presenter.describe(
-        forbidden({ resource: 'core.User', action: 'Read', reason: 'restricted-path', path: 'Manager.Manager' }),
-        { kind: 'read', entity: 'gl.Center' },
-      );
-      expect(named.title()).toBe(`You can't see ${TestBed.inject(TmEntities).resolve('gl.Center', 'Manager.Manager')!.label()} here`);
-      expect(named.title()).not.toContain('Manager.Manager');
+      const named = presenter.describe(refusal, { kind: 'read', entity: 'gl.Center' });
+      const path = TestBed.inject(TmEntities).resolve('gl.Center', 'Manager.Image');
+      expect(path).not.toBeNull();
+      expect(named.title()).toBe(`You can't see ${path!.label()} here`);
+      expect(named.title()).not.toContain('Manager.Image');
     });
 
     it('names the tenant of a read-only or frozen refusal as the shell shows it', async () => {
@@ -225,6 +235,31 @@ describe('TmErrorPresenter', () => {
       await presented;
       expect(retry).toHaveBeenCalledOnce();
       expect(TestBed.inject(TmPageContexts).overlays()).toEqual([]);
+    });
+
+    it('offers Copy diagnostics in the 5xx dialog, and Report this problem when support is on, each leaving the dialog open', async () => {
+      const { presenter, dialog } = await setUp(true);
+      const facade = TestBed.inject(TmSupport);
+      const copy = vi.spyOn(facade, 'copyDiagnostics').mockImplementation(() => undefined);
+      const open = vi.spyOn(facade, 'open').mockImplementation(() => undefined);
+      const error = new TmApiError({ kind: 'server', status: 500, code: 'internal', traceId: '4bf92f3577b34da6a3ce929d0e0e4736' });
+      void presenter.present(error, { kind: 'save' });
+      expect(dialog.open?.actions?.map(({ label, icon }) => ({ label, icon }))).toEqual([
+        { label: 'Copy diagnostics', icon: 'clipboard' },
+        { label: 'Report this problem', icon: 'life-buoy' },
+      ]);
+      dialog.open?.actions?.[0]?.run();
+      dialog.open?.actions?.[1]?.run();
+      expect(copy).toHaveBeenCalledWith('dialog');
+      expect(open).toHaveBeenCalledWith({ error });
+      expect(dialog.open?.actions?.every((action) => action.closes !== true)).toBe(true);
+      expect(dialog.open).toBeDefined();
+    });
+
+    it('offers only Copy diagnostics when support is off', async () => {
+      const { presenter, dialog } = await setUp(false);
+      void presenter.present(new TmApiError({ kind: 'server', status: 500, code: 'internal' }), { kind: 'save' });
+      expect(dialog.open?.actions?.map(({ label }) => label)).toEqual(['Copy diagnostics']);
     });
 
     it('gets the update on Reload, says when the download fails, and offers Reload anyway from the second failure', async () => {

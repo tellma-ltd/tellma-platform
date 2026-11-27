@@ -48,7 +48,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/grid-editing` | The grids' editing code — the cell editors, the editor session, the popup pane's keys and the status bar — which `tm-grid` and `tm-tree-grid` load themselves with `import()` once a grid is editable, so a readonly list never downloads it. Unstable wiring: no API goldens, never imported by app code |
 | `@tellma/core-ui/spinner` | `tm-spinner` — the shared decorative pending/progress glyph |
 | `@tellma/core-ui/icon` | `tm-icon` — a Lucide icon by registry name or from icon data, sized by `--icon-size`, mirrored in RTL when directional; `TmIconRegistry` + `provideTellmaIcons()` |
-| `@tellma/core-ui/kbd` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts`, `tmIsApplePlatform`, and `tm-kbd`'s key caps |
+| `@tellma/core-ui/kbd` | `tm-kbd`'s key caps, and the keys grammar re-exported from `@tellma/core-ui/keys` |
+| `@tellma/core-ui/keys` | The `TmKeys` notation (`'Mod+K'`), `tmKeysMatch` (layout-independent, AltGr-safe), `tmFormatKeys`/`tmKeysText`/`tmAriaKeyShortcuts` and `tmIsApplePlatform`; its own entry point so a first-frame surface (the shortcut registry, the app bar) matches and labels keys without `tm-kbd` (`@tellma/core-ui/kbd` re-exports it) |
 | `@tellma/core-ui/badge` | `tm-badge` — a status label in a colour tone, with an optional leading dot or icon; `tm-counter`, re-exported from `@tellma/core-ui/counter` |
 | `@tellma/core-ui/counter` | `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+"); its own entry point so a first-frame surface paints counts without `tm-badge` |
 | `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; re-exports `tmInitials` and `tmAvatarTone` |
@@ -68,7 +69,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/page-header` | `tm-page-header` — a page's title row (crumb link, `h1`, extras, end slot) and toolbar row on one line each, and a band below them that wraps |
 | `@tellma/core-ui/description-list` | `dl[tmDescriptionList]` — label and value pairs, stacked or inline, in one, two or container-sized columns (global stylesheet) |
 | `@tellma/core-ui/splitter` | `tm-splitter` + `tmSplitterPane` — two panes divided by a bar dragged with any pointer or moved by keyboard, the primary pane's size clamped to the container in CSS while `size` keeps the user's intent |
-| `@tellma/core-ui/pager` | `tm-pager` — paging status and controls: range mode writes `page` and `pageSize`, item mode steps through single items; the status and the size select reserve their widest content, so paging never moves the buttons |
+| `@tellma/core-ui/pager` | `tm-pager` — paging status and controls: range mode writes `page` and `pageSize`, item mode steps through single items; the status and the size select reserve their widest content, so paging never moves the buttons; the size select loads on demand (at idle, or on the first pointer, focus or key), behind a stand-in of its geometry that replays a click or keys pressed before it lands |
 | `@tellma/core-ui/tree` | `tm-tree` + `ng-template[tmTreeNode]` — a tree on the aria tree pattern whose children load lazily into a reserved spinner slot, with none, single or multiple selection, context rows and draggable rows |
 | `@tellma/core-ui/drag-drop` | `[tmDragSource]`, `[tmDropTarget]` and the `TmDragDrop` service — typed payloads over native drag and drop; a drag writes its text as `text/plain`, so text fields take it at the drop caret (global stylesheet) |
 | `@tellma/core-ui/reorder-list` | `tm-reorder-list` + `tmReorderItem` / `tmReorderEmpty` — an ordered list rearranged by dragging, by a grab handle's keys or by the move menu its click opens, each step announced, that also takes drops from other sources |
@@ -96,10 +97,15 @@ package name from its one stylesheet):
 
 Icons draw from data, not from a font or a sprite. The library registers no
 icon names: register the ones the application uses once, importing each
-icon's data from `lucide` (a dependency of this package):
+icon's data from its own module of `lucide` (a dependency of this package).
+Never import the `lucide` index: it reaches every icon, so an app whose first
+frame imports it carries in that frame every icon its lazy chunks draw.
+`@tellma/core-tools/lucide-icons` types the per-icon modules:
 
 ```ts
-import { ChevronRight, HandCoins } from 'lucide';
+/// <reference types="@tellma/core-tools/lucide-icons" />
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
 
 providers: [
   provideTellmaIcons({
@@ -162,11 +168,14 @@ the components ship no hardcoded sizes or colors.
   `tm-progress-ring`, `tm-copy-button`, `tm-reference` and `tm-chip`.
   `tm-relative-time` is plain `inline` text, since it wraps only inline
   content.
-- `@tellma/core-ui/icon` and `/kbd` are the foundation every other entry
-  point builds on, so they import no other `@tellma` entry point (lint
-  enforces it). Library glyphs draw through `<tm-icon [svg]>` with data
-  imported from `lucide`; key combinations are matched and labelled through
-  the `kbd` helpers, the library's only platform check.
+- `@tellma/core-ui/icon`, `/keys` and `/kbd` are the foundation every other
+  entry point builds on, so they import no other `@tellma` entry point,
+  except that `/kbd` builds on `/keys` (lint enforces it). Library glyphs
+  draw through `<tm-icon [svg]>` with data imported from each icon's own
+  `lucide` module, never the index (lint enforces it too); key combinations
+  are matched and labelled through the `keys` grammar, the library's only
+  platform check. Code that only matches or labels keys imports `/keys`;
+  `/kbd` is for the `tm-kbd` key caps.
 - Unit spec files share one browser page per run. A spec that changes the
   page irreversibly (a Content Security Policy, which can never be lifted)
   is named `*.csp.spec.ts`: the `test` target excludes that suffix and the

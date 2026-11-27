@@ -10,7 +10,8 @@
  * tenant shell renders the app bar in the first frame; the session menu,
  * the markers' popovers, the slots' panels and the About and Shortcuts
  * dialogs it opens ship in deferred chunks, so this entry point exports the
- * session menu's type alone.
+ * session menu's type alone. The launcher's service ships here, and its
+ * panel, index and search in a deferred chunk of their own.
  *
  * @packageDocumentation
  */
@@ -22,6 +23,9 @@
 
 export { TmAppBar } from './src/app-bar/tm-app-bar';
 export { TmTenantShell } from './src/tm-tenant-shell';
+export { TmLauncher, type TmLauncherCloseReason, type TmLauncherVia } from './src/launcher/tm-launcher';
+// The launcher's surface, as its deferred chunk implements it; not for app code.
+export type { TmLauncherSurface as ɵTmLauncherSurface } from './src/launcher/tm-launcher';
 // The session menu, as a type: the class loads with the overlays' chunk.
 export type { TmSessionMenu } from './src/session/tm-session-panels';
 // The tenantless chunk's components, as types: the classes load with the chunk.

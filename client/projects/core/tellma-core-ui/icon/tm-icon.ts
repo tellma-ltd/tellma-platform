@@ -106,10 +106,11 @@ function appendElements(document: Document, parent: Element, node: TmIconNode): 
  * `currentColor` at `--icon-stroke-width` (1.75 by default).
  *
  * Names come from {@link TmIconRegistry}: register them with
- * `provideTellmaIcons({ 'hand-coins': HandCoins })`, importing the data from
- * `lucide`. An unknown name draws an empty box of the same size and, in
- * development, logs one error naming it. `svg` takes icon data directly and
- * bypasses the registry; when both are set, `svg` wins.
+ * `provideTellmaIcons({ 'hand-coins': HandCoins })`, importing each icon's
+ * data from its own `lucide` module. An unknown name draws an empty box of
+ * the same size and, in development, logs one error naming it. `svg` takes
+ * icon data directly and bypasses the registry; when both are set, `svg`
+ * wins.
  *
  * A container sizes the icons inside it by setting `--icon-size`; the
  * `size` input pins one icon to a step of the ladder instead. A glyph registered with `mirrorInRtl` flips horizontally wherever its

@@ -181,7 +181,15 @@ describe('tellma-client build on the fixture app', () => {
     expect(shell!.urls.some((url) => url.includes('latin-ext'))).toBe(false);
     expect(shell!.urls.some((url) => url.endsWith('.map') || url.includes('worker'))).toBe(false);
     expect(onDemand).toMatchObject({ name: 'on-demand' });
-    expect(onDemand!.urls).toEqual(['/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/manifest.webmanifest']);
+    // Besides the icons and the manifest, the on-demand group holds the chunks only an
+    // on-demand entry point reaches (the support tools'), none of them in the shell group.
+    const [chunks, files] = [onDemand!.urls.filter((url) => url.endsWith('.js')), onDemand!.urls.filter((url) => !url.endsWith('.js'))];
+    expect(files).toEqual(['/icons/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/icon-maskable-512.png', '/manifest.webmanifest']);
+    expect(chunks.length).toBeGreaterThan(0);
+    for (const chunk of chunks) {
+      expect(chunk).toMatch(/^\/chunk-[A-Z0-9]{8}\.js$/);
+      expect(shell!.urls).not.toContain(chunk);
+    }
   });
 
   it("derives the navigation URLs from the routing words", () => {
@@ -194,6 +202,24 @@ describe('tellma-client build on the fixture app', () => {
     }
     for (const path of ['/api', '/api/users', '/bff/login', '/.well-known/openid-configuration', '/signin-oidc', '/12/hub', '/12/blobs/x', '/main-A.js', '/a__b']) {
       expect(navigates(path), path).toBe(false);
+    }
+  });
+
+  it('keeps the icons only lazy chunks draw out of the initial JavaScript', () => {
+    const graph = TmBuildGraph.read(join(output(), 'stats.json'));
+    // No module imports Lucide's index. The index re-exports every icon, so
+    // once the first frame reaches it, the bundler marks every icon reachable
+    // from the first frame and places each icon a lazy chunk draws in a chunk
+    // the first frame loads.
+    expect([...graph.modules.keys()].filter((path) => path.endsWith('/lucide/dist/esm/lucide.mjs'))).toEqual([]);
+    // The session menu's icons, which only its lazy chunk draws, are in the
+    // build but in none of the files the first frame loads.
+    const initial = tmReadInitialFiles(read('index.html'));
+    const initialJs = graph.staticClosure([...initial.scripts, ...initial.modulePreloads]);
+    for (const icon of ['user-cog', 'keyboard', 'calendar-days']) {
+      const holding = graph.outputsHolding((input) => input.endsWith(`/lucide/dist/esm/icons/${icon}.mjs`));
+      expect(holding, icon).not.toEqual([]);
+      expect(holding.filter((file) => initialJs.has(file)), icon).toEqual([]);
     }
   });
 
