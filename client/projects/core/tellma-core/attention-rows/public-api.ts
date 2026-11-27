@@ -30,4 +30,5 @@ export {
   type TmAssignmentParty,
 } from './src/tm-assignment-list';
 export { tmIcuArguments } from './src/tm-icu-arguments';
+export { ɵTmAttentionRowStyles } from './src/tm-attention-row-styles';
 export { TmRovingRows as ɵTmRovingRows } from './src/tm-roving-rows';

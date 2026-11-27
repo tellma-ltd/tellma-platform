@@ -209,6 +209,28 @@ describe('TmPageActions', () => {
       expect(action.calls.map((call) => call.origin)).toEqual(ORIGINS);
     });
 
+    it('words its confirmation from the invocation when its arguments are a function of them', async () => {
+      const { actions, confirm } = rig();
+      const action = destructive('acme.a.delete', {
+        params: { type: 'object', properties: { id: { type: 'integer' } } },
+        confirm: {
+          titleKey: 'Acme_Delete_Title',
+          messageKey: 'Acme_Delete_Message',
+          args: (args) => ({ kind: (args as { readonly id?: unknown }).id === 7 ? 'import' : 'job' }),
+        },
+      });
+      page(action);
+      expect(await actions.invoke('acme.a.delete', { id: 7 }, 'assistant')).toEqual({ outcome: 'done' });
+      expect(confirm).toHaveBeenLastCalledWith({
+        title: 'Acme_Delete_Title {"kind":"import"}',
+        message: 'Acme_Delete_Message {"kind":"import"}',
+        confirmLabel: 'acme.a.delete.label {"kind":"import"}',
+        destructive: true,
+      });
+      expect(await actions.invoke('acme.a.delete', { id: 8 }, 'user')).toEqual({ outcome: 'done' });
+      expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Acme_Delete_Title {"kind":"job"}' }));
+    });
+
     it('answers cancelled when the user declines, without running it', async () => {
       const { actions, confirm } = rig();
       confirm.mockResolvedValue(false);

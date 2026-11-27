@@ -17,14 +17,15 @@ import {
   InjectionToken,
   type Signal,
   type Type,
+  untracked,
   viewChild,
   ViewContainerRef,
 } from '@angular/core';
 import { TmShortcuts, TmTelemetry } from '@tellma/core';
 import { TmCounter } from '@tellma/core-ui/counter';
-import { TmIcon } from '@tellma/core-ui/icon';
+import { TmIcon, TmIconRegistry } from '@tellma/core-ui/icon';
 import { tmAriaKeyShortcuts, type TmKeys } from '@tellma/core-ui/keys';
-import { TmProgressRing } from '@tellma/core-ui/progress';
+import { TmProgressRing } from '@tellma/core-ui/progress-ring';
 import Bell from 'lucide/dist/esm/icons/bell.mjs';
 import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
@@ -84,7 +85,6 @@ const SHORTCUTS: Readonly<Record<TmPanel, { readonly id: string; readonly keys: 
     <button
       #button
       type="button"
-      class="tm-attention-button"
       aria-haspopup="dialog"
       [attr.aria-label]="badge().label"
       [attr.aria-expanded]="expanded()"
@@ -96,7 +96,7 @@ const SHORTCUTS: Readonly<Record<TmPanel, { readonly id: string; readonly keys: 
     >
       <!-- The bell's job ring, under the icon and the counter. -->
       @if (ring()) {
-        <tm-progress-ring class="tm-attention-button__ring" [diameter]="30" />
+        <tm-progress-ring style="position: absolute; inset: 0" [diameter]="30" />
       }
       <tm-icon [svg]="icon" />
       <tm-counter placement="overlay" [value]="badge().count" [tone]="badge().tone" />
@@ -104,15 +104,13 @@ const SHORTCUTS: Readonly<Record<TmPanel, { readonly id: string; readonly keys: 
     <!-- The panel's host, from the panels' chunk. -->
     <ng-container #host />
   `,
-  // The app bar's 30 px icon button, tinted from the bar's own ink.
+  // The app bar's 30 px icon button, tinted from the bar's own ink; the ring sits over it.
   styles: `
     :host {
       display: inline-flex;
-      flex: none;
-      position: relative;
     }
 
-    .tm-attention-button {
+    button {
       position: relative;
       display: inline-flex;
       align-items: center;
@@ -127,19 +125,14 @@ const SHORTCUTS: Readonly<Record<TmPanel, { readonly id: string; readonly keys: 
       cursor: pointer;
     }
 
-    .tm-attention-button:hover,
-    .tm-attention-button[aria-expanded='true'] {
+    button:hover,
+    [aria-expanded='true'] {
       background: color-mix(in srgb, currentColor 10%, transparent);
     }
 
-    .tm-attention-button:focus-visible {
+    button:focus-visible {
       outline: var(--focus-ring-width) solid currentColor;
       outline-offset: 1px;
-    }
-
-    .tm-attention-button__ring {
-      position: absolute;
-      inset: 0;
     }
   `,
 })
@@ -181,6 +174,8 @@ export class TmAttentionButton {
   constructor() {
     const destroyRef = inject(DestroyRef);
     destroyRef.onDestroy(() => (this.#ended = true));
+    // The panels' empty state and the arrival toasts draw the inbox by name, from the glyph the tray's button holds.
+    inject(TmIconRegistry).register({ inbox: Inbox });
     // The shortcut toggles the panel from anywhere, a field included, but
     // not over a modal (spec 0027 Appendix A).
     const shortcuts = inject(TmShortcuts);
@@ -211,9 +206,13 @@ export class TmAttentionButton {
         ref.changeDetectorRef.detectChanges();
       },
       (error: unknown) => {
-        // Offline, or after a deploy removed the chunk: the next hover, focus or press tries again.
+        // Offline, or after a deploy removed the chunk: a panel the press
+        // opened closes again, so the next hover, focus or press tries again.
         this.#telemetry.error(error, { source: 'tm-attention-buttons' });
         this.#loading = null;
+        if (untracked(this.#attention.open) === this.#panel) {
+          this.#attention.toggle(this.#panel, 'click');
+        }
       },
     );
   }

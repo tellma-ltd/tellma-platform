@@ -4,28 +4,32 @@
 // LICENSE file in the root directory of this source tree.
 
 import { LocationStrategy } from '@angular/common';
-import { afterNextRender, ChangeDetectionStrategy, Component, computed, DestroyRef, ElementRef, inject, signal, untracked, viewChild } from '@angular/core';
+import { afterNextRender, ChangeDetectionStrategy, Component, computed, ElementRef, inject, untracked, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
-import { TmEntities, type TmEntityType, type TmId, TmLocalization, type TmPageAction, TmPageContexts, TmTelemetry, TmUrls } from '@tellma/core';
+import { TmEntities, type TmEntityType, type TmId, TmLocalization, TmTelemetry, TmUrls } from '@tellma/core';
 import { type TmAssignmentActivation, TmAssignmentList, TmAttentionText } from '@tellma/core/attention-rows';
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TM_MODAL_DATA } from '@tellma/core-ui/modal';
 
 import { TmAttention } from './tm-attention';
-import { type TmAttentionPanelData, tmItemPosition } from './tm-attention-panel-data';
+import { type TmAttentionPanelData, tmItemPosition, tmKeepPanelFocus, tmPublishPanel } from './tm-attention-panel-data';
 
 // The tray's panel (spec 0028 §7.2): the heading with the open count, the
 // user's open assignments through the tray's assignment list, and the
 // footer link. Rows assigned since the user last opened the tray are marked
-// "New" against the seenAt the panel opened with, which the panel's own
-// `seen` does not move while it is open. Choosing a row closes the panel and
-// opens the row's target; nothing is marked, since the count drops when the
-// work completes or moves on. An open panel publishes its overlay page
-// context, `panel:tray`.
+// "New" against the seenAt of the first copy the panel shows, which the
+// panel's own `seen` does not move while it is open; a user who never opened
+// the tray has none, and every row is new (spec 0028 §4.2). Choosing a row
+// closes the panel and opens the row's target; nothing is marked, since the
+// count drops when the work completes or moves on. An open panel publishes
+// its overlay page context, `panel:tray`.
 
 /** The assignments' entity, whose search page the footer opens. */
 const ASSIGNMENT = 'core.Assignment';
+
+/** The `seenAt` of a user who never opened the tray: before every row. */
+const NEVER = '1970-01-01T00:00:00Z';
 
 /**
  * The tray's panel: the work waiting on the user. Created by the panels'
@@ -35,7 +39,7 @@ const ASSIGNMENT = 'core.Assignment';
   selector: 'tm-tray-panel',
   imports: [TmAssignmentList, TmCounter, TmEmptyState],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'tm-attention-panel', id: 'tm-attention-tray-panel' },
+  host: { class: 'tm-attention-panel', id: 'tm-attention-tray-panel', tabindex: '-1' },
   template: `
     <!-- The header: the heading and its open count (the drawer's own title stands in for the heading). -->
     <div class="tm-attention-panel__header">
@@ -63,7 +67,7 @@ const ASSIGNMENT = 'core.Assignment';
             [label]="text('tray.list')"
             [items]="summary.latest"
             [related]="summary.related"
-            [seenAt]="seenAt"
+            [seenAt]="seenAt()"
             [fallback]="fallback()"
             (activated)="activated($event)"
           />
@@ -100,8 +104,18 @@ export class TmTrayPanel {
   /** The open count; `null` before any copy. */
   protected readonly open = computed(() => this.assignments()?.open || null);
 
-  /** The `seenAt` the panel opened with, against which rows are marked "New". */
-  protected readonly seenAt = untracked(this.assignments)?.seenAt ?? null;
+  /**
+   * The `seenAt` of the first copy the panel shows, against which rows are
+   * marked "New"; `null` before any copy.
+   */
+  protected readonly seenAt = (() => {
+    let first: string | null = null;
+    return computed(() => {
+      const summary = this.assignments();
+      first ??= summary === undefined ? null : (summary.seenAt ?? NEVER);
+      return first;
+    });
+  })();
 
   readonly #location = inject(LocationStrategy);
   readonly #entities = inject(TmEntities);
@@ -118,9 +132,10 @@ export class TmTrayPanel {
   /** Where focus goes when the last row leaves while focused: the heading, else the panel. */
   protected readonly fallback = computed(() => this.headingRef()?.nativeElement ?? this.#host);
 
-  /** Creates the panel: its page context and its first focus. */
+  /** Creates the panel: its page context, its focus rule and its first focus. */
   constructor() {
-    this.#publish(inject(DestroyRef));
+    this.#publish();
+    tmKeepPanelFocus(this.#host, () => untracked(this.fallback));
     // Opening focuses the first row; after the popover's and the drawer's own first focus.
     afterNextRender({
       read: () => this.#host.querySelector<HTMLElement>('[data-tm-row] [data-tm-row-control]')?.focus(),
@@ -171,7 +186,7 @@ export class TmTrayPanel {
   }
 
   /** Publishes the panel's overlay page context while it is open. */
-  #publish(destroyRef: DestroyRef): void {
+  #publish(): void {
     const latest = computed(() => this.assignments()?.latest ?? []);
     const captions = new Map<TmEntityType<'core.Assignment'>, ReturnType<TmAttentionText['caption']>>();
     const caption = (row: TmEntityType<'core.Assignment'>): ReturnType<TmAttentionText['caption']> => {
@@ -182,37 +197,9 @@ export class TmTrayPanel {
       }
       return made;
     };
-    const seenAt = Date.parse(this.seenAt ?? '');
-    const open: TmPageAction = {
-      id: 'attention.open-item',
-      labelKey: 'tm.attentionPanels.actions.openItem',
-      group: 'menu',
-      enabled: signal(true).asReadonly(),
-      destructive: false,
-      disabledReason: signal<string | null>(null).asReadonly(),
-      params: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'] },
-      invoke: (args) => {
-        const id = (args as { readonly id?: unknown }).id;
-        const index = untracked(latest).findIndex((row) => row['id'] === id);
-        const row = untracked(latest)[index];
-        const targetId = row?.['targetId'];
-        const url =
-          row !== undefined && (typeof targetId === 'string' || typeof targetId === 'number')
-            ? this.#urls.target(String(row['resource'] ?? ''), targetId as TmId)
-            : null;
-        if (url === null) {
-          return Promise.resolve({ outcome: 'failed', error: new Error(`The tray shows no assignment ${String(id)} with a page.`) });
-        }
-        this.activated({ row: row!, position: index + 1 });
-        void this.#router.navigateByUrl(url);
-        return Promise.resolve({ outcome: 'done' });
-      },
-    };
-    inject(TmPageContexts).register(
+    tmPublishPanel(
+      'tray',
       {
-        kind: 'custom',
-        routeTemplate: 'panel:tray',
-        overlay: true,
         title: computed(() => this.text('tray.heading')),
         status: computed(() => (this.assignments() === undefined ? 'loading' : 'ready')),
         state: computed(() => {
@@ -221,6 +208,7 @@ export class TmTrayPanel {
         }),
         visible: computed(() => {
           const rows = latest();
+          const seenAt = Date.parse(this.seenAt() ?? '');
           return {
             columns: [
               { path: 'Resource', label: 'Resource' },
@@ -239,10 +227,22 @@ export class TmTrayPanel {
             truncated: false,
           };
         }),
-        errors: signal([]).asReadonly(),
-        actions: signal([open]).asReadonly(),
       },
-      destroyRef,
+      (id) => {
+        const index = untracked(latest).findIndex((row) => row['id'] === id);
+        const row = untracked(latest)[index];
+        const targetId = row?.['targetId'];
+        // A long id arrives as its decimal text.
+        const url =
+          row !== undefined && (typeof targetId === 'string' || typeof targetId === 'number')
+            ? this.#urls.target(String(row['resource'] ?? ''), targetId as TmId)
+            : null;
+        if (url !== null) {
+          this.activated({ row: row!, position: index + 1 });
+          void this.#router.navigateByUrl(url);
+        }
+        return url !== null;
+      },
     );
   }
 }

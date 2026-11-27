@@ -61,8 +61,8 @@ async function setup(items: readonly TmEntityType<'core.Assignment'>[]): Promise
 /** The rows as they read: title, line and the "New" mark. */
 function rows(fixture: ComponentFixture<Host>): { readonly title: string; readonly line: string; readonly new: boolean }[] {
   return [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-tm-row]')].map((row) => ({
-    title: row.querySelector('.tm-assignment-list__title')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
-    line: row.querySelector('.tm-assignment-list__line')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    title: row.querySelector('.tm-attention-row__title')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    line: row.querySelector('.tm-attention-row__line')?.textContent?.replace(/\s+/g, ' ').trim() ?? '',
     new: row.querySelector('.tm-assignment-list__new') !== null,
   }));
 }
@@ -85,6 +85,17 @@ describe('tm-assignment-list', () => {
     expect(shown[3]?.line).toBe('Assigned automatically');
     // Row 3 is new by time, but the user assigned it to themselves.
     expect(shown.map((row) => row.new)).toEqual([true, false, false, false]);
+  });
+
+  it("marks every row new against the epoch, a user's seenAt before any tray, and none without a seenAt", async () => {
+    const fixture = await setup([tmTestAssignment(1), tmTestAssignment(2, { assignedAt: '2020-01-01T00:00:00.000Z' }), tmTestAssignment(3, { assignedById: 42 })]);
+    fixture.componentInstance.seenAt.set('1970-01-01T00:00:00Z');
+    await fixture.whenStable();
+    // Row 3 the user assigned to themselves.
+    expect(rows(fixture).map((row) => row.new)).toEqual([true, true, false]);
+    fixture.componentInstance.seenAt.set(null);
+    await fixture.whenStable();
+    expect(rows(fixture).map((row) => row.new)).toEqual([false, false, false]);
   });
 
   it("names the assignee on the user's own assignments, and marks none of them new", async () => {
@@ -122,7 +133,7 @@ describe('tm-assignment-list', () => {
 
   it("links each row to its target's page, and reports the row a plain click opens", async () => {
     const fixture = await setup([tmTestAssignment(1, { captionJson: JSON.stringify({ code: 'HQ-01' }) })]);
-    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('.tm-assignment-list__link')!;
+    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('[data-tm-row-control]')!;
     expect(link.getAttribute('href')).toBe('/17/centers/23');
     expect(link.getAttribute('aria-label')).toMatch(/^Center HQ-01, /);
     link.click();

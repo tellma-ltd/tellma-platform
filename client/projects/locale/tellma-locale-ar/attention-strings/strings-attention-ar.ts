@@ -42,8 +42,6 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
       clearReadTitle: `هل ${addressed('تريد', 'تريدين')} مسح الإشعارات المقروءة؟`,
       clearReadMessage: 'تُحذف من قائمتك.',
       clearReadConfirm: 'مسح',
-      cancel: 'إلغاء',
-      list: 'الإشعارات',
       download: 'تنزيل',
       clear: 'مسح',
       unread: 'غير مقروء',
@@ -59,7 +57,6 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
     // The bell's In progress section.
     jobs: {
       heading: 'قيد التشغيل',
-      list: 'المهام قيد التشغيل',
       more: '+{count, number} أخرى في «مهامي في الخلفية»',
       waiting: 'في انتظار البدء',
       working: 'جارٍ العمل…',
@@ -69,13 +66,10 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
       awaiting: 'بانتظار التأكيد',
       awaitingLine: 'بانتظار تأكيدك',
       review: 'مراجعة',
-      stop: 'إيقاف',
-      keep: 'متابعة التشغيل',
-      stopTitle: `هل ${addressed('تريد', 'تريدين')} إيقاف هذه المهمة؟`,
-      stopMessage: 'يبقى ما حُفظ من العمل محفوظًا.',
-      importTitle: `هل ${addressed('تريد', 'تريدين')} إيقاف هذا الاستيراد؟`,
-      importMessage: 'تبقى الصفوف المحفوظة محفوظة، ولن يُستورد باقي الملف.',
-      importStop: 'إيقاف الاستيراد',
+      // Stop and its confirmation, by the job's kind: `import` for an import, else any other.
+      stop: '{kind, select, import {إيقاف الاستيراد} other {إيقاف}}',
+      stopTitle: `{kind, select, import {هل ${addressed('تريد', 'تريدين')} إيقاف هذا الاستيراد؟} other {هل ${addressed('تريد', 'تريدين')} إيقاف هذه المهمة؟}}`,
+      stopMessage: '{kind, select, import {تبقى الصفوف المحفوظة محفوظة، ولن يُستورد باقي الملف.} other {يبقى ما حُفظ من العمل محفوظًا.}}',
     },
     // The tray's panel.
     tray: {
@@ -87,7 +81,6 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
     },
     // The panels' page-context actions.
     actions: { openItem: 'فتح' },
-    offline: 'أنت غير متصل',
   },
   attentionRows: {
     // An assignment's caption: the entity's singular label, then the target's code.

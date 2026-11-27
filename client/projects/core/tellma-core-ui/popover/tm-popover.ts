@@ -38,6 +38,7 @@ import {
   type TmOverlayAlign,
   type TmOverlaySide,
   ɵtmOpenModals,
+  ɵtmWatchModals,
 } from '@tellma/core-ui/overlay';
 
 import { tmPopoverBlockRoom, tmPopoverInlineShift, tmTokenPx } from './internal/fit';
@@ -91,9 +92,11 @@ const FOCUSABLE =
  * On open, focus moves to the first tabbable element inside (else the
  * panel itself). Escape, an outside click, and tabbing past the content
  * close it; focus returns to the anchor only when it was inside the panel.
- * A modal opened while the popover is open (a confirmation its content
- * asks) leaves it open beneath: focus in the modal and clicks while it
- * shows never count as leaving.
+ * A modal opened from inside the panel while it is open (a confirmation
+ * its content asks) leaves it open beneath: focus in that modal and clicks
+ * while it shows never count as leaving. Any other modal, one opened while
+ * focus is outside the panel, is outside the popover like the rest of the
+ * page.
  *
  * @tmGroup overlay
  * @tmA11yNotes The panel is a non-modal `role="dialog"` (no focus trap);
@@ -210,8 +213,12 @@ export class TmPopover {
   private destroyed = false;
   /** Host elements of the triggers currently bound to this popover. */
   private readonly triggers = new Set<Element>();
-  /** The modals already open when the popover opened; any other open modal sits above it. */
-  private modalsBelow: ReadonlySet<HTMLElement> = new Set();
+  /** The modals open at the last count: already open when the popover opened, or opened since. */
+  private modalsKnown: ReadonlySet<HTMLElement> = new Set();
+  /** The modals opened while focus was inside the panel, which sit above it as its content's own. */
+  private readonly modalsAbove = new Set<HTMLElement>();
+  /** Stops counting the modals, once the popover closes. */
+  private unwatchModals: (() => void) | null = null;
 
   /** This instance's stable anchor handler — its identity keys the removal. */
   private readonly onAnchorKeydown = (event: Event): void => {
@@ -278,6 +285,7 @@ export class TmPopover {
     });
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
+      this.unwatchModals?.();
     });
 
     // Initial focus once the panel content has rendered: the first tabbable
@@ -327,8 +335,12 @@ export class TmPopover {
       }
       return;
     }
+    // --- A fresh opening counts the modals: those opened from inside the panel are its content's ---
     if (!untracked(this.expanded)) {
-      this.modalsBelow = new Set(ɵtmOpenModals());
+      this.modalsKnown = new Set(ɵtmOpenModals());
+      this.modalsAbove.clear();
+      this.unwatchModals?.();
+      this.unwatchModals = ɵtmWatchModals(() => this.countModals());
     }
     this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
@@ -529,16 +541,36 @@ export class TmPopover {
   }
 
   /**
-   * Whether a modal opened after the popover is open, holding `node` when
+   * Whether a modal the panel's content opened is open, holding `node` when
    * one is given.
    */
   private modalAbove(node: Node | null): boolean {
-    return ɵtmOpenModals().some((modal) => !this.modalsBelow.has(modal) && (node === null || modal.contains(node)));
+    return ɵtmOpenModals().some((modal) => this.modalsAbove.has(modal) && (node === null || modal.contains(node)));
+  }
+
+  /**
+   * Counts the open modals as one opens or closes: a modal that opens while
+   * focus is inside the panel was opened from it (the modal hears of itself
+   * before its content takes focus), so it sits above the popover.
+   */
+  private countModals(): void {
+    const open = ɵtmOpenModals();
+    const panel = this.panel()?.nativeElement;
+    const active = document.activeElement;
+    const fromPanel = panel !== undefined && active !== null && panel.contains(active);
+    for (const modal of open) {
+      if (fromPanel && !this.modalsKnown.has(modal)) {
+        this.modalsAbove.add(modal);
+      }
+    }
+    this.modalsKnown = new Set(open);
   }
 
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   private onOverlayDetach(): void {
     this.placedPair = null;
+    this.unwatchModals?.();
+    this.unwatchModals = null;
     if (untracked(this.expanded)) {
       this.expanded.set(false);
     }

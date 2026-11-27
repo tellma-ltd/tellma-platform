@@ -24,7 +24,6 @@ import { TmIconRegistry } from '@tellma/core-ui/icon';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { TmPopover, TmPopoverContent } from '@tellma/core-ui/popover';
 import CheckCheck from 'lucide/dist/esm/icons/check-check.mjs';
-import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
 import { TmAttention, type TmPanel } from './tm-attention';
 import type { TmAttentionPanelData } from './tm-attention-panel-data';
@@ -100,7 +99,7 @@ export class TmAttentionDump {
       max-block-size: min(var(--tm-popover-block-cap, 100dvh), 560px, calc(100dvh - var(--tm-shell-top, 0px) - 16px));
     }
 
-    /* The panel: a fixed header and footer around the scrolling lists. */
+    /* The panel: a fixed header and footer around the scrolling lists. Its rows are the attention rows' shared anatomy. */
     .tm-attention-panel {
       display: flex;
       flex: 1 1 auto;
@@ -146,10 +145,6 @@ export class TmAttentionDump {
       flex: 1;
     }
 
-    .tm-attention-panel__count {
-      color: var(--text-secondary);
-    }
-
     .tm-attention-panel__body {
       display: flex;
       flex: 1 1 auto;
@@ -160,67 +155,38 @@ export class TmAttentionDump {
       padding: var(--space-1);
     }
 
-    .tm-attention-panel__section {
+    /* The small secondary texts: the drawer's count, the jobs' heading and the status line. */
+    .tm-attention-panel__count,
+    .tm-attention-panel__section,
+    .tm-attention-panel__status {
       margin: 0;
-      padding: var(--space-2) var(--space-2) var(--space-1);
       color: var(--text-secondary);
+    }
+
+    .tm-attention-panel__section,
+    .tm-attention-panel__status {
+      padding: var(--space-1) var(--space-2);
       font-size: var(--text-xs);
+    }
+
+    .tm-attention-panel__section {
+      padding-block-start: var(--space-2);
       font-weight: var(--weight-semibold);
     }
 
-    .tm-attention-panel__rows {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    /* A row: icon, the two lines, the end and its controls, on one baseline. */
-    .tm-attention-panel__row {
+    .tm-attention-panel__status {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
+      justify-content: space-between;
       gap: var(--space-2);
-      min-block-size: 3.25rem;
-      padding: var(--space-2);
-      box-sizing: border-box;
-      border-radius: var(--radius-md);
     }
 
-    .tm-attention-panel__row:hover {
-      background: var(--surface-hover);
-    }
-
-    .tm-attention-panel__main {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      gap: var(--space-1);
-      min-inline-size: 0;
-      color: var(--text-body);
-      text-decoration: none;
-    }
-
-    .tm-attention-panel__link:focus-visible,
-    .tm-attention-panel__title:focus-visible,
-    .tm-attention-panel__more:focus-visible,
-    .tm-attention-panel__see-all:focus-visible {
-      border-radius: var(--radius-sm);
-      outline: var(--focus-ring-width) solid transparent;
-      box-shadow: var(--focus-ring);
-    }
-
+    /* A job's title line: the title, then its badge or percent. */
     .tm-attention-panel__title-line {
       display: flex;
       align-items: center;
       gap: var(--space-2);
       min-inline-size: 0;
-    }
-
-    .tm-attention-panel__title {
-      overflow: hidden;
-      color: var(--text-strong);
-      text-decoration: none;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     .tm-attention-panel__percent {
@@ -229,50 +195,9 @@ export class TmAttentionDump {
       font-variant-numeric: tabular-nums;
     }
 
-    .tm-attention-panel__line {
-      min-block-size: 1lh;
-      overflow: hidden;
-      color: var(--text-secondary);
-      font-size: var(--text-xs);
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .tm-attention-panel__severity {
-      flex: none;
-      margin-block-start: 2px;
-      --icon-size: var(--icon-size-md);
-    }
-
-    .tm-attention-panel__severity[data-severity='Success'] {
-      color: var(--success);
-    }
-
-    .tm-attention-panel__severity[data-severity='Warning'] {
-      color: var(--warning);
-    }
-
-    .tm-attention-panel__severity[data-severity='Error'] {
-      color: var(--error);
-    }
-
-    .tm-attention-panel__severity[data-severity='Info'] {
-      color: var(--info);
-    }
-
     /* Unread rows: a bold title and a dot. */
-    .tm-attention-panel__notice--unread .tm-attention-panel__title {
+    .tm-attention-panel__notice--unread .tm-attention-row__title {
       font-weight: var(--weight-semibold);
-    }
-
-    .tm-attention-panel__end {
-      display: flex;
-      flex: none;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: var(--space-1);
-      color: var(--text-secondary);
-      font-size: var(--text-xs);
     }
 
     .tm-attention-panel__dot {
@@ -282,37 +207,29 @@ export class TmAttentionDump {
       background: var(--accent);
     }
 
-    /* Stop and Clear show on the row's hover and focus; hidden, they keep their box and their place in the tree. */
-    .tm-attention-panel__row:not(:hover):not(:focus-within) .tm-attention-panel__hover {
-      opacity: 0;
-    }
-
-    @media (hover: none) {
-      .tm-attention-panel__row .tm-attention-panel__hover {
-        opacity: 1;
+    /* Where the pointer hovers, Stop and Clear show on the row's hover and focus; hidden, they keep their box and their place in the tree. */
+    @media (hover: hover) {
+      .tm-attention-row:not(:hover, :focus-within) .tm-attention-panel__hover {
+        opacity: 0;
       }
     }
 
     .tm-attention-panel__more,
     .tm-attention-panel__see-all {
+      border-radius: var(--radius-sm);
       color: var(--text-link);
       font-weight: var(--weight-semibold);
       text-decoration: none;
     }
 
-    .tm-attention-panel__more {
-      padding: var(--space-1) var(--space-2) var(--space-2);
-      font-size: var(--text-xs);
+    .tm-attention-panel__more:focus-visible,
+    .tm-attention-panel__see-all:focus-visible {
+      outline: var(--focus-ring-width) solid transparent;
+      box-shadow: var(--focus-ring);
     }
 
-    .tm-attention-panel__status {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--space-2);
-      margin: 0;
-      padding: var(--space-1) var(--space-2);
-      color: var(--text-secondary);
+    .tm-attention-panel__more {
+      padding: var(--space-1) var(--space-2) var(--space-2);
       font-size: var(--text-xs);
     }
 
@@ -331,13 +248,6 @@ export class TmAttentionDump {
       block-size: 1px;
       overflow: hidden;
       white-space: nowrap;
-    }
-
-    /* Below sm, rows are a touch target tall, as menu rows are. */
-    @media (width < 576px) {
-      .tm-attention-panel__row {
-        min-block-size: 44px;
-      }
     }
   `,
 })
@@ -370,8 +280,8 @@ export class TmAttentionPanelHost {
   constructor() {
     tmRegisterAttentionPanelsStrings(this.#l10n);
     inject(TmAttentionDump);
-    // The empty states draw their icons by name.
-    inject(TmIconRegistry).register({ 'check-check': CheckCheck, inbox: Inbox });
+    // The empty states draw their icons by name; the attention buttons registered the tray's.
+    inject(TmIconRegistry).register({ 'check-check': CheckCheck });
     effect(() => {
       const open = this.#attention.open() === this.panel();
       untracked(() => (open ? this.#show() : this.#hide()));

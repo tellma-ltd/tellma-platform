@@ -370,7 +370,7 @@ export class TmPageRegistry {
       }
       this.#confirming.add(id);
       try {
-        if (!(await this.#confirm(action))) {
+        if (!(await this.#confirm(action, args))) {
           return { outcome: 'cancelled' };
         }
       } catch (error) {
@@ -432,15 +432,18 @@ export class TmPageRegistry {
    * Asks the user to confirm a destructive action, in `TmConfirm`'s danger
    * form, which loads on the first question. The confirm button carries the
    * action's label. Without its confirmation keys, which only production
-   * reaches, the action's label and description stand in.
+   * reaches, the action's label and description stand in. The texts'
+   * arguments may follow the invocation's.
    */
-  async #confirm(action: TmPageAction): Promise<boolean> {
+  async #confirm(action: TmPageAction, invoked: TmJson): Promise<boolean> {
     const { titleKey, messageKey, args } = action.confirm ?? {
       titleKey: action.labelKey,
       messageKey: action.descriptionKey ?? action.labelKey,
     };
     const l10n = this.#injector.get(TmLocalization);
-    const text = (key: string): string => untracked(l10n.ɵtext(key, args && untracked(args)));
+    // A signal ignores the invocation's arguments; a function reads them.
+    const params = args && untracked(() => args(invoked));
+    const text = (key: string): string => untracked(l10n.ɵtext(key, params));
     const { TmConfirm } = await import('@tellma/core-ui/confirm');
     return this.#injector.get(TmConfirm).confirm({
       title: text(titleKey),

@@ -14,9 +14,10 @@ import { tmKeysMatch } from '@tellma/core-ui/keys';
 // the one focus last rested on, else the first row's link. Up and Down move
 // between rows, Home and End jump to the ends, and Left and Right move among
 // a row's controls in the reading direction, so they swap in Arabic. Delete
-// on a row asks the owner to remove it. When the row that held focus leaves
-// the list, focus moves to the row now in its place, else the previous one,
-// else to whatever the owner names.
+// on a row asks the owner to remove it. When the control that held focus
+// leaves a row that stays, such as a Stop that hides once asked, focus moves
+// to the row's link; when the row itself leaves the list, to the row now in
+// its place, else the previous one, else to whatever the owner names.
 
 /** A row control: focusable, tabbable only while it is the list's stop. */
 const CONTROL = '[data-tm-row-control]';
@@ -46,8 +47,8 @@ export class TmRovingRows {
   /** The control focus last rested on, which is the list's tab stop while it is in the list. */
   #stop: HTMLElement | null = null;
 
-  /** The row that held focus, and its place, to recover focus when the row leaves. */
-  #focus: { readonly row: HTMLElement; readonly index: number } | null = null;
+  /** The control and the row that held focus, and the row's place, to recover focus when either leaves. */
+  #focus: { readonly control: HTMLElement; readonly row: HTMLElement; readonly index: number } | null = null;
 
   /** Where focus goes when the last row leaves while focused, such as the panel's heading. */
   readonly fallback = input<HTMLElement | null>(null);
@@ -111,7 +112,7 @@ export class TmRovingRows {
     const row = control?.closest<HTMLElement>('[data-tm-row]');
     if (control && row) {
       this.#stop = control;
-      this.#focus = { row, index: this.#rows().indexOf(row) };
+      this.#focus = { control, row, index: this.#rows().indexOf(row) };
       this.#sync();
     }
   }
@@ -131,13 +132,13 @@ export class TmRovingRows {
   /** Re-applies the tab stop, and moves focus on when the focused row left the list. */
   #sync(): void {
     const rows = this.#rows();
-    // --- A focused row that left: focus the row in its place, else the previous one, else the fallback ---
+    // --- A focused control that left: its row's link while the row stays; else the row in its place, the previous one, the fallback ---
     const focus = this.#focus;
-    if (focus !== null && !focus.row.isConnected) {
+    if (focus !== null && !focus.control.isConnected) {
       this.#focus = null;
       const active = this.#list.ownerDocument.activeElement;
       if (active === null || active === this.#list.ownerDocument.body || !active.isConnected) {
-        const next = this.#primary(rows[Math.min(focus.index, rows.length - 1)]);
+        const next = focus.row.isConnected ? this.#primary(focus.row) : this.#primary(rows[Math.min(focus.index, rows.length - 1)]);
         (next ?? this.fallback())?.focus();
         return;
       }

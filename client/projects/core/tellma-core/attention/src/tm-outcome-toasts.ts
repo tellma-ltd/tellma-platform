@@ -3,40 +3,43 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { inject, Injectable } from '@angular/core';
-import { Router } from '@angular/router';
-import { TM_TOAST_FEEDBACK_MS, TmLocalization, TmUrls } from '@tellma/core';
-import { type TmToastRef, TmToasts } from '@tellma/core-ui/toast';
+import { inject, Injectable, Injector, runInInjectionContext } from '@angular/core';
+import { TmLocalization } from '@tellma/core';
+import type { TmToastRef } from '@tellma/core-ui/toast';
 
 import { tmRegisterAttentionStrings } from './tm-attention-strings';
+import type { TmOutcomeToastsBody } from './tm-outcome-toasts-body';
 
 // The outcomes the platform's own surfaces toast (spec 0028 §8.1), each
 // raised by the acting tab: a job started in the background, with Track,
 // and a synchronous export in progress, with Cancel. Every other outcome on
 // the closed list calls TmToasts with its own copy and TM_TOAST_FEEDBACK_MS.
+// The toasts themselves load as a chunk at the first outcome, so the first
+// frame carries only this facade.
 
 /**
- * The outcome toasts of the background work a page starts.
+ * The outcome toasts of the background work a page starts. Each toast
+ * shows once its code has loaded, at the first outcome.
  *
  * @example
  * ```ts
  * const outcomes = inject(TmOutcomeToasts);
- * outcomes.jobStarted(accepted.jobId);
- * const exporting = outcomes.exporting(() => controller.abort());
+ * void outcomes.jobStarted(accepted.jobId);
+ * const exporting = await outcomes.exporting(() => controller.abort());
  * exporting.update({ detail: '5,580 of 9,000 rows' });
  * exporting.close();
  * ```
  */
 @Injectable({ providedIn: 'root' })
 export class TmOutcomeToasts {
-  readonly #toasts = inject(TmToasts);
-  readonly #urls = inject(TmUrls);
-  readonly #router = inject(Router);
-  readonly #l10n = inject(TmLocalization);
+  readonly #injector = inject(Injector);
+
+  /** The toasts' body, once its chunk has loaded. */
+  #body: Promise<TmOutcomeToastsBody> | null = null;
 
   /** Creates the service, which registers the attention strings. */
   constructor() {
-    tmRegisterAttentionStrings(this.#l10n);
+    tmRegisterAttentionStrings(inject(TmLocalization));
   }
 
   /**
@@ -44,17 +47,10 @@ export class TmOutcomeToasts {
    * job; Track opens the job's page.
    *
    * @param jobId - The job the start enqueued.
-   * @returns The toast.
+   * @returns The toast, once shown.
    */
-  jobStarted(jobId: number): TmToastRef {
-    const target = this.#urls.target('core.Job', jobId);
-    return this.#toasts.show({
-      tone: 'accent',
-      title: this.#text('outcomes.started'),
-      duration: TM_TOAST_FEEDBACK_MS,
-      key: `job:${jobId}`,
-      ...(target === null ? {} : { action: { label: this.#text('outcomes.track'), run: () => void this.#router.navigateByUrl(target) } }),
-    });
+  jobStarted(jobId: number): Promise<TmToastRef> {
+    return this.#show((body) => body.jobStarted(jobId));
   }
 
   /**
@@ -63,19 +59,20 @@ export class TmOutcomeToasts {
    * closes when it ends.
    *
    * @param cancel - Cancels the export; the toast closes with it.
-   * @returns The toast.
+   * @returns The toast, once shown.
    */
-  exporting(cancel: () => void): TmToastRef {
-    return this.#toasts.show({
-      tone: 'neutral',
-      title: this.#text('outcomes.exporting'),
-      duration: 'sticky',
-      action: { label: this.#text('outcomes.cancel'), run: cancel },
-    });
+  exporting(cancel: () => void): Promise<TmToastRef> {
+    return this.#show((body) => body.exporting(cancel));
   }
 
-  /** An attention string. */
-  #text(key: string): string {
-    return this.#l10n.ɵtext(`tm.attention.${key}`)();
+  /** Shows a toast once the body's chunk has loaded; a chunk that cannot load fails the call and loads again next time. */
+  #show(show: (body: TmOutcomeToastsBody) => TmToastRef): Promise<TmToastRef> {
+    this.#body ??= import('./tm-outcome-toasts-body').then(({ TmOutcomeToastsBody }) =>
+      runInInjectionContext(this.#injector, () => new TmOutcomeToastsBody()),
+    );
+    return this.#body.then(show, (error: unknown) => {
+      this.#body = null;
+      throw error;
+    });
   }
 }

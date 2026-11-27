@@ -39,6 +39,7 @@ import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import FileText from 'lucide/dist/esm/icons/file-text.mjs';
 import Send from 'lucide/dist/esm/icons/send.mjs';
 
+import { ɵTmAttentionRowStyles } from './tm-attention-row-styles';
 import { type TmAssignmentCaption, TmAttentionText, type TmTextSegment } from './tm-attention-text';
 import { tmRegisterAttentionRowsStrings } from './tm-attention-rows-strings';
 import { TmRovingRows } from './tm-roving-rows';
@@ -53,7 +54,7 @@ import { TmRovingRows } from './tm-roving-rows';
 // order. Rows to the user that arrived after the `seenAt` the list was given,
 // and that the user did not assign themselves, are marked "New". The list
 // is one tab stop with roving rows; it fills its container and scrolls
-// inside.
+// inside. The row's box is the attention rows' shared anatomy.
 
 /** Which rows a list shows: those assigned to the user, or by the user. */
 export type TmAssignmentParty = 'to-me' | 'by-me';
@@ -137,20 +138,21 @@ const MINUTE_MS = 60_000;
  */
 @Component({
   selector: 'tm-assignment-list',
-  imports: [TmDisplayName, TmIcon, TmRelativeTime, TmRovingRows, TmSkeleton],
+  imports: [TmDisplayName, TmIcon, TmRelativeTime, ɵTmAttentionRowStyles, TmRovingRows, TmSkeleton],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'tm-assignment-list',
     '[class.tm-assignment-list--home]': 'variant() === "home"',
   },
   template: `
+    <tm-attention-row-styles />
     @if (loading()) {
       <!-- Loading: three rows of the final geometry, read as one busy list. -->
-      <ul class="tm-assignment-list__rows" aria-busy="true" [attr.aria-label]="text('loading')">
+      <ul class="tm-attention-rows" aria-busy="true" [attr.aria-label]="text('loading')">
         @for (index of skeletons; track index) {
-          <li class="tm-assignment-list__row tm-assignment-list__row--skeleton" aria-hidden="true">
-            <tm-skeleton class="tm-assignment-list__icon" shape="block" width="16px" height="16px" />
-            <span class="tm-assignment-list__body">
+          <li class="tm-attention-row" aria-hidden="true">
+            <tm-skeleton class="tm-attention-row__icon" shape="block" width="16px" height="16px" />
+            <span class="tm-attention-row__main">
               <tm-skeleton width="60%" />
               <tm-skeleton width="85%" />
             </span>
@@ -159,34 +161,34 @@ const MINUTE_MS = 60_000;
       </ul>
     } @else {
       <!-- The rows: one tab stop, each row's link its only control. -->
-      <ul class="tm-assignment-list__rows" tmRovingRows [attr.aria-label]="label()" [fallback]="fallback()">
+      <ul class="tm-attention-rows" tmRovingRows [attr.aria-label]="label()" [fallback]="fallback()">
         @for (view of rows(); track view.key; let index = $index) {
-          <li class="tm-assignment-list__row" data-tm-row [attr.data-tm-id]="view.key">
+          <li data-tm-row [attr.data-tm-id]="view.key">
             <a
-              class="tm-assignment-list__link"
+              class="tm-attention-row"
               data-tm-row-control
               [attr.href]="view.href"
               [attr.aria-disabled]="view.href === null ? 'true' : null"
               [attr.aria-label]="rowLabel(view)"
               (click)="follow($event, view, index)"
             >
-              <tm-icon class="tm-assignment-list__icon" [name]="view.iconName ?? undefined" [svg]="view.iconName === null ? view.iconSvg : undefined" />
-              <span class="tm-assignment-list__body">
+              <tm-icon class="tm-attention-row__icon" [name]="view.iconName ?? undefined" [svg]="view.iconName === null ? view.iconSvg : undefined" />
+              <span class="tm-attention-row__main">
                 <!-- The title, its code in an isolate. -->
-                <span class="tm-assignment-list__title">
+                <span class="tm-attention-row__title">
                   @for (segment of view.title(); track $index) {
                     @if (segment.arg) {<bdi>{{ segment.text }}</bdi>} @else {{{ segment.text }}}
                   }
                 </span>
                 <!-- The second line: names from their parts, a comment in its own isolate. -->
-                <span class="tm-assignment-list__line">
+                <span class="tm-attention-row__line">
                   @for (piece of view.line(); track $index) {
                     @if (piece.parts !== undefined) {<tm-display-name [parts]="piece.parts" />} @else if (piece.comment) {<bdi dir="auto">{{ piece.text }}</bdi>} @else {{{ piece.text }}}
                   }
                 </span>
               </span>
               <!-- The end: the amount on the home lists, the time, and the "New" mark. -->
-              <span class="tm-assignment-list__end">
+              <span class="tm-attention-row__end">
                 @if (variant() === 'home' && view.caption().amount; as amount) {
                   <bdi class="tm-assignment-list__amount">{{ amount }}</bdi>
                 }
@@ -209,78 +211,13 @@ const MINUTE_MS = 60_000;
       overscroll-behavior: contain;
     }
 
-    .tm-assignment-list__rows {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-    }
-
-    .tm-assignment-list__row {
-      display: block;
-    }
-
-    /* The whole row is its link, two lines tall; a skeleton row keeps the geometry. */
-    .tm-assignment-list__link,
-    .tm-assignment-list__row--skeleton {
-      display: flex;
-      align-items: flex-start;
-      gap: var(--space-3);
-      min-block-size: 3.25rem;
-      padding: var(--space-2) var(--space-3);
-      border-radius: var(--radius-md);
-      box-sizing: border-box;
-      color: var(--text-body);
-      text-decoration: none;
-    }
-
-    .tm-assignment-list__link[href]:hover {
-      background: var(--surface-hover);
-    }
-
-    .tm-assignment-list__link:focus-visible {
-      outline: var(--focus-ring-width) solid transparent;
-      box-shadow: var(--focus-ring);
-    }
-
-    .tm-assignment-list__icon {
-      flex: none;
-      margin-block-start: 2px;
-      color: var(--text-muted);
-      --icon-size: var(--icon-size-md);
-    }
-
-    .tm-assignment-list__body {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      gap: var(--space-1);
-      min-inline-size: 0;
-    }
-
-    .tm-assignment-list__title {
-      color: var(--text-strong);
+    /* The list's own touches on the shared row: a bold title and a quiet icon. */
+    .tm-attention-row__title {
       font-weight: var(--weight-semibold);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
-    .tm-assignment-list__line {
-      color: var(--text-secondary);
-      font-size: var(--text-xs);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .tm-assignment-list__end {
-      display: flex;
-      flex: none;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: var(--space-1);
-      color: var(--text-secondary);
-      font-size: var(--text-xs);
+    .tm-attention-row__icon {
+      color: var(--text-muted);
     }
 
     .tm-assignment-list__amount {
@@ -288,12 +225,12 @@ const MINUTE_MS = 60_000;
       font-variant-numeric: tabular-nums;
     }
 
-    /* The "New" mark: a dot and the word, in the accent colour. */
+    /* The "New" mark: an accent dot, and the word in the link ink, which meets AA in both themes. */
     .tm-assignment-list__new {
       display: inline-flex;
       align-items: center;
       gap: var(--space-1);
-      color: var(--accent);
+      color: var(--text-link);
       font-weight: var(--weight-semibold);
     }
 
@@ -302,15 +239,7 @@ const MINUTE_MS = 60_000;
       inline-size: 6px;
       block-size: 6px;
       border-radius: var(--radius-full);
-      background: currentColor;
-    }
-
-    /* Below sm, rows are a touch target tall. */
-    @media (width < 576px) {
-      .tm-assignment-list__link,
-      .tm-assignment-list__row--skeleton {
-        min-block-size: 3.5rem;
-      }
+      background: var(--accent);
     }
   `,
 })

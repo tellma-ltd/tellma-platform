@@ -213,7 +213,7 @@ export class TmBellPanelHarness extends TmAttentionPanelHarness {
   async getJobs(): Promise<TmBellPanelJob[]> {
     return Promise.all(
       (await this.#jobs()).map(async (row) => {
-        const title = await this.#within(row, '.tm-attention-panel__title');
+        const title = await this.#within(row, '.tm-attention-row__title');
         const badge = await this.#optionalWithin(row, 'tm-badge');
         const percent = await this.#optionalWithin(row, '.tm-attention-panel__percent');
         return {
@@ -223,7 +223,7 @@ export class TmBellPanelHarness extends TmAttentionPanelHarness {
           badge: badge === null ? null : await folded(badge),
           percent: percent === null ? null : await folded(percent),
           progress: (await this.#optionalWithin(row, 'tm-progress-bar')) !== null,
-          line: await folded(await this.#within(row, '.tm-attention-panel__line')),
+          line: await folded(await this.#within(row, '.tm-attention-row__line')),
           controls: await Promise.all((await this.#buttonsOf(row)).map((button) => button.getText())),
         };
       }),
@@ -284,11 +284,11 @@ export class TmBellPanelHarness extends TmAttentionPanelHarness {
       (await this.#notices()).map(async (row) => {
         const link = await this.#within(row, '.tm-attention-panel__link');
         const download = await this.#optionalWithin(row, 'a[download]');
-        const icon = await this.#optionalWithin(row, '.tm-attention-panel__severity');
+        const icon = await this.#optionalWithin(row, '.tm-attention-row__icon');
         return {
           id: Number(await row.getAttribute('data-tm-id')),
-          title: await folded(await this.#within(row, '.tm-attention-panel__title')),
-          line: await folded(await this.#within(row, '.tm-attention-panel__line')),
+          title: await folded(await this.#within(row, '.tm-attention-row__title')),
+          line: await folded(await this.#within(row, '.tm-attention-row__line')),
           label: (await link.getAttribute('aria-label')) ?? '',
           href: await link.getAttribute('href'),
           severity: icon === null ? null : await icon.getAttribute('data-severity'),
@@ -433,7 +433,7 @@ export class TmTrayPanelHarness extends TmAttentionPanelHarness {
   /** The selector of the `tm-tray-panel` element. */
   static hostSelector = 'tm-tray-panel';
 
-  readonly #rows = this.locatorForAll('.tm-assignment-list__row[data-tm-row]');
+  readonly #rows = this.locatorForAll('.tm-assignment-list [data-tm-row]');
   readonly #count = this.locatorForOptional('.tm-attention-panel__hidden, .tm-attention-panel__count');
 
   /**
@@ -456,12 +456,12 @@ export class TmTrayPanelHarness extends TmAttentionPanelHarness {
       (await this.#rows()).map(async (row) => {
         const id = (await row.getAttribute('data-tm-id')) ?? '';
         const at = (selector: string): Promise<TestElement | null> =>
-          this.locatorForOptional(`.tm-assignment-list__row[data-tm-id="${id}"] ${selector}`)();
-        const link = (await at('.tm-assignment-list__link'))!;
+          this.locatorForOptional(`.tm-assignment-list [data-tm-id="${id}"] ${selector}`)();
+        const link = (await at('[data-tm-row-control]'))!;
         return {
           id,
-          title: await folded((await at('.tm-assignment-list__title'))!),
-          line: await folded((await at('.tm-assignment-list__line'))!),
+          title: await folded((await at('.tm-attention-row__title'))!),
+          line: await folded((await at('.tm-attention-row__line'))!),
           label: (await link.getAttribute('aria-label')) ?? '',
           href: await link.getAttribute('href'),
           new: (await at('.tm-assignment-list__new')) !== null,
@@ -481,6 +481,6 @@ export class TmTrayPanelHarness extends TmAttentionPanelHarness {
       throw new Error(`The tray shows no row ${index}.`);
     }
     const id = (await row.getAttribute('data-tm-id')) ?? '';
-    await (await this.locatorFor(`.tm-assignment-list__row[data-tm-id="${id}"] .tm-assignment-list__link`)()).click();
+    await (await this.locatorFor(`.tm-assignment-list [data-tm-id="${id}"] [data-tm-row-control]`)()).click();
   }
 }

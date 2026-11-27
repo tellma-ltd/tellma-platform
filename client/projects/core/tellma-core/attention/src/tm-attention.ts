@@ -12,7 +12,6 @@ import {
   TmClientStore,
   type TmDecimal,
   TmDecimals,
-  type TmEntityType,
   type TmInboxSummary,
   type TmInboxVerbResult,
   type TmJson,
@@ -25,7 +24,7 @@ import {
 } from '@tellma/core';
 import { TM_UI_TRANSLATE, TmL10n } from '@tellma/core-ui';
 
-import type { TmAttentionCalls } from './tm-attention-calls';
+import type { TmAttentionCalls, tmApplyOverlays } from './tm-attention-calls';
 import { tmRegisterAttentionStrings } from './tm-attention-strings';
 
 // The attention model (spec 0028 §5.2–§5.4): the bell's and the tray's
@@ -70,8 +69,8 @@ type TenantPartition = Extract<TmPartition, { readonly kind: 'tenant' }>;
 /** An inbox verb that overlays the inbox. */
 type InboxVerb = 'read' | 'read-all' | 'clear' | 'clear-read';
 
-/** One inbox verb's overlay. */
-interface InboxOverlay {
+/** One inbox verb's overlay. Internal: the server calls' chunk applies it. */
+export interface TmInboxOverlay {
   /** Tells overlays apart across updates. */
   readonly id: number;
   /** The verb. */
@@ -98,23 +97,6 @@ const CAP = 100;
 
 /** How long the hub stays neither connected nor disabled before live updates read as paused. */
 const PAUSE_MS = 5000;
-
-/** A notification's member as a number, else `undefined`; a member the row's type names, emitted or open. */
-function numberOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number | undefined {
-  const value: unknown = row[member];
-  return typeof value === 'number' ? value : undefined;
-}
-
-/** A notification's instant member in epoch milliseconds, else `NaN`; a member the row's type names, emitted or open. */
-function timeOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number {
-  const value: unknown = row[member];
-  return typeof value === 'string' ? Date.parse(value) : Number.NaN;
-}
-
-/** Lowers a capped count, which stays capped: past the cap the true count is unknown. */
-function lower(count: number, by: number): number {
-  return count >= CAP ? count : Math.max(0, count - by);
-}
 
 /** Whether a seen overlay still holds over the stored copy. */
 function holds(hold: SeenHold | null, copy: TmStoredDoc<{ readonly version?: TmDecimal; readonly seenAt?: string }> | undefined): boolean {
@@ -167,7 +149,7 @@ export class TmAttention {
   readonly #injector = inject(Injector);
 
   /** The inbox verbs' overlays, oldest first. */
-  readonly #overlays = signal<readonly InboxOverlay[]>([]);
+  readonly #overlays = signal<readonly TmInboxOverlay[]>([]);
 
   /** The jobs this tab asked to stop, until a copy shows the request. */
   readonly #stopping = signal<ReadonlySet<number>>(new Set());
@@ -192,6 +174,14 @@ export class TmAttention {
 
   /** The server calls, once their chunk has loaded. */
   #calls: Promise<TmAttentionCalls> | null = null;
+
+  /**
+   * Applies the overlays to a copy, once the server calls' chunk has
+   * loaded: opening a panel loads it, so a panel's verbs apply in the frame
+   * they are made; a verb made before it ever loaded applies as it lands,
+   * with the verb's call.
+   */
+  readonly #apply = signal<typeof tmApplyOverlays | null>(null);
 
   /** The routed tenant's partition. */
   readonly #partition: Signal<TenantPartition | null> = this.#refresher.ɵpartition;
@@ -419,35 +409,8 @@ export class TmAttention {
   #overlaid(copy: TmInboxSummary): TmInboxSummary {
     const overlays = this.#overlays().filter((overlay) => overlay.version === null || TmDecimals.compare(copy.version, overlay.version) < 0);
     const stopping = this.#stopping();
-    if (overlays.length === 0 && stopping.size === 0) {
-      return copy;
-    }
-    // A row is unseen when it arrived after the user last opened the bell.
-    const seenAt = Date.parse(copy.seenAt ?? '');
-    const unseen = (row: TmEntityType<'core.Notification'>): boolean => !(timeOf(row, 'createdAt') <= seenAt);
-    const unread = (row: TmEntityType<'core.Notification'>): boolean => row['readAt'] === undefined || row['readAt'] === null;
-    let { latest, unread: unreadCount, unseen: unseenCount } = copy;
-    const readAt = new Date(this.#now()).toISOString();
-    for (const overlay of overlays) {
-      const named = (row: TmEntityType<'core.Notification'>): boolean => overlay.ids === null || overlay.ids.has(numberOf(row, 'id') ?? NaN);
-      if (overlay.verb === 'read' || overlay.verb === 'read-all') {
-        // Read rows stay, marked read; the count drops by those it marks.
-        const marked = latest.filter((row) => named(row) && unread(row)).length;
-        latest = latest.map((row) => (named(row) && unread(row) ? { ...row, readAt } : row));
-        unreadCount = overlay.verb === 'read-all' ? 0 : lower(unreadCount, marked);
-      } else {
-        // Cleared rows leave, and their counts with them.
-        const cleared = latest.filter((row) => (overlay.verb === 'clear' ? named(row) : !unread(row)));
-        latest = latest.filter((row) => !cleared.includes(row));
-        unreadCount = lower(unreadCount, cleared.filter(unread).length);
-        unseenCount = lower(unseenCount, cleared.filter(unseen).length);
-      }
-    }
-    const requestedAt = new Date(this.#now()).toISOString();
-    const running = copy.running.map((job) =>
-      stopping.has(job.id) && job.cancelRequestedAt === undefined ? { ...job, cancelRequestedAt: requestedAt } : job,
-    );
-    return { ...copy, latest, unread: unreadCount, unseen: unseenCount, running };
+    const apply = this.#apply();
+    return (overlays.length === 0 && stopping.size === 0) || apply === null ? copy : apply(copy, overlays, stopping, this.#now());
   }
 
   /** Runs an inbox verb: its overlay at once, then the server, whose version releases the overlay. */
@@ -469,9 +432,10 @@ export class TmAttention {
 
   /** Runs a server call once the calls' chunk has loaded; a chunk that cannot load is reported, answers `null` and loads again next time. */
   #call<T>(run: (calls: TmAttentionCalls) => Promise<T>): Promise<T | null> {
-    this.#calls ??= import('./tm-attention-calls').then(({ TmAttentionCalls }) =>
-      runInInjectionContext(this.#injector, () => new TmAttentionCalls()),
-    );
+    this.#calls ??= import('./tm-attention-calls').then(({ TmAttentionCalls, tmApplyOverlays: apply }) => {
+      this.#apply.set(apply);
+      return runInInjectionContext(this.#injector, () => new TmAttentionCalls());
+    });
     return this.#calls.then(run, (error: unknown) => {
       this.#calls = null;
       this.#telemetry.error(error, { source: 'tm-attention' });

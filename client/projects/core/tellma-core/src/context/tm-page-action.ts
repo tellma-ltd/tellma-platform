@@ -7,7 +7,7 @@ import type { Signal } from '@angular/core';
 import type { TmKeys } from '@tellma/core-ui/keys';
 
 import type { TmActionConfirmation } from '../entity/tm-entity-declaration';
-import type { TmJson, TmJsonSchema } from '../json/tm-json';
+import type { TmJson, TmJsonObject, TmJsonSchema } from '../json/tm-json';
 
 // The page action's contracts (spec 0026 §9.4). A page action is a command a
 // page exposes; the toolbar, the Actions menu, a shortcut and a future
@@ -62,8 +62,15 @@ export interface TmPageAction {
    * cause, such as loading.
    */
   readonly disabledReason: Signal<string | null>;
-  /** The confirmation it asks for; required when `destructive`. */
-  readonly confirm?: TmActionConfirmation;
+  /**
+   * The confirmation it asks for; required when `destructive`. Its
+   * arguments may also be a function of the invocation's, so the texts can
+   * follow what is being confirmed.
+   */
+  readonly confirm?: Omit<TmActionConfirmation, 'args'> & {
+    /** The arguments of the title, the message and the confirm label. */
+    readonly args?: Signal<TmJsonObject> | ((args: TmJson) => TmJsonObject);
+  };
   /** Its shortcut, live while its context is on top. An action whose `params` require members takes none. */
   readonly shortcut?: TmKeys;
   /** The JSON Schema (2020-12) object schema of its arguments. */

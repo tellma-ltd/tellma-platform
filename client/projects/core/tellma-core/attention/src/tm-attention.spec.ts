@@ -53,7 +53,10 @@ async function setUp(...args: Parameters<typeof tmAttentionRig>): Promise<TmAtte
   const rig = await tmAttentionRig(...args);
   // The server calls' chunk, loaded up front, so a call that must not be made would be made within the turns a test settles.
   await import('./tm-attention-calls');
-  return { ...rig, attention: TestBed.inject(TmAttention) };
+  const attention = TestBed.inject(TmAttention);
+  // The model takes the chunk, which applies the verbs' overlays, at its first call: a refresh of a document the rig does not register makes none.
+  await attention.refresh('assignments');
+  return { ...rig, attention };
 }
 
 /** The calls to a route. */
@@ -170,6 +173,16 @@ describe('TmAttention', () => {
       expect(callsTo(rig, 'inbox/clear')[0]?.body).toEqual({ ids: [2] });
       expect(callsTo(rig, 'inbox/clear-read')[0]?.body).toEqual({});
       expect(callsTo(rig, 'inbox/read-all')[0]?.body).toEqual({});
+    });
+
+    it("apply a verb made before the server calls' chunk ever loaded as the chunk lands, with the verb's call", async () => {
+      const rig = await tmAttentionRig();
+      const attention = TestBed.inject(TmAttention);
+      await rig.put('inbox', inbox(5));
+      rig.api.respond('inbox/clear', () => new Promise(() => undefined));
+      void attention.clear([2]);
+      await called(rig, 'inbox/clear');
+      expect(rows(attention)).toEqual(['3', '1 read']);
     });
 
     it('keep a capped count capped, since its true value is unknown', async () => {

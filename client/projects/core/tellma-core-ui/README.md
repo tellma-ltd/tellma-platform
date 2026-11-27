@@ -54,7 +54,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/counter` | `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+"); its own entry point so a first-frame surface paints counts without `tm-badge` |
 | `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; re-exports `tmInitials` and `tmAvatarTone` |
 | `@tellma/core-ui/initials` | `tmInitials` and `tmAvatarTone` — the initials a name gives and the tone a stable key picks; their own entry point so a first-frame surface paints an avatar's face without reaching `tm-image` (`@tellma/core-ui/avatar` re-exports them) |
-| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring` — the same as a ring around an icon button |
+| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring`, re-exported from `@tellma/core-ui/progress-ring` |
+| `@tellma/core-ui/progress-ring` | `tm-progress-ring` — the same as a ring around an icon button; its own entry point so a first-frame surface (the app bar's bell) draws the ring without `tm-progress-bar` |
 | `@tellma/core-ui/skeleton` | `tm-skeleton` — static line, block, circle and table placeholders with the final geometry of what replaces them |
 | `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |
 | `@tellma/core-ui/copy` | `tm-copy-button` — one-click copy with a "Press Ctrl+C to copy" fallback; `tm-reference` — a trace id or version as a mono chip with that button |

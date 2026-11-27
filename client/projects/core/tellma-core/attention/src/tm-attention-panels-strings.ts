@@ -25,8 +25,6 @@ export const TM_ATTENTION_PANELS_STRINGS_EN = {
     clearReadTitle: 'Clear read notifications?',
     clearReadMessage: 'They are deleted for you.',
     clearReadConfirm: 'Clear',
-    cancel: 'Cancel',
-    list: 'Notifications',
     download: 'Download',
     clear: 'Clear',
     unread: 'unread',
@@ -42,7 +40,6 @@ export const TM_ATTENTION_PANELS_STRINGS_EN = {
   /** The bell's In progress section. */
   jobs: {
     heading: 'In progress',
-    list: 'Jobs in progress',
     more: '+{count, number} more in My jobs',
     waiting: 'Waiting to start',
     working: 'Working…',
@@ -52,13 +49,10 @@ export const TM_ATTENTION_PANELS_STRINGS_EN = {
     awaiting: 'Awaiting confirmation',
     awaitingLine: 'Waiting for you to confirm',
     review: 'Review',
-    stop: 'Stop',
-    keep: 'Keep running',
-    stopTitle: 'Stop this job?',
-    stopMessage: 'Work already saved stays saved.',
-    importTitle: 'Stop this import?',
-    importMessage: "Rows already saved stay saved. The rest of the file won't be imported.",
-    importStop: 'Stop import',
+    // Stop and its confirmation, by the job's kind: `import` for an import, else any other.
+    stop: '{kind, select, import {Stop import} other {Stop}}',
+    stopTitle: '{kind, select, import {Stop this import?} other {Stop this job?}}',
+    stopMessage: "{kind, select, import {Rows already saved stay saved. The rest of the file won't be imported.} other {Work already saved stays saved.}}",
   },
   /** The tray's panel. */
   tray: {
@@ -72,8 +66,6 @@ export const TM_ATTENTION_PANELS_STRINGS_EN = {
   actions: {
     openItem: 'Open',
   },
-  /** The tooltip of a verb the app cannot run offline. */
-  offline: "You're offline",
 } as const;
 
 /**

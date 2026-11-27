@@ -81,8 +81,8 @@ export const tmNotificationToastsKey: TmPreferenceKey<boolean>;
 // @public
 export class TmOutcomeToasts {
     constructor();
-    exporting(cancel: () => void): TmToastRef;
-    jobStarted(jobId: number): TmToastRef;
+    exporting(cancel: () => void): Promise<TmToastRef>;
+    jobStarted(jobId: number): Promise<TmToastRef>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmOutcomeToasts, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmOutcomeToasts>;
 }

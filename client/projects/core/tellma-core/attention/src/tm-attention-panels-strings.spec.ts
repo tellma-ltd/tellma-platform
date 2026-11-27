@@ -35,13 +35,50 @@ function messages(tree: TmStringTree, prefix = ''): Map<string, string> {
 }
 
 /**
- * The arguments a message names, sorted.
+ * The arguments a message names, each once, sorted. The text of a
+ * `select` or `plural` branch is read as text, not as an argument.
  *
  * @param message - The message.
  * @returns The names.
  */
 function argumentsOf(message: string | undefined): string[] {
-  return [...(message ?? '').matchAll(/\{(\w+)/g)].map(([, name]) => name!).sort();
+  const source = message ?? '';
+  const names = new Set<string>();
+  // Reads text up to the brace that closes its branch, or the end; returns the index of that brace.
+  const text = (from: number): number => {
+    let index = from;
+    while (index < source.length && source[index] !== '}') {
+      index = source[index] === '{' ? argument(index + 1) : index + 1;
+    }
+    return index;
+  };
+  // Reads an argument after its opening brace: its name, its type, then its branches; returns the index past it.
+  const argument = (from: number): number => {
+    const head = /^\s*(\w+)\s*(?:,\s*(\w+)\s*)?([,}])/.exec(source.slice(from));
+    if (head === null) {
+      return from;
+    }
+    names.add(head[1]!);
+    let index = from + head[0].length;
+    if (head[3] === '}') {
+      return index;
+    }
+    // The branches: a selector, then its text in braces, until the argument's own closing brace.
+    while (index < source.length) {
+      const branch = /^\s*(\}|[^\s{}]+\s*\{)/.exec(source.slice(index));
+      if (branch === null) {
+        return index;
+      }
+      index += branch[0].length;
+      if (branch[1] === '}') {
+        return index;
+      }
+      index = text(index) + 1;
+    }
+    return index;
+  };
+  text(0);
+  return [...names].sort();
 }
 
 describe("the attention panels' strings", () => {

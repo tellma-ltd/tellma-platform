@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import type { Provider } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { type TmFakeApi, tmWarmTenant } from '@tellma/core-testing';
@@ -76,9 +77,14 @@ export interface TmAttentionRig extends TmAppRig {
  *
  * @param docs - Tenant 17's launch documents, merged over the defaults.
  * @param metadata - The Core chunk's members, merged over the route test metadata's.
+ * @param providers - More providers, after the rig's.
  * @returns The rig.
  */
-export async function tmAttentionRig(docs: Partial<TmLaunchDocs> = {}, metadata: Partial<TmClientMetadata> = {}): Promise<TmAttentionRig> {
+export async function tmAttentionRig(
+  docs: Partial<TmLaunchDocs> = {},
+  metadata: Partial<TmClientMetadata> = {},
+  providers: readonly Provider[] = [],
+): Promise<TmAttentionRig> {
   const { settings, me } = TM_T17_DOCS;
   const routed = tmRouteTestMetadata();
   const rig = await tmAppRig({
@@ -108,6 +114,7 @@ export async function tmAttentionRig(docs: Partial<TmLaunchDocs> = {}, metadata:
     },
     languages: [tmEnglish(), language('ar', 'rtl', ARABIC_TM), language('fr', 'ltr')],
     strings: STRINGS,
+    providers,
   });
   const router = await tmNavigate('/17/centers');
   await tmSettle();

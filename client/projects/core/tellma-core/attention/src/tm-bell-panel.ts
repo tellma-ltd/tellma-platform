@@ -16,12 +16,13 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   type Signal,
   signal,
   untracked,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { NavigationStart, Router } from '@angular/router';
 import {
   TM_NOW,
   TmApi,
@@ -35,15 +36,14 @@ import {
   TmLaunchCache,
   TmLocalization,
   type TmNotificationSeverity,
-  type TmPageAction,
-  TmPageContexts,
+  TmPageActions,
   type TmQueryRowSet,
   TmServerText,
   TmTelemetry,
   TmUrls,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { TmAttentionText, type TmNotificationText, tmIcuArguments, ɵTmRovingRows } from '@tellma/core/attention-rows';
+import { TmAttentionText, type TmNotificationText, tmIcuArguments, ɵTmAttentionRowStyles, ɵTmRovingRows } from '@tellma/core/attention-rows';
 import { TmL10n } from '@tellma/core-ui';
 import { TmBadge } from '@tellma/core-ui/badge';
 import { TmButton } from '@tellma/core-ui/button';
@@ -63,7 +63,7 @@ import TriangleAlert from 'lucide/dist/esm/icons/triangle-alert.mjs';
 import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TmAttention } from './tm-attention';
-import { type TmAttentionPanelData, tmItemPosition } from './tm-attention-panel-data';
+import { TM_ROW_PARAMS, type TmAttentionPanelData, tmItemPosition, tmKeepPanelFocus, tmPublishPanel } from './tm-attention-panel-data';
 
 // The bell's panel (spec 0028 §6.2–§6.4): the header with Mark all as read
 // and More options, the user's running jobs, the status line while live
@@ -73,8 +73,10 @@ import { type TmAttentionPanelData, tmItemPosition } from './tm-attention-panel-
 // keyed by id. Rows that arrive while the list is scrolled down wait under a
 // pinned "{n} new" button, so nothing moves under the reader. Each list is
 // one tab stop with roving rows. A frozen tenant shows no verb; offline,
-// the verbs stay, disabled with "You're offline". An open panel publishes
-// its overlay page context, `panel:bell`.
+// the verbs stay, disabled with "You're offline". The verbs that the page
+// context offers too, Mark all as read and Stop, run through the page
+// actions' dispatcher, which asks before any Stop (spec 0026 §9.5). An open
+// panel publishes its overlay page context, `panel:bell`.
 
 /** A notification row, as the panel renders it. */
 interface NoticeView {
@@ -90,6 +92,8 @@ interface NoticeView {
   readonly severity: TmNotificationSeverity;
   /** Its severity's icon. */
   readonly icon: TmIconSource;
+  /** Its severity's colour, such as `var(--success)`. */
+  readonly color: string;
   /** Whether it is unread. */
   readonly unread: boolean;
   /** Its open route's app URL, which marks it read and opens its target. */
@@ -162,12 +166,14 @@ function timeOf(value: string | undefined): number {
     TmMenuTrigger,
     TmProgressBar,
     TmRelativeTime,
+    ɵTmAttentionRowStyles,
     ɵTmRovingRows,
     TmSkeleton,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'tm-attention-panel', id: 'tm-attention-bell-panel' },
+  host: { class: 'tm-attention-panel', id: 'tm-attention-bell-panel', tabindex: '-1' },
   template: `
+    <tm-attention-row-styles />
     <!-- The header: the heading (the drawer's own title stands in for it), then the verbs. -->
     <div class="tm-attention-panel__header">
       @if (!drawer) {
@@ -177,7 +183,7 @@ function timeOf(value: string | undefined): number {
       @if (!frozen() && (inbox()?.unread ?? 0) > 0) {
         <button tmButton variant="ghost" size="sm" [disabledReason]="offlineReason()" (click)="readAll()">{{ text('bell.markAllRead') }}</button>
       }
-      <button tmButton variant="ghost" size="sm" [tmMenuTriggerFor]="more" [attr.aria-label]="text('bell.more')">
+      <button #moreButton tmButton variant="ghost" size="sm" [tmMenuTriggerFor]="more" [attr.aria-label]="text('bell.more')">
         <tm-icon [svg]="glyphs.more" />
       </button>
       <tm-menu #more [items]="menu()" [aria-label]="text('bell.more')" />
@@ -186,12 +192,12 @@ function timeOf(value: string | undefined): number {
       <!-- In progress: the newest three running jobs, then the rest's link. -->
       @if (jobs().length > 0) {
         <h3 class="tm-attention-panel__section" id="tm-attention-bell-jobs">{{ text('jobs.heading') }}</h3>
-        <ul class="tm-attention-panel__rows" tmRovingRows aria-labelledby="tm-attention-bell-jobs" [fallback]="fallback()">
+        <ul class="tm-attention-rows" tmRovingRows aria-labelledby="tm-attention-bell-jobs" [fallback]="fallback()">
           @for (view of jobs(); track view.job.id) {
-            <li class="tm-attention-panel__row tm-attention-panel__job" data-tm-row [attr.data-tm-id]="view.job.id">
-              <span class="tm-attention-panel__main">
+            <li class="tm-attention-row tm-attention-panel__job" data-tm-row [attr.data-tm-id]="view.job.id">
+              <span class="tm-attention-row__main">
                 <span class="tm-attention-panel__title-line">
-                  <a class="tm-attention-panel__title" data-tm-row-control [attr.href]="view.href" (click)="openJob($event, view, $index)">{{ view.label() }}</a>
+                  <a class="tm-attention-row__title" data-tm-row-control [attr.href]="view.href" (click)="openJob($event, view, $index)">{{ view.label() }}</a>
                   @switch (view.job.status) {
                     @case ('Held') {
                       <tm-badge tone="warning">{{ text('jobs.held') }}</tm-badge>
@@ -209,7 +215,7 @@ function timeOf(value: string | undefined): number {
                 @if (view.job.status === 'Pending' || view.job.status === 'Running') {
                   <tm-progress-bar [value]="view.job.status === 'Running' ? (view.job.progressPercent ?? null) : null" [label]="view.label()" />
                 }
-                <span class="tm-attention-panel__line">{{ jobLine(view) }}</span>
+                <span class="tm-attention-row__line">{{ jobLine(view) }}</span>
               </span>
               <!-- The job's controls: Review while it waits for confirmation, Stop until a stop is asked. -->
               @if (view.job.status === 'PendingConfirmation') {
@@ -246,11 +252,11 @@ function timeOf(value: string | undefined): number {
       }
       <!-- The notifications: skeletons before any document, the empty state, or the rows. -->
       @if (inbox() === undefined) {
-        <ul class="tm-attention-panel__rows" aria-busy="true" [attr.aria-label]="text('bell.list')">
+        <ul class="tm-attention-rows" aria-busy="true" [attr.aria-label]="text('bell.heading')">
           @for (index of skeletons; track index) {
-            <li class="tm-attention-panel__row tm-attention-panel__row--skeleton" aria-hidden="true">
-              <tm-skeleton shape="circle" width="16px" height="16px" />
-              <span class="tm-attention-panel__main">
+            <li class="tm-attention-row" aria-hidden="true">
+              <tm-skeleton class="tm-attention-row__icon" shape="circle" width="16px" height="16px" />
+              <span class="tm-attention-row__main">
                 <tm-skeleton width="70%" />
                 <tm-skeleton width="45%" />
               </span>
@@ -265,24 +271,24 @@ function timeOf(value: string | undefined): number {
             {{ text('bell.fresh', { count: waiting() }) }}
           </button>
         }
-        <ul class="tm-attention-panel__rows" tmRovingRows [attr.aria-label]="text('bell.list')" [fallback]="fallback()" (rowDelete)="deleted($event)">
+        <ul class="tm-attention-rows" tmRovingRows [attr.aria-label]="text('bell.heading')" [fallback]="fallback()" (rowDelete)="deleted($event)">
           @for (view of notices(); track view.key) {
             <li
-              class="tm-attention-panel__row tm-attention-panel__notice"
+              class="tm-attention-row tm-attention-panel__notice"
               data-tm-row
               [attr.data-tm-id]="view.id"
               [class.tm-attention-panel__notice--unread]="view.unread"
             >
-              <tm-icon class="tm-attention-panel__severity" [attr.data-severity]="view.severity" [svg]="view.icon" />
+              <tm-icon class="tm-attention-row__icon" [attr.data-severity]="view.severity" [style.color]="view.color" [svg]="view.icon" />
               <a
-                class="tm-attention-panel__main tm-attention-panel__link"
+                class="tm-attention-row__main tm-attention-panel__link"
                 data-tm-row-control
                 [attr.href]="view.href"
                 [attr.aria-label]="label(view)"
                 (click)="open($event, view, $index)"
               >
-                <span class="tm-attention-panel__title">{{ view.text().title }}</span>
-                <span class="tm-attention-panel__line">
+                <span class="tm-attention-row__title">{{ view.text().title }}</span>
+                <span class="tm-attention-row__line">
                   @if (view.text().detail; as detail) {
                     {{ detail }}
                   } @else if (view.actor; as actor) {
@@ -293,7 +299,7 @@ function timeOf(value: string | undefined): number {
               @if (view.download; as download) {
                 <a tmButton data-tm-row-control variant="ghost" size="sm" download [attr.href]="download">{{ text('bell.download') }}</a>
               }
-              <span class="tm-attention-panel__end">
+              <span class="tm-attention-row__end">
                 <tm-relative-time [value]="view.createdAt" textStyle="narrow" />
                 @if (view.unread) {
                   <span class="tm-attention-panel__dot" aria-hidden="true"></span>
@@ -339,11 +345,15 @@ export class TmBellPanel {
   readonly #launch = inject(TmLaunchCache);
   readonly #metadata = inject(ɵTmClientMetadataStore);
   readonly #confirm = inject(TmConfirm);
+  readonly #actions = inject(TmPageActions);
   readonly #announcer = inject(LiveAnnouncer);
   readonly #telemetry = inject(TmTelemetry);
   readonly #now = inject(TM_NOW);
+  readonly #injector = inject(Injector);
   /** The heading, absent in the drawer. */
   private readonly headingRef = viewChild<ElementRef<HTMLElement>>('heading');
+  /** The More options button, where focus moves when Mark all as read leaves. */
+  private readonly moreRef = viewChild.required<unknown, ElementRef<HTMLElement>>('moreButton', { read: ElementRef });
   /** The scrolling body. */
   private readonly bodyRef = viewChild.required<ElementRef<HTMLElement>>('body');
   readonly #host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
@@ -365,13 +375,6 @@ export class TmBellPanel {
   /** The glyphs the panel draws itself. */
   protected readonly glyphs = { more: Ellipsis, clear: X } as const;
 
-  /** Aborts the panel's own reads when it closes. */
-  readonly #life = (() => {
-    const life = new AbortController();
-    inject(DestroyRef).onDestroy(() => life.abort());
-    return life.signal;
-  })();
-
   /** The skeleton rows' keys. */
   protected readonly skeletons = [0, 1, 2];
 
@@ -382,7 +385,7 @@ export class TmBellPanel {
   protected readonly frozen = computed(() => this.#launch.docs.tenant()?.state === 'Frozen');
 
   /** Why the verbs are disabled: offline; `null` online. */
-  protected readonly offlineReason = computed(() => (this.#api.online() ? null : this.text('offline')));
+  protected readonly offlineReason = computed(() => (this.#api.online() ? null : this.#l10n.ɵtext('tm.errors.offline.title')()));
 
   /** Whether live updates are paused, so the status line shows. */
   protected readonly paused = computed(() => this.#attention.live() === 'paused');
@@ -465,8 +468,8 @@ export class TmBellPanel {
 
   /** Creates the panel: its page context, its arrivals and its first focus. */
   constructor() {
-    const destroyRef = inject(DestroyRef);
-    this.#publish(destroyRef);
+    this.#publish();
+    tmKeepPanelFocus(this.#host, () => untracked(this.fallback));
 
     // --- Arrivals: rows at the top insert at once; below it they wait, and either way they are announced ---
     let known: ReadonlySet<string> | null = null;
@@ -474,6 +477,10 @@ export class TmBellPanel {
       const keys = this.#allNotices().map((view) => view.key);
       const atTop = this.#atTop();
       untracked(() => {
+        // Skeletons: the first copy's rows are no arrivals.
+        if (this.inbox() === undefined) {
+          return;
+        }
         const arrived = known === null ? 0 : keys.filter((key) => !known!.has(key)).length;
         known = new Set(keys);
         const shown = this.#shown();
@@ -486,7 +493,7 @@ export class TmBellPanel {
     });
 
     const timer = setInterval(() => this.#minute.update((tick) => tick + 1), MINUTE_MS);
-    destroyRef.onDestroy(() => clearInterval(timer));
+    inject(DestroyRef).onDestroy(() => clearInterval(timer));
 
     // --- Opening focuses the first row, else the first header control; after the popover's and the drawer's own first focus ---
     afterNextRender({
@@ -570,16 +577,21 @@ export class TmBellPanel {
     this.#atTop.set(this.bodyRef().nativeElement.scrollTop <= 0);
   }
 
-  /** The pinned button: scrolls to the top, where the waiting rows insert. */
+  /** The pinned button: scrolls to the top, where the waiting rows insert, and focuses the first row once they have. */
   protected showWaiting(): void {
     this.bodyRef().nativeElement.scrollTop = 0;
     this.#atTop.set(true);
-    this.bodyRef().nativeElement.querySelector<HTMLElement>('[data-tm-row] .tm-attention-panel__link')?.focus();
+    // The waiting rows insert in the next render, and the pinned button leaves with it: the first row takes focus then.
+    afterNextRender(
+      { write: () => this.bodyRef().nativeElement.querySelector<HTMLElement>('[data-tm-row] .tm-attention-panel__link')?.focus() },
+      { injector: this.#injector },
+    );
   }
 
-  /** Mark all as read. */
+  /** Mark all as read, which leaves once nothing is unread: focus moves on to More options first. */
   protected readAll(): void {
-    void this.#attention.readAll();
+    this.moreRef().nativeElement.focus();
+    void this.#actions.invoke('attention.read-all', {}, 'user');
   }
 
   /** Refresh, on the status line. */
@@ -655,45 +667,41 @@ export class TmBellPanel {
   }
 
   /**
-   * A job's Review: opens the record that owns the job, where the user reads
-   * its warnings and confirms; without one, the job's page.
+   * A job's Review: the panel closes, and the record that owns the job opens,
+   * where the user reads its warnings and confirms; without one, the job's
+   * page. A user who moved on while the owner was looked up stays where they
+   * went.
    *
    * @param view - The job.
    * @param index - Its index in the list.
    */
-  protected async review(view: JobView, index: number): Promise<void> {
+  protected review(view: JobView, index: number): void {
     this.#opened('job', index);
-    this.#go((await this.#owner(view.job)) ?? view.url);
+    // The lookup ends with the first navigation that starts meanwhile, the user's own.
+    const life = new AbortController();
+    const owner = this.#owner(view.job, life.signal);
+    if (owner === null) {
+      this.#go(view.url);
+      return;
+    }
+    this.#close();
+    const moved = this.#router.events.subscribe((event) => event instanceof NavigationStart && life.abort());
+    void owner.then((url) => {
+      moved.unsubscribe();
+      if (!life.signal.aborted) {
+        void this.#router.navigateByUrl(url ?? view.url);
+      }
+    });
   }
 
   /**
-   * A job's Stop. A job whose handler saves its work in steps asks first, and
-   * focus then returns to the row; any other stops at once.
+   * A job's Stop, through the dispatcher, which asks first; the row's link
+   * takes focus once Stop leaves.
    *
    * @param view - The job.
    */
-  protected async stop(view: JobView): Promise<void> {
-    const { job } = view;
-    if (!untracked(this.#attention.writable)) {
-      return;
-    }
-    const handler = this.#metadata.current()?.jobHandlers.find((candidate) => candidate.key === job.handlerKey);
-    if (handler?.commitsInSteps === true) {
-      const importing = job.handlerKey === 'core.import';
-      const confirmed = await this.#confirm.confirm({
-        title: this.text(importing ? 'jobs.importTitle' : 'jobs.stopTitle'),
-        message: this.text(importing ? 'jobs.importMessage' : 'jobs.stopMessage'),
-        confirmLabel: this.text(importing ? 'jobs.importStop' : 'jobs.stop'),
-        cancelLabel: this.text('jobs.keep'),
-        destructive: true,
-      });
-      // The row keeps focus whichever way the user answered; a stopped row keeps its link.
-      this.bodyRef().nativeElement.querySelector<HTMLElement>(`[data-tm-id="${job.id}"] [data-tm-row-control]`)?.focus();
-      if (!confirmed) {
-        return;
-      }
-    }
-    void this.#attention.stopJob(job.id);
+  protected stop(view: JobView): void {
+    void this.#actions.invoke('attention.stop-job', { id: view.job.id }, 'user');
   }
 
   // --- The rows ---
@@ -704,7 +712,8 @@ export class TmBellPanel {
     const type = textOf(row, 'type') ?? '';
     const argumentsJson = textOf(row, 'argumentsJson') ?? null;
     const declared = this.#metadata.current()?.notificationTypes.find((candidate) => candidate.key === type)?.severity;
-    const severity = (textOf(row, 'severity') as TmNotificationSeverity | undefined) ?? declared ?? 'Info';
+    const given = (textOf(row, 'severity') as TmNotificationSeverity | undefined) ?? declared;
+    const severity = given !== undefined && given in SEVERITY_ICONS ? given : 'Info';
     const actorId = row['actorUserId'];
     const url = this.#urls.page(`notifications/${id}/open`);
     const fileId = type === 'core.export.ready' ? tmIcuArguments(argumentsJson)?.['fileId'] : undefined;
@@ -714,7 +723,8 @@ export class TmBellPanel {
       key: `${id}@${textOf(row, 'createdAt') ?? ''}`,
       text: this.#text.notification(type, argumentsJson),
       severity,
-      icon: SEVERITY_ICONS[severity] ?? Info,
+      icon: SEVERITY_ICONS[severity],
+      color: `var(--${severity.toLowerCase()})`,
       unread: row['readAt'] === undefined || row['readAt'] === null,
       url,
       href: this.#location.prepareExternalUrl(url),
@@ -741,27 +751,27 @@ export class TmBellPanel {
 
   /**
    * The page of the record that owns a job: the row of the handler's result
-   * entity whose navigation to the job names it, read once.
+   * entity whose navigation to the job names it, read once; `null` at once
+   * when the handler names no routed result entity. The read outlives the
+   * panel, which closes as it starts.
    */
-  async #owner(job: TmInboxRunningJob): Promise<string | null> {
+  #owner(job: TmInboxRunningJob, signal: AbortSignal): Promise<string | null> | null {
     const result = this.#metadata.current()?.jobHandlers.find((candidate) => candidate.key === job.handlerKey)?.result;
     const segment = result && this.#entities.summary(result.entity)?.segment;
     if (!result || !segment) {
       return null;
     }
-    try {
-      const page = await this.#api.read<{ readonly rows: TmQueryRowSet }>(
-        `${segment}/query`,
-        { select: 'Id', filters: [`${result.via} = ${job.id}`], take: 1 },
-        { signal: this.#life },
+    return this.#api
+      .read<{ readonly rows: TmQueryRowSet }>(`${segment}/query`, { select: 'Id', filters: [`${result.via} = ${job.id}`], take: 1 }, { signal })
+      .then(
+        (page) => {
+          const id = page.rows.rows[0]?.[0];
+          // A long id arrives as its decimal text.
+          return typeof id === 'number' || typeof id === 'string' ? this.#urls.target(result.entity, id as TmId) : null;
+        },
+        // Offline, or the row is not the user's to read: the job's page says the rest.
+        () => null,
       );
-      const id = page.rows.rows[0]?.[0];
-      // A long id arrives as its decimal text.
-      return typeof id === 'number' || typeof id === 'string' ? this.#urls.target(result.entity, id as TmId) : null;
-    } catch {
-      // Offline, or the row is not the user's to read: the job's page says the rest.
-      return null;
-    }
   }
 
   // --- Navigation ---
@@ -777,10 +787,15 @@ export class TmBellPanel {
 
   /** Closes the panel and navigates in the app. */
   #go(url: string): void {
+    this.#close();
+    void this.#router.navigateByUrl(url);
+  }
+
+  /** Closes the panel. */
+  #close(): void {
     if (untracked(this.#attention.open) === 'bell') {
       this.#attention.toggle('bell', 'click');
     }
-    void this.#router.navigateByUrl(url);
   }
 
   /** Reports an opened row and its place. */
@@ -799,7 +814,6 @@ export class TmBellPanel {
       title: this.text('bell.clearReadTitle'),
       message: this.text('bell.clearReadMessage'),
       confirmLabel: this.text('bell.clearReadConfirm'),
-      cancelLabel: this.text('bell.cancel'),
       destructive: true,
     });
     if (confirmed) {
@@ -810,69 +824,15 @@ export class TmBellPanel {
   // --- The page context ---
 
   /** Publishes the panel's overlay page context while it is open. */
-  #publish(destroyRef: DestroyRef): void {
+  #publish(): void {
     const enabled = computed(() => this.#attention.writable());
     const none = signal<string | null>(null).asReadonly();
-    const idParams = { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'] } as const;
-    const actions: readonly TmPageAction[] = [
+    // A running job's kind, which words Stop's confirmation.
+    const kind = (id: unknown): string =>
+      untracked(this.inbox)?.running.find((job) => job.id === id)?.handlerKey === 'core.import' ? 'import' : 'job';
+    tmPublishPanel(
+      'bell',
       {
-        id: 'attention.open-item',
-        labelKey: 'tm.attentionPanels.actions.openItem',
-        group: 'menu',
-        enabled: signal(true).asReadonly(),
-        destructive: false,
-        disabledReason: none,
-        params: idParams,
-        invoke: (args) => {
-          const id = (args as { readonly id?: unknown }).id;
-          const index = untracked(this.#allNotices).findIndex((view) => view.id === id);
-          const view = untracked(this.#allNotices)[index];
-          if (view === undefined) {
-            return Promise.resolve({ outcome: 'failed', error: new Error(`The bell shows no notification ${String(id)}.`) });
-          }
-          this.#opened('notification', index);
-          this.#go(view.url);
-          return Promise.resolve({ outcome: 'done' });
-        },
-      },
-      {
-        id: 'attention.read-all',
-        labelKey: 'tm.attentionPanels.bell.markAllRead',
-        group: 'menu',
-        enabled: computed(() => enabled() && (this.inbox()?.unread ?? 0) > 0),
-        destructive: false,
-        disabledReason: none,
-        invoke: async () => {
-          await this.#attention.readAll();
-          return { outcome: 'done' };
-        },
-      },
-      {
-        id: 'attention.stop-job',
-        labelKey: 'tm.attentionPanels.jobs.stop',
-        group: 'menu',
-        enabled,
-        // Whoever invokes it through the context is asked first, whatever the
-        // handler; the panel's own Stop asks only for a job that saves in steps.
-        destructive: true,
-        confirm: { titleKey: 'tm.attentionPanels.jobs.stopTitle', messageKey: 'tm.attentionPanels.jobs.stopMessage' },
-        disabledReason: none,
-        params: idParams,
-        invoke: async (args) => {
-          const id = (args as { readonly id?: unknown }).id;
-          if (typeof id !== 'number' || !untracked(this.inbox)?.running.some((job) => job.id === id)) {
-            return { outcome: 'failed', error: new Error(`The bell shows no running job ${String(id)}.`) };
-          }
-          await this.#attention.stopJob(id);
-          return { outcome: 'done' };
-        },
-      },
-    ];
-    inject(TmPageContexts).register(
-      {
-        kind: 'custom',
-        routeTemplate: 'panel:bell',
-        overlay: true,
         title: computed(() => this.text('bell.heading')),
         status: computed(() => (this.inbox() === undefined ? 'loading' : 'ready')),
         state: computed(() => {
@@ -906,10 +866,53 @@ export class TmBellPanel {
             truncated: rows.length > 200,
           };
         }),
-        errors: signal([]).asReadonly(),
-        actions: signal(actions).asReadonly(),
       },
-      destroyRef,
+      (id) => {
+        const index = untracked(this.#allNotices).findIndex((view) => view.id === id);
+        const view = untracked(this.#allNotices)[index];
+        if (view !== undefined) {
+          this.#opened('notification', index);
+          this.#go(view.url);
+        }
+        return view !== undefined;
+      },
+      [
+        {
+          id: 'attention.read-all',
+          labelKey: 'tm.attentionPanels.bell.markAllRead',
+          group: 'menu',
+          enabled: computed(() => enabled() && (this.inbox()?.unread ?? 0) > 0),
+          destructive: false,
+          disabledReason: none,
+          invoke: async () => {
+            await this.#attention.readAll();
+            return { outcome: 'done' };
+          },
+        },
+        {
+          id: 'attention.stop-job',
+          labelKey: 'tm.attentionPanels.jobs.stop',
+          group: 'menu',
+          enabled,
+          // Every Stop asks first, the panel's own too, in the job's kind's words.
+          destructive: true,
+          confirm: {
+            titleKey: 'tm.attentionPanels.jobs.stopTitle',
+            messageKey: 'tm.attentionPanels.jobs.stopMessage',
+            args: (args) => ({ kind: kind((args as { readonly id?: unknown }).id) }),
+          },
+          disabledReason: none,
+          params: TM_ROW_PARAMS,
+          invoke: async (args) => {
+            const { id } = args as { readonly id?: unknown };
+            if (typeof id !== 'number' || !untracked(this.inbox)?.running.some((job) => job.id === id)) {
+              return { outcome: 'failed', error: new Error(`The bell shows no running job ${String(id)}.`) };
+            }
+            await this.#attention.stopJob(id);
+            return { outcome: 'done' };
+          },
+        },
+      ],
     );
   }
 }

@@ -13,7 +13,8 @@ import { TmOutcomeToasts } from './tm-outcome-toasts';
 
 // The outcome toasts in a whole test app entered into tenant 17: a job
 // started in the background, with Track when the job has a page, and a
-// sticky export in progress, with Cancel.
+// sticky export in progress, with Cancel; each once the toasts' code has
+// loaded.
 
 describe('TmOutcomeToasts', () => {
   afterEach(() => {
@@ -27,7 +28,7 @@ describe('TmOutcomeToasts', () => {
     const target = vi.spyOn(TestBed.inject(TmUrls), 'target').mockReturnValue('/17/jobs/5');
     const outcomes = TestBed.inject(TmOutcomeToasts);
 
-    outcomes.jobStarted(5);
+    await outcomes.jobStarted(5);
     expect(target).toHaveBeenCalledWith('core.Job', 5);
     const [toast] = show.mock.calls.map(([shown]) => shown);
     expect(toast).toMatchObject({ tone: 'accent', title: 'Started in the background.', duration: 4000, key: 'job:5' });
@@ -40,7 +41,7 @@ describe('TmOutcomeToasts', () => {
     await tmAttentionRig();
     const show = vi.spyOn(TestBed.inject(TmToasts), 'show');
     vi.spyOn(TestBed.inject(TmUrls), 'target').mockReturnValue(null);
-    TestBed.inject(TmOutcomeToasts).jobStarted(6);
+    await TestBed.inject(TmOutcomeToasts).jobStarted(6);
     expect(show.mock.calls[0]?.[0].action).toBeUndefined();
   });
 
@@ -48,7 +49,7 @@ describe('TmOutcomeToasts', () => {
     await tmAttentionRig();
     const show = vi.spyOn(TestBed.inject(TmToasts), 'show');
     const cancel = vi.fn();
-    const ref = TestBed.inject(TmOutcomeToasts).exporting(cancel);
+    const ref = await TestBed.inject(TmOutcomeToasts).exporting(cancel);
     const [toast] = show.mock.calls.map(([shown]) => shown);
     expect(toast).toMatchObject({ tone: 'neutral', title: 'Exporting…', duration: 'sticky' });
     expect(toast?.action?.label).toBe('Cancel');
