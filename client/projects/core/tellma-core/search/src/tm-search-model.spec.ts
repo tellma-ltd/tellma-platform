@@ -99,8 +99,8 @@ describe('search model', () => {
       expect(tmSearchTilePaths(tmSearchTestSetting('gl.Center'))).toEqual(['Code', 'IsActive']);
     });
 
-    it('read nothing for a tile drawn by a component', () => {
-      expect(tmSearchTilePaths(tmSearchTestSetting('acme.Customer', { tile: { component: () => Promise.resolve(class {}) } }))).toEqual([]);
+    it('read only the display name for a tile drawn by a component, which names its checkbox', () => {
+      expect(tmSearchTilePaths(tmSearchTestSetting('acme.Customer', { tile: { component: () => Promise.resolve(class {}) } }))).toEqual(['Code', 'Name']);
     });
 
     it('read a tree’s parent and subtree sizes', () => {

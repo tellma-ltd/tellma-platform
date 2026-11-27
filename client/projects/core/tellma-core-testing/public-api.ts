@@ -56,6 +56,7 @@ export {
   type TmPinnedBarControl,
   TmPinnedBarHarness,
 } from './src/tm-pinned-bar-harness';
+export { TmSearchFiltersHarness } from './src/tm-search-filters-harness';
 export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';
 export { TmSessionMenuHarness, type TmSessionMenuTenantCard } from './src/tm-session-menu-harness';
 export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';

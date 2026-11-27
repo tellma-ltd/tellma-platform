@@ -4,12 +4,26 @@
 
 ```ts
 
+import { ActivatedRouteSnapshot } from '@angular/router';
 import * as _angular_core from '@angular/core';
+import { ApplicationConfig } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { DestroyRef } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
+import { InjectionToken } from '@angular/core';
+import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
+import { Observable } from 'rxjs';
 import { OnInit } from '@angular/core';
+import { Provider } from '@angular/core';
+import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
@@ -53,15 +67,25 @@ export class TmSearchHost implements OnInit {
     protected disarm(): void;
     protected displayOf(column: TmSearchGridColumn): Type<unknown> | null;
     protected readonly driver: TmGridDriverTarget;
+    protected readonly editable: boolean;
+    protected editFilter(): void;
     readonly entity: InputSignal<string>;
     protected fieldKey(event: KeyboardEvent): void;
     protected readonly fieldText: WritableSignal<string>;
+    protected filterActive(key: string): boolean;
+    protected readonly filterCount: Signal<number>;
+    protected readonly filterInvalid: Signal<boolean>;
+    protected filterName(column: TmSearchGridColumn): string;
+    protected readonly filtersLabelled: Signal<boolean>;
+    protected readonly filtersName: Signal<string>;
+    protected readonly filtersOpen: Signal<boolean>;
     protected readonly firstLoad: Signal<boolean>;
     protected followed(event: MouseEvent): void;
     protected readonly glyphs: {
         refresh: lucide.IconNode;
         create: lucide.IconNode;
         columns: lucide.IconNode;
+        funnel: lucide.IconNode;
         more: lucide.IconNode;
         newTab: {
             node: lucide.IconNode;
@@ -73,6 +97,7 @@ export class TmSearchHost implements OnInit {
     protected readonly gridColumns: Signal<readonly TmSearchGridColumn[]>;
     protected readonly gridId: Signal<string>;
     protected readonly hatched: Signal<boolean>;
+    protected readonly heldSet: Signal<_tellma_core.TmQueryRowSet | null>;
     protected readonly highlight: WritableSignal<TmId | null>;
     protected hover(event: PointerEvent): void;
     protected readonly ids: {
@@ -85,6 +110,8 @@ export class TmSearchHost implements OnInit {
     protected readonly maxLength: Signal<number | null>;
     protected readonly menuActions: Signal<readonly TmMenuItem[]>;
     ngOnInit(): void;
+    protected openColumnFilter(key: string, event: MouseEvent): void;
+    protected openFilters(button: HTMLElement, focusEditor: boolean): void;
     protected readonly openState: Signal<{
         tmFrom: _tellma_core_memory.TmPageStateKey;
         tmPage: number;
@@ -111,10 +138,17 @@ export class TmSearchHost implements OnInit {
     protected readonly running: Signal<ReadonlySet<string>>;
     protected selected(ids: ReadonlySet<number | string>): void;
     protected readonly selection: WritableSignal<ReadonlySet<TmId>>;
+    protected selectTab(key: string | null): void;
     protected setSize(size: number): void;
+    protected readonly setting: Signal<TmSearchSetting>;
+    protected setView(view: TmSearchView | null): void;
     protected readonly skeletonRows: number[];
     protected readonly sort: Signal<TmGridSort | null>;
     protected readonly stale: Signal<boolean>;
+    protected readonly tabKey: Signal<string | null>;
+    protected readonly tabs: Signal<readonly TmSearchTabView[]>;
+    protected readonly tabsForm: Signal<"menu" | "popup" | "segmented" | null>;
+    protected readonly targetFn: Signal<(row: TmPlanRow) => string | null>;
     protected targetOf(row: unknown): string | null;
     protected readonly text: {
         refresh: Signal<string>;
@@ -124,10 +158,16 @@ export class TmSearchHost implements OnInit {
         loading: Signal<string>;
         openInNewTab: Signal<string>;
         copyLink: Signal<string>;
+        tabs: Signal<string>;
+        view: Signal<string>;
+        viewGrid: Signal<string>;
+        viewTiles: Signal<string>;
+        filters: Signal<string>;
     };
     protected readonly title: Signal<string>;
     protected readonly total: Signal<number | null>;
     protected typed(text: string): void;
+    protected readonly view: Signal<TmSearchView>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSearchHost, "tm-search-host", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchHost, never>;
 }

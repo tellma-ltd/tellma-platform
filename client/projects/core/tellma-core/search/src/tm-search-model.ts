@@ -7,6 +7,7 @@ import type { Injector } from '@angular/core';
 import {
   TmEntities,
   type TmColumnInput,
+  type TmColumnPlan,
   type TmColumnPreference,
   type TmColumnSource,
   type TmEntityDeclarationInput,
@@ -366,47 +367,127 @@ export function tmSearchTreeKeys(descriptor: TmEntityDescriptor): readonly strin
 }
 
 /**
- * The paths a tile reads: the declared parts, or by default the first image
- * navigation, the display name, the first natural key the display name does
- * not show, and `IsActive` on an activatable entity. A tile's title is the
- * display name unless declared. An image given as its key, such as
- * `ImageId`, reads as its navigation, so the thumbnail's variants come with
- * it. A tile drawn by a component reads none.
+ * The paths of a tile's parts, as the declaration maps them or as the
+ * defaults fill them in. `null` for a part the tile does not show.
+ */
+export interface TmSearchTileParts {
+  /** The thumbnail's image navigation, such as `Image`. */
+  readonly image: string | null;
+  /** The title's path; `null` for the display name. */
+  readonly title: string | null;
+  /** The bottom-start text's path. */
+  readonly subtitle: string | null;
+  /** The top-end text's path. */
+  readonly topEnd: string | null;
+  /** The bottom-end badge's path. */
+  readonly badge: string | null;
+}
+
+/**
+ * The parts of an entity's tile: the declared parts, or by default the
+ * first image navigation, the display name, the first natural key the
+ * display name does not show, and `IsActive` as the badge on an
+ * activatable entity. A tile's title is the display name unless declared.
+ * An image given as its key, such as `ImageId`, reads as its navigation, so
+ * the thumbnail's variants come with it. A tile drawn by a component shows
+ * the display name alone, which names the tile's checkbox.
+ *
+ * @param setting - The page's setting.
+ * @returns The parts.
+ */
+export function tmSearchTileParts(setting: TmSearchSetting): TmSearchTileParts {
+  const { descriptor, declaration } = setting;
+  const entities = setting.injector.get(TmEntities);
+  const tile = declaration.tile;
+  const resolvesTo = (path: string, kind: string): boolean => entities.resolve(descriptor.name, path)?.end.kind === kind;
+
+  // --- A tile drawn by a component: the display name, for the checkbox's name ---
+  if (tile !== undefined && 'component' in tile) {
+    return { image: null, title: null, subtitle: null, topEnd: null, badge: null };
+  }
+
+  // --- No tile declared: the defaults of each part ---
+  if (tile === undefined) {
+    const { prefix, source } = descriptor.displayName;
+    const shown = new Set([...(prefix === undefined ? [] : [prefix]), source].map((path) => path.toLowerCase()));
+    return {
+      image: descriptor.navigations.find((navigation) => resolvesTo(navigation.name, 'image'))?.name ?? null,
+      title: null,
+      subtitle: descriptor.naturalKeys.find((key) => !shown.has(key.toLowerCase())) ?? null,
+      topEnd: null,
+      badge: tmSearchIsActivatable(descriptor) ? 'IsActive' : null,
+    };
+  }
+
+  // --- A declared tile: its parts, the title defaulting to the display name ---
+  const image = tile.image;
+  return {
+    image:
+      image !== undefined && /Id$/.test(image) && resolvesTo(image, 'value') && resolvesTo(image.slice(0, -2), 'image')
+        ? image.slice(0, -2)
+        : (image ?? null),
+    title: tile.title ?? null,
+    subtitle: tile.subtitle ?? null,
+    topEnd: tile.topEnd ?? null,
+    badge: tile.badge ?? null,
+  };
+}
+
+/**
+ * The paths a tile reads, in its parts' order: the image, the title (the
+ * display name's prefix and source unless declared), the subtitle, the
+ * top-end text and the badge.
  *
  * @param setting - The page's setting.
  * @returns The paths.
  */
 export function tmSearchTilePaths(setting: TmSearchSetting): readonly string[] {
-  const { descriptor, declaration } = setting;
-  const entities = setting.injector.get(TmEntities);
-  const tile = declaration.tile;
-  if (tile !== undefined && 'component' in tile) {
-    return [];
-  }
-  const { prefix, source } = descriptor.displayName;
-  const displayName = [...(prefix === undefined ? [] : [prefix]), source];
-  const resolvesTo = (path: string, kind: string): boolean => entities.resolve(descriptor.name, path)?.end.kind === kind;
-
-  // --- No tile declared: the defaults of each part ---
-  if (tile === undefined) {
-    const image = descriptor.navigations.find((navigation) => resolvesTo(navigation.name, 'image'))?.name;
-    const shown = new Set(displayName.map((path) => path.toLowerCase()));
-    const subtitle = descriptor.naturalKeys.find((key) => !shown.has(key.toLowerCase()));
-    return [
-      ...(image === undefined ? [] : [image]),
-      ...displayName,
-      ...(subtitle === undefined ? [] : [subtitle]),
-      ...(tmSearchIsActivatable(descriptor) ? ['IsActive'] : []),
-    ];
-  }
-
-  // --- A declared tile: its parts, the title defaulting to the display name ---
-  const image = tile.image;
-  const imagePath =
-    image !== undefined && /Id$/.test(image) && resolvesTo(image, 'value') && resolvesTo(image.slice(0, -2), 'image') ? image.slice(0, -2) : image;
+  const parts = tmSearchTileParts(setting);
+  const { prefix, source } = setting.descriptor.displayName;
   return [
-    ...(imagePath === undefined ? [] : [imagePath]),
-    ...(tile.title === undefined ? displayName : [tile.title]),
-    ...[tile.subtitle, tile.topEnd, tile.badge].filter((path) => path !== undefined),
-  ];
+    parts.image,
+    ...(parts.title === null ? [prefix ?? null, source] : [parts.title]),
+    parts.subtitle,
+    parts.topEnd,
+    parts.badge,
+  ].filter((path) => path !== null);
+}
+
+// -----------------------------------------------------------------------------
+// Filters
+// -----------------------------------------------------------------------------
+
+/**
+ * Whether a column takes a column filter: its plan has a filter kind, and it
+ * is not `IsActive` on an activatable entity, which the Active only switch
+ * owns.
+ *
+ * @param descriptor - The entity's descriptor.
+ * @param column - The column.
+ * @returns Whether it does.
+ */
+export function tmSearchFilterable(descriptor: TmEntityDescriptor, column: TmColumnPlan): boolean {
+  return column.filter !== null && !(column.key === 'IsActive' && tmSearchIsActivatable(descriptor));
+}
+
+/**
+ * How many filters a query applies, as the Filters button counts them: the
+ * filter expression, each column filter, each custom filter, the inclusion
+ * of inactive rows and, where the tabs sit in the Filters popup, a tab
+ * other than the first.
+ *
+ * @param setting - The page's setting.
+ * @param query - The canonical query.
+ * @param tabs - Whether the tabs sit in the Filters popup, so a tab counts.
+ * @returns The count.
+ */
+export function tmSearchFilterCount(setting: TmSearchSetting, query: TmSearchQuery, tabs: boolean): number {
+  const count = (record: Readonly<Record<string, string>> | undefined): number => (record === undefined ? 0 : Object.keys(record).length);
+  return (
+    (query.filter === undefined ? 0 : 1) +
+    count(query.columnFilters) +
+    count(query.custom) +
+    (query.inactive === true ? 1 : 0) +
+    (tabs && query.tab !== undefined && query.tab !== tmSearchFirstTab(setting.declaration)?.key ? 1 : 0)
+  );
 }

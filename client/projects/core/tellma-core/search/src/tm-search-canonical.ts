@@ -21,6 +21,7 @@ import {
   TM_SEARCH_DEFAULT_PAGE_SIZE,
   tmSearchColumnInput,
   tmSearchDefaultColumns,
+  tmSearchFilterable,
   tmSearchFirstTab,
   tmSearchIsActivatable,
   tmSearchIsExpression,
@@ -174,8 +175,8 @@ export function tmSearchText(text: string, max: number): string {
 
 /**
  * The column filters a query keeps, by canonical key in ordinal order:
- * each key that resolves to a column that filters, with a value its control
- * accepts, rewritten in its canonical form.
+ * each key that resolves to a column that takes a column filter, with a
+ * value its control accepts, rewritten in its canonical form.
  *
  * @param setting - The page's setting.
  * @param filters - The filters, by key.
@@ -189,8 +190,9 @@ function columnFilters(setting: TmSearchSetting, filters: Readonly<Record<string
     if (column === null) {
       continue;
     }
+    // `IsActive` on an activatable entity is the Active only switch's, so its filter is a rejected value (spec 0030 §9.1).
     const spec = tmParseFilter(filters[key]!);
-    if (spec === null || column.filter === null || tmFilterLeaf(column, spec, { timeZone }) === null) {
+    if (spec === null || !tmSearchFilterable(setting.descriptor, column) || tmFilterLeaf(column, spec, { timeZone }) === null) {
       drop(setting, 'invalid-value');
       continue;
     }

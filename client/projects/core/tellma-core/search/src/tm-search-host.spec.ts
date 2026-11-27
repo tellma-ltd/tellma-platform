@@ -6,7 +6,7 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Location } from '@angular/common';
 import type { SpyLocation } from '@angular/common/testing';
-import { signal, type Provider } from '@angular/core';
+import { computed, signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TestBed } from '@angular/core/testing';
@@ -20,7 +20,7 @@ import {
   type TmJsonObject,
   type TmQueryRowSet,
 } from '@tellma/core';
-import { TmFakeApi, TmPageContextHarness, TmSearchPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
+import { TmFakeApi, TmFakeDiscover, TmPageContextHarness, TmSearchPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
 import { TM_DEVICE_TIME_ZONE, TmBreakpoints, type TmBreakpoint } from '@tellma/core-ui';
 import { TmMenuHarness } from '@tellma/core-ui-testing';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
@@ -28,8 +28,10 @@ import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 import { tmEntityDocs, tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil, tmWaitUntil } from '../../src/routes/tm-app.testing.util';
 import { ɵTM_SEARCH_ERROR_VIEWS } from './tm-search-state';
+import { ɵTM_SEARCH_FILTERS_STRINGS_EN } from './tm-search-filters-strings';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
-import { tmSearchTestHash } from './tm-search.testing.util';
+import { ɵTM_SEARCH_TILES_STRINGS_EN } from './tm-search-tiles-strings';
+import { TM_TEST_CUSTOMERS, tmSearchTestHash } from './tm-search.testing.util';
 
 // The search host over the entity rig's customers, routed at
 // /17/customers and read through the fake API: the first load's skeleton
@@ -38,8 +40,10 @@ import { tmSearchTestHash } from './tm-search.testing.util';
 // button above it, the offline rules, the re-read rule on a language
 // switch, the search field (its burst timing, the pending Enter, type-to-
 // search, the undo anchor and the paused announcements), the row menu,
-// Create, Refresh, the page's context and its page actions, and
-// the strings' Arabic.
+// Create, Refresh, the page's context and its page actions, the tiles and
+// the view toggle, the tabs in their three forms, the column filters, the
+// Filters popup, and the strings' Arabic. The page opens at `xl` unless a
+// spec names a width, which it can change as a resize would.
 
 /** One customer as the fake server holds it, by select term. */
 type TmCustomerRow = Readonly<Record<string, TmJson>>;
@@ -92,12 +96,39 @@ function answer(all: readonly TmCustomerRow[], extra: TmJsonObject = {}): (call:
 /** Customers' search members under test: three columns ordered by code. */
 const CUSTOMER: Partial<TmEntityDeclarationInput<'acme.Customer'>> = { columns: ['Code', 'Name', 'Currency'], orderBy: 'Code' };
 
+/** Customers with the active flag shown, a tile, the custom filters (a switch, options, a named switch) and the tabs (all, a leaf, a named filter). */
+const DECLARED = {
+  columns: ['Code', 'Name', 'Currency', 'IsActive'],
+  orderBy: 'Code',
+  tile: TM_TEST_CUSTOMERS.tile,
+  filters: TM_TEST_CUSTOMERS.filters,
+  tabs: TM_TEST_CUSTOMERS.tabs,
+} as unknown as Partial<TmEntityDeclarationInput<'acme.Customer'>>;
+
+/** The breakpoints from the narrowest up. */
+const WIDTHS: readonly TmBreakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
+
+/**
+ * Breakpoints that follow a width a spec sets, as a resize would.
+ *
+ * @param width - The width.
+ * @returns The fake.
+ */
+function breakpoints(width: WritableSignal<TmBreakpoint>): Partial<TmBreakpoints> {
+  return { current: width.asReadonly(), atLeast: (at) => computed(() => WIDTHS.indexOf(width()) >= WIDTHS.indexOf(at)) };
+}
+
+/** The providers of a page a spec renders without {@link open}: wide, at `xl`, where the grid shows. */
+const WIDE: readonly Provider[] = [{ provide: TmBreakpoints, useValue: breakpoints(signal<TmBreakpoint>('xl')) }];
+
 /** What a spec opens the page with. */
 interface TmOpenOptions extends TmEntityRigOptions {
   /** The rows the server holds; three when omitted. */
   readonly rows?: readonly TmCustomerRow[];
   /** The server's answer, in place of the rows'. */
   readonly respond?: (call: TmFakeApiCall) => unknown;
+  /** The width the page opens at; `xl` when omitted. */
+  readonly width?: TmBreakpoint;
 }
 
 /** What a spec drives. */
@@ -110,6 +141,8 @@ interface TmOpened {
   readonly page: TmSearchPageHarness;
   /** The router's mock location, whose changes tell a push from a replace. */
   readonly location: SpyLocation;
+  /** The width the breakpoints report, which a spec sets as a resize would. */
+  readonly width: WritableSignal<TmBreakpoint>;
 }
 
 /**
@@ -162,12 +195,38 @@ function reads(api: TmFakeApi): TmJsonObject[] {
  * @returns What the spec drives.
  */
 async function open(url: string | (() => string) = '/17/customers', options: TmOpenOptions = {}): Promise<TmOpened> {
-  const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER, ...options });
+  const width = signal<TmBreakpoint>(options.width ?? 'xl');
+  // A spec's own breakpoints, among its providers, come after these and win.
+  const providers = [{ provide: TmBreakpoints, useValue: breakpoints(width) }, ...(options.providers ?? [])];
+  const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER, ...options, providers });
   rig.api.respond('customers/query', options.respond ?? answer(options.rows ?? customers(3)));
   await rig.router.navigateByUrl(typeof url === 'string' ? url : url());
   await tmSettleUntil(settled, 'the search page settles');
   const page = await TestbedHarnessEnvironment.loader(rig.router.fixture).getHarness(TmSearchPageHarness);
-  return { rig, api: rig.api, page, location: TestBed.inject(Location) as SpyLocation };
+  return { rig, api: rig.api, page, location: TestBed.inject(Location) as SpyLocation, width };
+}
+
+/**
+ * The Filters popup's Apply, while the popup is open.
+ *
+ * @returns The button, or `null`.
+ */
+function applyButton(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>('[data-tm-filters-apply]');
+}
+
+/**
+ * The events of a name the page reported, by their properties.
+ *
+ * @param rig - The rig.
+ * @param name - The event's name.
+ * @returns Each event's properties, oldest first.
+ */
+function events(rig: TmEntityRig, name: string): unknown[] {
+  return rig.telemetry
+    .recent()
+    .filter((item) => item.kind === 'event' && item.name === name)
+    .map((item) => item.props);
 }
 
 /**
@@ -380,7 +439,7 @@ describe('TmSearchHost', () => {
       // The first read waits, so the skeleton shows before the rows land.
       let release!: () => void;
       const held = new Promise<void>((resolve) => (release = resolve));
-      const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER });
+      const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER, providers: WIDE });
       const respond = answer(customers(3));
       rig.api.respond('customers/query', async (call: TmFakeApiCall) => {
         await held;
@@ -417,7 +476,7 @@ describe('TmSearchHost', () => {
       // The first read waits, so the trailing group is seen while the total is unknown.
       let release!: () => void;
       const held = new Promise<void>((resolve) => (release = resolve));
-      const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER });
+      const rig = await tmEntityRig({ access: { isSystem: true }, customer: CUSTOMER, providers: WIDE });
       const respond = answer(customers(3));
       rig.api.respond('customers/query', async (call: TmFakeApiCall) => {
         await held;
@@ -1600,6 +1659,217 @@ describe('TmSearchHost', () => {
     });
   });
 
+  describe('the view', () => {
+    it('shows the declared tiles below md, and the grid from the toggle with no request', async () => {
+      const { api, page, rig } = await open('/17/customers', { width: 'xs', customer: DECLARED });
+      await tmSettleUntil(() => host()?.querySelector('tm-tiles') != null, 'the tiles load');
+      expect(await page.getView()).toBe('Tiles');
+      expect(await page.getGrid()).toBeNull();
+      expect(await (await page.getTiles())!.getTileTitles()).toEqual(['Customer 1', 'Customer 2', 'Customer 3']);
+      const before = reads(api).length;
+      await page.setView('Grid');
+      await resettle();
+      expect(await page.getGrid()).not.toBeNull();
+      expect(await page.getTiles()).toBeNull();
+      expect(address()).toBe('/17/customers?view=grid');
+      expect(reads(api)).toHaveLength(before);
+      expect(events(rig, 'tm.search.view-changed')).toEqual([{ view: 'grid', list: false }]);
+    });
+
+    it('follows the width across md, back to the narrow view a toggle chose', async () => {
+      const { page, width } = await open('/17/customers', { width: 'xs', customer: DECLARED });
+      await page.setView('Grid');
+      await resettle();
+      // A desktop peek shows the wide class's view and leaves the narrow half alone.
+      width.set('xl');
+      await resettle();
+      expect(await page.getView()).toBe('Grid');
+      width.set('xs');
+      await resettle();
+      expect(await page.getView()).toBe('Grid');
+      expect(await page.getGrid()).not.toBeNull();
+    });
+  });
+
+  describe('the tabs', () => {
+    it('show as a segmented control from lg: a leaf tab filters the read and a named tab names its filter', async () => {
+      const { api, page, rig } = await open('/17/customers', { customer: DECLARED });
+      expect(await page.getTabsForm()).toBe('segmented');
+      expect(await page.getTabLabels()).toEqual(['All', 'Open', 'Starred']);
+      expect(await page.getTab()).toBe('All');
+      await page.selectTab('Open');
+      await resettle();
+      expect(address()).toBe('/17/customers?tab=open');
+      expect(reads(api).at(-1)!['filters']).toEqual(['CreditLimit > 0']);
+      await page.selectTab('Starred');
+      await resettle();
+      expect(address()).toBe('/17/customers?tab=starred');
+      expect(reads(api).at(-1)!['filters']).toBeUndefined();
+      expect(reads(api).at(-1)!['namedFilters']).toEqual(['starred']);
+      expect(events(rig, 'tm.search.filter-applied')).toEqual([{ kind: 'tab' }, { kind: 'tab' }]);
+    });
+
+    it('show as a menu button at sm and md, as wide as the widest label', async () => {
+      const { api, page } = await open('/17/customers', { width: 'md', customer: DECLARED });
+      expect(await page.getTabsForm()).toBe('menu');
+      expect(await page.getTabLabels()).toEqual(['All', 'Open', 'Starred']);
+      expect(await page.getTab()).toBe('All');
+      await page.selectTab('Starred');
+      await resettle();
+      expect(await page.getTab()).toBe('Starred');
+      expect(reads(api).at(-1)!['namedFilters']).toEqual(['starred']);
+    });
+
+    it('sit in the Filters popup below sm, and count there when not the first', async () => {
+      const { api, page } = await open('/17/customers', { width: 'xs', customer: DECLARED });
+      expect(await page.getTabsForm()).toBeNull();
+      const filters = await page.openFilters();
+      await (await filters.getTabs())!.check('Open');
+      await filters.apply();
+      await resettle();
+      expect(address()).toBe('/17/customers?tab=open');
+      expect(reads(api).at(-1)!['filters']).toEqual(['CreditLimit > 0']);
+      expect(await page.getFilterCount()).toBe('1');
+    });
+  });
+
+  describe('the column filters', () => {
+    it("head each filterable column with a button named by the column, which applies the column's filter", async () => {
+      const { api, page, rig } = await open('/17/customers');
+      expect(await page.getColumnFilterNames()).toEqual(['Filter Code', 'Filter Name', 'Filter Currency']);
+      const filter = await page.openColumnFilter('Code');
+      await (await filter.getTextInput())!.setValue('C-00');
+      await filter.apply();
+      await resettle();
+      expect(address()).toMatch(/^\/17\/customers\?f\.Code=/);
+      expect(reads(api).at(-1)!['filters']).toHaveLength(1);
+      expect((await page.getColumnFilterNames())[0]).toBe('Filter Code, active');
+      expect(await page.getFiltersName()).toBe('Filters, 1 active');
+      expect(events(rig, 'tm.search.filter-applied')).toEqual([{ kind: 'column' }]);
+      // Focus is back on the button that opened the panel.
+      expect(document.activeElement).toBe(host()!.querySelector('[data-tm-filter][data-key="Code"]'));
+    });
+
+    it("drop the active flag's column filter on an activatable entity, whose Active only switch stands for it", async () => {
+      const { api, page } = await open('/17/customers?f.IsActive=is:false', { customer: DECLARED });
+      expect(address()).toBe('/17/customers');
+      expect(reads(api).at(-1)!['filters']).toBeUndefined();
+      expect(await page.getColumnFilterNames()).toEqual(['Filter Code', 'Filter Name', 'Filter Currency']);
+    });
+  });
+
+  describe('the Filters popup', () => {
+    it('applies its staged edits as one URL write and one read, on page 1', async () => {
+      const { api, page, location, rig } = await open('/17/customers?page=2', { rows: customers(60), customer: DECLARED });
+      const before = reads(api).length;
+      const changes = location.urlChanges.length;
+      const filters = await page.openFilters();
+      await (await filters.getActiveOnly())!.toggle();
+      await (await filters.getCustomSwitch('mine'))!.toggle();
+      await (await filters.getCustomOptions('credit'))!.check('High credit');
+      // Staged only: nothing reads until Apply.
+      expect(reads(api)).toHaveLength(before);
+      await filters.apply();
+      await resettle();
+      expect(reads(api)).toHaveLength(before + 1);
+      expect(reads(api).at(-1)!['skip']).toBe(0);
+      expect(reads(api).at(-1)!['includeInactive']).toBe(true);
+      expect(reads(api).at(-1)!['filters']).toEqual(['CreatedById = me()', 'CreditLimit >= 500000']);
+      expect(location.urlChanges).toHaveLength(changes + 1);
+      expect(address()).not.toContain('page=');
+      expect(address()).toContain('inactive=1');
+      expect(address()).toContain('x.mine=1');
+      expect(address()).toContain('x.credit=high');
+      expect(await page.getFilterCount()).toBe('3');
+      expect(events(rig, 'tm.search.filter-applied')).toEqual([{ kind: 'custom' }, { kind: 'inactive' }]);
+      expect(await page.getFilters()).toBeNull();
+      expect(document.activeElement).toBe(host()!.querySelector('[data-tm-filters]'));
+    });
+
+    it('sends a named switch in the named filters', async () => {
+      const { api, page } = await open('/17/customers', { customer: DECLARED });
+      const filters = await page.openFilters();
+      await (await filters.getCustomSwitch('shared'))!.toggle();
+      await filters.apply();
+      await resettle();
+      expect(address()).toBe('/17/customers?x.shared=1');
+      expect(reads(api).at(-1)!['namedFilters']).toEqual(['shared-with-me']);
+      expect(reads(api).at(-1)!['filters']).toBeUndefined();
+    });
+
+    it('discards its staged edits on a dismissal', async () => {
+      const { api, page } = await open('/17/customers', { customer: DECLARED });
+      const before = reads(api).length;
+      let filters = await page.openFilters();
+      // Active only is on while inactive rows are left out, as they are by default.
+      expect(await (await filters.getActiveOnly())!.isChecked()).toBe(true);
+      await (await filters.getActiveOnly())!.toggle();
+      expect(await (await filters.getActiveOnly())!.isChecked()).toBe(false);
+      press(document.activeElement!, 'Escape');
+      await tmSettleUntil(() => document.querySelector('tm-search-filters-form') === null, 'the popup closes');
+      expect(document.activeElement).toBe(host()!.querySelector('[data-tm-filters]'));
+      filters = await page.openFilters();
+      expect(await (await filters.getActiveOnly())!.isChecked()).toBe(true);
+      expect(reads(api)).toHaveLength(before);
+      expect(address()).toBe('/17/customers');
+    });
+
+    it('disables Apply only after a completed check that found problems', async () => {
+      const { page } = await open('/17/customers');
+      const discover = TestBed.inject(TmFakeDiscover);
+      discover.respond((request) => ({
+        diagnostics: request.filters?.[0]?.startsWith('Nope') === true ? [{ clause: 'filters[0]', code: 'QX2001', start: 0, length: 4, arguments: { name: 'Nope' } }] : [],
+        parameters: [],
+        paths: [],
+        usesAggregation: false,
+      }));
+      discover.fail('offline');
+      const filters = await page.openFilters();
+      const editor = (await filters.getEditor())!;
+      await editor.setValue('Nope = 1');
+      // A check that could not run found nothing: Apply stays enabled.
+      await tmSettleUntil(() => discover.requests().length === 1 && document.querySelector('tm-expression-editor')?.textContent?.includes('offline') === true, 'the check fails offline');
+      expect(applyButton()!.disabled).toBe(false);
+      discover.fail(null);
+      await editor.setValue('Nope = 1 ');
+      await tmSettleUntil(() => applyButton()!.disabled, 'the check finds a problem');
+      await editor.setValue('CreditLimit > 0');
+      await tmSettleUntil(() => !applyButton()!.disabled, 'the check finds none');
+    });
+
+    it('lists an order on a hidden column as a chip whose removal goes back to the default order', async () => {
+      const { api, page } = await open('/17/customers?order=CreditLimit:desc');
+      const filters = await page.openFilters();
+      expect(await filters.getAppliedLabels()).toEqual([expect.stringMatching(/^Ordered by .+, descending$/)]);
+      const chip = (await (await filters.getApplied())!.getChips())[0]!;
+      await chip.remove();
+      await filters.apply();
+      await resettle();
+      expect(address()).toBe('/17/customers');
+      expect(reads(api).at(-1)!['orderBy']).toBe('Code');
+    });
+
+    it("opens from an invalid filter's Edit filter with the expression's editor focused", async () => {
+      const { page } = await open(() => '/17/customers' + tmSearchTestHash('Bogus > 0'), {
+        respond: () => {
+          throw invalid('filters[0]', 0, 5);
+        },
+      });
+      expect(await page.isFiltersInvalid()).toBe(true);
+      expect(await page.getFiltersName()).toBe('Filters, 1 active, the filter expression is not valid');
+      await page.clickStateAction('Edit filter');
+      await tmSettleUntil(() => document.activeElement?.closest('tm-expression-editor') != null, 'the editor takes focus');
+      expect(await page.getFilters()).not.toBeNull();
+    });
+
+    it('opens as an end drawer below sm', async () => {
+      const { page } = await open('/17/customers', { width: 'xs', customer: DECLARED });
+      await page.openFilters();
+      expect(document.querySelector('tm-search-filters-form')?.closest('[role="dialog"]')).not.toBeNull();
+      expect(document.querySelector('.tm-popover__panel tm-search-filters-form')).toBeNull();
+    });
+  });
+
   describe('the page context', () => {
     it('publishes the query, the selection and the visible rows', async () => {
       await open('/17/customers?q=cust');
@@ -1646,15 +1916,22 @@ describe('the search strings', () => {
       .sort();
   }
 
-  it('have an Arabic for every English key, and no other', () => {
-    expect(keyPaths(TM_QUERYEX_STRINGS_AR['search'] as Record<string, unknown>)).toEqual(keyPaths(ɵTM_SEARCH_STRINGS_EN));
+  /** The search page's English tables, each with the scope its Arabic sits under. */
+  const tables = [
+    ['search', ɵTM_SEARCH_STRINGS_EN],
+    ['searchFilters', ɵTM_SEARCH_FILTERS_STRINGS_EN],
+    ['searchTiles', ɵTM_SEARCH_TILES_STRINGS_EN],
+  ] as const;
+
+  it.each(tables)('have an Arabic for every English key under %s, and no other', (scope, english) => {
+    expect(keyPaths(TM_QUERYEX_STRINGS_AR[scope] as Record<string, unknown>)).toEqual(keyPaths(english));
   });
 
-  it("take the English messages' arguments in Arabic", () => {
+  it.each(tables)("take the English messages' arguments in Arabic under %s", (scope, english) => {
     const argumentsOf = (message: string): string[] => [...new Set([...message.matchAll(/\{(\w+)/g)].map((match) => match[1]!))].sort();
-    const arabic = TM_QUERYEX_STRINGS_AR['search'] as Record<string, string>;
-    for (const [key, english] of Object.entries(ɵTM_SEARCH_STRINGS_EN)) {
-      expect([key, argumentsOf(arabic[key]!)]).toEqual([key, argumentsOf(english)]);
+    const arabic = TM_QUERYEX_STRINGS_AR[scope] as Record<string, string>;
+    for (const [key, message] of Object.entries(english)) {
+      expect([key, argumentsOf(arabic[key]!)]).toEqual([key, argumentsOf(message)]);
     }
   });
 });

@@ -145,7 +145,7 @@ export type TmSearchRegionState =
       @case ('invalid-link') {
         <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.invalidLink()" />
       }
-      <!-- A column or filter that fails for some rows, and why. -->
+      <!-- A column or filter that fails for some rows, and why, with Edit filter. -->
       @case ('calculation') {
         <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.calculation()">
           @if (shown.reason === 'divide-by-zero') {
@@ -153,9 +153,13 @@ export type TmSearchRegionState =
           } @else if (shown.reason === 'overflow') {
             {{ text.overflow() }}
           }
+          @if (editable()) {
+            <button tmButton tmEmptyStateActions type="button" (click)="edit.emit()">{{ text.editFilter() }}</button>
+          }
         </tm-empty-state>
       }
-      <!-- An invalid filter, the user's or code's: the first diagnostic, its token as left-to-right code. -->
+      <!-- An invalid filter, the user's or code's: the first diagnostic, its token as left-to-right code; the
+           user's own expression offers Edit filter, a filter from code does not. -->
       @default {
         @if (shown.kind === 'invalid-filter' || shown.kind === 'invalid-code') {
           <tm-empty-state size="panel" icon="circle-alert" tone="error" [heading]="text.invalidFilter()">
@@ -164,6 +168,9 @@ export type TmSearchRegionState =
             }
             @if (shown.token) {
               <code class="tm-search-state__token" dir="ltr">{{ shown.token }}</code>
+            }
+            @if (shown.kind === 'invalid-filter' && editable()) {
+              <button tmButton tmEmptyStateActions type="button" (click)="edit.emit()">{{ text.editFilter() }}</button>
             }
           </tm-empty-state>
         }
@@ -215,6 +222,12 @@ export class TmSearchState {
   /** Emits when the user asks the error view to try again. */
   readonly retry: OutputEmitterRef<void> = output<void>();
 
+  /** Whether the invalid filter's and the calculation's states offer Edit filter: the page has a filter expression to edit. */
+  readonly editable: InputSignal<boolean> = input(false);
+
+  /** Emits when the user asks to edit the filter expression. */
+  readonly edit: OutputEmitterRef<void> = output<void>();
+
   /** The states' strings, in the active language. */
   protected readonly text = {
     noData: this.#l10n.ɵtext('tm.search.noData'),
@@ -230,6 +243,7 @@ export class TmSearchState {
     overflow: this.#l10n.ɵtext('tm.search.overflow'),
     failed: this.#l10n.ɵtext('tm.search.failed'),
     retry: this.#l10n.ɵtext('tm.errors.retry'),
+    editFilter: this.#l10n.ɵtext('tm.search.editFilter'),
   };
 
   /** Whether the error views failed to load. */

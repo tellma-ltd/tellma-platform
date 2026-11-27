@@ -121,6 +121,22 @@ describe('search changes', () => {
       expect(grid.preferences).toEqual({ view: { narrow: 'grid' } });
     });
 
+    it('leaves the narrow half alone through a desktop peek and a toggle there', () => {
+      const preferences = { columns: null, view: { narrow: 'grid' as const }, pageSize: 50 };
+      const narrow = tmSearchTestSetting('acme.Customer', TM_TEST_CUSTOMERS, { width: 'narrow', preferences });
+      const wide = { ...narrow, width: 'wide' as const };
+      // The peek shows the wide default and writes nothing.
+      const peek = tmSearchResize(wide, opened(narrow, '/17/customers?view=grid'), 'narrow');
+      expect(peek.state.query).toEqual({});
+      expect(peek.preferences).toEqual({});
+      // A toggle at the wide width writes the wide half only.
+      const tiles = tmSearchUpdate(wide, peek.state, { view: 'tiles' });
+      expect(tiles.preferences).toEqual({ view: { narrow: 'grid', wide: 'tiles' } });
+      // Back to the narrow width, the narrow half still names its view.
+      const back = tmSearchResize({ ...narrow, preferences: { ...preferences, view: { narrow: 'grid', wide: 'tiles' } } }, tiles.state, 'wide');
+      expect(back.state.query).toEqual({ view: 'grid' });
+    });
+
     it('goes back to the first page between tree and list, and writes the list choice', () => {
       const setting = tmSearchTestSetting('gl.Center', {}, { preferences: { columns: null, view: { wide: 'tiles' }, pageSize: 50 } });
       const state = opened(setting, '/17/centers?q=a&page=2');

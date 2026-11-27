@@ -99,3 +99,55 @@
 .tm-search-host__more {
   display: contents;
 }
+
+/* ---- the Filters button ---- */
+
+/* The count keeps room for two digits, so the button keeps its width as filters apply. */
+.tm-search-host__filters-count {
+  display: inline-flex;
+  justify-content: center;
+  min-inline-size: 2.5ch;
+}
+
+/* The error tone while the filter expression is not valid. */
+.tm-search-host__filters--invalid {
+  color: var(--error);
+  border-color: var(--error-border);
+}
+
+/* ---- the toolbar's end ---- */
+
+/* A thin rule between the pager and the view toggle. */
+.tm-search-host__separator {
+  align-self: stretch;
+  inline-size: var(--border-width);
+  margin-block: var(--space-1);
+  background: var(--border-subtle);
+}
+
+/* ---- the tiles' first frame ---- */
+
+/* Skeleton lines while the tiles' code loads. */
+.tm-search-host__tiles-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+/* ---- the segmented controls, whose code loads right after the first render ---- */
+
+.tm-search-host__deferred {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* The stand-in keeps the control's height, and the view toggle's two icon segments' width. */
+.tm-search-host__segmented-placeholder {
+  display: inline-block;
+  block-size: var(--field-height);
+}
+
+.tm-search-host__segmented-placeholder--view {
+  inline-size: calc(var(--field-height) * 2);
+}

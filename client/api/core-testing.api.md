@@ -571,6 +571,25 @@ export class TmPinnedBarHarness extends ComponentHarness {
 }
 
 // @public
+export class TmSearchFiltersHarness extends ComponentHarness {
+    addColumnFilter(label: string): Promise<TmColumnFilterHarness>;
+    apply(): Promise<void>;
+    back(): Promise<void>;
+    clearAll(): Promise<void>;
+    getActiveOnly(): Promise<TmSwitchHarness | null>;
+    getAddableColumns(): Promise<string[]>;
+    getApplied(): Promise<TmChipSetHarness | null>;
+    getAppliedLabels(): Promise<string[]>;
+    getColumnFilter(): Promise<TmColumnFilterHarness | null>;
+    getCustomOptions(key: string): Promise<TmRadioGroupHarness | null>;
+    getCustomSwitch(key: string): Promise<TmSwitchHarness | null>;
+    getEditor(): Promise<TmExpressionEditorHarness | null>;
+    getTabs(): Promise<TmRadioGroupHarness | null>;
+    static hostSelector: string;
+    isApplyDisabled(): Promise<boolean>;
+}
+
+// @public
 export interface TmSearchPageCreate {
     readonly disabledReason: string | null;
     readonly href: string | null;
@@ -581,7 +600,11 @@ export interface TmSearchPageCreate {
 export class TmSearchPageHarness extends ComponentHarness {
     clearSearchField(): Promise<void>;
     clickStateAction(label: string): Promise<void>;
+    getColumnFilterNames(): Promise<string[]>;
     getCreate(): Promise<TmSearchPageCreate | null>;
+    getFilterCount(): Promise<string>;
+    getFilters(): Promise<TmSearchFiltersHarness | null>;
+    getFiltersName(): Promise<string | null>;
     getGrid(): Promise<TmGridHarness | null>;
     getPager(): Promise<TmPagerHarness>;
     getSearchPlaceholder(): Promise<string | null>;
@@ -590,14 +613,24 @@ export class TmSearchPageHarness extends ComponentHarness {
     getStateActions(): Promise<string[]>;
     getStateHeading(): Promise<string | null>;
     getStateToken(): Promise<string | null>;
+    getTab(): Promise<string | null>;
+    getTabLabels(): Promise<string[]>;
+    getTabsForm(): Promise<'menu' | 'segmented' | null>;
+    getTiles(): Promise<TmTilesHarness | null>;
     getTitle(): Promise<string>;
+    getView(): Promise<string | null>;
     hasColumnsButton(): Promise<boolean>;
     hasMore(): Promise<boolean>;
     static hostSelector: string;
     isClearSearchShown(): Promise<boolean>;
+    isFiltersInvalid(): Promise<boolean>;
     isFirstLoad(): Promise<boolean>;
     isLoading(): Promise<boolean>;
+    openColumnFilter(key: string): Promise<TmColumnFilterHarness>;
+    openFilters(): Promise<TmSearchFiltersHarness>;
     refresh(): Promise<void>;
+    selectTab(label: string): Promise<void>;
+    setView(label: string): Promise<void>;
 }
 
 // @public

@@ -7,8 +7,9 @@ import type { TmStringTree } from '@tellma/core';
 
 // The Arabic of the platform's Queryex tools and of the search page they
 // serve, which the expression editor, the path picker and the search page
-// read under `tm.queryex`, `tm.pathPicker` and `tm.search`. It is a table of
-// its own beside the platform's main one, so that table's ceiling holds;
+// read under `tm.queryex`, `tm.pathPicker`, `tm.search` and, for the search
+// page's Filters popup, `tm.searchFilters`. It is a table of its own beside
+// the platform's main one, so that table's ceiling holds;
 // `tmArabic()` merges the two under `tm` on the first switch to Arabic.
 // Code stays left to right; only the words around it are Arabic.
 
@@ -16,8 +17,8 @@ import type { TmStringTree } from '@tellma/core';
  * The Arabic of the expression editor, the path picker and the search page,
  * under `tm`: the editor's status line, problems list, parameter chips and
  * type names; the picker's search, count and date parts; and the search
- * page's toolbar, result count and the states of its results. The same
- * shape as their English.
+ * page's toolbar, result count, the states of its results and its Filters
+ * popup. The same shape as their English.
  */
 export const TM_QUERYEX_STRINGS_AR: TmStringTree = {
   queryex: {
@@ -89,7 +90,31 @@ export const TM_QUERYEX_STRINGS_AR: TmStringTree = {
     divideByZero: 'فيه قسمة على صفر.',
     overflow: 'إحدى النتائج كبيرة جدًا.',
     failed: 'تعذّر تحميل النتائج.',
+    editFilter: 'تعديل عامل التصفية',
+    view: 'طريقة العرض',
+    viewGrid: 'جدول',
+    viewTiles: 'بطاقات',
+    tabs: 'علامات التبويب',
+    filters: 'عوامل التصفية',
+    filtersName: 'عوامل التصفية{count, plural, =0 {} one {، عامل واحد نشط} two {، عاملان نشطان} few {، # عوامل نشطة} many {، # عاملًا نشطًا} other {، # عامل نشط}}',
+    filtersInvalid: '{name}، تعبير التصفية غير صالح',
+    filterButton: 'تصفية {label}{active, select, true {، نشطة} other {}}',
     query: 'بحث',
     open: 'فتح',
+  },
+  searchFilters: {
+    filterExpression: 'تعبير التصفية',
+    activeOnly: 'النشطة فقط',
+    any: 'الكل',
+    appliedFilters: 'عوامل التصفية المطبّقة',
+    addColumnFilter: 'إضافة تصفية عمود',
+    orderedBy: 'مرتّبة حسب {label}،{direction, select, asc { تصاعديًا} other { تنازليًا}}',
+    back: 'رجوع',
+    clearAll: 'مسح الكل',
+    apply: 'تطبيق',
+  },
+  searchTiles: {
+    active: 'نشط',
+    inactive: 'غير نشط',
   },
 };

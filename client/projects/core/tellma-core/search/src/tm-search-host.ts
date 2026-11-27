@@ -7,6 +7,7 @@
 
 import { Location, NgComponentOutlet } from '@angular/common';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -16,6 +17,7 @@ import {
   ElementRef,
   inject,
   Injector,
+  PendingTasks,
   input,
   linkedSignal,
   resource,
@@ -23,6 +25,7 @@ import {
   signal,
   untracked,
   viewChild,
+  ViewContainerRef,
   type InputSignal,
   type OnInit,
   type Signal,
@@ -35,11 +38,14 @@ import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
 import Columns3 from 'lucide/dist/esm/icons/columns-3.mjs';
 import Ellipsis from 'lucide/dist/esm/icons/ellipsis.mjs';
 import ExternalLink from 'lucide/dist/esm/icons/external-link.mjs';
+import Funnel from 'lucide/dist/esm/icons/funnel.mjs';
 import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
+import LayoutGrid from 'lucide/dist/esm/icons/layout-grid.mjs';
 import Link from 'lucide/dist/esm/icons/link.mjs';
 import Plus from 'lucide/dist/esm/icons/plus.mjs';
 import RefreshCw from 'lucide/dist/esm/icons/refresh-cw.mjs';
 import SearchX from 'lucide/dist/esm/icons/search-x.mjs';
+import Table2 from 'lucide/dist/esm/icons/table-2.mjs';
 import {
   TmApi,
   TmApiError,
@@ -78,6 +84,7 @@ import { tmPageStateKey } from '@tellma/core/memory';
 import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmRowId } from '@tellma/core-ui/contracts';
+import { TmCounter } from '@tellma/core-ui/counter';
 import {
   TmGrid,
   TmGridColumn,
@@ -85,6 +92,7 @@ import {
   TmGridEmptyDef,
   TmGridHeaderAction,
   TmGridHeaderDef,
+  TmGridHeaderEndDef,
   TmGridLoadingDef,
   TmGridRowEndHeaderDef,
   type TmGridDriverTarget,
@@ -96,17 +104,21 @@ import { TmMenu, TmMenuTrigger, type TmMenuItem } from '@tellma/core-ui/menu';
 import { TmPageHeader } from '@tellma/core-ui/page-header';
 import { TmPager } from '@tellma/core-ui/pager';
 import { TmProgressBar } from '@tellma/core-ui/progress';
+import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 
 import { tmSearchCanonical, tmSearchQuiet, tmSearchText, tmSearchUrl } from './tm-search-canonical';
 import { tmSearchApply, tmSearchResize, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
 import { ɵTM_SEARCH_CONTEXT } from './tm-search-context';
 import { tmSearchContextErrors, tmSearchDiagnose, tmSearchRefusedState } from './tm-search-diagnostics';
+import type { TmSearchTabView, ɵTmSearchFilterPanelsApi, ɵTmSearchFiltersPage } from './tm-search-filters-host';
 import { TmSearchKeys } from './tm-search-keys';
 import {
   TM_SEARCH_EXPRESSION_LABEL,
   tmSearchColumnKey,
   tmSearchEffective,
+  tmSearchFilterable,
+  tmSearchFilterCount,
   tmSearchIsExpression,
   tmSearchIsTree,
   tmSearchMaxPage,
@@ -117,6 +129,7 @@ import {
   type TmSearchMode,
   type TmSearchSetting,
   type TmSearchState,
+  type TmSearchView,
   type TmSearchWidth,
 } from './tm-search-model';
 import { TmSearchPageField } from './tm-search-page-field';
@@ -137,6 +150,8 @@ import { tmSearchPlan, tmSearchRequest, type TmSearchRequest } from './tm-search
 import { tmSearchColumnsOf, tmSearchResolve, type TmSearchOpening } from './tm-search-resolve';
 import { TmSearchState as TmSearchStateView, tmSearchStateMessage, type TmSearchRegionState } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
+import { ɵTmSearchTabsMenu } from './tm-search-tabs-menu';
+import { ɵTmSearchTiles } from './tm-search-tiles';
 
 // The search host (spec 0030 §3, §5, §7, §13.1, §13.4, §14, §19): the page
 // of an entity's search route. It resolves the query state from the URL,
@@ -146,10 +161,14 @@ import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
 // under the progress bar while a new read runs; a failed read replaces them
 // with its state, but for an offline re-read of the same query. The grid
 // shows the plan's columns, links the display name and the navigations,
-// and orders by one column; the toolbar holds Create, the declaration's
-// page actions, Refresh and the pager. The host publishes the page's
-// context and its own page actions, and provides the context its parts
-// read through `injectTmSearch()`.
+// orders by one column and filters by each column through its header's
+// filter button; the tiles (§8), which load the first time the page shows
+// them, show the same rows. The header holds the tabs (§2.4, in a form fixed
+// per width) and the Filters button (§10); the toolbar holds Create, the
+// declaration's page actions, Refresh, the pager and the view toggle (§3.4).
+// The filter panels load on the first click of a filter button. The host
+// publishes the page's context and its own page actions, and provides the
+// context its parts read through `injectTmSearch()`.
 
 /** What the host holds of the reads: the last result, the last failure, and whether rows were kept through an offline re-read. */
 interface TmSearchHeld {
@@ -181,6 +200,8 @@ interface TmSearchGridColumn {
   readonly cell: 'static' | 'link' | 'value' | 'display';
   /** The declared display component's loader, for a `display` cell. */
   readonly display: TmLazyComponent | null;
+  /** Whether the column takes a column filter, so its header carries a filter button. */
+  readonly filterable: boolean;
 }
 
 /**
@@ -197,6 +218,8 @@ interface TmSearchAnchor {
   readonly result: TmSearchResult | null;
   /** The highlighted row's id. */
   readonly highlight: TmId | null;
+  /** The tiles' scroll offset while they showed; `null` for the grid, which restores its own. */
+  readonly scroll: number | null;
 }
 
 /** An Enter that arrived before the result for the field's text: the first row opens when that result lands. */
@@ -250,8 +273,20 @@ const CONTEXT_SELECTED_IDS = 200;
 const VISIBLE_ROWS = 200;
 const VISIBLE_COLUMNS = 50;
 
-/** The icons the page and its states name. */
-const ICONS = { 'circle-alert': CircleAlert, 'columns-3': Columns3, inbox: Inbox, plus: Plus, 'refresh-cw': RefreshCw, 'search-x': SearchX };
+/** The icons the page, its view toggle and its states name. */
+const ICONS = {
+  'circle-alert': CircleAlert,
+  'columns-3': Columns3,
+  inbox: Inbox,
+  'layout-grid': LayoutGrid,
+  plus: Plus,
+  'refresh-cw': RefreshCw,
+  'search-x': SearchX,
+  'table-2': Table2,
+};
+
+/** The filter panels' chunk, which loads on the first click of a filter button. */
+type TmSearchFiltersChunk = typeof import('./tm-search-filters');
 
 /** The arguments of `search.query`, as a JSON Schema. */
 const QUERY_PARAMS: TmJsonSchema = {
@@ -305,12 +340,14 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     NgComponentOutlet,
     RouterLink,
     TmButton,
+    TmCounter,
     TmGrid,
     TmGridColumn,
     TmGridDisplayDef,
     TmGridEmptyDef,
     TmGridHeaderAction,
     TmGridHeaderDef,
+    TmGridHeaderEndDef,
     TmGridLoadingDef,
     TmGridRowEndHeaderDef,
     TmIcon,
@@ -321,8 +358,12 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmProgressBar,
     TmSearchStateView,
     TmSearchPageField,
+    TmSegment,
+    TmSegmented,
     TmSkeleton,
     TmValue,
+    ɵTmSearchTabsMenu,
+    ɵTmSearchTiles,
   ],
   providers: [{ provide: ɵTM_SEARCH_CONTEXT, useFactory: (): TmSearchContext => inject(TmSearchHost).ɵcontext }],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -331,6 +372,34 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
          and the pager at its end. -->
     <tm-page-header>
       <h1 tmPageTitle tabindex="-1" [id]="ids.title">{{ title() }}</h1>
+
+      <!-- The tabs, in the form the width fixes: a segmented control from lg, a menu button sized to the widest
+           label at sm and md; below sm they sit in the Filters popup. -->
+      <!-- Each form's code (the segmented control with the form-field contract it implements, the menu button
+           with its menu) loads apart from the route's, right after the first render, over a stand-in of its
+           height. -->
+      @if (tabsForm() === 'segmented') {
+        <span tmPageTitleExtra class="tm-search-host__deferred">
+          @defer (on immediate) {
+            <tm-segmented data-tm-tabs [ariaLabel]="text.tabs()" [value]="tabKey()" (valueChange)="selectTab($event)">
+              @for (tab of tabs(); track tab.key) {
+                <tm-segment [value]="tab.key" [label]="tab.label" />
+              }
+            </tm-segmented>
+          } @placeholder {
+            <span class="tm-search-host__segmented-placeholder"></span>
+          }
+        </span>
+      }
+      @if (tabsForm() === 'menu') {
+        <span tmPageTitleExtra class="tm-search-host__deferred">
+          @defer (on immediate) {
+            <tm-search-tabs-menu [tabs]="tabs()" [tabKey]="tabKey()" [label]="text.tabs()" (tabSelect)="selectTab($event)" />
+          } @placeholder {
+            <span class="tm-search-host__segmented-placeholder"></span>
+          }
+        </span>
+      }
 
       <!-- The search field, from the first frame, so the header never shifts. -->
       <tm-search-page-field
@@ -343,6 +412,31 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         (key)="fieldKey($event)"
         (left)="disarm()"
       />
+
+      <!-- The Filters button: an icon below md, labelled from md, with room for a two-digit count; the error tone
+           while the filter expression is not valid. -->
+      <button
+        #filtersButton
+        tmButton
+        tmPageHeaderEnd
+        type="button"
+        variant="ghost"
+        class="tm-search-host__filters"
+        [class.tm-search-host__filters--invalid]="filterInvalid()"
+        data-tm-filters
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="filtersOpen() ? 'true' : 'false'"
+        [attr.aria-label]="filtersName()"
+        (click)="openFilters(filtersButton, false)"
+      >
+        <tm-icon [svg]="glyphs.funnel" />
+        @if (filtersLabelled()) {
+          <span class="tm-search-host__filters-label">{{ text.filters() }}</span>
+        }
+        <span class="tm-search-host__filters-count">
+          <tm-counter [value]="filterCount()" [tone]="filterInvalid() ? 'attention' : 'accent'" />
+        </span>
+      </button>
 
       <!-- Create: a link while the user may create, else a button that says why not; icon-only in the narrowest form.
            Each block has one root element, which the header projects by its selector. -->
@@ -430,6 +524,22 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
           (pageSizeChange)="setSize($event)"
         />
       }
+      <!-- A separator, then the view toggle, with the pager; a declared results component has no views. -->
+      @if (!firstLoad() && !hatched()) {
+        <span tmPageToolbarEnd class="tm-search-host__separator" aria-hidden="true"></span>
+      }
+      @if (!firstLoad() && !hatched()) {
+        <span tmPageToolbarEnd class="tm-search-host__deferred">
+          @defer (on immediate) {
+            <tm-segmented data-tm-view labels="xl" [ariaLabel]="text.view()" [value]="view()" (valueChange)="setView($event)">
+              <tm-segment value="grid" icon="table-2" [label]="text.viewGrid()" />
+              <tm-segment value="tiles" icon="layout-grid" [label]="text.viewTiles()" />
+            </tm-segmented>
+          } @placeholder {
+            <span class="tm-search-host__segmented-placeholder tm-search-host__segmented-placeholder--view"></span>
+          }
+        </span>
+      }
     </tm-page-header>
 
     <!-- The results region: busy while a read runs, the progress bar over the rows it keeps while the result is
@@ -448,6 +558,35 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
         <!-- The declaration's own results component, which reads the page through its context. -->
         @if (body(); as component) {
           <ng-container *ngComponentOutlet="component" />
+        }
+      } @else if (view() === 'tiles') {
+        <!-- The tiles, whose code loads the first time the page shows them; skeleton lines until it lands. -->
+        @defer (on immediate) {
+          <tm-search-tiles
+            #tiles
+            [setting]="setting()"
+            [rows]="rows()"
+            [set]="heldSet()"
+            [targetOf]="targetFn()"
+            [label]="title()"
+            [loading]="firstLoad()"
+            [selectedIds]="selection()"
+            (selectedIdsChange)="selected($event)"
+            [(activeRowId)]="highlight"
+            (rowActivate)="activate($event)"
+            [state]="region()"
+            [keys]="keys"
+            [editable]="editable"
+            (clear)="clear($event)"
+            (retry)="retry()"
+            (edit)="editFilter()"
+          />
+        } @placeholder {
+          <div class="tm-search-host__tiles-placeholder">
+            @for (row of skeletonRows; track row) {
+              <tm-skeleton />
+            }
+          </div>
         }
       } @else {
         <tm-grid
@@ -491,6 +630,23 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
                   <span aria-hidden="true">ƒ</span>
                   <bdi dir="ltr">{{ header }}</bdi>
                 </span>
+              }
+
+              <!-- A column that takes a filter: its button opens the column's filter panel. -->
+              @if (column.filterable) {
+                <ng-template tmGridHeaderEnd>
+                  <button
+                    tmGridHeaderAction
+                    type="button"
+                    data-tm-filter
+                    [attr.data-key]="column.plan.key"
+                    [active]="filterActive(column.plan.key)"
+                    [attr.aria-label]="filterName(column)"
+                    (click)="openColumnFilter(column.plan.key, $event)"
+                  >
+                    <tm-icon [svg]="glyphs.funnel" />
+                  </button>
+                </ng-template>
               }
 
               @switch (column.cell) {
@@ -545,17 +701,28 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
           <!-- No rows: the region's state in their place, under the header. -->
           <div *tmGridEmpty class="tm-search-host__state">
             @if (region(); as shown) {
-              <tm-search-state [state]="shown" [speaker]="keys" (clear)="clear($event)" (retry)="retry()" />
+              <tm-search-state
+                [state]="shown"
+                [speaker]="keys"
+                [editable]="editable"
+                (clear)="clear($event)"
+                (retry)="retry()"
+                (edit)="editFilter()"
+              />
             }
           </div>
         </tm-grid>
       }
     </div>
+
+    <!-- Where the filter panels attach once their chunk loads. -->
+    <ng-container #panels />
   `,
   styleUrl: './tm-search-host.css',
 })
 export class TmSearchHost implements OnInit {
   readonly #injector = inject(Injector);
+  readonly #pendingTasks = inject(PendingTasks);
   readonly #destroyRef = inject(DestroyRef);
   readonly #api = inject(TmApi);
   readonly #entities = inject(TmEntities);
@@ -908,17 +1075,23 @@ export class TmSearchHost implements OnInit {
   /** The grid, while the page shows one. */
   private readonly grid = viewChild(TmGrid);
 
+  /** The tiles view, while the page shows it and its chunk has landed. */
+  private readonly tilesView = viewChild<ɵTmSearchTiles>('tiles');
+
+  /** The rows' view the field drives: the tiles while they show, else the grid. */
+  readonly #rowsView = computed<TmGridDriverTarget | undefined>(() => (this.view() === 'tiles' ? this.tilesView()?.tiles() : this.grid()));
+
   /**
-   * What the field drives: the grid's highlight, every member forwarded, and
-   * Enter's open wrapped with the stale rule, so Enter always acts on the
-   * result for the text in the field. Tiles will take the grid's place here.
+   * What the field drives: the grid's or the tiles' highlight, every member
+   * forwarded, and Enter's open wrapped with the stale rule, so Enter always
+   * acts on the result for the text in the field.
    */
   protected readonly driver: TmGridDriverTarget = {
-    activeRowId: computed(() => this.grid()?.activeRowId() ?? null),
-    controlsId: computed(() => this.grid()?.controlsId() ?? this.ids.region),
-    activeDescendantId: computed(() => this.grid()?.activeDescendantId() ?? null),
-    pageStep: computed(() => this.grid()?.pageStep() ?? 1),
-    moveActiveRow: (by) => this.grid()?.moveActiveRow(by),
+    activeRowId: computed(() => this.#rowsView()?.activeRowId() ?? null),
+    controlsId: computed(() => this.#rowsView()?.controlsId() ?? this.ids.region),
+    activeDescendantId: computed(() => this.#rowsView()?.activeDescendantId() ?? null),
+    pageStep: computed(() => this.#rowsView()?.pageStep() ?? 1),
+    moveActiveRow: (by) => this.#rowsView()?.moveActiveRow(by),
     activateRow: (rowId, options) => this.#enter(rowId, options?.newTab === true),
   };
 
@@ -927,6 +1100,9 @@ export class TmSearchHost implements OnInit {
 
   /** The anchor of the current run of text changes; `null` between runs. */
   #anchor: TmSearchAnchor | null = null;
+
+  /** The tiles' offset an anchor restore applies once its rows land; `null` for none. */
+  #restoreScroll: number | null = null;
 
   /**
    * The identity of the rows an anchor restore put back, until their outcome
@@ -985,7 +1161,8 @@ export class TmSearchHost implements OnInit {
   /** The columns as the grid binds them. */
   protected readonly gridColumns = computed<readonly TmSearchGridColumn[]>(() => {
     const plan = this.#plan();
-    const { displayName } = this.#descriptor();
+    const descriptor = this.#descriptor();
+    const { displayName } = descriptor;
     const names = new Set([displayName.source, ...(displayName.prefix === undefined ? [] : [displayName.prefix])].map((key) => key.toLowerCase()));
     let linked = false;
     return plan.columns.map((column) => {
@@ -1006,6 +1183,7 @@ export class TmSearchHost implements OnInit {
         sortable: column.kind !== 'expression' && config.sortable === true,
         cell: display !== null ? 'display' : link ? 'link' : column.kind === 'navigation' || column.kind === 'image' || column.kind === 'file' ? 'value' : 'static',
         display,
+        filterable: tmSearchFilterable(descriptor, column),
       };
     });
   });
@@ -1018,6 +1196,77 @@ export class TmSearchHost implements OnInit {
 
   /** Whether the declaration names a component that replaces the results region. */
   protected readonly hatched = computed(() => this.#declared().search !== undefined);
+
+  /** How the rows show: the query's view, else the width's default. */
+  protected readonly view = computed<TmSearchView>(() => tmSearchEffective(this.#setting(), this.#state().query).view);
+
+  /** The setting, for the tiles' layout. */
+  protected readonly setting = this.#setting;
+
+  /** A row's target, for the tiles' title links. */
+  protected readonly targetFn = this.#targetOf;
+
+  /** The row set the rows on screen were read from, whose wire rows name the tiles. */
+  protected readonly heldSet = computed(() => this.#held().result?.set ?? null);
+
+  /** Whether the invalid filter's and the calculation's states offer Edit filter: every mode but a drill-through list, which has no filter expression. */
+  protected readonly editable = this.#mode !== 'list';
+
+  /** The declared tabs, each with its label in the active language. */
+  protected readonly tabs = computed<readonly TmSearchTabView[]>(() =>
+    (this.#declaration().tabs ?? []).map((tab) => ({ key: tab.key, label: this.#l10n.ɵtext(tab.labelKey)() })),
+  );
+
+  /** The shown tab's key; `null` when none is declared. */
+  protected readonly tabKey = computed(() => tmSearchEffective(this.#setting(), this.#state().query).tab?.key ?? null);
+
+  /** The tabs' form, fixed by the width: in the Filters popup below `sm`, a menu button at `sm` and `md`, a segmented control from `lg`. */
+  protected readonly tabsForm = computed<'popup' | 'menu' | 'segmented' | null>(() => {
+    if (this.tabs().length === 0) {
+      return null;
+    }
+    return !this.#breakpoints.atLeast('sm')() ? 'popup' : !this.#breakpoints.atLeast('lg')() ? 'menu' : 'segmented';
+  });
+
+  /** The Filters button. */
+  private readonly filtersButton = viewChild.required<ElementRef<HTMLButtonElement>>('filtersButton');
+
+  /** Where the filter panels attach. */
+  private readonly panelsSlot = viewChild.required('panels', { read: ViewContainerRef });
+
+  /** The filter panels, once their chunk has loaded. */
+  readonly #panels = signal<ɵTmSearchFilterPanelsApi | null>(null);
+
+  /** The filter panels' chunk as it loads; `null` until the first click of a filter button. */
+  #panelsLoad: Promise<ɵTmSearchFilterPanelsApi | null> | null = null;
+
+  /** Whether the Filters popup is open. */
+  protected readonly filtersOpen = computed(() => this.#panels()?.filtersOpen() ?? false);
+
+  /** Whether the Filters button shows its label: from `md` up. */
+  protected readonly filtersLabelled = computed(() => this.#breakpoints.atLeast('md')());
+
+  /** How many filters the query applies, as the Filters button counts them. */
+  protected readonly filterCount = computed(() => tmSearchFilterCount(this.#setting(), this.#state().query, this.tabsForm() === 'popup'));
+
+  /** Whether the filter expression is not valid: the held failure is the invalid filter's. */
+  protected readonly filterInvalid = computed(() => this.region()?.kind === 'invalid-filter');
+
+  /** The Filters button's name: "Filters" with the count, and whether the expression is not valid. */
+  protected readonly filtersName = computed(() => {
+    const name = this.#l10n.ɵtext('tm.search.filtersName', { count: this.filterCount() })();
+    return this.filterInvalid() ? this.#l10n.ɵtext('tm.search.filtersInvalid', { name })() : name;
+  });
+
+  /** What the filter panels read of the page and how they change its query. */
+  readonly #filtersPage: ɵTmSearchFiltersPage = {
+    setting: this.#setting,
+    columns: computed(() => this.#plan().columns),
+    query: computed(() => this.#state().query),
+    drawer: computed(() => !this.#breakpoints.atLeast('sm')()),
+    tabs: computed(() => (this.tabsForm() === 'popup' ? this.tabs() : [])),
+    update: (patch) => this.#update(patch),
+  };
 
   /** The declaration's results component, once loaded. */
   protected readonly body = signal<Type<unknown> | null>(null);
@@ -1151,6 +1400,7 @@ export class TmSearchHost implements OnInit {
     refresh: RefreshCw,
     create: Plus,
     columns: Columns3,
+    funnel: Funnel,
     more: Ellipsis,
     newTab: { node: ExternalLink, mirrorInRtl: true },
     link: Link,
@@ -1165,6 +1415,11 @@ export class TmSearchHost implements OnInit {
     loading: this.#l10n.ɵtext('tm.search.loading'),
     openInNewTab: this.#l10n.ɵtext('tm.search.openInNewTab'),
     copyLink: this.#l10n.ɵtext('tm.search.copyLink'),
+    tabs: this.#l10n.ɵtext('tm.search.tabs'),
+    view: this.#l10n.ɵtext('tm.search.view'),
+    viewGrid: this.#l10n.ɵtext('tm.search.viewGrid'),
+    viewTiles: this.#l10n.ɵtext('tm.search.viewTiles'),
+    filters: this.#l10n.ɵtext('tm.search.filters'),
   };
 
   /** The page actions, for the host's own controls. */
@@ -1341,6 +1596,7 @@ export class TmSearchHost implements OnInit {
         if (held.result !== landed) {
           landed = held.result;
           this.#seed(held.result);
+          this.#scrollBack(held.result);
         }
         if (!stale) {
           this.#settle(held);
@@ -1426,15 +1682,20 @@ export class TmSearchHost implements OnInit {
 
   /**
    * Preloads the target of the row under the pointer, once per route. The
-   * grid never reorders the rows it binds, so a row's index among the
-   * rendered ones (its `aria-rowindex` past the header row) is its index in
-   * the rows.
+   * grid and the tiles never reorder the rows they bind, so a grid row's
+   * index among the rendered ones (its `aria-rowindex` past the header row)
+   * and a tile's `data-index` are indexes in the rows.
    *
    * @param event - The pointer event.
    */
   protected hover(event: PointerEvent): void {
-    const element = event.target instanceof Element ? event.target.closest('[role="row"][aria-rowindex]') : null;
-    const row = element === null ? undefined : this.rows()[Number(element.getAttribute('aria-rowindex')) - 2];
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const tile = event.target.closest('.tm-tiles__item[data-index]');
+    const element = tile === null ? event.target.closest('[role="row"][aria-rowindex]') : null;
+    const index = tile !== null ? Number(tile.getAttribute('data-index')) : element !== null ? Number(element.getAttribute('aria-rowindex')) - 2 : -1;
+    const row = this.rows()[index];
     if (row !== undefined) {
       this.#preload(row);
     }
@@ -1568,6 +1829,100 @@ export class TmSearchHost implements OnInit {
     return this.#actions.invoke(id, {}, 'user');
   }
 
+  /**
+   * Shows a view from the toggle, which writes the current width class's
+   * half of the view preference; the rows already read show again, with no
+   * request.
+   *
+   * @param view - The view; `null` when the toggle cleared, which it never does.
+   */
+  protected setView(view: TmSearchView | null): void {
+    if (view === null || view === this.view()) {
+      return;
+    }
+    this.#update({ view });
+    const setting = this.#setting();
+    this.#telemetry.event('tm.search.view-changed', {
+      view,
+      list: tmSearchIsTree(setting.descriptor) && !tmSearchEffective(setting, this.#state().query).tree,
+    });
+  }
+
+  /**
+   * Shows a tab, from the segmented control, the tabs menu or the Filters popup.
+   *
+   * @param key - The tab's key; `null` when the control cleared, which it never does.
+   */
+  protected selectTab(key: string | null): void {
+    if (key === null || key === this.tabKey()) {
+      return;
+    }
+    this.#update({ tab: key });
+    this.#telemetry.event('tm.search.filter-applied', { kind: 'tab' });
+  }
+
+  /**
+   * Opens or closes the Filters popup at its button.
+   *
+   * @param button - The Filters button.
+   * @param focusEditor - Whether the filter expression's editor takes focus as it opens.
+   */
+  protected openFilters(button: HTMLElement, focusEditor: boolean): void {
+    void this.#loadPanels().then((panels) => panels?.toggleFilters(button, focusEditor));
+  }
+
+  /** Opens the Filters popup with the filter expression's editor focused: the invalid filter's and the calculation's Edit filter. */
+  protected editFilter(): void {
+    if (!this.filtersOpen()) {
+      this.openFilters(this.filtersButton().nativeElement, true);
+    }
+  }
+
+  /**
+   * Opens or closes a column's filter panel at its header's button.
+   *
+   * @param key - The column's key.
+   * @param event - The button's click.
+   */
+  protected openColumnFilter(key: string, event: MouseEvent): void {
+    const anchor = event.currentTarget;
+    if (anchor instanceof HTMLElement) {
+      void this.#loadPanels().then((panels) => panels?.toggleColumn(anchor, key));
+    }
+  }
+
+  /**
+   * Whether a column's filter button shows as active: its filter applies, or its panel is open.
+   *
+   * @param key - The column's key.
+   * @returns Whether it is active.
+   */
+  protected filterActive(key: string): boolean {
+    return this.#state().query.columnFilters?.[key] !== undefined || this.#panels()?.columnOpen() === key;
+  }
+
+  /**
+   * A column's filter button's name: "Filter" and the column's label, and whether its filter applies.
+   *
+   * @param column - The column.
+   * @returns The name.
+   */
+  protected filterName(column: TmSearchGridColumn): string {
+    return this.#filterNames().get(column.plan.key) ?? '';
+  }
+
+  /** Each filterable column's filter button's name, by the column's key. */
+  readonly #filterNames = computed(() => {
+    const names = new Map<string, string>();
+    for (const column of this.gridColumns()) {
+      if (column.filterable) {
+        const active = this.#state().query.columnFilters?.[column.plan.key] !== undefined;
+        names.set(column.plan.key, this.#l10n.ɵtext('tm.search.filterButton', { label: column.plan.label(), active: active ? 'true' : 'false' })());
+      }
+    }
+    return names;
+  });
+
   // ---------------------------------------------------------------------------
   // The state's changes
   // ---------------------------------------------------------------------------
@@ -1581,6 +1936,38 @@ export class TmSearchHost implements OnInit {
     const source: TmSearchReadSource =
       'order' in patch ? 'order' : 'page' in patch || 'size' in patch ? 'page' : 'q' in patch && Object.keys(patch).length === 1 ? 'typing' : 'filter';
     this.#apply(tmSearchUpdate(this.#setting(), this.#state(), patch), source);
+  }
+
+  /**
+   * Loads the filter panels' chunk on the first click of a filter button
+   * and attaches the panels; a failed load is reported and tried again on
+   * the next click.
+   *
+   * @returns The panels; `null` when their chunk failed to load.
+   */
+  #loadPanels(): Promise<ɵTmSearchFilterPanelsApi | null> {
+    if (this.#panelsLoad !== null) {
+      return this.#panelsLoad;
+    }
+    // The app is not stable while the chunk loads, so a test or a server render waits for the panels.
+    const loaded = this.#pendingTasks.add();
+    const load = (this.#panelsLoad = import('./tm-search-filters').then(
+      (chunk: TmSearchFiltersChunk) => {
+        const ref = this.panelsSlot().createComponent(chunk.ɵTmSearchFilterPanels);
+        ref.setInput('page', this.#filtersPage);
+        // The panels' queries resolve before the first toggle reaches them.
+        ref.changeDetectorRef.detectChanges();
+        this.#panels.set(ref.instance);
+        return ref.instance;
+      },
+      (error: unknown) => {
+        this.#panelsLoad = null;
+        this.#telemetry.error(error, { area: 'tm.search' });
+        return null;
+      },
+    ));
+    void load.finally(loaded);
+    return load;
   }
 
   /**
@@ -1669,14 +2056,16 @@ export class TmSearchHost implements OnInit {
     const key = this.#key();
     const held = this.#held();
     const answered = key !== null && held.failure === null && held.result?.key === key && !this.loading();
-    return { query: this.#state().query, key, result: answered ? held.result : null, highlight: this.highlight() };
+    const scroll = this.view() === 'tiles' ? (this.tilesView()?.scrollOffset() ?? null) : null;
+    return { query: this.#state().query, key, result: answered ? held.result : null, highlight: this.highlight(), scroll };
   }
 
   /**
    * Restores an anchor: its query whole, with a URL replace and no paging
    * rule, its rows with no request when it held them, and its highlighted
    * row. The grid restores its scroll and active cell from its store by the
-   * rows' content key; the highlight is not seeded.
+   * rows' content key; the tiles take back their offset once the rows land.
+   * The highlight is not seeded.
    *
    * @param anchor - The anchor.
    * @param fromField - Whether the field emitted the text that returned to it.
@@ -1689,13 +2078,30 @@ export class TmSearchHost implements OnInit {
     // The restore is known by the rows it reads, not by the result object:
     // a re-read, or an anchor taken while a read ran, lands a new one.
     this.#restoring = untracked(this.#key)?.canonical ?? null;
+    this.#restoreScroll = anchor.scroll;
     this.highlight.set(anchor.highlight);
+  }
+
+  /**
+   * Scrolls the tiles back to an anchor's offset once the restore's rows
+   * land, after they render.
+   *
+   * @param result - The result that landed.
+   */
+  #scrollBack(result: TmSearchResult | null): void {
+    const offset = this.#restoreScroll;
+    if (offset === null || result === null || result.key.canonical !== this.#restoring) {
+      return;
+    }
+    this.#restoreScroll = null;
+    afterNextRender(() => this.tilesView()?.scrollTo(offset), { injector: this.#injector });
   }
 
   /** Ends the run of text changes: the next one takes a new anchor, and nothing restores from memory. */
   #dropAnchor(): void {
     this.#anchor = null;
     this.#restoring = null;
+    this.#restoreScroll = null;
     this.#prefilled.set(null);
   }
 
@@ -1992,8 +2398,8 @@ export class TmSearchHost implements OnInit {
    */
   #time(key: TmSearchReadKey, started: number, outcome: 'ok' | 'empty' | 'invalid' | 'error'): void {
     const tree = key.request.tree ?? 'none';
-    // The grid is the one view the page renders until the tiles land.
-    this.#telemetry.timing('tm.search.query', performance.now() - started, { source: key.source, view: 'grid', tree, outcome }, { sampled: true });
+    const view = untracked(this.view);
+    this.#telemetry.timing('tm.search.query', performance.now() - started, { source: key.source, view, tree, outcome }, { sampled: true });
   }
 
   /**
@@ -2147,7 +2553,7 @@ export class TmSearchHost implements OnInit {
     const selection = [...this.selection()];
     return {
       query: query as unknown as TmJsonObject,
-      view: 'grid',
+      view: effective.view,
       list: tmSearchIsTree(setting.descriptor) && !effective.tree,
       selectedIds: selection.slice(0, CONTEXT_SELECTED_IDS),
       selectedCount: selection.length,

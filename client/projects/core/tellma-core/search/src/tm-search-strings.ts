@@ -50,6 +50,18 @@ export const ɵTM_SEARCH_STRINGS_EN = {
   divideByZero: 'It divides by zero.',
   overflow: 'A result is too large.',
   failed: "The results couldn't be loaded.",
+  editFilter: 'Edit filter',
+  // The view toggle and the tabs.
+  view: 'View',
+  viewGrid: 'Grid',
+  viewTiles: 'Tiles',
+  tabs: 'Tabs',
+  // The Filters button: its label, its name with the count, and its name while the expression is not valid.
+  filters: 'Filters',
+  filtersName: 'Filters{count, plural, =0 {} other {, # active}}',
+  filtersInvalid: '{name}, the filter expression is not valid',
+  // A column header's filter button, named after its column.
+  filterButton: 'Filter {label}{active, select, true {, active} other {}}',
   // The page actions without a control of their own.
   query: 'Search',
   open: 'Open',
