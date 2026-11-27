@@ -605,21 +605,26 @@ namespace Tellma.Core.Client
                     fields?.AsReadOnly());
             }
 
-            /// <summary>Describes one argument of an action, as its generated dialog renders it.</summary>
+            /// <summary>
+            ///     Describes one argument of an action, as its generated dialog renders it. A
+            ///     multilingual twin takes its anchor's label, which the client suffixes by slot.
+            /// </summary>
             /// <param name="resource">The resource the action belongs to.</param>
             /// <param name="action">The action.</param>
             /// <param name="member">The argument.</param>
             /// <returns>The description.</returns>
             private ClientActionField Field(string resource, ActionDescriptor action, ActionArguments.Member member)
             {
-                string field = LabelChains.FieldName(member.Property);
+                // A group is named by its anchor's property, a string, so it has no reference suffix to drop.
+                string field = member.Multilingual?.Group ?? LabelChains.FieldName(member.Property);
                 (string labelKey, string? labelFallback) = LabelChains.Resolve(strings, LabelChains.ActionField(resource, action.Name, field), NameHumanizer.Humanize(field));
                 return new ClientActionField(
                     member.Json.Name,
                     labelKey,
                     labelFallback,
                     ActionArguments.IsRequired(member),
-                    ActionArguments.Value(member, enums));
+                    ActionArguments.Value(member, enums),
+                    member.Multilingual);
             }
 
             /// <summary>A blob kind's policy as the client checks a file against it.</summary>

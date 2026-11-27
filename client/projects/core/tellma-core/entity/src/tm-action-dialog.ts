@@ -30,7 +30,7 @@ import {
   TmDisplayNames,
   TmLocalization,
   TmServerText,
-  type TmActionField,
+  type TmActionFieldDescriptor,
   type TmEntityActionDescriptor,
   type TmId,
   type TmJsonObject,
@@ -111,7 +111,7 @@ interface TmActionDialogData {
 /** One argument of the generated dialog. */
 interface TmGeneratedField {
   /** The argument's metadata. */
-  readonly field: TmActionField;
+  readonly field: TmActionFieldDescriptor;
   /** Its label. */
   readonly label: Signal<string>;
   /** Its field in the dialog's form. */
@@ -334,7 +334,7 @@ export class ɵTmActionDialog {
   /** The generated dialog's fields, in the metadata's order. */
   protected readonly fields: readonly TmGeneratedField[] = (this.data.action.fields ?? []).map((field) => ({
     field,
-    label: this.#localization.ɵtext(field.labelKey, undefined, field.labelFallback),
+    label: field.label,
     tree: (this.#form as unknown as Readonly<Record<string, FieldTree<unknown>>>)[field.name]!,
   }));
 
@@ -431,7 +431,7 @@ export class ɵTmActionDialog {
         if (target?.resolved) {
           placed.push({ kind: SERVER_ERROR, message: message(), fieldTree: target.field });
         } else {
-          items.push(listed(field === undefined ? null : this.#localization.ɵtext(field.labelKey, undefined, field.labelFallback), message));
+          items.push(listed(field === undefined ? null : field.label, message));
         }
       } else if ((path?.[0] === 'ids' && typeof path[1] === 'number') || path?.[0] === 'id') {
         // A row's error, by its index in the rows sent.

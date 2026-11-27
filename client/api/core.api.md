@@ -107,9 +107,19 @@ export interface TmActionConfirmation {
 export interface TmActionField {
     readonly labelFallback?: string;
     readonly labelKey: string;
+    readonly multilingual?: {
+        readonly group: string;
+        readonly slot: 1 | 2 | 3;
+    };
     readonly name: string;
     readonly required: boolean;
     readonly value: TmValueDescriptor;
+}
+
+// @public
+export interface TmActionFieldDescriptor extends TmActionField {
+    readonly contentDir?: 'ltr' | 'rtl';
+    readonly label: Signal<string>;
 }
 
 // @public
@@ -855,6 +865,7 @@ export interface TmEntityActionDeclaration<N extends string> {
 // @public
 export interface TmEntityActionDescriptor extends TmActionMetadata {
     readonly declaration?: TmEntityActionDeclaration<string>;
+    readonly fields?: readonly TmActionFieldDescriptor[];
     readonly label: Signal<string>;
 }
 

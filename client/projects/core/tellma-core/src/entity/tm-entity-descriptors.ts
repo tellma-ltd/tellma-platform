@@ -7,6 +7,7 @@ import type { Signal } from '@angular/core';
 
 import type { TmEntityActionDeclaration, TmEntityDeclaration } from './tm-entity-declaration';
 import type {
+  TmActionField,
   TmActionMetadata,
   TmBlobKindPolicy,
   TmChildMetadata,
@@ -45,12 +46,22 @@ export interface TmChildDescriptor extends TmChildMetadata {
   readonly label: Signal<string>;
 }
 
+/** An argument of an entity's action, labelled, with the direction of its content language. */
+export interface TmActionFieldDescriptor extends TmActionField {
+  /** The argument's label; a twin's carries its language's symbol. */
+  readonly label: Signal<string>;
+  /** A multilingual slot's content direction, such as `rtl` for an Arabic `name2`. */
+  readonly contentDir?: 'ltr' | 'rtl';
+}
+
 /** An action of an entity, labelled, with how its declaration offers it. */
 export interface TmEntityActionDescriptor extends TmActionMetadata {
   /** The action's label. */
   readonly label: Signal<string>;
   /** The declaration's entry for the action, when it has one. */
   readonly declaration?: TmEntityActionDeclaration<string>;
+  /** The action's arguments, each labelled; a twin beyond the tenant's content languages is left out. */
+  readonly fields?: readonly TmActionFieldDescriptor[];
 }
 
 /** A named enum, with its values' labels. */

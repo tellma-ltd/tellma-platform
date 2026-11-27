@@ -8760,26 +8760,36 @@
               "value": {
                 "type": "string",
                 "nullable": false
+              },
+              "multilingual": {
+                "group": "Name",
+                "slot": 1
               }
             },
             {
               "name": "name2",
-              "labelKey": "Core_User_Action_MeSave_Name2",
-              "labelFallback": "Name2",
+              "labelKey": "Name",
               "required": false,
               "value": {
                 "type": "string",
                 "nullable": true
+              },
+              "multilingual": {
+                "group": "Name",
+                "slot": 2
               }
             },
             {
               "name": "name3",
-              "labelKey": "Core_User_Action_MeSave_Name3",
-              "labelFallback": "Name3",
+              "labelKey": "Name",
               "required": false,
               "value": {
                 "type": "string",
                 "nullable": true
+              },
+              "multilingual": {
+                "group": "Name",
+                "slot": 3
               }
             },
             {

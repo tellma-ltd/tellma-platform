@@ -64,6 +64,24 @@ describe('TmEntities', () => {
       expect(customer.property('Name')?.label()).toBe('Name (ع)');
     });
 
+    it.each([
+      [1, ['name'], ['Name']],
+      [2, ['name', 'name2'], ['Name (En)', 'Name (ع)']],
+      [3, ['name', 'name2', 'name3'], ['Name (En)', 'Name (ع)', 'Name (Fr)']],
+    ] as const)('admit and label an action’s twins as the properties’ under the tenant’s %i languages', async (languages, twins, labels) => {
+      const { entities } = await tmEntityRig({ languages });
+      const fields = entities.get('core.User').actions.find((action) => action.name === 'me/save')?.fields ?? [];
+      const slotted = fields.filter((field) => field.multilingual);
+
+      // Every twin reads its anchor's key; the client adds the language's symbol.
+      expect(slotted.map((field) => field.name)).toEqual(twins);
+      expect(new Set(slotted.map((field) => field.labelKey)).size).toBe(1);
+      expect(slotted.map((field) => field.label())).toEqual(labels);
+      expect(slotted.map((field) => field.contentDir)).toEqual(['ltr', 'rtl', 'ltr'].slice(0, languages));
+      // A member of no group keeps its own label and no direction.
+      expect(fields.find((field) => field.name === 'contactEmail')?.contentDir).toBeUndefined();
+    });
+
     it('carry the merged declaration and each action’s entry in it', async () => {
       const { entities } = await tmEntityRig();
       const customer = entities.get('ACME.customer');

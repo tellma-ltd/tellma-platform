@@ -13,6 +13,7 @@ using System.Text.Json.Serialization.Metadata;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Localization;
 
@@ -21,7 +22,8 @@ namespace Tellma.Core.Client
     // Spec 0029 §2.2: an action's arguments travel twice in the client metadata, as a JSON Schema of
     // the arguments record and as one field per top-level member, which the generated dialog renders.
     // Both read the members as the platform's JSON rules serialize them, so a field's name is the
-    // wire's and the schema describes what the endpoint reads.
+    // wire's and the schema describes what the endpoint reads. A multilingual group of arguments is
+    // found as an entity's is, so its twins carry slot 1's label key (spec 0029 §2.4).
     /// <summary>The arguments of a stack's action as the client metadata describes them.</summary>
     internal static class ActionArguments
     {
@@ -47,19 +49,29 @@ namespace Tellma.Core.Client
 
         /// <summary>
         ///     The top-level members of an arguments type as the platform's JSON rules serialize them,
-        ///     in serialization order: each property the wire carries, with its wire name.
+        ///     in serialization order: each property the wire carries, with its wire name and, for a
+        ///     member of a multilingual group, its group and slot.
         /// </summary>
         /// <param name="type">The arguments type.</param>
         /// <returns>The members; none for a type that is no JSON object.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     A member marked <see cref="MultilingualAttribute" /> is no string, lacks a twin the wire
+        ///     carries as a nullable string, or shares a twin with another group.
+        /// </exception>
         public static IReadOnlyList<Member> Members(Type type)
         {
             ArgumentNullException.ThrowIfNull(type);
             JsonTypeInfo info = TellmaJson.Options.GetTypeInfo(type);
-            return info.Kind != JsonTypeInfoKind.Object
-                ? []
-                : [.. info.Properties
-                    .Where(static property => property.AttributeProvider is PropertyInfo)
-                    .Select(static property => new Member(property, (PropertyInfo)property.AttributeProvider!))];
+            if (info.Kind != JsonTypeInfoKind.Object)
+            {
+                return [];
+            }
+
+            (JsonPropertyInfo Json, PropertyInfo Property)[] carried = [.. info.Properties
+                .Where(static property => property.AttributeProvider is PropertyInfo)
+                .Select(static property => (property, (PropertyInfo)property.AttributeProvider!))];
+            Dictionary<string, ClientMultilingualSlot> slots = MultilingualSlots(type, [.. carried.Select(static item => item.Property)]);
+            return [.. carried.Select(item => new Member(item.Json, item.Property, slots.GetValueOrDefault(item.Property.Name)))];
         }
 
         /// <summary>Whether a member's value may be empty: a nullable value type, or a reference type its annotations say may be null.</summary>
@@ -243,9 +255,62 @@ namespace Tellma.Core.Client
                 : property.GetCustomAttribute<StringLengthAttribute>(inherit: true)?.MaximumLength;
         }
 
+        /// <summary>
+        ///     The multilingual groups of an arguments type, found as an entity's are: an anchor
+        ///     <c>P</c> marked <see cref="MultilingualAttribute" /> and its twins <c>P2</c> and
+        ///     <c>P3</c>, found by name. A member named like a twin without an anchor is an ordinary
+        ///     member.
+        /// </summary>
+        /// <param name="type">The arguments type.</param>
+        /// <param name="properties">The members the wire carries.</param>
+        /// <returns>The group and slot of each member of a group, by property name.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     An anchor is no string, lacks a twin the wire carries as a nullable string, or shares a
+        ///     twin with another group.
+        /// </exception>
+        private static Dictionary<string, ClientMultilingualSlot> MultilingualSlots(Type type, PropertyInfo[] properties)
+        {
+            Dictionary<string, PropertyInfo> byName = properties.ToDictionary(static property => property.Name, StringComparer.Ordinal);
+            Dictionary<string, ClientMultilingualSlot> slots = new(StringComparer.Ordinal);
+            foreach (PropertyInfo anchor in properties.Where(static property => property.GetCustomAttribute<MultilingualAttribute>(inherit: true) is not null))
+            {
+                // --- The anchor: a string, the first content language's text ---
+                if (anchor.PropertyType != typeof(string))
+                {
+                    throw new InvalidOperationException($"The argument {anchor.Name} of {type.Name} is marked multilingual but is no string.");
+                }
+
+                // --- Its twins: nullable strings the wire carries, which a tenant with fewer languages leaves empty ---
+                (string Name, int Slot)[] members =
+                [
+                    (anchor.Name, 1),
+                    (anchor.Name + MultilingualAttribute.SecondarySuffix, 2),
+                    (anchor.Name + MultilingualAttribute.TertiarySuffix, 3),
+                ];
+                foreach (string name in members.Skip(1).Select(static member => member.Name))
+                {
+                    if (!byName.TryGetValue(name, out PropertyInfo? twin) || twin.PropertyType != typeof(string) || !IsNullable(twin))
+                    {
+                        throw new InvalidOperationException($"The multilingual argument {anchor.Name} of {type.Name} has no twin {name} that the wire carries as a nullable string.");
+                    }
+                }
+
+                foreach ((string name, int slot) in members)
+                {
+                    if (!slots.TryAdd(name, new ClientMultilingualSlot(anchor.Name, slot)))
+                    {
+                        throw new InvalidOperationException($"The argument {name} of {type.Name} belongs to two multilingual groups.");
+                    }
+                }
+            }
+
+            return slots;
+        }
+
         /// <summary>One top-level member of an arguments type.</summary>
         /// <param name="Json">The member as the platform's JSON rules serialize it.</param>
         /// <param name="Property">The member's property.</param>
-        public sealed record Member(JsonPropertyInfo Json, PropertyInfo Property);
+        /// <param name="Multilingual">The multilingual group and slot the member fills; null for a member of no group.</param>
+        public sealed record Member(JsonPropertyInfo Json, PropertyInfo Property, ClientMultilingualSlot? Multilingual);
     }
 }

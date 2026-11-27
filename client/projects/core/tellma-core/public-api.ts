@@ -154,6 +154,7 @@ export { TmPageFocus as ɵTmPageFocus } from './src/routes/tm-page-focus';
 // The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';
 export type {
+  TmActionFieldDescriptor,
   TmChildDescriptor,
   TmEntityActionDescriptor,
   TmEntityDescriptor,

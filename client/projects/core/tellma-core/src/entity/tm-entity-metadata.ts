@@ -199,7 +199,7 @@ export interface TmChildMetadata {
 export interface TmActionField {
   /** The argument's wire name: `creditLimit`. */
   readonly name: string;
-  /** The string key of the argument's label. */
+  /** The string key of the argument's label; a multilingual twin carries its anchor's. */
   readonly labelKey: string;
   /** The humanized English the emit wrote because no resource declares the label key. */
   readonly labelFallback?: string;
@@ -207,6 +207,8 @@ export interface TmActionField {
   readonly required: boolean;
   /** The argument's type facts. */
   readonly value: TmValueDescriptor;
+  /** The multilingual group and slot the argument fills. */
+  readonly multilingual?: { readonly group: string; readonly slot: 1 | 2 | 3 };
 }
 
 /** One action an entity's API offers beyond the built-in operations. */

@@ -176,9 +176,13 @@ export class TmEntityModel {
     const children: TmChildDescriptor[] = metadata.children.map((child) => ({ ...child, label: label(child) }));
     const merged: TmEntityDeclaration = declaration(metadata.name) ?? Object.freeze({ name: metadata.name });
     const declaredActions = Array.isArray(merged['actions']) ? (merged['actions'] as readonly TmEntityActionDeclaration<string>[]) : [];
-    const actions: TmEntityActionDescriptor[] = metadata.actions.map((action) => {
+    // An action's arguments are gated and labelled as the properties are.
+    const actions: TmEntityActionDescriptor[] = metadata.actions.map(({ fields: argumentFields, ...action }) => {
       const declared = declaredActions.find((candidate) => candidate.name === action.name);
-      return { ...action, label: label(action), ...(declared && { declaration: declared }) };
+      const fields = argumentFields
+        ?.filter((field) => (field.multilingual?.slot ?? 1) <= shape)
+        .map((field) => this.#slotted(field, text(field.labelKey, field.labelFallback), shape));
+      return { ...action, label: label(action), ...(fields && { fields }), ...(declared && { declaration: declared }) };
     });
 
     // --- Lookups by name, ignoring case ---
@@ -208,32 +212,48 @@ export class TmEntityModel {
   }
 
   /**
-   * One property's descriptor. A multilingual slot's label is the group's
-   * label with its language's symbol when the tenant has two or three
-   * languages, and its content direction is its language's; both follow
-   * the tenant's settings.
+   * One property's descriptor, labelled by its key and, for a multilingual
+   * slot, by its language.
    *
    * @param property - The property's metadata.
    * @param shape - The tenant's number of content languages.
    * @returns The descriptor.
    */
   #property(property: TmPropertyMetadata, shape: 1 | 2 | 3): TmPropertyDescriptor {
-    const base = this.#context.text(property.labelKey, property.labelFallback);
-    const slot = property.multilingual?.slot;
+    return this.#slotted(property, this.#context.text(property.labelKey, property.labelFallback), shape);
+  }
+
+  /**
+   * A labelled member, a property or an action's argument. A multilingual
+   * slot's label is the group's label with its language's symbol when the
+   * tenant has two or three languages, and its content direction is its
+   * language's; both follow the tenant's settings.
+   *
+   * @param member - The member's metadata.
+   * @param base - The label its key reads.
+   * @param shape - The tenant's number of content languages.
+   * @returns The member with its label, and its direction when it fills a slot.
+   */
+  #slotted<T extends { readonly multilingual?: { readonly slot: 1 | 2 | 3 } }>(
+    member: T,
+    base: Signal<string>,
+    shape: 1 | 2 | 3,
+  ): T & { readonly label: Signal<string>; readonly contentDir?: 'ltr' | 'rtl' } {
+    const slot = member.multilingual?.slot;
     if (slot === undefined) {
-      return { ...property, label: base };
+      return { ...member, label: base };
     }
     const { settings } = this.#context;
     const language = (): { readonly symbol: string; readonly isRightToLeft: boolean } | undefined => settings()?.languages[slot - 1];
     const descriptor = {
-      ...property,
+      ...member,
       label: shape === 1 ? base : computed(() => `${base()} (${language()?.symbol ?? slot})`),
     };
     // The direction is read when asked, so a change of the tenant's languages shows at once.
     return Object.defineProperty(descriptor, 'contentDir', {
       enumerable: true,
       get: (): 'ltr' | 'rtl' => (language()?.isRightToLeft ? 'rtl' : 'ltr'),
-    }) as TmPropertyDescriptor;
+    });
   }
 
   /**

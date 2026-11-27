@@ -55,7 +55,8 @@ namespace Tellma.Core.Localization
     ///             with stacks composed, the keys of each action of a stack or a child query surface
     ///             and those of its argument fields, <c>&lt;Resource&gt;_Action_&lt;Name&gt;_&lt;Field&gt;</c>,
     ///             <c>&lt;Resource&gt;_&lt;Field&gt;</c> and <c>&lt;Field&gt;</c>, where a field is
-    ///             named by its C# property name, less the trailing <c>Id</c> of an entity reference;
+    ///             named by its C# property name, less the trailing <c>Id</c> of an entity reference
+    ///             (a multilingual group's twins take their anchor's label, so they have none);
     ///         </item>
     ///         <item>
     ///             with setting keys composed, each key's label and <c>…_Description</c>, its group's
@@ -201,9 +202,10 @@ namespace Tellma.Core.Localization
                 keys.UnionWith(ActionKeys(resource, action.Name));
 
                 // An argument field: the action's own key, the resource's member key, the shared key.
+                // A multilingual group's twins take their anchor's label, so they have no key of their own.
                 if (ActionArguments.TypeOf(action) is Type arguments)
                 {
-                    foreach (ActionArguments.Member member in ActionArguments.Members(arguments))
+                    foreach (ActionArguments.Member member in ActionArguments.Members(arguments).Where(static member => member.Multilingual is not { Slot: > 1 }))
                     {
                         keys.UnionWith(LabelChains.ActionField(resource, action.Name, LabelChains.FieldName(member.Property)));
                     }

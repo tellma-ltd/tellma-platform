@@ -9,6 +9,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Client;
 using Tellma.Core.Composition;
 
@@ -229,6 +230,93 @@ namespace Tellma.Core.Tests.Client
 
             Assert.Equal(key, member.GetProperty("labelKey").GetString());
             Assert.Equal(fallback, member.TryGetProperty("labelFallback", out JsonElement value) ? value.GetString() : null);
+        }
+
+        [Fact]
+        public void An_action_fields_multilingual_twins_carry_their_group_and_slot_and_the_anchors_label()
+        {
+            JsonElement save = ClientEntityModelComposition.Member(composition.Entity("core.User"), "actions", "me/save");
+            string anchor = ClientEntityModelComposition.Member(save, "fields", "name").GetProperty("labelKey").GetString()!;
+            foreach ((string name, int slot) in new[] { ("name", 1), ("name2", 2), ("name3", 3) })
+            {
+                JsonElement twin = ClientEntityModelComposition.Member(save, "fields", name);
+                AssertJson("""{"group":"Name","slot":""" + slot + "}", twin.GetProperty("multilingual"));
+                Assert.Equal(anchor, twin.GetProperty("labelKey").GetString());
+                Assert.False(twin.TryGetProperty("labelFallback", out _));
+            }
+
+            // A field of no group carries none.
+            Assert.False(ClientEntityModelComposition.Member(save, "fields", "contactEmail").TryGetProperty("multilingual", out _));
+        }
+
+        [Fact]
+        public void No_action_field_twin_has_a_label_key_of_its_own()
+        {
+            // Every twin an action field carries takes its anchor's key, and a field that mirrors one
+            // of its entity's twins by wire name is that twin: an arguments type that copies an
+            // entity's group but forgets to anchor it would give the twin a key of its own.
+            List<string> problems = [];
+            foreach (JsonElement entity in composition.Entities.EnumerateArray())
+            {
+                var twins = entity.GetProperty("properties").EnumerateArray()
+                    .Where(static property => property.TryGetProperty("multilingual", out JsonElement slot) && slot.GetProperty("slot").GetInt32() > 1)
+                    .ToDictionary(static property => property.GetProperty("json").GetString()!, static property => property.GetProperty("multilingual").GetProperty("slot").GetInt32(), StringComparer.Ordinal);
+                foreach (JsonElement action in entity.GetProperty("actions").EnumerateArray())
+                {
+                    JsonElement[] fields = action.TryGetProperty("fields", out JsonElement list) ? [.. list.EnumerateArray()] : [];
+                    foreach (JsonElement field in fields)
+                    {
+                        string name = $"{entity.GetProperty("name").GetString()} {action.GetProperty("name").GetString()} {field.GetProperty("name").GetString()}";
+                        int? slot = field.TryGetProperty("multilingual", out JsonElement multilingual) ? multilingual.GetProperty("slot").GetInt32() : null;
+                        if (twins.TryGetValue(field.GetProperty("name").GetString()!, out int expected) && slot != expected)
+                        {
+                            problems.Add($"{name} is no twin, though its entity's member of that name is");
+                        }
+
+                        if (slot > 1)
+                        {
+                            string group = multilingual.GetProperty("group").GetString()!;
+                            JsonElement primary = fields.Single(candidate => candidate.TryGetProperty("multilingual", out JsonElement other)
+                                && other.GetProperty("group").GetString() == group
+                                && other.GetProperty("slot").GetInt32() == 1);
+                            if (primary.GetProperty("labelKey").GetString() != field.GetProperty("labelKey").GetString())
+                            {
+                                problems.Add($"{name} has the key {field.GetProperty("labelKey").GetString()}");
+                            }
+                        }
+                    }
+                }
+            }
+
+            Assert.Empty(problems);
+        }
+
+        [Fact]
+        public void An_arguments_types_multilingual_group_is_found_by_its_anchor_and_its_twins_names()
+        {
+            Assert.Equal(
+                [("Title", 1), ("Title2", 2), ("Title3", 3)],
+                ActionArguments.Members(typeof(Retitle))
+                    .Where(static member => member.Multilingual is not null)
+                    .Select(static member => (member.Property.Name, member.Multilingual!.Slot)));
+            Assert.All(
+                ActionArguments.Members(typeof(Retitle)).Where(static member => member.Multilingual is not null),
+                static member => Assert.Equal("Title", member.Multilingual!.Group));
+
+            // A member named like a twin, with no anchor, is an ordinary member.
+            Assert.Null(ActionArguments.Members(typeof(Retitle)).Single(static member => member.Property.Name == nameof(Retitle.Address2)).Multilingual);
+        }
+
+        [Theory]
+        [InlineData(typeof(NumberAnchor), "is marked multilingual but is no string")]
+        [InlineData(typeof(MissingTwin), "has no twin Title3 that the wire carries as a nullable string")]
+        [InlineData(typeof(RequiredTwin), "has no twin Title2 that the wire carries as a nullable string")]
+        [InlineData(typeof(TwinAnchor), "belongs to two multilingual groups")]
+        public void An_arguments_types_malformed_multilingual_group_is_refused(Type type, string message)
+        {
+            InvalidOperationException error = Assert.Throws<InvalidOperationException>(() => ActionArguments.Members(type));
+
+            Assert.Contains(message, error.Message, StringComparison.Ordinal);
         }
 
         // --- Properties ---
@@ -505,5 +593,37 @@ namespace Tellma.Core.Tests.Client
         {
             return [.. array.EnumerateArray().Select(static item => item.GetString()!)];
         }
+
+        /// <summary>Arguments with a multilingual group and a member named like a twin that has no anchor.</summary>
+        /// <param name="Title">The group's anchor.</param>
+        /// <param name="Title2">The second slot.</param>
+        /// <param name="Title3">The third slot.</param>
+        /// <param name="Address2">An ordinary member.</param>
+        private sealed record Retitle([property: Multilingual] string Title, string? Title2, string? Title3, string? Address2);
+
+        /// <summary>Arguments whose anchor is no string.</summary>
+        /// <param name="Title">The anchor.</param>
+        /// <param name="Title2">The second slot.</param>
+        /// <param name="Title3">The third slot.</param>
+        private sealed record NumberAnchor([property: Multilingual] int Title, string? Title2, string? Title3);
+
+        /// <summary>Arguments whose group lacks its third slot.</summary>
+        /// <param name="Title">The anchor.</param>
+        /// <param name="Title2">The second slot.</param>
+        private sealed record MissingTwin([property: Multilingual] string Title, string? Title2);
+
+        /// <summary>Arguments whose second slot may not be empty.</summary>
+        /// <param name="Title">The anchor.</param>
+        /// <param name="Title2">The second slot.</param>
+        /// <param name="Title3">The third slot.</param>
+        private sealed record RequiredTwin([property: Multilingual] string Title, string Title2, string? Title3);
+
+        /// <summary>Arguments whose twin anchors a group of its own.</summary>
+        /// <param name="Title">The anchor.</param>
+        /// <param name="Title2">The second slot, also an anchor.</param>
+        /// <param name="Title3">The third slot.</param>
+        /// <param name="Title22">The second anchor's second slot.</param>
+        /// <param name="Title23">The second anchor's third slot.</param>
+        private sealed record TwinAnchor([property: Multilingual] string Title, [property: Multilingual] string? Title2, string? Title3, string? Title22, string? Title23);
     }
 }

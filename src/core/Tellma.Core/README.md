@@ -924,7 +924,7 @@ the conventional keys walk too), the first declared key wins, then falls back to
 | Navigation | `P_<navigation>`, `P_<foreign key>`, `<foreign key>`, `<navigation>`; a sibling has no foreign key of its own |
 | Collection | `P_<collection>`, the child's `P_Plural`, the child's `P` |
 | Action | `P_Action_<Action>`, `Action_<Action>` |
-| Action field | `P_Action_<Action>_<field>`, `P_<field>`, `<field>`; an `[EntityRef]` field drops its `Id` (`AssigneeId` reads `Assignee`) |
+| Action field | `P_Action_<Action>_<field>`, `P_<field>`, `<field>`; an `[EntityRef]` field drops its `Id` (`AssigneeId` reads `Assignee`), and a multilingual twin reads its anchor's |
 | Enum value | `S_<enum>_<value>` over every schema whose entities, setting keys or action arguments carry the enum, in that order |
 | Setting | the setting's label key |
 | Value-set value | the value's literal label, else its label key, else the value |
@@ -941,7 +941,10 @@ A multilingual twin (`Name2`, `Name3`) reads its primary's label: alone when the
 content language, followed by the language's symbol in parentheses (`Name (ع)`) when it has more,
 and the twin's humanized name beyond the tenant's shape. The key-resolving twins
 (`PropertyLabelKey`, …) return the first key of the chain that English declares, a twin's being its
-primary's, and null when none is.
+primary's, and null when none is. An action's arguments form a group as an entity's properties do: a
+`[property: Multilingual]` anchor and its `P2`/`P3` twins, found by name, which must be nullable
+strings the wire carries (`MeSaveRequest`'s `Name`). Each member of the group carries its slot in the
+client metadata, and the twins take the anchor's key, so no twin has a key of its own.
 
 `ConventionalStringKeys.Of(services)` lists every key a composed model derives by convention
 (entities and their members, securables and the platform's actions, stacks, settings,

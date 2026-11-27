@@ -6,6 +6,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Entities;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Localization;
 using Tellma.Core.Queryex;
@@ -57,10 +58,14 @@ namespace Tellma.Core.Tests.Localization
         }
 
         [Theory]
-        // An entity's twin derives no key of its own; the shared Name2 and Name3 are derived only
-        // because the users' profile edit takes them as argument fields.
+        // A twin derives no key of its own, an entity's or an action field's: the users' profile
+        // edit takes the name's twins as argument fields, which take the name's label.
         [InlineData("Fixture_Widget_Name2")]
         [InlineData("Core_Role_Name3")]
+        [InlineData("Name2")]
+        [InlineData("Core_User_Name3")]
+        [InlineData("Core_User_Action_MeSave_Name2")]
+        [InlineData("Core_User_Action_MeSave_Name3")]
         [InlineData("Calendar_uq_Month13")]
         [InlineData("Problem_not_found")]
         // A collection falls back to its child entity's labels, never a bare key of its own.
@@ -132,6 +137,25 @@ namespace Tellma.Core.Tests.Localization
             AssertAdds(expected, new With(_provider, typeof(IStackRegistry), new OneStack(Stack(widget, "reassign", typeof(ReassignArguments)))));
         }
 
+        [Fact]
+        public void A_composed_stack_actions_multilingual_argument_twins_derive_no_keys_of_their_own()
+        {
+            EntityMetadata widget = _provider.GetRequiredService<IEntityMetadataProvider>().All.Single(static entity => entity.Name == "fixture.Widget");
+            HashSet<string> expected =
+            [
+                "Fixture_Widget_Action_Retitle",
+                "Action_Retitle",
+                "Fixture_Widget_Action_Retitle_Title",
+                "Fixture_Widget_Title",
+                "Title",
+                "Fixture_Widget_Action_Retitle_Address2",
+                "Fixture_Widget_Address2",
+                "Address2",
+            ];
+
+            AssertAdds(expected, new With(_provider, typeof(IStackRegistry), new OneStack(Stack(widget, "retitle", typeof(RetitleArguments)))));
+        }
+
         /// <summary>
         ///     Asserts that the conventional keys of a composition with one more registry are those of
         ///     the fixture composition plus exactly the expected keys.
@@ -169,6 +193,13 @@ namespace Tellma.Core.Tests.Localization
         /// <summary>An action's arguments, whose one field carries the argument labels.</summary>
         /// <param name="Assignee">The field.</param>
         private sealed record ReassignArguments(string Assignee);
+
+        /// <summary>An action's arguments with a multilingual group and a member named like a twin that has no anchor.</summary>
+        /// <param name="Title">The group's anchor, whose label its twins take.</param>
+        /// <param name="Title2">The second slot.</param>
+        /// <param name="Title3">The third slot.</param>
+        /// <param name="Address2">An ordinary member, with labels of its own.</param>
+        private sealed record RetitleArguments([property: Multilingual] string Title, string? Title2, string? Title3, string? Address2);
 
         /// <summary>The fixture composition's services, with one more service answered.</summary>
         /// <param name="inner">The fixture composition's services.</param>

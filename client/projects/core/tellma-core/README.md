@@ -883,7 +883,9 @@ the merged declarations: `summary`, `bySegment`, `declaration` and `label`. `loa
 Entities chunk once, with the entity model, a lazy chunk of its own (`tm-entity-model`) that
 weighs nothing on the first frame. After it, `get` returns an entity's descriptor gated by the
 routed tenant's languages: a twin beyond them is no property, and with two or three languages each
-twin's label carries its language's symbol ("Name (ع)") and its `contentDir` its direction.
+twin's label carries its language's symbol ("Name (ع)") and its `contentDir` its direction. An
+action's argument fields are gated and labelled the same way, so the generated dialog never shows a
+twin the tenant has no language for.
 `enum` labels a named enum's values, and `resolve` reads a column key or path: a scalar or twin
 (`value`), a group anchor (`text`), a navigation, or a blob navigation (`image`, `file`), with a
 slash label and the foreign key's path. Before the load a development app throws; a production
