@@ -194,6 +194,12 @@ test.describe('layout shift', () => {
     // The worker claims the page once it activates and answers the lazy files
     // from its own cache, past the page's routes: the hold needs it blocked.
     test.use({ serviceWorkers: 'block' });
+    // The hold's route may still be fetching a file when the flow ends; its
+    // callback must not outlive the test, or the error it then throws fails
+    // the worker and the next test with it.
+    test.afterEach(async ({ page }) => {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
 
     // The pager's page-size select loads on demand; until it lands, a stand-in
     // of its geometry holds its place, so the swap moves nothing.
