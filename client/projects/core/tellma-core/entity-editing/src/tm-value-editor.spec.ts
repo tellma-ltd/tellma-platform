@@ -19,7 +19,7 @@ import {
   type TmValueDescriptor,
 } from '@tellma/core';
 import { TmEntityFieldHarness, TmEntityMultiFieldHarness } from '@tellma/core-testing';
-import { TmUploads } from '@tellma/core/entity';
+import { TmUploads } from '@tellma/core/uploads';
 import { TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmImage } from '@tellma/core-ui/image';

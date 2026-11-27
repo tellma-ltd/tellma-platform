@@ -29,7 +29,7 @@ import {
   TmLocalization,
   type TmPageAction,
 } from '@tellma/core';
-import { TmUploads } from '@tellma/core/entity';
+import { TmUploads } from '@tellma/core/uploads';
 
 import {
   TM_DETAILS_CONTEXT,

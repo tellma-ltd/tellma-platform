@@ -4,15 +4,15 @@
  * with it and the app never loads at start: select plans that expand column
  * keys into query terms and read their rows back, the typed-value formats,
  * the view components a value descriptor chooses, the read-only grid
- * columns of a plan, the client check of a blob kind's policy, a form's
- * uploads (which a form's host provides, so a read-only page holds them
- * too), the picker pages' contract, the entity actions with the
- * confirmation loop and their lazily loaded dialogs, the client Queryex (a
- * lexer, and a builder and printer for the Queryex the client writes), and
- * the column filters with their descriptions. The edit side (the value
- * editor, the entity picker binding with the entity fields and the editable
- * grid columns) is `@tellma/core/entity-editing`'s; the control that edits a
- * column filter is `@tellma/core/column-filter`'s.
+ * columns of a plan, the client check of a blob kind's policy, the picker
+ * pages' contract, the entity actions with the confirmation loop and their
+ * lazily loaded dialogs, the client Queryex (a lexer, and a builder and
+ * printer for the Queryex the client writes), and the column filters with
+ * their descriptions. The edit side (the value editor, the entity picker
+ * binding with the entity fields and the editable grid columns) is
+ * `@tellma/core/entity-editing`'s; a form's uploads are
+ * `@tellma/core/uploads`'; the control that edits a column filter is
+ * `@tellma/core/column-filter`'s.
  *
  * @packageDocumentation
  */
@@ -42,7 +42,6 @@ export { type TmEntityPickerContext, ɵTM_PICKER_PAGES, type ɵTmPickerPages } f
 
 // Blob-kind policies.
 export { tmCheckBlobFile, ɵtmCropCoverSquare, type TmBlobFileCheck } from './src/tm-blob-check';
-export { TmUploads } from './src/tm-uploads';
 
 // Entity actions: the runner, its dialogs and the confirmation loop.
 export {

@@ -26,7 +26,7 @@ import {
   type ɵTmDetailsHostView,
   ɵTmDetailsRecordState,
 } from '@tellma/core/details';
-import { TmUploads } from '@tellma/core/entity';
+import { TmUploads } from '@tellma/core/uploads';
 
 // A details context for a layout's unit test (spec 0031 §1): the real
 // record state, with its form, dirty rule, refusals and registrations, over
