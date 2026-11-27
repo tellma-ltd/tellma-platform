@@ -99,7 +99,7 @@ namespace Tellma.Core.Excel
             _importLookups = meter.CreateHistogram<long>(ExcelTelemetryNames.ImportLookups, QueryUnit, "Reference resolution queries an import ran.");
             _importErrors = meter.CreateCounter<long>(ExcelTelemetryNames.ImportErrors, ErrorUnit, "Import errors reported, by code.");
             _importRetries = meter.CreateCounter<long>(ExcelTelemetryNames.ImportRetries, SaveUnit, "Import chunks saved again after rows changed since they were read.");
-            _importChunks = meter.CreateHistogram<long>(ExcelTelemetryNames.ImportChunks, ChunkUnit, "Chunks a background import committed in the attempt that ended it.");
+            _importChunks = meter.CreateHistogram<long>(ExcelTelemetryNames.ImportChunks, ChunkUnit, "Chunks a background import committed across its attempts, once it ended or stopped.");
             _importResumed = meter.CreateCounter<long>(ExcelTelemetryNames.ImportResumed, ImportUnit, "Background imports resumed from a committed checkpoint.");
         }
 
@@ -202,7 +202,7 @@ namespace Tellma.Core.Excel
             _importRetries.Add(1, new KeyValuePair<string, object?>(ExcelTelemetryNames.EntityTag, entity));
         }
 
-        /// <summary>Records the chunks a background import committed in the attempt that ended it, a success or a failure.</summary>
+        /// <summary>Records the chunks a background import committed across its attempts, once it succeeded, failed or stopped.</summary>
         /// <param name="entity">The imported entity's name.</param>
         /// <param name="chunks">The chunks.</param>
         public void ImportChunks(string entity, int chunks)

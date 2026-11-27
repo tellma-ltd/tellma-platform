@@ -16,6 +16,7 @@ using Tellma.Core.Abstractions.Localization;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Queryex;
 
 namespace Tellma.Core.Excel
 {
@@ -83,21 +84,40 @@ namespace Tellma.Core.Excel
 
         /// <summary>
         ///     The error a refusal of the run fails the job with: a denied read, a sheet above its
-        ///     cap, a file the store refuses, or a query its rows cannot compute; null for any other
-        ///     failure, which the worker records or retries.
+        ///     cap, a file the store refuses, a query its rows cannot compute, or a request its plan
+        ///     refuses; null for any other failure, which the worker records or retries.
         /// </summary>
         /// <param name="failure">The failure.</param>
         /// <returns>The error, or null.</returns>
         private static JobError? Refusal(Exception failure)
         {
+            // The start plans the request before it enqueues it, so the last two are a backstop:
+            // a request its stack's metadata or named filters stopped admitting while it waited.
             return failure switch
             {
                 ForbiddenException forbidden => new JobError(forbidden.Code, forbidden.Arguments),
+                BadRequestException bad => new JobError(bad.Code, bad.Arguments),
+                InvalidQueryException { Diagnostics: [QueryexDiagnostic first, ..] } => new JobError(first.Code, Arguments(first)),
                 LimitExceededException exceeded when exceeded.Limit == ExcelErrorCodes.ExportRowLimitExceeded => new JobError(exceeded.Limit, exceeded.Arguments),
                 BlobRejectedException rejected => new JobError(rejected.Code, rejected.Arguments),
                 ValidationException { Errors: [ValidationError { Code: ValidationCodes.QueryArithmeticFailed } arithmetic] } => new JobError(arithmetic.Code, arithmetic.Arguments),
                 _ => null,
             };
+        }
+
+        /// <summary>The arguments of a query's first diagnostic, with the clause it is in.</summary>
+        /// <param name="diagnostic">The diagnostic.</param>
+        /// <returns>The arguments.</returns>
+        private static Dictionary<string, object?> Arguments(QueryexDiagnostic diagnostic)
+        {
+            Dictionary<string, object?> arguments = new(StringComparer.Ordinal);
+            foreach ((string key, string value) in diagnostic.Arguments)
+            {
+                arguments[key] = value;
+            }
+
+            arguments["location"] = diagnostic.Location;
+            return arguments;
         }
 
         /// <summary>The run's steps: the read checked, the workbook written and staged, the row enlisted and the requester notified.</summary>

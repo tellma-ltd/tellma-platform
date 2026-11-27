@@ -289,6 +289,19 @@ namespace Tellma.Core.Crud.Query
         }
 
         /// <summary>
+        ///     Checks named filters against the ones a stack declares, as a query admits them: every
+        ///     name it does not declare is one diagnostic at its index, all reported together.
+        /// </summary>
+        /// <param name="names">The names as sent; null for none.</param>
+        /// <param name="declared">The stack's named filters.</param>
+        /// <exception cref="InvalidQueryException">A name the stack does not declare.</exception>
+        public static void CheckNamedFilters(IReadOnlyList<string>? names, IReadOnlyDictionary<string, FilterTree> declared)
+        {
+            ArgumentNullException.ThrowIfNull(declared);
+            _ = Named(names, declared);
+        }
+
+        /// <summary>
         ///     Resolves the named filters in request order; every name the surface does not declare is
         ///     one diagnostic at its index, all reported together.
         /// </summary>
@@ -297,12 +310,21 @@ namespace Tellma.Core.Crud.Query
         /// <returns>The filters.</returns>
         private static List<(int, string, FilterTree)> Named(IReadOnlyList<string>? names, QuerySurface surface)
         {
+            return Named(names, surface.NamedFilters);
+        }
+
+        /// <summary>Resolves the named filters in request order against the ones declared.</summary>
+        /// <param name="names">The names as sent.</param>
+        /// <param name="declared">The named filters declared.</param>
+        /// <returns>The filters.</returns>
+        private static List<(int, string, FilterTree)> Named(IReadOnlyList<string>? names, IReadOnlyDictionary<string, FilterTree> declared)
+        {
             List<(int, string, FilterTree)> named = [];
             List<QueryexDiagnostic>? unknown = null;
             for (int index = 0; index < (names?.Count ?? 0); index++)
             {
                 string name = names![index] ?? string.Empty;
-                if (surface.NamedFilters.TryGetValue(name, out FilterTree? tree))
+                if (declared.TryGetValue(name, out FilterTree? tree))
                 {
                     named.Add((index, name, tree));
                     continue;

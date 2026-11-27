@@ -71,7 +71,8 @@ namespace Tellma.Core.Excel
             // --- An item handed over already stopped: no pass runs, the last checkpoint is the outcome ---
             if (item.CancellationReason == JobCancellationReason.CancelRequested)
             {
-                await StopAsync(item, session: null).ConfigureAwait(false);
+                string? stack = ExcelJobTargets.Import(services, item.Arguments<ImportJobArguments>().Resource)?.ExportTarget.Entity.Name;
+                await StopAsync(item, session: null, stack, chunks: 0).ConfigureAwait(false);
                 return;
             }
 
@@ -161,12 +162,13 @@ namespace Tellma.Core.Excel
                 int next = checkpoint?.NextRow ?? 0;
                 int last = session.Order.Count - 1;
                 int parentCeiling = Math.Min(target.Limits.MaxSaveCount, target.Limits.MaxIds);
+                chunks = CommittedChunks(session, request.Atomic, target.Limits, next);
                 while (next <= last)
                 {
                     // A requested stop takes effect between chunks, so the chunk in flight commits.
                     if (item.CancellationReason == JobCancellationReason.CancelRequested)
                     {
-                        await StopAsync(item, session).ConfigureAwait(false);
+                        await StopAsync(item, session, entity.Name, chunks).ConfigureAwait(false);
                         return;
                     }
 
@@ -224,10 +226,12 @@ namespace Tellma.Core.Excel
                 metrics.ImportChunks(entity.Name, chunks);
                 ExcelLog.ImportCompleted(_logger, entity.Name, mode, outcome.Inserted, outcome.Updated, (long)elapsed.TotalMilliseconds);
             }
-            catch (OperationCanceledException) when (item.CancellationReason == JobCancellationReason.CancelRequested)
+            catch (Exception failure) when (item.CancellationReason == JobCancellationReason.CancelRequested && Refusal(failure) is null)
             {
-                // A requested stop that cancelled the file's copy or its parse.
-                await StopAsync(item, session).ConfigureAwait(false);
+                // A requested stop that cancelled the file's copy or its parse, or that landed while
+                // a chunk ran which then asked for confirmation or threw: the chunk rolled back, so the
+                // stop records the last committed checkpoint instead of retrying or waiting.
+                await StopAsync(item, session, entity.Name, chunks).ConfigureAwait(false);
             }
             catch (Exception failure) when (Refusal(failure) is ImportException refused)
             {
@@ -307,15 +311,49 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
+        ///     The chunks earlier attempts committed up to a checkpoint's next row: one for an atomic
+        ///     import, else the chunk boundaries replayed from the first row.
+        /// </summary>
+        /// <param name="session">The parsed import.</param>
+        /// <param name="atomic">Whether the import saves as one chunk.</param>
+        /// <param name="limits">The stack's limits.</param>
+        /// <param name="nextRow">The checkpoint's next row; zero when none committed.</param>
+        /// <returns>The chunks.</returns>
+        private int CommittedChunks(ImportSession session, bool atomic, StackLimits limits, int nextRow)
+        {
+            // The checkpoint's fixed shape keeps no chunk count, so the boundaries are replayed under
+            // the current chunk size, the same pure function of the order each attempt used; a size
+            // changed between attempts makes this the count the current size would have committed.
+            int parentCeiling = Math.Min(limits.MaxSaveCount, limits.MaxIds);
+            int count = 0;
+            for (int from = 0; from < nextRow; count++)
+            {
+                from = (atomic ? session.Order.Count - 1 : session.ChunkEnd(from, _options.ImportChunkRows, parentCeiling, limits.MaxRowsPerSave)) + 1;
+            }
+
+            return count;
+        }
+
+        /// <summary>
         ///     Records a requested stop on the Import row: the last committed checkpoint's counts and
         ///     runs, marked stopped. The item is left unmarked, so the worker completes it cancelled.
         /// </summary>
         /// <param name="item">The job's item.</param>
         /// <param name="session">The parsed import; null when the stop came before the parse.</param>
+        /// <param name="entity">The imported entity's name, which tags the chunk count; null when the resource is no longer importable.</param>
+        /// <param name="chunks">The chunks committed across the attempts, counted once the file was parsed.</param>
         /// <returns>A task that completes once the update is enlisted.</returns>
-        private async Task StopAsync(JobItem<Import> item, ImportSession? session)
+        private async Task StopAsync(JobItem<Import> item, ImportSession? session, string? entity, int chunks)
         {
             ImportCheckpointState? committed = item.State<ImportCheckpointState>();
+
+            // Counting earlier attempts' chunks needs the parse; a stop before it records the count
+            // only when no chunk committed.
+            if (entity is not null && (session is not null || committed is not { NextRow: > 0 }))
+            {
+                metrics.ImportChunks(entity, chunks);
+            }
+
             ImportOutcome stopped = new(
                 committed?.Inserted ?? 0,
                 committed?.Updated ?? 0,
@@ -325,7 +363,8 @@ namespace Tellma.Core.Excel
                 committed?.CommittedRowRanges ?? [],
                 session?.Warnings ?? [],
                 Stopped: true);
-            await RecordAsync(item.Item, Json(stopped), session?.Order.Count, errorCount: 0).ConfigureAwait(false);
+            // A stop before the parse keeps the row count an earlier attempt recorded.
+            await RecordAsync(item.Item, Json(stopped), session?.Order.Count ?? item.Item.RowCount, errorCount: 0).ConfigureAwait(false);
         }
 
         /// <summary>

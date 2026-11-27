@@ -87,9 +87,9 @@ namespace Tellma.Core.Excel
         {
             ArgumentNullException.ThrowIfNull(request);
 
-            // A request the job could never run is refused here, before it is enqueued.
-            ExportSources.CheckColumns(request);
-            _ = ExportSources.Of(request, template: false, child: true);
+            // A request the job could never run is refused here, before it is enqueued: its source
+            // and its plan, whose columns compile under the request's context.
+            _exports.CheckDisplay(_target, request);
             ExcelJobStarts starts = _starts();
             return starts.ExportAsync(new DisplayExportJobArguments(_resource, starts.Culture, request), cancellationToken);
         }

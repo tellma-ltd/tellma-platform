@@ -11,10 +11,12 @@ using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Blobs;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Excel;
 using Tellma.Core.IntegrationTests.Crud;
 using Tellma.Core.IntegrationTests.Data;
@@ -28,9 +30,11 @@ namespace Tellma.Core.IntegrationTests.Excel
     /// <summary>
     ///     The background exports and imports through the jobs' worker: an export's row inserted with
     ///     its committed file and its notice, a denied read, the start routes of a read-only tenant;
-    ///     an import's chunks, its checkpoint across a crash and a host stop, a chunk's errors and
-    ///     warnings, a requested stop, a changed file, the atomic mode, and a background refusal of
-    ///     the caller's access.
+    ///     a child surface's export and a start refused before it queues; an import's chunks, its
+    ///     checkpoint across a crash, a host stop, a lost lease and a smaller chunk size, a chunk's
+    ///     errors, refusals and warnings, a stop requested mid-chunk or while waiting, a changed
+    ///     file, the atomic mode, mutually linked new rows, and a background refusal of the
+    ///     caller's access.
     /// </summary>
     /// <param name="fixture">The database.</param>
     [Trait("Category", "Integration")]
@@ -41,6 +45,9 @@ namespace Tellma.Core.IntegrationTests.Excel
 
         /// <summary>The nodes' resource.</summary>
         private const string Nodes = "fixture.Node";
+
+        /// <summary>The widget parts' child query surface.</summary>
+        private const string Parts = "fixture.WidgetPart";
 
         /// <summary>The first id the seeded widgets take.</summary>
         private const int FirstWidget = 9001;
@@ -363,17 +370,22 @@ namespace Tellma.Core.IntegrationTests.Excel
         {
             (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
             byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Widget(null, "X-1"), Widget(null, "X-2"), Widget(null, "X-3")]));
-            _ = fixture.Probe.Arm("X-3", new WidgetSaveArm { Validated = static _ => throw new InvalidOperationException("The host crashed.") });
 
+            // --- Each attempt's host stops while the second chunk saves ---
+            CancellationTokenSource? host = null;
+            _ = fixture.Probe.Arm("X-3", new WidgetSaveArm { Validated = _ => host!.CancelAsync() });
             JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
             for (int attempt = 1; attempt <= 3; attempt++)
             {
+                using var stopping = CancellationTokenSource.CreateLinkedTokenSource(Token);
+                host = stopping;
                 await fixture.DueNowAsync(accepted.JobId);
-                _ = Assert.Single(await fixture.PollAsync());
+                _ = Assert.Single(await fixture.PollStoppingAsync(stopping.Token));
             }
 
+            // --- The third interruption spent the attempts: failed as exhausted, the first chunk kept ---
             JobRow failed = await fixture.JobAsync(accepted.JobId);
-            Assert.Equal((nameof(JobStatus.Failed), 3), (failed.Status, failed.Attempts));
+            Assert.Equal((nameof(JobStatus.Failed), 3, JobErrorCodes.AttemptsExhausted), (failed.Status, failed.Attempts, failed.ErrorCode));
             Assert.Equal(2, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'X-%';"));
             Assert.Null((await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")))["ResultJson"]);
         }
@@ -437,6 +449,245 @@ namespace Tellma.Core.IntegrationTests.Excel
             Assert.Equal("forbidden", error.GetProperty("code").GetString());
             Assert.False(error.TryGetProperty("sheet", out _) || error.TryGetProperty("row", out _) || error.TryGetProperty("column", out _));
             Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] IN ('OK-1', 'NO-1');"));
+        }
+
+        [Fact]
+        public async Task A_row_refused_in_the_second_chunk_rolls_back_its_checkpoint_and_reports_only_the_first_chunks_rows()
+        {
+            fixture.Options.ImportChunkRows = 1;
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Widget(null, "OK-1"), Widget(null, "NO-1")]));
+
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest(), user: FilteredId);
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Failed, ExcelErrorCodes.ImportFailed);
+
+            // --- The first chunk stays with its checkpoint; the second's checkpoint went with its rows ---
+            Assert.Equal(1, State(await fixture.JobAsync(accepted.JobId)).NextRow);
+            Assert.Equal((1, 0), (await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] = 'OK-1';"), await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] = 'NO-1';")));
+            using var result = JsonDocument.Parse((string)(await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")))["ResultJson"]!);
+            Assert.Equal("forbidden", Assert.Single(result.RootElement.GetProperty("errors").EnumerateArray()).GetProperty("code").GetString());
+            Assert.Equal(
+                [(2, 2)],
+                result.RootElement.GetProperty("committedRowRanges").EnumerateArray().Select(static range => (range.GetProperty("from").GetInt32(), range.GetProperty("to").GetInt32())));
+        }
+
+        [Fact]
+        public async Task A_cancel_while_the_third_chunk_saves_lets_it_commit_then_records_the_three_chunks_as_a_stopped_outcome()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [.. Enumerable.Range(1, 8).Select(static index => Widget(null, Invariant($"K-{index}")))]));
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+
+            // --- The requester cancels while the third chunk validates, and the handler reads it at once ---
+            _ = fixture.Probe.Arm("K-5", new WidgetSaveArm
+            {
+                Validated = async run =>
+                {
+                    if (run == 1)
+                    {
+                        await fixture.SetJobAsync(accepted.JobId, "[CancelRequestedAt] = SYSUTCDATETIME()");
+                        await fixture.RenewAsync();
+                    }
+                },
+            });
+            PolledJob stopped = Assert.Single(await fixture.PollAsync());
+
+            // --- The third chunk committed; the fourth never ran ---
+            Assert.Equal((JobStatus.Cancelled, JobErrorCodes.Cancelled), (stopped.Status, stopped.ErrorCode));
+            Assert.Equal([2, 4, 6], Committed().Select(static record => int.Parse(record.GetStructuredStateValue("NextRow")!, CultureInfo.InvariantCulture)));
+            Assert.Equal(6, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'K-%';"));
+            Dictionary<string, object?> row = await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}"));
+            ImportOutcome outcome = Outcome(row);
+            Assert.Equal((6, true), (outcome.Inserted, outcome.Stopped));
+            Assert.Equal([new RowRange(2, 7)], outcome.CommittedRowRanges);
+            Assert.Equal(8, (int)row["RowCount"]!);
+            Assert.DoesNotContain(fixture.Notices.Raised, static notice => notice.Type == ExcelJobs.ImportCompletedType);
+        }
+
+        [Fact]
+        public async Task A_cancel_of_an_import_waiting_on_a_warning_records_the_committed_chunks_as_a_stopped_outcome()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Widget(null, "Q-1"), Widget(null, "Q-2"), Widget(null, "Q-3", name: WarnedName), Widget(null, "Q-4")]));
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.PendingConfirmation);
+
+            // --- The cancel queues the waiting job flagged, as the jobs' cancel action does, so its claim records the stop ---
+            await fixture.SetJobAsync(accepted.JobId, "[Status] = 'Pending', [DueAt] = SYSUTCDATETIME(), [CancelRequestedAt] = SYSUTCDATETIME(), [PendingConfirmationsJson] = NULL");
+            PolledJob stopped = Assert.Single(await fixture.PollAsync());
+
+            Assert.Equal((JobStatus.Cancelled, JobErrorCodes.Cancelled), (stopped.Status, stopped.ErrorCode));
+            ImportOutcome outcome = Outcome(await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")));
+            Assert.Equal((2, true), (outcome.Inserted, outcome.Stopped));
+            Assert.Equal([new RowRange(2, 3)], outcome.CommittedRowRanges);
+            Assert.Equal(2, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'Q-%';"));
+        }
+
+        [Fact]
+        public async Task A_cancel_landing_in_a_chunk_that_then_warns_records_the_earlier_chunks_as_a_stopped_outcome()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Widget(null, "CW-1"), Widget(null, "CW-2"), Widget(null, "CW-3", name: WarnedName), Widget(null, "CW-4")]));
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+
+            // --- The requester cancels while the second chunk validates; the chunk then asks for confirmation ---
+            _ = fixture.Probe.Arm("CW-3", new WidgetSaveArm
+            {
+                Validated = async run =>
+                {
+                    if (run == 1)
+                    {
+                        await fixture.SetJobAsync(accepted.JobId, "[CancelRequestedAt] = SYSUTCDATETIME()");
+                        await fixture.RenewAsync();
+                    }
+                },
+            });
+            PolledJob stopped = Assert.Single(await fixture.PollAsync());
+
+            // --- The stop wins over the wait: cancelled, with the first chunk recorded ---
+            Assert.Equal((JobStatus.Cancelled, JobErrorCodes.Cancelled), (stopped.Status, stopped.ErrorCode));
+            ImportOutcome outcome = Outcome(await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")));
+            Assert.Equal((2, true), (outcome.Inserted, outcome.Stopped));
+            Assert.Equal([new RowRange(2, 3)], outcome.CommittedRowRanges);
+            Assert.Null((await fixture.JobAsync(accepted.JobId)).PendingConfirmationsJson);
+        }
+
+        [Fact]
+        public async Task A_lease_lost_during_the_third_chunk_rolls_it_back_with_its_checkpoint_and_the_next_claim_resumes_before_it()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [.. Enumerable.Range(1, 6).Select(static index => Widget(null, Invariant($"L-{index}")))]));
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+
+            // --- Another worker takes the lease while the third chunk validates ---
+            _ = fixture.Probe.Arm("L-5", new WidgetSaveArm { Validated = run => run == 1 ? fixture.SetJobAsync(accepted.JobId, "[LeaseToken] = NEWID()") : Task.CompletedTask });
+            PolledJob lost = Assert.Single(await fixture.PollAsync());
+
+            // --- The fence refused the chunk: the attempt was taken back, not failed, and recorded nothing ---
+            Assert.Equal(PolledJobEnd.LostLease, lost.End);
+            JobRow taken = await fixture.JobAsync(accepted.JobId);
+            Assert.Equal((nameof(JobStatus.Running), 4), (taken.Status, State(taken).NextRow));
+            Assert.Equal(4, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'L-%';"));
+            Assert.Null((await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")))["ResultJson"]);
+            Assert.DoesNotContain(fixture.Log.GetSnapshot(), static record => record.Id.Name == "ImportFailed");
+
+            // --- The lease runs out and the next claim resumes at the third chunk ---
+            await fixture.SetJobAsync(accepted.JobId, "[LeaseExpiresAt] = DATEADD(second, -1, SYSUTCDATETIME()), [DueAt] = DATEADD(second, -1, SYSUTCDATETIME())");
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+            Assert.Equal(6, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'L-%';"));
+            Assert.Equal(6, Outcome(await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}"))).Inserted);
+            Assert.Contains(fixture.Log.GetSnapshot(), static record => record.Id.Name == "ImportResumed" && record.GetStructuredStateValue("NextRow") == "4");
+        }
+
+        [Fact]
+        public async Task A_resume_under_a_smaller_chunk_size_commits_every_remaining_row_once()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [.. Enumerable.Range(1, 5).Select(static index => Widget(null, Invariant($"R-{index}")))]));
+            _ = fixture.Probe.Arm("R-3", new WidgetSaveArm { Validated = static run => run == 1 ? throw new InvalidOperationException("The host crashed.") : Task.CompletedTask });
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest());
+            _ = Assert.Single(await fixture.PollAsync());
+            Assert.Equal(2, State(await fixture.JobAsync(accepted.JobId)).NextRow);
+
+            // --- The next attempt runs under chunks of one row ---
+            fixture.Options.ImportChunkRows = 1;
+            await fixture.DueNowAsync(accepted.JobId);
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+
+            Assert.Equal([2, 3, 4, 5], Committed().Select(static record => int.Parse(record.GetStructuredStateValue("NextRow")!, CultureInfo.InvariantCulture)));
+            Assert.Equal(5, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'R-%';"));
+            ImportOutcome outcome = Outcome(await fixture.RowAsync("[core].[Imports]", Invariant($"[Id] = {accepted.ResourceId}")));
+            Assert.Equal(5, outcome.Inserted);
+            Assert.Equal([new RowRange(2, 6)], outcome.CommittedRowRanges);
+        }
+
+        [Fact]
+        public async Task An_atomic_import_that_hits_a_warning_commits_nothing_and_its_confirmation_restarts_it_from_the_first_row()
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Widgets);
+            byte[] workbook = WorkbookEdits.WithRows(template, plan, (plan.Sheets[0].Sheet, [Widget(null, "AW-1"), Widget(null, "AW-2"), Widget(null, "AW-3", name: WarnedName)]));
+
+            JobAccepted accepted = await StartImportAsync(workbook, new StartImportRequest { Atomic = true });
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.PendingConfirmation);
+            Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'AW-%';"));
+            Assert.Null((await fixture.JobAsync(accepted.JobId)).StateJson);
+
+            await fixture.SetJobAsync(accepted.JobId, Invariant($"[Status] = 'Pending', [ConfirmedKeys] = N'{WarningKey}', [PendingConfirmationsJson] = NULL, [Attempts] = 0, [DueAt] = DATEADD(second, -1, SYSUTCDATETIME())"));
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+
+            Assert.Single(Committed());
+            Assert.Equal(3, await fixture.CountAsync("SELECT COUNT(*) FROM [fixture].[Widgets] WHERE [Code] LIKE 'AW-%';"));
+            Assert.DoesNotContain(fixture.Log.GetSnapshot(), static record => record.Id.Name == "ImportResumed");
+        }
+
+        [Fact]
+        public async Task Mutually_linked_new_nodes_import_synchronously_and_in_one_background_chunk()
+        {
+            (byte[] workbook, ImportColumnMapping[] mappings) = await LinkedNodesAsync("LA", "LB");
+            object? result = await InvokeAsync(ImporterId, Nodes, "import", new ImportRequest { FileId = await fixture.StageAsync(ImporterId, workbook), ColumnMappings = mappings });
+            Assert.Equal((2, 2), (Assert.IsType<ImportOutcome>(result).Inserted, ((ImportOutcome)result).ChildrenInserted));
+            Assert.Equal(2, await LinkedAsync("LA", "LB"));
+
+            // --- In the background, under chunks of one row, the pair stays in one chunk ---
+            fixture.Options.ImportChunkRows = 1;
+            (byte[] background, ImportColumnMapping[] backgroundMappings) = await LinkedNodesAsync("LC", "LD");
+            JobAccepted accepted = await StartImportAsync(background, new StartImportRequest { ColumnMappings = backgroundMappings }, Nodes);
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+
+            Assert.Equal("2", Assert.Single(Committed()).GetStructuredStateValue("NextRow"));
+            Assert.Equal(2, await LinkedAsync("LC", "LD"));
+            Assert.Empty(State(await fixture.JobAsync(accepted.JobId)).CommittedNewIds);
+        }
+
+        [Fact]
+        public async Task A_child_surface_export_start_runs_in_the_background_inserting_an_export_row_of_the_child()
+        {
+            await SeedWidgetsAsync(1);
+            await SqlServerFixture.ExecuteAsync(fixture.ConnectionString, Invariant($"INSERT INTO [fixture].[WidgetParts] ([Id], [WidgetId], [Ordinal], [Notes]) VALUES (1, {FirstWidget}, 1, N'a'), (2, {FirstWidget}, 2, N'b');"));
+
+            JobAccepted accepted = Assert.IsType<JobAccepted>(await InvokeAsync(ImporterId, Parts, "export/start", new ExportRequest { Columns = [new ExportColumn("Ordinal", Header: null)], OrderBy = "Ordinal" }));
+            Ended(Assert.Single(await fixture.PollAsync()), JobStatus.Succeeded);
+
+            Dictionary<string, object?> row = await fixture.RowAsync("[core].[Exports]", Invariant($"[JobId] = {accepted.JobId}"));
+            Assert.Equal((Parts, nameof(ExportKind.Display), 2), ((string)row["Resource"]!, (string)row["Kind"]!, (int)row["RowCount"]!));
+        }
+
+        [Fact]
+        public async Task An_export_start_whose_request_does_not_plan_is_refused_before_any_job_is_queued()
+        {
+            _ = await Assert.ThrowsAsync<InvalidQueryException>(() => InvokeAsync(ImporterId, Widgets, "export/start", new ExportRequest { Columns = [new ExportColumn("Code +", Header: null)] }));
+            InvalidQueryException unknown = await Assert.ThrowsAsync<InvalidQueryException>(
+                () => InvokeAsync(ImporterId, Widgets, "export/start", new ExportRequest { Columns = [new ExportColumn("Code", Header: null)], NamedFilters = ["NoSuchFilter"] }));
+            Assert.Equal(ValidationCodes.QueryUnknownNamedFilter, Assert.Single(unknown.Diagnostics).Code);
+            _ = await Assert.ThrowsAsync<BadRequestException>(() => InvokeAsync(ImporterId, Widgets, "export-for-import/start", new ExportForImportRequest { Ids = [], Columns = ["NoSuchColumn"] }));
+
+            Assert.Equal(0, await fixture.CountAsync("SELECT COUNT(*) FROM [core].[Jobs];"));
+        }
+
+        /// <summary>A node workbook of two new nodes whose link rows name each other by sheet identity.</summary>
+        /// <param name="first">The first node's code.</param>
+        /// <param name="second">The second node's code.</param>
+        /// <returns>The workbook, and the mapping that reads the link sheet's reference as a sheet identity.</returns>
+        private async Task<(byte[] Workbook, ImportColumnMapping[] Mappings)> LinkedNodesAsync(string first, string second)
+        {
+            (byte[] template, ImportPlan plan) = await TemplateAsync(Nodes);
+            ImportPlanSheet links = plan.Sheets.Single(static sheet => sheet.Collection == "Links");
+            string other = links.Columns.Single(static column => column.Path == "OtherNode.Code").Column;
+            byte[] workbook = WorkbookEdits.WithRows(
+                template,
+                plan,
+                (plan.Sheets[0].Sheet, [Node(-1, first, null), Node(-2, second, null)]),
+                (links.Sheet, [Row(("Node.Id", -1L), ("OtherNode.Code", -2L)), Row(("Node.Id", -2L), ("OtherNode.Code", -1L))]));
+            return (workbook, [new ImportColumnMapping(links.Sheet, other, "OtherNode.Id")]);
+        }
+
+        /// <summary>Counts the stored links between two nodes, in either direction.</summary>
+        /// <param name="first">The first node's code.</param>
+        /// <param name="second">The second node's code.</param>
+        /// <returns>The count.</returns>
+        private Task<int> LinkedAsync(string first, string second)
+        {
+            return fixture.CountAsync(Invariant($"SELECT COUNT(*) FROM [fixture].[Links] l JOIN [fixture].[Nodes] n ON n.[Id] = l.[NodeId] JOIN [fixture].[Nodes] o ON o.[Id] = l.[OtherNodeId] WHERE (n.[Code] = '{first}' AND o.[Code] = '{second}') OR (n.[Code] = '{second}' AND o.[Code] = '{first}');"));
         }
 
         /// <summary>Asserts how a polled job ended, naming what its handler threw when it ended otherwise.</summary>
@@ -542,10 +793,12 @@ namespace Tellma.Core.IntegrationTests.Excel
         private async Task<object?> InvokeAsync(int user, string resource, string name, object body, TenantState? state = null)
         {
             await using AsyncServiceScope scope = await fixture.UserScopeAsync(user, state);
-            ApiActionDescriptor action = scope.ServiceProvider.GetRequiredService<IStackRegistry>().Stacks
-                .Single(stack => stack.Resource == resource).Actions
-                .OfType<ApiActionDescriptor>()
-                .Single(candidate => candidate.Name == name);
+
+            // A stack's action, else a child query surface's.
+            IStackRegistry registry = scope.ServiceProvider.GetRequiredService<IStackRegistry>();
+            IEnumerable<ApiActionDescriptor> actions = registry.Stacks.SingleOrDefault(stack => stack.Resource == resource)?.Actions.OfType<ApiActionDescriptor>()
+                ?? registry.ChildQueries.Single(surface => surface.Resource == resource).Actions;
+            ApiActionDescriptor action = actions.Single(candidate => candidate.Name == name);
             return await scope.ServiceProvider.GetRequiredService<IApiActionInvoker>().InvokeAsync(action, body, Token);
         }
 

@@ -114,22 +114,8 @@ namespace Tellma.Core.Excel
 
             // --- The plan: the columns expanded into the select terms they read ---
             ExcelContext context = background?.Context ?? _contexts.Create();
-            EntityMetadata entity = target.Entity;
-            var shape = (MultilingualShape)Math.Clamp(context.TenantLanguages.Count, 1, 3);
-            var columns = DisplayColumns.Expand(entity, request.Columns, context, _engine, _schemas.GetSchema(shape), _displayNames);
-
-            // A by-query export counts on its first page; ids are capped by their own limit.
             int cap = Cap(background);
-            ExcelQuery query = new(
-                entity.Name,
-                columns.SelectPaths,
-                request.OrderBy,
-                Restriction: null,
-                RestrictionValues: null,
-                Take: cap + 1,
-                CountCap: source is ExportSource.ByQuery ? cap : null,
-                Dependents: null);
-            ExcelWorkbookPlan plan = _exporter.PlanDisplay(entity, columns.Specs, query, context);
+            (DisplayColumns columns, ExcelWorkbookPlan plan) = PlanDisplay(target.Entity, request, source, context, cap);
 
             IExcelRowSource rows = Reporting(new FoldingRowSource(target.Rows(source), columns), plan, source, background);
             return await WriteAsync(plan, rows, context, cap, background is null ? DisplayRemedy : null, cancellationToken).ConfigureAwait(false);
@@ -176,6 +162,63 @@ namespace Tellma.Core.Excel
             ExcelWorkbookPlan plan = _exporter.PlanEditable(target.Entity, request, cap, context);
             IExcelRowSource rows = Reporting(target.Rows(source), plan, source, background);
             return await WriteAsync(plan, rows, context, cap, background is null ? EditableRemedy : null, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        ///     Plans a display export under the request's context without reading a row, so a
+        ///     background start refuses a request its job could never run.
+        /// </summary>
+        /// <param name="target">What is exported.</param>
+        /// <param name="request">The request.</param>
+        /// <exception cref="BadRequestException">The request maps to no source, or its columns are out of bounds.</exception>
+        /// <exception cref="InvalidQueryException">A column's expression does not compile.</exception>
+        public void CheckDisplay(ExportTarget target, ExportRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(request);
+            ExportSources.CheckColumns(request);
+            ExportSource source = ExportSources.Of(request, template: false, target.Child);
+            _ = PlanDisplay(target.Entity, request, source, _contexts.Create(), Math.Min(_options.MaxExportRows, ExcelOptions.MaxWorksheetDataRows));
+        }
+
+        /// <summary>
+        ///     Plans an editable export under the request's context without reading a row, so a
+        ///     background start refuses a column, key or collection the entity lacks.
+        /// </summary>
+        /// <param name="target">What is exported: a stack.</param>
+        /// <param name="request">The request.</param>
+        /// <exception cref="BadRequestException">The request maps to no source, or names a column, key or collection the entity lacks.</exception>
+        public void CheckEditable(ExportTarget target, ExportForImportRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(target);
+            ArgumentNullException.ThrowIfNull(request);
+            _ = ExportSources.Of(request, template: true, child: false);
+            _ = _exporter.PlanEditable(target.Entity, request, Math.Min(_options.MaxExportRows, ExcelOptions.MaxWorksheetDataRows), _contexts.Create());
+        }
+
+        /// <summary>The display plan: the columns expanded into the select terms they read, and the workbook's sheet.</summary>
+        /// <param name="entity">The exported entity.</param>
+        /// <param name="request">The request.</param>
+        /// <param name="source">The request's rows.</param>
+        /// <param name="context">The codec's context.</param>
+        /// <param name="cap">The parent sheet's cap.</param>
+        /// <returns>The expanded columns and the plan.</returns>
+        private (DisplayColumns Columns, ExcelWorkbookPlan Plan) PlanDisplay(EntityMetadata entity, ExportRequest request, ExportSource source, ExcelContext context, int cap)
+        {
+            var shape = (MultilingualShape)Math.Clamp(context.TenantLanguages.Count, 1, 3);
+            var columns = DisplayColumns.Expand(entity, request.Columns, context, _engine, _schemas.GetSchema(shape), _displayNames);
+
+            // A by-query export counts on its first page; ids are capped by their own limit.
+            ExcelQuery query = new(
+                entity.Name,
+                columns.SelectPaths,
+                request.OrderBy,
+                Restriction: null,
+                RestrictionValues: null,
+                Take: cap + 1,
+                CountCap: source is ExportSource.ByQuery ? cap : null,
+                Dependents: null);
+            return (columns, _exporter.PlanDisplay(entity, columns.Specs, query, context));
         }
 
         /// <summary>The parent sheet's cap of a run: the synchronous cap in a request, the export cap in the background.</summary>

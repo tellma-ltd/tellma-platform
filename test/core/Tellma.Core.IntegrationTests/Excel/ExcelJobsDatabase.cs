@@ -25,6 +25,7 @@ using Tellma.Core.Data.Batches;
 using Tellma.Core.Excel;
 using Tellma.Core.IntegrationTests.Crud;
 using Tellma.Core.IntegrationTests.Jobs;
+using Tellma.Core.Jobs;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tenancy;
 using Tellma.Core.Testing.Blobs;
@@ -78,6 +79,7 @@ namespace Tellma.Core.IntegrationTests.Excel
             DELETE FROM [fixture].[WidgetPartNotes];
             DELETE FROM [fixture].[WidgetParts];
             DELETE FROM [fixture].[Widgets];
+            DELETE FROM [fixture].[Links];
             DELETE FROM [fixture].[Nodes];
             """;
 
@@ -123,8 +125,13 @@ namespace Tellma.Core.IntegrationTests.Excel
                     // The stacks' tables are theirs again, as in production.
                     _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(static provider => new StackTableOwners(provider.GetRequiredService<StackRegistry>())));
                 },
-                // A handler's jump in progress renews its lease beside the batch it runs, and the
-                // change-tracking audit would charge that write to the batch, so it is off.
+                // The change-tracking audit is off for this suite's batches, the export and import
+                // completions and the chunk saves among them. A handler's jump in progress renews its
+                // lease on a second connection while a batch runs, and the audit, which compares the
+                // tables that changed during the batch, would charge that renewal to the batch as an
+                // undeclared write. Progress.Append's fenced write, which rides every chunk save here,
+                // stays audited in the job runner's own suite, whose database suspends the audit only
+                // in the tests that run batches side by side.
                 audit: false,
                 compose: static tellma => tellma.AddFeature(new ImportWarningFeature()),
                 cancellationToken: TestContext.Current.CancellationToken);
@@ -260,6 +267,13 @@ namespace Tellma.Core.IntegrationTests.Excel
         public Task DueNowAsync(int jobId)
         {
             return SqlServerFixture.ExecuteAsync(ConnectionString, string.Create(CultureInfo.InvariantCulture, $"UPDATE [core].[Jobs] SET [DueAt] = DATEADD(second, -1, SYSUTCDATETIME()) WHERE [Id] = {jobId};"));
+        }
+
+        /// <summary>Renews the tenant's leases now, as the worker's timer would, so a running handler reads a cancel requested since its claim.</summary>
+        /// <returns>A task that completes once the renewal ran.</returns>
+        public Task RenewAsync()
+        {
+            return Tenant.Services.GetRequiredService<IJobRenewal>().RenewAsync(FixtureTenant.TenantId, TestContext.Current.CancellationToken);
         }
 
         /// <summary>Sets columns of a stored job row, as the API or an operator would.</summary>

@@ -352,17 +352,22 @@ namespace Tellma.Core.Tests.Excel
         }
 
         [Fact]
-        public async Task A_cycle_through_child_rows_is_refused_at_each_child_cell_that_closes_it()
+        public async Task New_rows_linked_both_ways_through_child_rows_save_in_one_chunk_binding_each_others_ids()
         {
             using ExportScope scope = new(composition.Services, "en", "en");
             byte[] workbook = NodesWithLinks([(-1, "A"), (-2, "B"), (-3, "C")], [(-1, -2), (-2, -1), (-3, -1)]);
 
-            ImportException refused = await Assert.ThrowsAsync<ImportException>(() => _kit.ParseAsync<Node>(workbook, scope.Context));
+            ExcelImportSession<Node> session = await _kit.ParseAsync<Node>(workbook, scope.Context);
 
-            // C names A from outside the cycle, so only the two links on it are refused.
-            Assert.Equal([("Links", 2, "B"), ("Links", 3, "B")], refused.Errors.Select(static error => (error.Sheet!, error.Row!.Value, error.Column!)));
-            Assert.All(refused.Errors, static error => Assert.Equal((ExcelErrorCodes.ImportParentCycle, "OtherNode.Id"), (error.Code, error.Arguments["path"])));
-            Assert.Equal([2L, 3L], (long[])refused.Errors[0].Arguments["rows"]!);
+            // --- No tree cycle: A and B follow the rest in Excel order, kept in one chunk by their references ---
+            Assert.Equal([2, 3, 4], session.SheetRows);
+            Assert.Equal(1, session.Core.ChunkEnd(0, chunkRows: 1, maxParents: 10, maxRows: 100));
+            ExcelChunk<Node> chunk = session.Resolve(0, 1, NoLookups, [], NoCommitted);
+
+            // --- One save binds each row's link to the other's new id ---
+            Assert.Empty(chunk.Errors);
+            Assert.Equal(chunk.Entities[1].Id, Assert.Single(chunk.Entities[0].Links!).OtherNodeId);
+            Assert.Equal(chunk.Entities[0].Id, Assert.Single(chunk.Entities[1].Links!).OtherNodeId);
         }
 
         [Fact]

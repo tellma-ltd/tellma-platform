@@ -837,9 +837,11 @@ namespace Tellma.Core.Excel
                 }
             }
 
-            // --- The rows left over: those on a cycle refused, every one placed after the rest ---
-            // Spec 0019 §9.6 refuses a cycle among new rows. An upsert by a natural key cannot tell
-            // which rows are new before its lookups, so its cycles wait for resolution.
+            // --- The rows left over: those on a cycle of parent references refused, every one placed after the rest ---
+            // Spec 0019 §9.6 refuses a cycle among new rows' parent references. A cycle that runs
+            // through a child row is no tree cycle: one save persists its rows, binding their new ids
+            // either way, and the chunking keeps them in one chunk. An upsert by a natural key cannot
+            // tell which rows are new before its lookups, so its cycles wait for resolution.
             if (order.Count < count)
             {
                 RefuseCycles(rows, needs, placed, deferred: mode == ImportMode.Upsert && rowKey != ImportPaths.Id);
@@ -875,9 +877,10 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
-        ///     Refuses each row on a cycle of references among the rows no order reached: every
-        ///     strongly connected group of more than one row, or a row naming itself, at the cell
-        ///     naming another row of its cycle. A deferred cycle is kept for resolution instead.
+        ///     Refuses each row on a cycle of the parent rows' own references among the rows no order
+        ///     reached: every strongly connected group of more than one row, or a row naming itself,
+        ///     at the cell naming another row of its cycle. A cycle closed only through a child row's
+        ///     reference is left for one save. A deferred cycle is kept for resolution instead.
         /// </summary>
         /// <param name="rows">The parent rows, in Excel order.</param>
         /// <param name="needs">Each row's edges: the rows its family names that may be new, with the cell naming each.</param>
@@ -885,6 +888,8 @@ namespace Tellma.Core.Excel
         /// <param name="deferred">Whether the rows' newness is unknown until resolution, which then refuses the cycle.</param>
         private void RefuseCycles(List<ImportRow> rows, List<OrderEdge>[] needs, bool[] placed, bool deferred)
         {
+            // --- Only the parent rows' own references: an edge from a child row orders, never cycles ---
+            needs = [.. needs.Select((edges, index) => edges.Where(edge => ReferenceEquals(edge.Referrer, rows[index])).ToList())];
             foreach (List<int> group in StronglyConnected(needs, placed))
             {
                 HashSet<int> members = [.. group];
