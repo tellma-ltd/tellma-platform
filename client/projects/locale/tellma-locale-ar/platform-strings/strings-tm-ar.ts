@@ -134,7 +134,6 @@ export const TM_STRINGS_AR: TmStringTree = {
     },
     tray: { label: 'مهامي', open: '{count} مفتوحة', new: '{count} جديدة' },
     separator: '، ',
-    assignment: { title: '{entity} {code}' },
     toasts: {
       more: 'المزيد ({count, number}) · فتح الإشعارات',
       failed: `تعذّر تحديث إشعاراتك. ${imperative('حاول', 'حاولي')} مرة أخرى.`,

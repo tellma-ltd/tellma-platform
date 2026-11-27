@@ -109,6 +109,20 @@ export interface TmModalConfig {
    * {@link TmModalRef.close} is not guarded.
    */
   canDismiss?: () => boolean | Promise<boolean>;
+  /**
+   * The element that takes focus back when the modal closes. Default: the
+   * element that had focus when it opened. Pass the control that opened a
+   * drawer, such as a toolbar button reached by a keyboard shortcut from a
+   * field, so focus returns to it rather than to the field. Focus moves
+   * only while it is still in the modal or on the page body, so a modal
+   * closed by a navigation that moved focus leaves it where it went.
+   *
+   * @example
+   * ```ts
+   * this.modal.open(TrayPanel, { placement: 'end', title: 'Notifications', returnFocus: button });
+   * ```
+   */
+  returnFocus?: HTMLElement;
 }
 
 let nextTitleId = 0;
@@ -229,7 +243,7 @@ export class TmModal {
         disableClose: true,
         closeOnNavigation: config.closeOnNavigation ?? true,
         autoFocus: 'first-tabbable',
-        restoreFocus: true,
+        restoreFocus: config.returnFocus ?? true,
         role,
         ariaLabelledBy: title !== undefined ? titleId : null,
         ariaDescribedBy: describedBy ?? null,

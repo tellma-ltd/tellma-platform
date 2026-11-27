@@ -163,12 +163,14 @@ describe('the tenant shell', () => {
       expect(await shell.getAvatarTone()).toBe(tmAvatarTone('core.User:42'));
     });
 
-    it('reserves the boxes of the bell, the tray, help and the assistant', async () => {
+    it("places the bell's and the tray's 30 px buttons and reserves help's and the assistant's boxes", async () => {
       await start();
       const shell = await open();
-      expect(await shell.getReservedSlots()).toEqual(['bell', 'tray', 'help', 'assistant']);
-      const [bell, tray, help, assistant] = Array.from(document.querySelectorAll<HTMLElement>('tm-app-bar span[data-tm-slot]'));
+      expect(await shell.getReservedSlots()).toEqual(['help', 'assistant']);
+      const bell = document.querySelector<HTMLElement>('tm-app-bar [data-tm-slot="bell"] button')!;
+      const tray = document.querySelector<HTMLElement>('tm-app-bar [data-tm-slot="tray"] button')!;
       expect([bell.offsetWidth, bell.offsetHeight, tray.offsetWidth, tray.offsetHeight]).toEqual([30, 30, 30, 30]);
+      const [help, assistant] = Array.from(document.querySelectorAll<HTMLElement>('tm-app-bar span[data-tm-slot]'));
       expect([help.offsetWidth, assistant.offsetWidth]).toEqual([0, 0]);
     });
   });

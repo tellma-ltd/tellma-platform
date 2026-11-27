@@ -41,11 +41,14 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   `@tellma/locale-ar/dashboards-strings` entry point, the Queryex tools' part,
   the expression editor's and the path picker's strings, in
   `queryex-strings/strings-queryex-ar.ts`, the
-  `@tellma/locale-ar/queryex-strings` entry point, and the support tools'
+  `@tellma/locale-ar/queryex-strings` entry point, the support tools'
   part, the support dialog's and the Diagnostics panel's strings, in
   `support-strings/strings-support-ar.ts`, the
-  `@tellma/locale-ar/support-strings` entry point), which `tmArabic()` merges
-  and hands the platform. `tmArabic()` loads the seven entry points at once on
+  `@tellma/locale-ar/support-strings` entry point, and the attention part,
+  the bell's and the tray's panels and the assignment rows, in
+  `attention-strings/strings-attention-ar.ts`, the
+  `@tellma/locale-ar/attention-strings` entry point), which `tmArabic()` merges
+  and hands the platform. `tmArabic()` loads the eight entry points at once on
   the first switch to Arabic, so an app's other languages never download
   them, and an app on the component library alone never downloads the
   platform's tables.
@@ -89,11 +92,13 @@ Copy this package's structure:
    and `pathPicker` scopes the expression editor and the path picker register in
    English; `support-strings/strings-support-xx.ts` — the `supportHost` and
    `support` scopes the support dialog and the Diagnostics panel register in
-   English.
+   English; `attention-strings/strings-attention-xx.ts` — the `attentionPanels`
+   and `attentionRows` scopes the bell's and the tray's panels and the
+   attention rows register in English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and its tables, loaded
    together with `import()` from the `platform-strings`, `shell-strings`,
-   `details-strings`, `dashboards-strings`, `queryex-strings`, `support-strings` and `strings` entry points;
+   `details-strings`, `dashboards-strings`, `queryex-strings`, `support-strings`, `attention-strings` and `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the

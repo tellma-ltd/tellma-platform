@@ -201,9 +201,11 @@ describe('TmDiagnosticsPanel', () => {
 
     // --- In the support dialog: no Report a problem, and the file from the dialog's snapshot ---
     const clicks: string[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       clicks.push(this.download);
     });
+    // The prototype is the page's, which later files share: restore it with this test.
+    onTestFinished(() => click.mockRestore());
     fixture.componentInstance.reportable.set(false);
     fixture.componentInstance.snapshot.set({
       at: clock,

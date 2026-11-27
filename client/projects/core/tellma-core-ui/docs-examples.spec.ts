@@ -131,7 +131,7 @@ import * as pagerExamples from './pager/tm-pager.examples';
 import * as pivotExamples from './pivot/tm-pivot.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
-import * as progressRingExamples from './progress/tm-progress-ring.examples';
+import * as progressRingExamples from './progress-ring/tm-progress-ring.examples';
 import * as radioGroupExamples from './radio/tm-radio-group.examples';
 import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
 import * as reorderListExamples from './reorder-list/tm-reorder-list.examples';
@@ -1029,7 +1029,7 @@ const SUITES = [
   { source: 'tiles-tree/tm-tiles-tree.examples.ts', examples: tilesTreeExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
-  { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },
+  { source: 'progress-ring/tm-progress-ring.examples.ts', examples: progressRingExamples },
   { source: 'skeleton/tm-skeleton.examples.ts', examples: skeletonExamples },
   { source: 'relative-time/tm-relative-time.examples.ts', examples: relativeTimeExamples },
   { source: 'copy/tm-copy-button.examples.ts', examples: copyButtonExamples },

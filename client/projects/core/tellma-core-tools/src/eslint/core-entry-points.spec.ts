@@ -16,6 +16,7 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, '.')]).toEqual([]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention')].sort()).toEqual([
       '.',
+      './attention-rows',
       './error-paths',
       './private',
       './search-normalize',
@@ -23,6 +24,7 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './shell')].sort()).toEqual([
       '.',
       './attention',
+      './attention-rows',
       './error-paths',
       './private',
       './search-normalize',
@@ -33,12 +35,14 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './private')]).toEqual(['.']);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search-normalize')]).toEqual([]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './error-paths')]).toEqual([]);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention-rows')]).toEqual(['.']);
   });
 
   it('lets lazy entry points import every eager and shared one', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search')].sort()).toEqual([
       '.',
       './attention',
+      './attention-rows',
       './column-filter',
       './entity',
       './error-paths',
