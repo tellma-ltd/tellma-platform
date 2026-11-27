@@ -271,15 +271,26 @@ namespace Tellma.Testing.WebHost
 
         /// <summary>
         ///     Moves the clock on, then has the tenant registry confirm its snapshot at the new reading,
-        ///     as the refresh loop does within one interval on a real clock. A test that moves the clock
-        ///     past the snapshot's staleness bound and then sends a tenant request expecting it served
-        ///     moves it with this method: after a bare move, the request races the refresh the move
-        ///     fires and, when it wins, meets a snapshot beyond its bound and is answered
-        ///     <c>503 catalog-unavailable</c>.
+        ///     as the refresh loop does within one interval on a real clock.
         /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         A test that moves the clock past the snapshot's staleness bound and then runs work
+        ///         that reads the snapshot moves it with this method. Such work includes a tenant
+        ///         request, a background tenant scope (a job, an outbox delivery), a tenant connection's
+        ///         resolution and the readiness check. After a bare move, that work races the refresh
+        ///         the move fires and, when it wins, meets a snapshot beyond its bound: a request is
+        ///         answered <c>503 catalog-unavailable</c>, and the rest fails the same way.
+        ///     </para>
+        ///     <para>
+        ///         The refresh's failure is the move's failure. A test that wants the snapshot stale, or
+        ///         that holds or fails the catalog's reads, keeps the clock's own move.
+        ///     </para>
+        /// </remarks>
         /// <param name="by">How far to move the clock.</param>
         /// <returns>A task that completes once the snapshot was confirmed at the new reading.</returns>
         /// <exception cref="TimeoutException">The refresh did not end within the test's patience.</exception>
+        /// <exception cref="Exception">The catalog's read failed: whatever it threw.</exception>
         public async Task AdvanceAsync(TimeSpan by)
         {
             Time.Advance(by);
@@ -289,13 +300,15 @@ namespace Tellma.Testing.WebHost
         /// <summary>
         ///     Moves the clock to an instant once the timers armed after a mark wait for it, as
         ///     <see cref="TestClock.AdvanceToAsync" /> does, then has the tenant registry confirm its
-        ///     snapshot at the new reading, as <see cref="AdvanceAsync" /> does.
+        ///     snapshot at the new reading, as <see cref="AdvanceAsync" /> does, for the same work and
+        ///     with the same failures.
         /// </summary>
         /// <param name="mark">The mark, from <see cref="TestClock.Mark" /> or an earlier move.</param>
         /// <param name="due">The instant, after the clock's reading.</param>
         /// <param name="count">How many such timers to wait for.</param>
         /// <returns>A mark taken just before the move, for the timers the work it releases arms next.</returns>
         /// <exception cref="TimeoutException">The timers were not armed, or the refresh did not end, within the test's patience.</exception>
+        /// <exception cref="Exception">The catalog's read failed: whatever it threw.</exception>
         public async Task<long> AdvanceToAsync(long mark, DateTimeOffset due, int count = 1)
         {
             long moved = await Time.AdvanceToAsync(mark, due, count);
