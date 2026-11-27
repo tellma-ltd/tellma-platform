@@ -85,6 +85,7 @@ export class TmDashboardTile {
     protected viewAll(event: MouseEvent, url: string): void;
     protected readonly viewAllLabel: Signal<string>;
     protected readonly viewAllText: Signal<string>;
+    protected readonly viewAllUrl: Signal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDashboardTile, "tm-dashboard-tile", never, { "tile": { "alias": "tile"; "required": true; "isSignal": true; }; "placement": { "alias": "placement"; "required": true; "isSignal": true; }; "parameters": { "alias": "parameters"; "required": false; "isSignal": true; }; "presenting": { "alias": "presenting"; "required": false; "isSignal": true; }; "tick": { "alias": "tick"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDashboardTile, never>;
 }

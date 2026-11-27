@@ -164,15 +164,22 @@ export class TmDashboardGrid {
   /** The tiles' rendered components, in reading order. */
   private readonly tileViews = viewChildren(TmDashboardTile);
 
-  /** Each tile's state, in reading order. */
-  readonly tiles: Signal<readonly TmTileState[]> = computed(() =>
-    this.tileViews().map((tile) => ({
-      key: tile.tile().key,
-      title: tile.tile().title,
-      executedAt: tile.executedAt(),
-      status: tile.run()?.status ?? STATUS[tile.view()],
-    })),
-  );
+  /** Each laid-out tile's state, in reading order: a tile not yet rendered is loading; a hidden one is absent. */
+  readonly tiles: Signal<readonly TmTileState[]> = computed(() => {
+    // Every tile the grid laid out reports, so a reader waiting on them all
+    // waits on the visible tiles only, and a tile still rendering reads as
+    // loading rather than missing.
+    const views = new Map(this.tileViews().map((view) => [view.tile().key, view]));
+    return this.layout().map(({ tile }) => {
+      const view = views.get(tile.key);
+      return {
+        key: tile.key,
+        title: tile.title,
+        executedAt: view?.executedAt() ?? null,
+        status: view === undefined ? 'loading' : (view.run()?.status ?? STATUS[view.view()]),
+      };
+    });
+  });
 
   /** Registers the entry point's strings and icons. */
   constructor() {

@@ -13,10 +13,11 @@ import {
   type TmDashboardWidgetModel,
   type TmFeature,
   type TmLazyComponent,
+  type TmClientMetadata,
   type TmReportArgs,
 } from '@tellma/core';
 
-import { tmAppRig, tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmAppRig, tmAssignmentsTestRoute, tmGatedCoreWidget, tmNavigate, tmSettle } from '../../src/routes/tm-app.testing.util';
 import { TmDashboardGrid } from './tm-dashboard-grid';
 import { injectTmWidget, type TmWidgetContext } from './tm-widget-context';
 
@@ -176,6 +177,7 @@ class TmGridHost {
  * @param denied - Whether a denied tile shows.
  * @param loadFlaky - The controlled type's body.
  * @param slot - The active content slot, when not the first.
+ * @param app - More features, the Core chunk when not the route test metadata, and a tenant route to open first, which the lists' links need.
  * @returns The host's fixture.
  */
 async function render(
@@ -183,9 +185,11 @@ async function render(
   denied: 'show' | 'hide' = 'hide',
   loadFlaky: TmLazyComponent = () => Promise.resolve(TmCashBody),
   slot?: 2 | 3,
+  app: { readonly features?: readonly TmFeature[]; readonly metadata?: TmClientMetadata; readonly at?: string } = {},
 ): Promise<ComponentFixture<TmGridHost>> {
   await tmAppRig({
-    features: [acme(loadFlaky)],
+    metadata: app.metadata,
+    features: [acme(loadFlaky), ...(app.features ?? [])],
     strings: {
       en: {
         Acme_Cash: 'Cash position',
@@ -197,6 +201,9 @@ async function render(
       },
     },
   });
+  if (app.at !== undefined) {
+    await tmNavigate(app.at);
+  }
   if (slot !== undefined) {
     vi.spyOn(TestBed.inject(TmLocalization), 'contentSlot').mockReturnValue(slot);
   }
@@ -556,7 +563,7 @@ describe('the dashboard grid', () => {
     expect(statuses(fixture)).toEqual([['ar', 'error']]);
   });
 
-  it('marks held numbers stale after a failed run over them, until the next result', async () => {
+  it('marks held numbers stale after a failed run over them, through the next run, until its result', async () => {
     const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
     const [tile] = tiles(fixture);
     const at = new Date().toISOString();
@@ -567,6 +574,11 @@ describe('the dashboard grid', () => {
     const stale = tile!.querySelector('.tm-dashboard-tile__stale');
     expect(stale?.getAttribute('aria-label')).toMatch(/^Couldn't refresh\. Showing data from \d/);
     expect(tile!.querySelector('.tm-dashboard-tile__status time')?.getAttribute('datetime')).toBe(at);
+
+    // The next run's start keeps the marker: only its success clears it.
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__stale')).not.toBeNull();
 
     reporting!.report({ status: 'ready', executedAt: at });
     await tmSettle();
@@ -605,6 +617,7 @@ describe('the dashboard grid', () => {
     const [tile, locked] = tiles(fixture);
     const options = tile!.querySelector<HTMLButtonElement>('.tm-dashboard-tile__options')!;
     expect(options.getAttribute('aria-label')).toBe('Widget options for Receivables');
+    expect(options.parentElement?.classList.contains('tm-card__actions')).toBe(true);
     expect(locked!.querySelector('.tm-dashboard-tile__options')).toBeNull();
 
     options.click();
@@ -637,5 +650,50 @@ describe('the dashboard grid', () => {
     await tmSettle();
     expect(tile!.querySelector('.tm-dashboard-tile__status time')).toBeNull();
     expect(tile!.querySelector('.tm-dashboard-tile__status .tm-skeleton__bar')).not.toBeNull();
+  });
+
+  it("keeps the time over a later run that no refresh forced, after a refresh's result", async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    const [tile] = tiles(fixture);
+    reporting!.report({ status: 'ready', executedAt: '2026-01-15T09:00:00Z' });
+    gridOf(fixture).refreshAll();
+    await tmSettle();
+    reporting!.report({ status: 'loading' });
+    const at = new Date().toISOString();
+    reporting!.report({ status: 'ready', executedAt: at });
+    await tmSettle();
+
+    // A change of the dashboard's arguments reloads the body in the same generation: the time holds.
+    fixture.componentInstance.parameters.set({ center: 5 });
+    await tmSettle();
+    expect(reporting!.tick().clear).toBe(true);
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__status time')?.getAttribute('datetime')).toBe(at);
+    expect(tile!.querySelector('.tm-dashboard-tile__status .tm-skeleton__bar')).toBeNull();
+    expect(tile!.querySelector('section')?.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it("hides a list's View all when presented, and on a denied list tile", async () => {
+    const route = tmAssignmentsTestRoute();
+    const fixture = await render(
+      [
+        { key: 'to-me', type: 'core.assignments-to-me', x: 0, y: 0, w: 6, h: 9 },
+        { key: 'by-me', type: 'core.assignments-by-me', x: 6, y: 0, w: 6, h: 9 },
+      ],
+      'show',
+      undefined,
+      undefined,
+      { metadata: route.metadata, features: [route.feature, tmGatedCoreWidget('core.assignments-by-me')], at: '/17' },
+    );
+    const [toMe, locked] = tiles(fixture);
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')?.getAttribute('href')).toBe('/17/assignments');
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')?.parentElement?.classList.contains('tm-card__actions')).toBe(true);
+    expect(state(locked!)).toBe("You don't have permission for this");
+    expect(locked!.querySelector('.tm-dashboard-tile__view-all')).toBeNull();
+
+    fixture.componentInstance.presenting.set(true);
+    await tmSettle();
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')).toBeNull();
   });
 });

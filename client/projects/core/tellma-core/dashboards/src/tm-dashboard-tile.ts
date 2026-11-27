@@ -122,25 +122,26 @@ let tiles = 0;
       [attr.aria-busy]="busy() ? 'true' : null"
     >
       <tm-card [heading]="tile().title" [count]="tile().list?.count() ?? null" flush>
-        <!-- The header's end: a list's "View all", or the options menu; neither on a denied tile, nor in present mode. -->
-        @if (tile().list; as list) {
-          @if (list.viewAll; as url) {
-            <a tmCardActions class="tm-dashboard-tile__view-all" [href]="href(url)" [attr.aria-label]="viewAllLabel()" (click)="viewAll($event, url)">{{ viewAllText() }}</a>
-          }
+        <!-- The header's end: a list's "View all", or the options menu; neither on a denied tile, nor in present mode.
+             Each branch has one root, which the card projects into its actions. -->
+        @if (viewAllUrl(); as url) {
+          <a tmCardActions class="tm-dashboard-tile__view-all" [href]="href(url)" [attr.aria-label]="viewAllLabel()" (click)="viewAll($event, url)">{{ viewAllText() }}</a>
         } @else if (menuShown()) {
-          <button
-            tmCardActions
-            tmButton
-            class="tm-dashboard-tile__options"
-            variant="ghost"
-            size="sm"
-            type="button"
-            [tmMenuTriggerFor]="options"
-            [attr.aria-label]="optionsLabel()"
-          >
-            <tm-icon name="ellipsis" />
-          </button>
-          <tm-menu #options [items]="menu()" [aria-label]="optionsLabel()" />
+          <ng-container ngProjectAs="[tmCardActions]">
+            <button
+              tmCardActions
+              tmButton
+              class="tm-dashboard-tile__options"
+              variant="ghost"
+              size="sm"
+              type="button"
+              [tmMenuTriggerFor]="options"
+              [attr.aria-label]="optionsLabel()"
+            >
+              <tm-icon name="ellipsis" />
+            </button>
+            <tm-menu #options [items]="menu()" [aria-label]="optionsLabel()" />
+          </ng-container>
         }
         @if (tile().status) {
           <!-- The status line: the description, then when the numbers were computed; its row is reserved before the first result. -->
@@ -329,6 +330,12 @@ export class TmDashboardTile {
   /** When the shown numbers were computed, kept across a failed run over them. */
   readonly #executedAt = signal<string | null>(null);
 
+  /** Whether the held numbers are stale: a run failed over them, and none has succeeded since. */
+  readonly #stale = signal(false);
+
+  /** The generation whose clear has dropped the held numbers, so a later run in it keeps the next ones. */
+  #cleared = -1;
+
   /** The body loaded for this tile, with the loader it came from. */
   readonly #body = signal<{ readonly load: TmLazyComponent; readonly type: Type<unknown> } | null>(null);
 
@@ -399,6 +406,9 @@ export class TmDashboardTile {
   /** Whether the options menu shows: a type that is not a list, in view mode, not denied, not presented. */
   protected readonly menuShown = computed(() => this.tile().list === null && this.tile().denied === null && !this.presenting());
 
+  /** A list's "View all" page, when it shows: in view mode, not denied, not presented; else `null`. */
+  protected readonly viewAllUrl = computed(() => (this.tile().denied === null && !this.presenting() ? (this.tile().list?.viewAll ?? null) : null));
+
   /** The options menu's accessible name: "Widget options for {title}". */
   protected readonly optionsLabel: Signal<string> = computed(() => this.#l10n.ɵtext('tm.dashboard.options', { title: this.tile().title })());
 
@@ -433,7 +443,7 @@ export class TmDashboardTile {
     return {
       at,
       text: this.#l10n.ɵtext('tm.dashboard.updated', { time })(),
-      stale: run?.status === 'error',
+      stale: this.#stale(),
       staleLabel: this.#l10n.ɵtext('tm.dashboard.stale', { time })(),
       totals: run?.totalsOmitted ? this.#l10n.ɵtext('tm.dashboard.totalsOmitted')() : null,
     };
@@ -517,7 +527,8 @@ export class TmDashboardTile {
 
   /**
    * Records a run the body reported: a result's time is kept until the next
-   * result, so a failure over held numbers marks them stale.
+   * result, so a failure over held numbers marks them stale until a run
+   * succeeds.
    *
    * @param state - The run.
    */
@@ -526,11 +537,22 @@ export class TmDashboardTile {
       return;
     }
     this.#run.set(state);
+    const tick = untracked(this.#tick);
     if (state.executedAt) {
+      // A result replaces the held numbers, and clears the stale marker.
       this.#executedAt.set(state.executedAt);
-    } else if (state.status === 'loading' && untracked(this.#tick).clear) {
-      // A cleared refresh drops the held numbers, and the line waits again.
+      this.#stale.set(false);
+    } else if (state.status === 'loading' && tick.clear && tick.generation !== this.#cleared) {
+      // A cleared refresh drops the held numbers once, and the line waits
+      // again; a later run in the same generation (a parameter change, say)
+      // keeps whatever the refresh brought back.
+      this.#cleared = tick.generation;
       this.#executedAt.set(null);
+      this.#stale.set(false);
+    } else if (state.status === 'error' && untracked(this.#executedAt) !== null) {
+      // A failure over held numbers marks them stale until a run succeeds;
+      // a run that starts meanwhile keeps the marker (0035 §8.5).
+      this.#stale.set(true);
     }
   }
 

@@ -134,17 +134,19 @@ describe('tm-assignment-list', () => {
     expect(list.querySelectorAll('li[aria-hidden="true"]')).toHaveLength(3);
   });
 
-  it('shows five bars in the list rows, read as one busy region, while the home list loads', async () => {
+  it('shows five hidden bars in the list rows, read as one busy text and no landmark, while the home list loads', async () => {
     const fixture = await setup([]);
     fixture.componentInstance.variant.set('home');
     fixture.componentInstance.loading.set(true);
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
     const region = host.querySelector('.tm-assignment-list__loading')!;
-    expect(region.getAttribute('role')).toBe('region');
+    expect(region.getAttribute('role')).toBeNull();
     expect(region.getAttribute('aria-busy')).toBe('true');
-    expect(region.getAttribute('aria-label')).toBe('Loading assignments');
+    expect(region.textContent.trim()).toBe('Loading assignments');
+    expect(region.querySelector('.tm-dashboard-frame__rows')!.getAttribute('aria-hidden')).toBe('true');
     expect(region.querySelectorAll('.tm-dashboard-frame__rows .tm-skeleton__bar')).toHaveLength(5);
+    expect(host.querySelector('[role="region"]')).toBeNull();
     expect(host.querySelector('ul')).toBeNull();
   });
 

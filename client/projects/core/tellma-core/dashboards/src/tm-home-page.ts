@@ -16,7 +16,7 @@ import { TM_HOME_WIDGETS } from './tm-home-widgets';
 // the code-defined grid of the built-in widgets, labelled "Your work", both
 // in the dashboard column that caps the tiles' width and centres them, over
 // the subtle band that fills the rest of the page. Every part renders from
-// stored documents. Once every tile's body has rendered, the home's visit
+// stored documents. Once every shown tile's body has rendered, the home's visit
 // is timed.
 
 /** The platform's home page: the greeting over the home widgets. */
@@ -44,20 +44,29 @@ export class TmHomePage {
   /** The grid. */
   private readonly grid = viewChild.required(TmDashboardGrid);
 
-  /** Registers the strings the label reads, and times the visit once every tile's body has rendered. */
+  /** Registers the strings the label reads, and times the visit once every shown tile's body has rendered. */
   constructor() {
     tmPrepareDashboards();
 
-    // --- The visit's timing: the first frame after every tile has its body, outside the home's host none ---
+    // --- The visit's timing: the first frame after every shown tile has its body, outside the home's host none ---
+    // The grid reports only the tiles it laid out, so a type hidden from
+    // the user does not hold the timing back; with none shown, the first
+    // frame times it.
     const rendered = inject(TmHomeRendered, { optional: true });
     if (rendered !== null) {
       const injector = inject(Injector);
-      const watch = effect(() => {
-        const tiles = this.grid().tiles();
-        if (tiles.length === this.widgets.length && tiles.every((tile) => tile.status !== 'loading')) {
-          watch.destroy();
-          untracked(() => afterNextRender({ read: () => rendered.emit(false) }, { injector }));
-        }
+      // The grid lays its tiles out from its inputs, which are bound by the first render.
+      afterNextRender(() => {
+        const watch = effect(
+          () => {
+            const tiles = this.grid().tiles();
+            if (tiles.every((tile) => tile.status !== 'loading')) {
+              watch.destroy();
+              untracked(() => afterNextRender({ read: () => rendered.emit(false) }, { injector }));
+            }
+          },
+          { injector },
+        );
       });
     }
   }

@@ -152,8 +152,9 @@ const MINUTE_MS = 60_000;
   template: `
     <tm-attention-row-styles />
     @if (loading() && variant() === 'home') {
-      <!-- The home lists loading: five bars in the dashboard's list rows, read as one busy region. -->
-      <div class="tm-assignment-list__loading" role="region" aria-busy="true" [attr.aria-label]="text('loading')">
+      <!-- The home lists loading: five bars in the dashboard's list rows, read as one busy text inside the tile's own region. -->
+      <div class="tm-assignment-list__loading" aria-busy="true">
+        <span class="tm-assignment-list__loading-text">{{ text('loading') }}</span>
         <tm-skeleton class="tm-dashboard-frame__rows" shape="line" [lines]="5" />
       </div>
     } @else if (loading()) {
@@ -220,6 +221,18 @@ const MINUTE_MS = 60_000;
 
     .tm-attention-row__icon {
       color: var(--text-muted);
+    }
+
+    /* The loading text, read but not drawn: the bars draw the state. */
+    .tm-assignment-list__loading-text {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
     }
 
     .tm-assignment-list__amount {
