@@ -44,8 +44,9 @@ const cache = TestBed.inject(TmFakeClientCache);
 cache.add('indexeddb', 'tm-app', 'tm-old');
 // … end the session …
 expect(cache.names('indexeddb')).toEqual(['tm-app']);
-``` Beside
-`provideTellmaTesting()`, the state providers let the store's write guard pass:
+```
+
+Beside `provideTellmaTesting()`, the state providers let the store's write guard pass:
 
 ```ts
 TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });

@@ -19,7 +19,7 @@ import { TmFakeClientCache } from './tm-fake-client-cache';
 /** The names the spec creates in each area: matching and non-matching ones. */
 const NAMES: Readonly<Record<TmClientCacheArea, readonly string[]>> = {
   'cache-storage': ['tm-fake-cache-a', 'tm-fake-cache-b', 'tm-fake-cache-throws', 'tm.fake-cache-dot', 'ngsw:/:db:fake-cache'],
-  indexeddb: ['tm-fake-cache-a', 'tm-fake-cache-b', 'not-tm-fake-cache'],
+  indexeddb: ['tm-fake-cache-a', 'tm-fake-cache-b', 'tm.fake-cache-dot', 'not-tm-fake-cache'],
   'local-storage': ['tm.fake-cache-a', 'tm.fake-cache-b', 'tm-fake-cache-dash', 'not-tm.fake-cache'],
   'session-storage': ['tm.fake-cache-a', 'tm.fake-cache-b', 'tm.fake-cache-throws', 'tm-fake-cache-dash'],
 };
@@ -149,7 +149,7 @@ describe('TmFakeClientCache', () => {
     // And the outcome itself, so the comparison cannot pass on two sweeps that both did nothing.
     expect(real).toEqual({
       'cache-storage': ['tm-fake-cache-b', 'tm.fake-cache-dot', 'ngsw:/:db:fake-cache'],
-      indexeddb: ['not-tm-fake-cache'],
+      indexeddb: ['tm.fake-cache-dot', 'not-tm-fake-cache'],
       'local-storage': ['tm.fake-cache-b', 'tm-fake-cache-dash', 'not-tm.fake-cache'],
       'session-storage': ['tm.fake-cache-b', 'tm-fake-cache-dash'],
     });

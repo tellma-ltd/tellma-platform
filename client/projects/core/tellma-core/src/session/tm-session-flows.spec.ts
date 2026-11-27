@@ -557,21 +557,32 @@ describe('TmSessionFlows', () => {
       expect(sessionEvents(rig)).toEqual([{ name: 'tm.session.signed-out', props: { origin: 'elsewhere' } }]);
     });
 
-    it("leaves only once the browser's stores are swept, and clears the boot record after the sweep", async () => {
+    it("sweeps the store, then the browser's stores, then clears the boot record and the drafts, and only then leaves", async () => {
       const rig = await setUp();
       rig.store.boot.patch({ sub: TM_TEST_SUB, lastTenantId: 17 });
+      draft(rig, '17:gl.Center:5');
       rig.api.respond('/bff/logout', {});
+      const sweep = vi.spyOn(rig.store, 'sweep');
       let release = (): void => undefined;
       rig.cache.clearResult = new Promise<void>((resolve) => (release = resolve));
       void rig.paths.ɵsignOut();
       await tmSettleUntil(() => rig.cache.sweeps().length > 0, 'the clean-up swept the stores');
-      // Held at the sweep: the tab stays, the other tabs are not told yet, and the boot record still names the user.
+      // Held at the browser's stores: the store's own sweep ran first; the
+      // tab stays, the other tabs are not told yet, and the boot record and
+      // the draft are still there.
       await tmSettle();
-      expect([rig.host.assigned, rig.bus.types().includes('session.signed-out'), rig.store.boot.read().sub]).toEqual([[], false, TM_TEST_SUB]);
+      expect(sessionSweeps(sweep)).toEqual([['session-ended']]);
+      expect([rig.host.assigned, rig.bus.types().includes('session.signed-out'), rig.store.boot.read().sub, drafts(rig)]).toEqual([
+        [],
+        false,
+        TM_TEST_SUB,
+        1,
+      ]);
       release();
       await tmSettleUntil(() => rig.host.assigned.length > 0, 'the tab left for the signed-out page');
       expect(rig.host.assigned).toEqual(['/signed-out']);
       expect(rig.store.boot.read()).toMatchObject({ sub: null, lastTenantId: null });
+      expect(drafts(rig)).toBe(0);
       expect(rig.bus.types().at(-1)).toBe('session.signed-out');
     });
   });

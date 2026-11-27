@@ -64,6 +64,7 @@ export class TmFakeClientCache implements TmClientCacheSurface {
   readonly #errorHandler = inject(ErrorHandler);
   /** The names each area holds, in the order added. */
   readonly #stores: Record<TmClientCacheArea, string[]> = { 'cache-storage': [], indexeddb: [], 'local-storage': [], 'session-storage': [] };
+  /** Every sweep run so far, oldest first: the writable side of {@link TmFakeClientCache.sweeps}. */
   readonly #sweeps = signal<readonly TmFakeClientCacheSweep[]>([]);
 
   /** Every sweep run so far, oldest first. */
