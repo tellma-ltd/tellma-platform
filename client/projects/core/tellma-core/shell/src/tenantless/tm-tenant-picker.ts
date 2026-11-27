@@ -54,6 +54,9 @@ import { tmRegisterTenantlessStrings } from './tm-tenantless-strings';
 // rows, keeps its text in `?q=`, follows the only enabled match on Enter,
 // and takes Mod+K. A tenant the user chose and can no longer open arrives
 // with `?notice=tenant-not-found&from=<id>`, which shows a dismissible notice.
+// Once the first frame shows a Connect, a tenant home's chunks load at idle,
+// as hover and focus on Connect load them, so the first entry into a tenant
+// paints its skeleton in the click's frame.
 
 /** The memberships from which the search shows. */
 const SEARCH_FROM = 7;
@@ -491,7 +494,7 @@ export class TmTenantPicker {
     return this.count() > 0 && this.view()?.length === 0 ? this.noMatch() : '';
   });
 
-  /** Creates the picker, which reads the memberships again once it has rendered. */
+  /** Creates the picker, which reads the memberships again and preloads a tenant home once it has rendered. */
   constructor() {
     tmRegisterTenantlessStrings(this.#l10n);
     const destroyRef = inject(DestroyRef);
@@ -507,6 +510,20 @@ export class TmTenantPicker {
       // unreliably announced.
       queueMicrotask(() => this.#rendered.set(true));
       this.#read();
+    });
+
+    // --- A tenant home's chunks, at idle once the first frame shows a Connect (spec 0024 §4.3, §4.4) ---
+    // A hover's preload waits for idle, which a click can beat, and a first
+    // entry whose tenant shell is still loading misses the click's frame.
+    // Every tenant's home needs the same chunks, so one preload serves every
+    // Connect.
+    let warmed = false;
+    effect(() => {
+      const row = this.#rendered() ? this.#rows()?.find((candidate) => candidate.unavailable === null) : undefined;
+      if (row !== undefined && !warmed) {
+        warmed = true;
+        this.#urls.preload(this.#urls.forTenant(row.membership.id).home());
+      }
     });
 
     // --- The error state, from the lazily loaded error views; a line of its own when they fail to load ---

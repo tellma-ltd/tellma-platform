@@ -167,10 +167,40 @@ describe('the tenant picker', () => {
     await start({ tenants: [ACME] });
     const preload = vi.spyOn(TestBed.inject(TmUrls), 'preload');
     const [row] = await (await open()).getRows();
+    // The render's own preload comes first, so the hover's is told apart from it.
+    await tmSettleUntil(() => preload.mock.calls.length > 0, 'the first frame preloads a tenant home');
+    preload.mockClear();
     await row.hoverConnect();
     expect(preload).toHaveBeenCalledWith('/17');
     await row.connect();
     await tmSettleUntil(() => rig.router.url === '/17', 'the tenant home is routed');
+  });
+
+  it('preloads one tenant home once its first frame shows a Connect, before any hover', async () => {
+    await start({ tenants: [tmTestMembership(5, { name: 'Aardvark', state: 'Suspended' }), ACME, ACME_SANDBOX] });
+    const preload = vi.spyOn(TestBed.inject(TmUrls), 'preload');
+    await open();
+    // The first row has no Connect, so the first that has one is preloaded.
+    await tmSettleUntil(() => preload.mock.calls.length > 0, 'the first frame preloads a tenant home');
+    expect(preload.mock.calls).toEqual([['/17']]);
+    // The read's answer renders the rows again, and preloads nothing more.
+    await tmSettleUntil(() => routes().includes('/bff/user'), 'the memberships are read');
+    await tmSettle();
+    expect(preload).toHaveBeenCalledTimes(1);
+  });
+
+  it('preloads a tenant home once the read brings the first Connect, when nothing is stored', async () => {
+    await start();
+    let answer: (value: unknown) => void = () => undefined;
+    rig.api.respond('/bff/user', () => new Promise((resolve) => (answer = resolve)));
+    const preload = vi.spyOn(TestBed.inject(TmUrls), 'preload');
+    await open();
+    await tmSettleUntil(() => routes().includes('/bff/user'), 'the memberships are read');
+    await tmSettle();
+    expect(preload).not.toHaveBeenCalled();
+    answer({ tenants: [ACME] });
+    await tmSettleUntil(() => preload.mock.calls.length > 0, 'the list preloads a tenant home');
+    expect(preload.mock.calls).toEqual([['/17']]);
   });
 
   it('shows four skeleton rows while nothing is stored, then the list the read answers', async () => {

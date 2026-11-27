@@ -15,7 +15,7 @@ import type { TmEntitySummary } from '../entity/tm-entity-metadata';
 import type { TmDecimal, TmId } from '../json/tm-json';
 import { tmIsIdSegment, tmRoutedTenant, tmTenantSegment } from '../launch/tm-routed-tenant';
 import { TmTelemetry } from '../observe/tm-telemetry';
-import { TM_ROUTE_HOSTS } from '../routes/tm-route-hosts';
+import { TM_ROUTE_HOSTS, TM_TENANT_SHELL } from '../routes/tm-route-hosts';
 import { TM_ME_SECTIONS, TmRouteRules } from '../routes/tm-route-rules';
 import {
   tmEncodeQueryValue,
@@ -474,10 +474,10 @@ export class TmUrls implements TmTenantUrls {
   }
 
   /**
-   * Loads, at idle, everything a route's first frame needs: its host's
-   * chunk, its declaration's lazy layout and hatch chunks, and on an entity
-   * route the Entities chunk. It runs no guard or resolver, and loads each
-   * chunk once.
+   * Loads, at idle, everything a route's first frame needs: on a tenant
+   * route the tenant shell, then its host's chunk, its declaration's lazy
+   * layout and hatch chunks, and on an entity route the Entities chunk. It
+   * runs no guard or resolver, and loads each chunk once.
    *
    * @param url - The route's URL.
    */
@@ -583,7 +583,7 @@ export class TmUrls implements TmTenantUrls {
     return this.#injector.get(TM_APP_DECLARATIONS, null)?.pages ?? [];
   }
 
-  /** The chunks a route's first frame needs. */
+  /** The chunks a route's first frame needs: on a tenant route, the tenant shell's first. */
   #loadersOf(match: TmRouteMatch): (() => Promise<unknown>)[] {
     const declaration = match.entity === undefined ? undefined : (this.#entities.declaration(match.entity) as TmSearchDeclaration | undefined);
     const details = typeof declaration?.details === 'function' ? { page: declaration.details } : declaration?.details;
@@ -609,6 +609,11 @@ export class TmUrls implements TmTenantUrls {
           return [];
       }
     })();
-    return loaders.filter((load) => load !== undefined);
+    // Every tenant route renders in the tenant shell, which the route table
+    // returns at once only after its load has settled: a first entry whose
+    // shell is still loading waits a task, and misses the click's frame
+    // (spec 0024 §4.4). It is one loader, so it loads once for every route.
+    const shell = match.tenantId === undefined ? undefined : TM_TENANT_SHELL;
+    return [shell, ...loaders].filter((load) => load !== undefined);
   }
 }

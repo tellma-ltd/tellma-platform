@@ -79,6 +79,14 @@ export function tmShellRoute(name: keyof TmShellComponents): () => Type<unknown>
   return () => loaded[name] ?? load();
 }
 
+/**
+ * Loads the tenant shell, the tenant route's component. Internal:
+ * `TmUrls.preload` calls this one loader for every tenant route, so the
+ * route's first entry, such as Connect on the picker, finds the shell in
+ * memory and its skeleton paints in the click's frame.
+ */
+export const TM_TENANT_SHELL: TmLazyComponent = tmShellComponent('TmTenantShell');
+
 /** The page every family without an entry point of its own renders for now. */
 const placeholder = tmShellComponent('TmPagePlaceholder');
 
