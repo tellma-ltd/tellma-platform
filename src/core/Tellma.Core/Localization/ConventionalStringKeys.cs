@@ -14,7 +14,9 @@ using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Access;
 using Tellma.Core.Client;
+using Tellma.Core.Data.Queries;
 using Tellma.Core.Jobs;
+using Tellma.Core.Queryex;
 using Tellma.Core.Settings;
 
 namespace Tellma.Core.Localization
@@ -37,6 +39,11 @@ namespace Tellma.Core.Localization
     ///             primary's label, so neither has one); the shared member labels Core ships
     ///             (<c>Name</c>, <c>Parent</c>, …) whichever entities are composed; and
     ///             <c>Entity_New</c>;
+    ///         </item>
+    ///         <item>
+    ///             each read-only root the query language reads (a table that is no entity, which
+    ///             the client metadata labels like one): its own labels, and each column's and
+    ///             navigation's by the same chains;
     ///         </item>
     ///         <item>
     ///             each C# enum member's <c>&lt;Schema&gt;_&lt;Enum&gt;_&lt;Value&gt;</c>, under the
@@ -108,6 +115,7 @@ namespace Tellma.Core.Localization
             IStackRegistry? stacks = services.GetService<IStackRegistry>();
             ISettingKeyRegistry? settings = services.GetService<ISettingKeyRegistry>();
             AddEntities(keys, metadata);
+            AddReadOnlyRoots(keys, services.GetService<QueryexSchemaProvider>());
             AddEnums(keys, NamedEnums.Discover(metadata, settings?.Keys ?? [], stacks));
             AddSecurables(keys, services.GetRequiredService<ISecurableRegistry>(), metadata);
             AddStacks(keys, stacks);
@@ -148,6 +156,29 @@ namespace Tellma.Core.Localization
                 }
 
                 keys.UnionWith(entity.Children.Select(child => $"{prefix}_{child.Property}"));
+            }
+        }
+
+        /// <summary>
+        ///     The labels of the read-only roots: the query language's tables that map no entity, which
+        ///     the client metadata describes with the entities' label chains.
+        /// </summary>
+        /// <param name="keys">The keys so far.</param>
+        /// <param name="schemas">The query schemas; null where no data access is composed.</param>
+        private static void AddReadOnlyRoots(HashSet<string> keys, QueryexSchemaProvider? schemas)
+        {
+            if (schemas is null)
+            {
+                return;
+            }
+
+            // The widest shape names every root and member, as the client metadata reads them.
+            QueryexSchemaMap map = schemas.Map(MultilingualShape.All);
+            foreach (EntityDescriptor root in map.Schema.Entities.Where(descriptor => map.ClrType(descriptor) is null))
+            {
+                keys.UnionWith([.. LabelChains.Entity(root.Name), .. LabelChains.Plural(root.Name), .. LabelChains.New(root.Name)]);
+                keys.UnionWith(root.Properties.SelectMany(property => LabelChains.Property(root.Name, property.Name)));
+                keys.UnionWith(root.Navigations.SelectMany(navigation => LabelChains.Navigation(root.Name, navigation.Name, navigation.ForeignKey.Name)));
             }
         }
 

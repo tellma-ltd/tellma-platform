@@ -98,12 +98,16 @@ namespace Tellma.Core.Tests.Localization
                 Assert.Equal("Parent node", Labels.NavigationLabel(typeof(Node), "Parent"));
                 Assert.Equal("Counterpart", Labels.NavigationLabel(typeof(Link), "OtherNode"));
                 Assert.Equal("Created by", Labels.NavigationLabel(typeof(Widget), "CreatedBy"));
+                Assert.Equal("Parent", Labels.NavigationLabel(typeof(BlobFolder), "Parent"));
                 Assert.Equal("Preferred supplier", Labels.NavigationLabel(typeof(Widget), "PreferredSupplier"));
             }
 
+            // The audit column's navigation finds Core's shared key of its foreign key; a tree's
+            // parent, with no key of its own or of its foreign key, finds Core's shared navigation key.
             Assert.Equal("Fixture_Node_Parent", Labels.NavigationLabelKey(typeof(Node), "Parent"));
             Assert.Equal("Fixture_Link_OtherNodeId", Labels.NavigationLabelKey(typeof(Link), "OtherNode"));
-            Assert.Equal("CreatedBy", Labels.NavigationLabelKey(typeof(Widget), "CreatedBy"));
+            Assert.Equal("CreatedById", Labels.NavigationLabelKey(typeof(Widget), "CreatedBy"));
+            Assert.Equal("Parent", Labels.NavigationLabelKey(typeof(BlobFolder), "Parent"));
             Assert.Null(Labels.NavigationLabelKey(typeof(Widget), "PreferredSupplier"));
         }
 

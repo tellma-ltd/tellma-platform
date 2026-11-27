@@ -187,7 +187,8 @@ namespace Tellma.Core.Tests.Client
         [Theory]
         [InlineData(ClientModel.Centers, "Manager", "reference", "Gl_Center_ManagerId", null)]
         [InlineData(ClientModel.Customers, "Currency", "reference", "Acme_Customer_Currency", "Currency")]
-        [InlineData(ClientModel.Customers, "CreatedBy", "reference", "CreatedBy", null)]
+        [InlineData(ClientModel.Customers, "CreatedBy", "reference", "CreatedById", null)]
+        [InlineData(ClientModel.Centers, "Parent", "reference", "Parent", null)]
         [InlineData(ClientModel.Customers, "Extra", "sibling", "Acme_Customer_Extra", "Extra")]
         public void A_navigation_takes_its_own_key_then_its_foreign_keys_then_the_shared_key(string entity, string navigation, string kind, string key, string? fallback)
         {
