@@ -7,7 +7,8 @@ import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { DestroyRef, inject } from '@angular/core';
 import { TmLocalization } from '@tellma/core';
 
-import { tmSearchCapturesKey, tmSearchInsert, tmSearchOnTop, tmSearchPastedText, type TmSearchFieldMode } from './tm-search-typing';
+import type { TmSearchMode } from './tm-search-model';
+import { tmSearchCapturesKey, tmSearchInsert, tmSearchOnTop, tmSearchPastedText } from './tm-search-typing';
 
 // The search page's keys (spec 0030 §5.2, §6.2): type-to-search, the pause
 // the live region waits for, and the pointer presses that disarm a pending
@@ -21,7 +22,7 @@ const ANNOUNCE_QUIET_MS = 500;
 /** Where the keys are listened for, and what they reach. */
 export interface TmSearchKeysOptions {
   /** Where the page runs. */
-  readonly mode: TmSearchFieldMode;
+  readonly mode: TmSearchMode;
   /** The document for a page or a list; the picker modal's pane for a picker. */
   readonly scope: Document | Element;
   /** The field's input, while it is in the document. */

@@ -5,9 +5,9 @@
 
 import type { TmApiError, TmContextError, TmJson, TmJsonObject } from '@tellma/core';
 
+import type { TmSearchMode } from './tm-search-model';
+import type { TmSearchClauseOrigin, TmSearchRequest } from './tm-search-request';
 import type { TmSearchRegionState } from './tm-search-state';
-
-import type { TmSearchFieldMode } from './tm-search-typing';
 
 // A refused query's diagnostics mapped back to their controls (spec 0030
 // §5.3). The server names each diagnostic's clause, `filters[i]` or
@@ -15,29 +15,10 @@ import type { TmSearchFieldMode } from './tm-search-typing';
 // name's origin in that order, so a diagnostic on the user's advanced filter
 // offers Edit filter, a diagnostic on a leaf or a name from code is a
 // distribution's bug, and one on a drill-through list's fixed filter means
-// the link itself is bad. The origins are the search model's; this part
-// reads only their kind, so it takes them as a type parameter.
+// the link itself is bad.
 
-/** Where one of a request's leaves or named filters came from: the part a diagnosis reads. */
-export interface TmSearchOriginLike {
-  /** The origin's kind: `advanced` for the user's advanced filter, `fixed` for a drill-through list's. */
-  readonly kind: string;
-}
-
-/** The part of a rows request a diagnosis reads: each leaf's and each named filter's origin, in order. */
-export interface TmSearchOrigins<O extends TmSearchOriginLike> {
-  /** Each leaf's origin, in the order the request sends them. */
-  readonly filters: readonly O[];
-  /** Each named filter's origin, in the order the request sends them. */
-  readonly namedFilters: readonly O[];
-}
-
-/**
- * One diagnostic of a refused query, with the control it came from.
- *
- * @typeParam O - The origins' type.
- */
-export interface TmSearchDiagnostic<O extends TmSearchOriginLike = TmSearchOriginLike> {
+/** One diagnostic of a refused query, with the control it came from. */
+export interface TmSearchDiagnostic {
   /** The clause, such as `filters[1]`. */
   readonly clause: string;
   /** The code, such as `Queryex.UnknownProperty`. */
@@ -53,7 +34,7 @@ export interface TmSearchDiagnostic<O extends TmSearchOriginLike = TmSearchOrigi
   /** The message in the request's language; `null` when the problem carries none. */
   readonly message: string | null;
   /** The leaf or named filter the clause holds; `null` for any other clause, such as the select. */
-  readonly origin: O | null;
+  readonly origin: TmSearchClauseOrigin | null;
 }
 
 /**
@@ -66,24 +47,14 @@ export interface TmSearchDiagnostic<O extends TmSearchOriginLike = TmSearchOrigi
  */
 export type TmSearchDiagnosisState = 'invalid-filter' | 'invalid-code' | 'invalid-link' | 'other';
 
-/**
- * A refused query's diagnostics, and what the page shows for them.
- *
- * @typeParam O - The origins' type.
- */
-export interface TmSearchDiagnosis<O extends TmSearchOriginLike = TmSearchOriginLike> {
+/** A refused query's diagnostics, and what the page shows for them. */
+export interface TmSearchDiagnosis {
   /** What the page shows. */
   readonly state: TmSearchDiagnosisState;
   /** The diagnostic the state shows: the first at fault for it; `null` when the problem lists none. */
-  readonly diagnostic: TmSearchDiagnostic<O> | null;
+  readonly diagnostic: TmSearchDiagnostic | null;
   /** Every diagnostic, in the server's order. */
-  readonly diagnostics: readonly TmSearchDiagnostic<O>[];
-}
-
-/** The part of a rows request a refused query's state reads: the origins and the body that holds the leaves. */
-export interface TmSearchRefusedRequest<O extends TmSearchOriginLike> extends TmSearchOrigins<O> {
-  /** The request's body; its `filters` hold the leaves' text. */
-  readonly body: TmJsonObject;
+  readonly diagnostics: readonly TmSearchDiagnostic[];
 }
 
 /** A clause that holds one of the request's leaves or named filters. */
@@ -95,13 +66,12 @@ const CLAUSE = /^(filters|namedFilters)\[(\d+)\]$/;
  * first, since the user can fix it; then a list's bad link; then a leaf or
  * a name from code, which the host also logs.
  *
- * @typeParam O - The origins' type.
  * @param request - The request that was refused.
  * @param mode - Where the page runs.
  * @param error - The error the read rejected with.
  * @returns The diagnosis, or `null` when the error is not an invalid query.
  */
-export function tmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchDiagnosis<O> | null {
+export function tmSearchDiagnose(request: TmSearchRequest, mode: TmSearchMode, error: TmApiError): TmSearchDiagnosis | null {
   if (error.kind !== 'query-invalid') {
     return null;
   }
@@ -112,7 +82,7 @@ export function tmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearch
 
   // --- Each diagnostic, its message by its clause's turn, and its origin ---
   const used = new Map<string, number>();
-  const diagnostics: TmSearchDiagnostic<O>[] = [];
+  const diagnostics: TmSearchDiagnostic[] = [];
   for (const item of items) {
     const value = asObject(item);
     if (value === null || typeof value['clause'] !== 'string' || typeof value['code'] !== 'string') {
@@ -136,7 +106,7 @@ export function tmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearch
   }
 
   // --- The state, by what is at fault ---
-  const first = (test: (origin: O) => boolean): TmSearchDiagnostic<O> | undefined =>
+  const first = (test: (origin: TmSearchClauseOrigin) => boolean): TmSearchDiagnostic | undefined =>
     diagnostics.find((diagnostic) => diagnostic.origin !== null && test(diagnostic.origin));
   const advanced = first((origin) => origin.kind === 'advanced');
   if (advanced) {
@@ -158,13 +128,12 @@ export function tmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearch
  * filter's or the code's, with the first diagnostic's message and the text
  * it points at, or the invalid link's.
  *
- * @typeParam O - The origins' type.
  * @param request - The request that was refused.
  * @param mode - Where the page runs.
  * @param error - The error the read rejected with.
  * @returns The state, or `null` when no leaf is at fault and the error view shows.
  */
-export function tmSearchRefusedState<O extends TmSearchOriginLike>(request: TmSearchRefusedRequest<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchRegionState | null {
+export function tmSearchRefusedState(request: TmSearchRequest, mode: TmSearchMode, error: TmApiError): TmSearchRegionState | null {
   const diagnosis = tmSearchDiagnose(request, mode, error);
   if (diagnosis === null || diagnosis.state === 'other') {
     return null;
@@ -185,13 +154,12 @@ export function tmSearchRefusedState<O extends TmSearchOriginLike>(request: TmSe
  * A failed read's errors as the page context carries them: each diagnostic
  * of a refused query, else the error itself, with its trace id.
  *
- * @typeParam O - The origins' type.
  * @param request - The request that failed.
  * @param mode - Where the page runs.
  * @param error - The error the read rejected with.
  * @returns The errors.
  */
-export function tmSearchContextErrors<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): readonly TmContextError[] {
+export function tmSearchContextErrors(request: TmSearchRequest, mode: TmSearchMode, error: TmApiError): readonly TmContextError[] {
   const trace = error.traceId !== '' && { traceId: error.traceId };
   const diagnosis = tmSearchDiagnose(request, mode, error);
   if (diagnosis !== null && diagnosis.diagnostics.length > 0) {
@@ -220,12 +188,11 @@ function indexOf(clause: string): number {
 /**
  * The origin of the leaf or named filter a clause names.
  *
- * @typeParam O - The origins' type.
  * @param request - The request.
  * @param clause - The clause, such as `filters[1]`.
  * @returns The origin, or `null` for a clause that holds neither.
  */
-function originOf<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, clause: string): O | null {
+function originOf(request: TmSearchRequest, clause: string): TmSearchClauseOrigin | null {
   const match = CLAUSE.exec(clause);
   if (match === null) {
     return null;

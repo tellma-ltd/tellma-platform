@@ -5,27 +5,19 @@
 
 import { TmApiError, type TmJsonObject } from '@tellma/core';
 
-import { tmSearchDiagnose, type TmSearchOrigins } from './tm-search-diagnostics';
+import { tmSearchDiagnose } from './tm-search-diagnostics';
+import type { TmSearchRequest } from './tm-search-request';
 
 // A refused query's diagnostics mapped back to the controls their clauses
 // came from, by the request's leaf order: the advanced filter offers Edit
 // filter, a leaf or a name from code is a distribution's bug, a list's fixed
 // filter is a bad link, and any other clause shows the error view.
 
-/** An origin as the search model writes one: its kind and the key, value or index that names it. */
-interface TmTestOrigin {
-  /** The origin's kind. */
-  readonly kind: string;
-  /** The tab's, custom filter's or column's key. */
-  readonly key?: string;
-  /** The custom filter's value. */
-  readonly value?: string;
-  /** The fixed filter's index. */
-  readonly index?: number;
-}
-
 /** A request with a leaf from every source and two named filters. */
-const REQUEST: TmSearchOrigins<TmTestOrigin> = {
+const REQUEST: TmSearchRequest = {
+  tree: null,
+  route: 'customers/query',
+  body: {},
   filters: [{ kind: 'tab', key: 'open' }, { kind: 'advanced' }, { kind: 'custom', key: 'mine', value: '1' }, { kind: 'column', key: 'Code' }, { kind: 'fixed', index: 0 }],
   namedFilters: [
     { kind: 'tab', key: 'starred' },
