@@ -262,13 +262,13 @@ describe("the bell's and the tray's panels", () => {
       const bell = await openBell(rig);
       const loader = TestbedHarnessEnvironment.documentRootLoader(rig.fixture);
 
-      // An import asks in an import's words; Cancel sends nothing and leaves the panel open.
+      // An import asks in an import's words; Keep running sends nothing and leaves the panel open.
       await bell.stopJob(2);
       let confirm = await confirmOf(rig);
       expect(await confirm.getTitle()).toBe('Stop this import?');
       expect(await confirm.getMessage()).toBe("Rows already saved stay saved. The rest of the file won't be imported.");
-      expect(await confirm.getChoiceLabels()).toEqual(['Cancel', 'Stop import']);
-      await confirm.choose('Cancel');
+      expect(await confirm.getChoiceLabels()).toEqual(['Keep running', 'Stop import']);
+      await confirm.choose('Keep running');
       await tmSettle();
       expect(callsTo(rig, 'jobs/cancel')).toHaveLength(0);
       expect(rig.attention.open()).toBe('bell');
@@ -283,11 +283,31 @@ describe("the bell's and the tray's panels", () => {
       confirm = await confirmOf(rig);
       expect(await confirm.getTitle()).toBe('Stop this job?');
       expect(await confirm.getMessage()).toBe('Work already saved stays saved.');
-      expect(await confirm.getChoiceLabels()).toEqual(['Cancel', 'Stop']);
+      expect(await confirm.getChoiceLabels()).toEqual(['Keep running', 'Stop']);
       await confirm.choose('Stop');
       await tmSettleUntil(() => callsTo(rig, 'jobs/cancel').length === 2, 'the export is stopped');
       expect(callsTo(rig, 'jobs/cancel')[1]?.body).toEqual({ ids: [1] });
       expect(await loader.getAllHarnesses(TmConfirmHarness)).toEqual([]);
+    });
+
+    it('asks and sends a second stop while the first is still in flight', async () => {
+      const rig = await setUp();
+      await rig.put('inbox', inbox([job(1, 'Running', 50), job(2, 'Running', 40)]));
+      // The first stop's answer never comes.
+      rig.api.respond('jobs/cancel', (call: TmFakeApiCall) => ((call.body as { readonly ids: readonly number[] }).ids[0] === 1 ? new Promise(() => undefined) : {}));
+      const bell = await openBell(rig);
+
+      await bell.stopJob(1);
+      await (await confirmOf(rig)).choose('Stop');
+      await tmSettleUntil(() => callsTo(rig, 'jobs/cancel').length === 1, 'the first stop is sent');
+
+      await bell.stopJob(2);
+      const confirm = await confirmOf(rig);
+      expect(await confirm.getTitle()).toBe('Stop this job?');
+      await confirm.choose('Stop');
+      await tmSettleUntil(() => callsTo(rig, 'jobs/cancel').length === 2, 'the second stop is sent');
+      expect(callsTo(rig, 'jobs/cancel').map((call) => call.body)).toEqual([{ ids: [1] }, { ids: [2] }]);
+      expect((await bell.getJobs()).map((row) => row.line)).toEqual(['Stopping…', 'Stopping…']);
     });
 
     for (const width of WIDTHS) {
@@ -435,25 +455,36 @@ describe("the bell's and the tray's panels", () => {
       ];
       const rig = await setUp({}, { jobHandlers: handlers });
       await rig.put('inbox', inbox([job(4, 'PendingConfirmation', 50, { handlerKey: 'gl.center.post' }), job(5, 'PendingConfirmation', 40)]));
-      // The owner's lookup waits for the test's answer; the centers page's own list reads none.
+      // The owner's lookup, by its `Job` filter, waits for the test's answer; the centers pages' own reads answer at once.
       let answer: (value: unknown) => void = () => undefined;
       const empty = { rows: { columns: [], rows: [] }, count: 0 };
-      rig.api.respond('centers/query', (call: { readonly body: unknown }) =>
-        (call.body as { readonly filters?: unknown }).filters === undefined ? empty : new Promise((resolve) => (answer = resolve)),
-      );
-      const lookups = (): readonly TmFakeApiCall[] =>
-        callsTo(rig, 'centers/query').filter((call) => (call.body as { readonly filters?: unknown }).filters !== undefined);
+      const isLookup = (call: TmFakeApiCall): boolean =>
+        ((call.body as { readonly filters?: readonly string[] }).filters ?? []).some((filter) => filter.startsWith('Job = '));
+      rig.api.respond('centers/query', (call: TmFakeApiCall) => (isLookup(call) ? new Promise((resolve) => (answer = resolve)) : empty));
+      rig.api.respond('centers/get', (call: TmFakeApiCall) => {
+        const id = (call.body as { readonly id: number }).id;
+        return { entities: [{ id, code: `C-${String(id)}`, name: `Center ${String(id)}`, managerId: null }], related: {}, extras: { permissions: [] } };
+      });
+      const lookups = (): readonly TmFakeApiCall[] => callsTo(rig, 'centers/query').filter(isLookup);
+      // A record page takes focus as it lands, which would close a panel opened before.
+      const landed = async (url: string, what: string): Promise<void> => {
+        await tmSettleUntil(
+          () =>
+            rig.router.url === url &&
+            rig.router.currentNavigation() === null &&
+            document.querySelector('main')?.contains(document.activeElement) === true,
+          what,
+        );
+      };
       let bell = await openBell(rig);
 
       // The owner's read runs after the panel closed; its row's page opens.
       await bell.reviewJob(4);
       await tmSettle();
       expect(rig.attention.open()).toBeNull();
-      expect(lookups().map((call) => call.body)).toEqual([{ select: 'Id', filters: ['Job = 4'], take: 1 }]);
+      expect(lookups().map((call) => call.body)).toEqual([{ select: 'Id', filters: ['Job = 4'], take: 1, includeInactive: true }]);
       answer({ rows: { columns: [{ name: 'Id', type: 'Numeric', nullable: false, groupingKey: false }], rows: [[23]] } });
-      await tmSettleUntil(() => rig.router.url === '/17/centers/23' && rig.router.currentNavigation() === null, "the owner's page opens");
-      // The page takes focus as it lands, which would close a panel opened meanwhile.
-      await tmSettle();
+      await landed('/17/centers/23', "the owner's page opens");
 
       // A user who moves on while the owner is read stays where they went.
       bell = await openBell(rig);
@@ -461,6 +492,7 @@ describe("the bell's and the tray's panels", () => {
       await tmSettleUntil(() => lookups().length === 2, "the owner's second lookup is sent");
       await rig.router.navigateByUrl('/17/centers/24');
       answer({ rows: { columns: [{ name: 'Id', type: 'Numeric', nullable: false, groupingKey: false }], rows: [[23]] } });
+      await landed('/17/centers/24', 'the page the user went to opens');
       await tmSettle();
       expect(rig.router.url).toBe('/17/centers/24');
 
@@ -503,6 +535,13 @@ describe("the bell's and the tray's panels", () => {
       await confirm.choose('Stop import');
       expect(await stopped).toEqual({ outcome: 'done' });
 
+      // An id the bell shows no running job for, or no id at all, is refused before any question.
+      for (const args of [{ id: 9 }, { id: '2' }, null, [2]]) {
+        expect(await actions.invoke('attention.stop-job', args, 'assistant')).toEqual({ outcome: 'refused', reason: 'not-found' });
+      }
+      await tmSettle();
+      expect(document.querySelector('tm-confirm-content')).toBeNull();
+
       // Open item opens the row and closes the panel, which takes its context with it.
       expect(await actions.invoke('attention.open-item', { id: 3 }, 'assistant')).toEqual({ outcome: 'done' });
       await tmSettleUntil(() => rig.attention.open() === null, 'the panel closes');
@@ -542,6 +581,20 @@ describe("the bell's and the tray's panels", () => {
       expect(rig.attention.open()).toBe('tray');
       shortcut('KeyQ', 'Q');
       await tmSettleUntil(() => rig.attention.open() === null, 'the tray closes');
+    });
+
+    it('returns focus to the button when the drawer closes, though its shortcut opened it from a field', async () => {
+      const rig = await setUpAt(800);
+      await rig.put('inbox', inbox());
+      const field = document.createElement('input');
+      document.querySelector('main')!.append(field);
+      field.focus();
+      field.dispatchEvent(new KeyboardEvent('keydown', { key: 'U', code: 'KeyU', altKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+      await tmSettleUntil(() => document.querySelector('tm-bell-panel')?.contains(focused()) === true, "the bell's drawer opens with focus");
+
+      press('Escape');
+      await tmSettleUntil(() => rig.attention.open() === null && focused() === button('bell'), 'focus returns to the button');
+      field.remove();
     });
 
     it("closes the panel again when its chunk cannot load, so the next press tries again", async () => {

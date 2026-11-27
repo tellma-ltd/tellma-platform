@@ -4,8 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 import { inject, Injectable, Injector, runInInjectionContext } from '@angular/core';
-import { TmLocalization } from '@tellma/core';
-import type { TmToastRef } from '@tellma/core-ui/toast';
+import { TmLocalization, TmTelemetry } from '@tellma/core';
+import type { TmToast, TmToastRef } from '@tellma/core-ui/toast';
 
 import { tmRegisterAttentionStrings } from './tm-attention-strings';
 import type { TmOutcomeToastsBody } from './tm-outcome-toasts-body';
@@ -15,17 +15,21 @@ import type { TmOutcomeToastsBody } from './tm-outcome-toasts-body';
 // and a synchronous export in progress, with Cancel. Every other outcome on
 // the closed list calls TmToasts with its own copy and TM_TOAST_FEEDBACK_MS.
 // The toasts themselves load as a chunk at the first outcome, so the first
-// frame carries only this facade.
+// frame carries only this facade; each call answers at once with a handle
+// that holds its updates and its close until the toast shows.
 
 /**
- * The outcome toasts of the background work a page starts. Each toast
- * shows once its code has loaded, at the first outcome.
+ * The outcome toasts of the background work a page starts. Each call
+ * answers its toast's handle at once; the toast shows once its code has
+ * loaded, at the first outcome. An update before then applies as it shows,
+ * a close before then shows nothing, and a load that fails is reported and
+ * shows nothing.
  *
  * @example
  * ```ts
  * const outcomes = inject(TmOutcomeToasts);
- * void outcomes.jobStarted(accepted.jobId);
- * const exporting = await outcomes.exporting(() => controller.abort());
+ * outcomes.jobStarted(accepted.jobId);
+ * const exporting = outcomes.exporting(() => controller.abort());
  * exporting.update({ detail: '5,580 of 9,000 rows' });
  * exporting.close();
  * ```
@@ -33,6 +37,7 @@ import type { TmOutcomeToastsBody } from './tm-outcome-toasts-body';
 @Injectable({ providedIn: 'root' })
 export class TmOutcomeToasts {
   readonly #injector = inject(Injector);
+  readonly #telemetry = inject(TmTelemetry);
 
   /** The toasts' body, once its chunk has loaded. */
   #body: Promise<TmOutcomeToastsBody> | null = null;
@@ -47,9 +52,9 @@ export class TmOutcomeToasts {
    * job; Track opens the job's page.
    *
    * @param jobId - The job the start enqueued.
-   * @returns The toast, once shown.
+   * @returns The toast's handle.
    */
-  jobStarted(jobId: number): Promise<TmToastRef> {
+  jobStarted(jobId: number): TmToastRef {
     return this.#show((body) => body.jobStarted(jobId));
   }
 
@@ -59,20 +64,51 @@ export class TmOutcomeToasts {
    * closes when it ends.
    *
    * @param cancel - Cancels the export; the toast closes with it.
-   * @returns The toast, once shown.
+   * @returns The toast's handle.
    */
-  exporting(cancel: () => void): Promise<TmToastRef> {
+  exporting(cancel: () => void): TmToastRef {
     return this.#show((body) => body.exporting(cancel));
   }
 
-  /** Shows a toast once the body's chunk has loaded; a chunk that cannot load fails the call and loads again next time. */
-  #show(show: (body: TmOutcomeToastsBody) => TmToastRef): Promise<TmToastRef> {
+  /**
+   * Shows a toast once the body's chunk has loaded, answering its handle at
+   * once. A chunk that cannot load is reported, closes the handle and loads
+   * again next time.
+   */
+  #show(show: (body: TmOutcomeToastsBody) => TmToastRef): TmToastRef {
+    let shown: TmToastRef | undefined;
+    // The updates made before the toast shows; `undefined` once it is closed before then.
+    let held: Partial<TmToast> | undefined = {};
+    let settle!: (reason: Awaited<TmToastRef['closed']>) => void;
+    const closed = new Promise<Awaited<TmToastRef['closed']>>((resolve) => (settle = resolve));
     this.#body ??= import('./tm-outcome-toasts-body').then(({ TmOutcomeToastsBody }) =>
       runInInjectionContext(this.#injector, () => new TmOutcomeToastsBody()),
     );
-    return this.#body.then(show, (error: unknown) => {
-      this.#body = null;
-      throw error;
-    });
+    void this.#body.then(
+      (body) => {
+        // A close before the chunk landed shows nothing.
+        if (held) {
+          shown = show(body);
+          // With no update made meanwhile, an empty one in the frame it shows changes nothing.
+          shown.update(held);
+          void shown.closed.then(settle);
+        }
+      },
+      (error: unknown) => {
+        this.#body = null;
+        this.#telemetry.error(error, { source: 'tm-outcome-toasts' });
+        settle('api');
+      },
+    );
+    return {
+      closed,
+      update: (patch) => (shown ? shown.update(patch) : held && (held = { ...held, ...patch })),
+      // A close is the API's, whether or not the toast showed.
+      close: () => {
+        held = undefined;
+        shown?.close();
+        settle('api');
+      },
+    };
   }
 }

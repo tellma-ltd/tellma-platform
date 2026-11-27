@@ -100,11 +100,16 @@ export class TmAttentionDump {
     }
 
     /* The panel: a fixed header and footer around the scrolling lists. Its rows are the attention rows' shared anatomy. */
-    .tm-attention-panel {
+    .tm-attention-panel,
+    .tm-attention-panel__body {
       display: flex;
       flex: 1 1 auto;
       flex-direction: column;
       min-block-size: 0;
+    }
+
+    .tm-attention-panel,
+    .tm-attention-panel__heading {
       outline: none;
     }
 
@@ -130,15 +135,20 @@ export class TmAttentionDump {
       border-block-start: var(--border-width) solid var(--divider);
     }
 
-    .tm-attention-panel__heading {
-      display: inline-flex;
+    /* The rows of an icon or a badge beside text: the heading, a job's title line and the status line. */
+    .tm-attention-panel__heading,
+    .tm-attention-panel__title-line,
+    .tm-attention-panel__status {
+      display: flex;
       align-items: center;
       gap: var(--space-2);
+    }
+
+    .tm-attention-panel__heading {
       margin: 0;
       color: var(--text-strong);
       font-size: var(--text-base);
       font-weight: var(--weight-semibold);
-      outline: none;
     }
 
     .tm-attention-panel__spacer {
@@ -146,10 +156,6 @@ export class TmAttentionDump {
     }
 
     .tm-attention-panel__body {
-      display: flex;
-      flex: 1 1 auto;
-      flex-direction: column;
-      min-block-size: 0;
       overflow: auto;
       overscroll-behavior: contain;
       padding: var(--space-1);
@@ -175,17 +181,11 @@ export class TmAttentionDump {
     }
 
     .tm-attention-panel__status {
-      display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: var(--space-2);
     }
 
     /* A job's title line: the title, then its badge or percent. */
     .tm-attention-panel__title-line {
-      display: flex;
-      align-items: center;
-      gap: var(--space-2);
       min-inline-size: 0;
     }
 
@@ -273,7 +273,7 @@ export class TmAttentionPanelHost {
 
   /** The panel's name: its heading. */
   protected readonly title = computed(() =>
-    this.#l10n.ɵtext(this.panel() === 'bell' ? 'tm.attentionPanels.bell.heading' : 'tm.attentionPanels.tray.heading')(),
+    this.#l10n.ɵtext(this.panel() === 'bell' ? 'tm.attention.bell.label' : 'tm.attention.tray.label')(),
   );
 
   /** Creates the host, which opens and closes its panel with the model. */
@@ -315,6 +315,8 @@ export class TmAttentionPanelHost {
       size: 'sm',
       title: this.title(),
       data,
+      // Focus returns to the button however the drawer opened: a shortcut from a field, or a tap that focuses nothing.
+      returnFocus: anchor,
     });
     this.#drawer = ref;
     void ref.closed.then(() => {

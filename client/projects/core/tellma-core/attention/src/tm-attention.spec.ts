@@ -9,6 +9,7 @@ import { tmFakeAssignmentsSummary, tmFakeInboxSummary, type TmFakeApiCall } from
 import { TmToasts } from '@tellma/core-ui/toast';
 
 import { TmAttention } from './tm-attention';
+import { tmJobOwner } from './tm-attention-calls';
 import {
   type TmAttentionRig,
   tmAttentionRig,
@@ -440,6 +441,52 @@ describe('TmAttention', () => {
 
       rig.attention.toggle('bell', 'click');
       expect(rig.attention.bell().count).toBe(2);
+    });
+  });
+
+  describe("a job's owner", () => {
+    /** A handler whose result is the center that the job's `Job` column names. */
+    const handlers = [{ key: 'gl.center.post', schedulable: false, commitsInSteps: false, labelKey: 'JobHandler_gl_center_post', result: { entity: 'gl.Center', via: 'Job' } }];
+    /** The owner lookups sent: the centers page's own list reads with no filter. */
+    const lookups = (rig: TmAttentionRig): readonly TmFakeApiCall[] =>
+      callsTo(rig, 'centers/query').filter((call) => (call.body as { readonly filters?: unknown }).filters !== undefined);
+    /** Looks up the owner of a job of the given handler. */
+    const owner = (id: number, handlerKey: string, signal = new AbortController().signal): Promise<string | null> =>
+      TestBed.runInInjectionContext(() => tmJobOwner(job(id, 'PendingConfirmation', { handlerKey }), signal));
+
+    it("is read once, inactive rows included, and opens at the owner's page", async () => {
+      const rig = await setUp({}, { jobHandlers: handlers });
+      rig.api.respond('centers/query', { rows: { columns: [{ name: 'Id', type: 'Numeric', nullable: false, groupingKey: false }], rows: [[23]] } });
+      expect(await owner(4, 'gl.center.post')).toBe('/17/centers/23');
+      expect(lookups(rig).map((call) => call.body)).toEqual([{ select: 'Id', filters: ['Job = 4'], take: 1, includeInactive: true }]);
+    });
+
+    it("gives up after 2 s, aborting the read, and ends with the caller's signal", async () => {
+      const rig = await setUp({}, { jobHandlers: handlers });
+      rig.api.respond('centers/query', () => new Promise(() => undefined));
+      // The deadline's signal, which the test aborts in its place.
+      const deadline = new AbortController();
+      const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+      const late = owner(4, 'gl.center.post');
+      expect(timeout).toHaveBeenCalledWith(2000);
+      const read = (lookups(rig)[0]!.options as TmReadOptions).signal!;
+      expect(read.aborted).toBe(false);
+      deadline.abort();
+      expect(read.aborted).toBe(true);
+      expect(await late).toBeNull();
+
+      // The caller's own signal ends the read too.
+      const life = new AbortController();
+      const moved = owner(4, 'gl.center.post', life.signal);
+      life.abort();
+      expect((lookups(rig)[1]!.options as TmReadOptions).signal?.aborted).toBe(true);
+      expect(await moved).toBeNull();
+    });
+
+    it('is not looked up for a handler with no result entity', async () => {
+      const rig = await setUp();
+      expect(await owner(5, 'core.export')).toBeNull();
+      expect(lookups(rig)).toEqual([]);
     });
   });
 

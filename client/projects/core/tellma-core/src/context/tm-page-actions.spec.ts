@@ -231,6 +231,37 @@ describe('TmPageActions', () => {
       expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Acme_Delete_Title {"kind":"job"}' }));
     });
 
+    it('names its cancel button when the confirmation gives a cancel key', async () => {
+      const { actions, confirm } = rig();
+      page(destructive('acme.a.delete', { confirm: { titleKey: 'Acme_Delete_Title', messageKey: 'Acme_Delete_Message', cancelKey: 'Acme_Keep' } }));
+      expect(await actions.invoke('acme.a.delete', {}, 'user')).toEqual({ outcome: 'done' });
+      expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ cancelLabel: 'Acme_Keep' }));
+    });
+
+    it('refuses arguments the action does not accept as not found, before asking and again once answered', async () => {
+      const { actions, confirm } = rig();
+      let accepted = new Set<unknown>([7]);
+      const answer = deferred<boolean>();
+      confirm.mockReturnValue(answer.promise);
+      const action = destructive('acme.a.delete', {
+        accepts: (args) => typeof args === 'object' && args !== null && !Array.isArray(args) && accepted.has((args as TmJsonObject)['id']),
+      });
+      page(action);
+
+      // Arguments it does not accept, null among them, never reach the confirmation.
+      expect(await actions.invoke('acme.a.delete', { id: 8 }, 'assistant')).toEqual({ outcome: 'refused', reason: 'not-found' });
+      expect(await actions.invoke('acme.a.delete', null, 'assistant')).toEqual({ outcome: 'refused', reason: 'not-found' });
+      expect(confirm).not.toHaveBeenCalled();
+
+      // A row that leaves while the question is open is refused once answered.
+      const pending = actions.invoke('acme.a.delete', { id: 7 }, 'user');
+      await Promise.resolve();
+      accepted = new Set();
+      answer.resolve(true);
+      expect(await pending).toEqual({ outcome: 'refused', reason: 'not-found' });
+      expect(action.calls).toEqual([]);
+    });
+
     it('answers cancelled when the user declines, without running it', async () => {
       const { actions, confirm } = rig();
       confirm.mockResolvedValue(false);

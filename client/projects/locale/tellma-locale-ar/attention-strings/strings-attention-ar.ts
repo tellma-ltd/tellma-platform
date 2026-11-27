@@ -34,14 +34,12 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
   attentionPanels: {
     // The bell's panel.
     bell: {
-      heading: 'الإشعارات',
       markAllRead: 'تعليم الكل كمقروء',
       more: 'خيارات إضافية',
       settings: 'إعدادات الإشعارات',
       clearRead: 'مسح الإشعارات المقروءة',
       clearReadTitle: `هل ${addressed('تريد', 'تريدين')} مسح الإشعارات المقروءة؟`,
       clearReadMessage: 'تُحذف من قائمتك.',
-      clearReadConfirm: 'مسح',
       download: 'تنزيل',
       clear: 'مسح',
       unread: 'غير مقروء',
@@ -70,12 +68,10 @@ export const TM_ATTENTION_STRINGS_AR: TmStringTree = {
       stop: '{kind, select, import {إيقاف الاستيراد} other {إيقاف}}',
       stopTitle: `{kind, select, import {هل ${addressed('تريد', 'تريدين')} إيقاف هذا الاستيراد؟} other {هل ${addressed('تريد', 'تريدين')} إيقاف هذه المهمة؟}}`,
       stopMessage: '{kind, select, import {تبقى الصفوف المحفوظة محفوظة، ولن يُستورد باقي الملف.} other {يبقى ما حُفظ من العمل محفوظًا.}}',
+      keepRunning: 'متابعة التشغيل',
     },
     // The tray's panel.
     tray: {
-      heading: 'مهامي',
-      open: '{count, number} مفتوحة',
-      list: 'المهام المسندة',
       empty: 'لا شيء بانتظارك',
       seeAll: 'عرض كل المهام المسندة',
     },

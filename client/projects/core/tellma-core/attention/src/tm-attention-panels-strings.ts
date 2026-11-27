@@ -8,7 +8,9 @@ import { TmLocalization } from '@tellma/core';
 // The English strings of the bell's and the tray's panels, under
 // `tm.attentionPanels` (spec 0028 §6.2, §7.2). They load with the panels'
 // chunk, never with the first frame; the panels' host registers them when it
-// is created. A language's table that holds a key wins over them.
+// is created. A language's table that holds a key wins over them. The
+// headings, and the tray's open count, are the buttons' own names under
+// `tm.attention`, which the first frame already holds.
 
 /** The scope of the panels' strings under `tm`. */
 const SCOPE = 'attentionPanels';
@@ -17,14 +19,12 @@ const SCOPE = 'attentionPanels';
 export const TM_ATTENTION_PANELS_STRINGS_EN = {
   /** The bell's panel. */
   bell: {
-    heading: 'Notifications',
     markAllRead: 'Mark all as read',
     more: 'More options',
     settings: 'Notification settings',
     clearRead: 'Clear read notifications',
     clearReadTitle: 'Clear read notifications?',
     clearReadMessage: 'They are deleted for you.',
-    clearReadConfirm: 'Clear',
     download: 'Download',
     clear: 'Clear',
     unread: 'unread',
@@ -53,12 +53,10 @@ export const TM_ATTENTION_PANELS_STRINGS_EN = {
     stop: '{kind, select, import {Stop import} other {Stop}}',
     stopTitle: '{kind, select, import {Stop this import?} other {Stop this job?}}',
     stopMessage: "{kind, select, import {Rows already saved stay saved. The rest of the file won't be imported.} other {Work already saved stays saved.}}",
+    keepRunning: 'Keep running',
   },
   /** The tray's panel. */
   tray: {
-    heading: 'My assignments',
-    open: '{count, number} open',
-    list: 'Assignments',
     empty: 'Nothing is waiting on you',
     seeAll: 'See all assignments',
   },

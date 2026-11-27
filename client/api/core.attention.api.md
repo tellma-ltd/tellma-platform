@@ -49,8 +49,8 @@ export class TmAttentionButton {
     protected readonly icon: lucide.IconNode;
     protected readonly keys: string;
     protected preload(): void;
-    protected press(): void;
     protected readonly ring: Signal<boolean>;
+    protected toggle(via: 'click' | 'shortcut'): void;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmAttentionButton, "tm-bell-button, tm-tray-button", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmAttentionButton, never>;
 }
@@ -81,8 +81,8 @@ export const tmNotificationToastsKey: TmPreferenceKey<boolean>;
 // @public
 export class TmOutcomeToasts {
     constructor();
-    exporting(cancel: () => void): Promise<TmToastRef>;
-    jobStarted(jobId: number): Promise<TmToastRef>;
+    exporting(cancel: () => void): TmToastRef;
+    jobStarted(jobId: number): TmToastRef;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmOutcomeToasts, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmOutcomeToasts>;
 }

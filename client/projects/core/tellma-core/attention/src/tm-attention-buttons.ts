@@ -92,7 +92,7 @@ const SHORTCUTS: Readonly<Record<TmPanel, { readonly id: string; readonly keys: 
       [attr.aria-keyshortcuts]="keys"
       (pointerenter)="preload()"
       (focus)="preload()"
-      (click)="press()"
+      (click)="toggle('click')"
     >
       <!-- The bell's job ring, under the icon and the counter. -->
       @if (ring()) {
@@ -181,7 +181,7 @@ export class TmAttentionButton {
     const shortcuts = inject(TmShortcuts);
     afterNextRender(() => {
       shortcuts.register(
-        { ...SHORTCUTS[this.#panel], scope: 'global', inFields: true, overModals: false, run: () => this.#toggle('shortcut') },
+        { ...SHORTCUTS[this.#panel], scope: 'global', inFields: true, overModals: false, run: () => this.toggle('shortcut') },
         destroyRef,
       );
       const idle = (run: () => void): unknown => (this.#window?.requestIdleCallback ? this.#window.requestIdleCallback(run) : setTimeout(run));
@@ -217,13 +217,11 @@ export class TmAttentionButton {
     );
   }
 
-  /** A press: toggles the panel at once; the host opens it in this frame once its chunk is in. */
-  protected press(): void {
-    this.#toggle('click');
-  }
-
-  /** Toggles the panel, loading the chunk when it is not in yet. */
-  #toggle(via: 'click' | 'shortcut'): void {
+  /**
+   * A press or the shortcut: toggles the panel at once, loading the chunk
+   * when it is not in yet; the host opens it in this frame once it is.
+   */
+  protected toggle(via: 'click' | 'shortcut'): void {
     this.#attention.toggle(this.#panel, via);
     this.preload();
   }

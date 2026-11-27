@@ -749,28 +749,33 @@ then its handler's, then the handler's fallback, an `entity` argument naming an 
 its plural label), a job's message, and an assignment's caption (the title with its code split out
 for an isolate, the detail, and the amount at its own scale with its currency's code).
 `TmOutcomeToasts` raises the outcomes the platform's own pages toast: "Started in the background."
-with Track, and the sticky "Exporting…" with Cancel. Each method answers the toast once it shows:
-the toasts load as a chunk of their own with the first outcome.
+with Track, and the sticky "Exporting…" with Cancel. Each method returns the toast's handle at once,
+while the toasts load as a chunk of their own with the first outcome: an update made meanwhile
+applies as the toast shows, a toast closed meanwhile never shows, and a chunk that cannot load is
+reported to telemetry and closes the handle.
 
 ## Attention: the bell, the tray and their panels
 
 The app bar places `tm-bell-button` and `tm-tray-button`, 30 px buttons with the badge's overlay
 counter, its accessible name and `aria-keyshortcuts`, and, on the bell, a ring while a job runs. A
 press, Alt+Shift+U or Alt+Shift+Q toggles the model's panel; pointer hover, focus and the first idle
-moment load the panels' chunk ahead of the press. The panel opens in a popover from lg and in the
-end drawer below it, renders from the stored document with the tab's overlays in the frame it
-opens, focuses its first row, and publishes an overlay page context, `panel:bell` or `panel:tray`,
+moment load the panels' chunk ahead of the press, and the panels' chunk loads the server calls'
+chunk in turn, so the first panel's verbs apply in their click's frame. The panel opens in a
+popover from lg and in the end drawer below it, which gives focus back to its button however it
+opened, renders from the stored document with the tab's overlays in the frame it opens, focuses its first row, and publishes an overlay page context, `panel:bell` or `panel:tray`,
 with its `attention.*` actions. Each list is one tab stop with roving rows (the arrows, Home and End;
 Delete clears a notification).
 
 The bell's panel holds Mark all as read and More options (the settings and a confirmed Clear read),
 the newest three running jobs with a row by status (a progress bar, Held, Awaiting confirmation
-with Review, Stopping…) and Stop, which asks first in the job's kind's words, then
+with Review, Stopping…) and Stop, which asks first in the job's kind's words with "Keep running"
+to back out, and shows Stopping… without waiting for the server, then
 the notification rows: each a link to its open route with its severity's icon, Download for a
 finished export, its time and Clear. Rows that arrive while the list is scrolled down wait under a
 pinned "{n} new" button; a status line with Refresh shows while live updates are paused. A frozen
 tenant shows no verb; offline, each verb stays, disabled with "You're offline". Mark all as read and
-Stop run through the page actions' dispatcher, as the page context's actions do. A verb that removes
+Stop run through the page actions' dispatcher, as the page context's actions do; a stop naming no
+job the bell shows running is refused before its question. A verb that removes
 its own control keeps focus in the panel: Mark all as read moves it to More options, a stopped job's
 row to its title, a row that leaves to the row in its place, and a list that empties to the heading,
 so the popover stays open. The tray's panel lists the open assignments through `tm-assignment-list`,

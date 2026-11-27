@@ -8,6 +8,7 @@ import { afterNextRender, ChangeDetectionStrategy, Component, computed, ElementR
 import { Router } from '@angular/router';
 import { TmEntities, type TmEntityType, type TmId, TmLocalization, TmTelemetry, TmUrls } from '@tellma/core';
 import { type TmAssignmentActivation, TmAssignmentList, TmAttentionText } from '@tellma/core/attention-rows';
+import { TmL10n } from '@tellma/core-ui';
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TM_MODAL_DATA } from '@tellma/core-ui/modal';
@@ -45,14 +46,14 @@ const NEVER = '1970-01-01T00:00:00Z';
     <div class="tm-attention-panel__header">
       @if (!drawer) {
         <h2 #heading class="tm-attention-panel__heading" tabindex="-1">
-          {{ text('tray.heading') }}
+          {{ name() }}
           @if (open(); as count) {
             <tm-counter [value]="count" aria-hidden="true" />
-            <span class="tm-attention-panel__hidden">{{ text('tray.open', { count }) }}</span>
+            <span class="tm-attention-panel__hidden">{{ openLabel() }}</span>
           }
         </h2>
-      } @else if (open(); as count) {
-        <span class="tm-attention-panel__count">{{ text('tray.open', { count }) }}</span>
+      } @else if (openLabel(); as label) {
+        <span class="tm-attention-panel__count">{{ label }}</span>
       }
     </div>
     <!-- The rows: skeletons before any document, the empty state, or the list. -->
@@ -64,7 +65,7 @@ const NEVER = '1970-01-01T00:00:00Z';
           <tm-assignment-list
             variant="tray"
             party="to-me"
-            [label]="text('tray.list')"
+            [label]="name()"
             [items]="summary.latest"
             [related]="summary.related"
             [seenAt]="seenAt()"
@@ -88,6 +89,7 @@ export class TmTrayPanel {
   readonly #attention = inject(TmAttention);
   readonly #text = inject(TmAttentionText);
   readonly #l10n = inject(TmLocalization);
+  readonly #numbers = inject(TmL10n);
   readonly #urls = inject(TmUrls);
   readonly #router = inject(Router);
   readonly #telemetry = inject(TmTelemetry);
@@ -103,6 +105,15 @@ export class TmTrayPanel {
 
   /** The open count; `null` before any copy. */
   protected readonly open = computed(() => this.assignments()?.open || null);
+
+  /** The panel's heading, which names its list too: the tray button's own name. */
+  protected readonly name = this.#l10n.ɵtext('tm.attention.tray.label');
+
+  /** "{n} open", in the tray button's own words; `null` before any copy and with none open. */
+  protected readonly openLabel = computed(() => {
+    const count = this.open();
+    return count === null ? null : this.#l10n.ɵtext('tm.attention.tray.open', { count: this.#numbers.formatNumber(count) })();
+  });
 
   /**
    * The `seenAt` of the first copy the panel shows, against which rows are
@@ -200,7 +211,7 @@ export class TmTrayPanel {
     tmPublishPanel(
       'tray',
       {
-        title: computed(() => this.text('tray.heading')),
+        title: this.name,
         status: computed(() => (this.assignments() === undefined ? 'loading' : 'ready')),
         state: computed(() => {
           const summary = this.assignments();
@@ -212,7 +223,7 @@ export class TmTrayPanel {
           return {
             columns: [
               { path: 'Resource', label: 'Resource' },
-              { path: 'Title', label: this.text('tray.heading') },
+              { path: 'Title', label: this.name() },
               { path: 'State', label: 'State' },
             ],
             rows: rows.map((row) => ({

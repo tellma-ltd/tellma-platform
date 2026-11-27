@@ -31,4 +31,5 @@ export {
 } from './src/tm-assignment-list';
 export { tmIcuArguments } from './src/tm-icu-arguments';
 export { ɵTmAttentionRowStyles } from './src/tm-attention-row-styles';
+export { ɵTmAttentionSkeletonRows } from './src/tm-attention-skeleton-rows';
 export { TmRovingRows as ɵTmRovingRows } from './src/tm-roving-rows';

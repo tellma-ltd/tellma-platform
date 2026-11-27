@@ -1518,8 +1518,10 @@ export function tmPage(path: string, page: TmPageDefinition): TmPageDeclaration;
 
 // @public
 export interface TmPageAction {
+    accepts?(args: TmJson): boolean;
     readonly confirm?: Omit<TmActionConfirmation, 'args'> & {
         readonly args?: Signal<TmJsonObject> | ((args: TmJson) => TmJsonObject);
+        readonly cancelKey?: string;
     };
     readonly descriptionKey?: string;
     readonly destructive: boolean;

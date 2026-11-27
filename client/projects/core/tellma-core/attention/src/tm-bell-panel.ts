@@ -17,6 +17,7 @@ import {
   ElementRef,
   inject,
   Injector,
+  runInInjectionContext,
   type Signal,
   signal,
   untracked,
@@ -29,23 +30,30 @@ import {
   TmDisplayName,
   type TmDisplayNameParts,
   TmDisplayNames,
-  TmEntities,
   type TmEntityType,
-  type TmId,
   type TmInboxRunningJob,
+  type TmJson,
+  type TmJsonObject,
   TmLaunchCache,
   TmLocalization,
   type TmNotificationSeverity,
   TmPageActions,
-  type TmQueryRowSet,
   TmServerText,
   TmTelemetry,
   TmUrls,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { TmAttentionText, type TmNotificationText, tmIcuArguments, ɵTmAttentionRowStyles, ɵTmRovingRows } from '@tellma/core/attention-rows';
+import {
+  TmAttentionText,
+  type TmNotificationText,
+  tmIcuArguments,
+  ɵTmAttentionRowStyles,
+  ɵTmAttentionSkeletonRows,
+  ɵTmRovingRows,
+} from '@tellma/core/attention-rows';
 import { TmL10n } from '@tellma/core-ui';
 import { TmBadge } from '@tellma/core-ui/badge';
+import { ɵTM_BANNER_GLYPHS } from '@tellma/core-ui/banner';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmConfirm } from '@tellma/core-ui/confirm';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
@@ -54,15 +62,13 @@ import { type TmMenuEntry, TmMenu, TmMenuTrigger } from '@tellma/core-ui/menu';
 import { TM_MODAL_DATA } from '@tellma/core-ui/modal';
 import { TmProgressBar } from '@tellma/core-ui/progress';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
-import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import CircleCheck from 'lucide/dist/esm/icons/circle-check.mjs';
-import CircleX from 'lucide/dist/esm/icons/circle-x.mjs';
 import Ellipsis from 'lucide/dist/esm/icons/ellipsis.mjs';
-import Info from 'lucide/dist/esm/icons/info.mjs';
-import TriangleAlert from 'lucide/dist/esm/icons/triangle-alert.mjs';
-import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TmAttention } from './tm-attention';
+// The server calls' chunk loads with this one, at idle: the model's verbs then overlay the panel's
+// first copy in the click's frame, and Review's lookup is in memory.
+import { tmJobOwner } from './tm-attention-calls';
 import { TM_ROW_PARAMS, type TmAttentionPanelData, tmItemPosition, tmKeepPanelFocus, tmPublishPanel } from './tm-attention-panel-data';
 
 // The bell's panel (spec 0028 §6.2–§6.4): the header with Mark all as read
@@ -122,12 +128,15 @@ interface JobView {
   readonly href: string;
 }
 
-/** Each severity's icon. */
+/**
+ * Each severity's icon. Those the banner draws come from it, so the panel
+ * reuses the modules the first frame already holds.
+ */
 const SEVERITY_ICONS: Readonly<Record<TmNotificationSeverity, TmIconSource>> = {
   Success: CircleCheck,
-  Warning: TriangleAlert,
-  Error: CircleX,
-  Info,
+  Warning: ɵTM_BANNER_GLYPHS.warning,
+  Error: ɵTM_BANNER_GLYPHS.error,
+  Info: ɵTM_BANNER_GLYPHS.info,
 };
 
 /** How many running jobs the panel lists before "+{n} more in My jobs". */
@@ -167,8 +176,8 @@ function timeOf(value: string | undefined): number {
     TmProgressBar,
     TmRelativeTime,
     ɵTmAttentionRowStyles,
+    ɵTmAttentionSkeletonRows,
     ɵTmRovingRows,
-    TmSkeleton,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-attention-panel', id: 'tm-attention-bell-panel', tabindex: '-1' },
@@ -177,7 +186,7 @@ function timeOf(value: string | undefined): number {
     <!-- The header: the heading (the drawer's own title stands in for it), then the verbs. -->
     <div class="tm-attention-panel__header">
       @if (!drawer) {
-        <h2 #heading class="tm-attention-panel__heading" tabindex="-1">{{ text('bell.heading') }}</h2>
+        <h2 #heading class="tm-attention-panel__heading" tabindex="-1">{{ name() }}</h2>
       }
       <span class="tm-attention-panel__spacer"></span>
       @if (!frozen() && (inbox()?.unread ?? 0) > 0) {
@@ -252,17 +261,7 @@ function timeOf(value: string | undefined): number {
       }
       <!-- The notifications: skeletons before any document, the empty state, or the rows. -->
       @if (inbox() === undefined) {
-        <ul class="tm-attention-rows" aria-busy="true" [attr.aria-label]="text('bell.heading')">
-          @for (index of skeletons; track index) {
-            <li class="tm-attention-row" aria-hidden="true">
-              <tm-skeleton class="tm-attention-row__icon" shape="circle" width="16px" height="16px" />
-              <span class="tm-attention-row__main">
-                <tm-skeleton width="70%" />
-                <tm-skeleton width="45%" />
-              </span>
-            </li>
-          }
-        </ul>
+        <tm-attention-skeleton-rows [label]="name()" />
       } @else if (notices().length === 0) {
         <tm-empty-state size="panel" icon="check-check" [heading]="text('bell.empty')" />
       } @else {
@@ -271,7 +270,7 @@ function timeOf(value: string | undefined): number {
             {{ text('bell.fresh', { count: waiting() }) }}
           </button>
         }
-        <ul class="tm-attention-rows" tmRovingRows [attr.aria-label]="text('bell.heading')" [fallback]="fallback()" (rowDelete)="deleted($event)">
+        <ul class="tm-attention-rows" tmRovingRows [attr.aria-label]="name()" [fallback]="fallback()" (rowDelete)="deleted($event)">
           @for (view of notices(); track view.key) {
             <li
               class="tm-attention-row tm-attention-panel__notice"
@@ -337,7 +336,6 @@ export class TmBellPanel {
   readonly #l10n = inject(TmLocalization);
   readonly #numbers = inject(TmL10n);
   readonly #names = inject(TmDisplayNames);
-  readonly #entities = inject(TmEntities);
   readonly #urls = inject(TmUrls);
   readonly #router = inject(Router);
   readonly #location = inject(LocationStrategy);
@@ -373,10 +371,10 @@ export class TmBellPanel {
   protected readonly drawer = (inject(TM_MODAL_DATA, { optional: true }) as TmAttentionPanelData | null)?.drawer === true;
 
   /** The glyphs the panel draws itself. */
-  protected readonly glyphs = { more: Ellipsis, clear: X } as const;
+  protected readonly glyphs = { more: Ellipsis, clear: ɵTM_BANNER_GLYPHS.dismiss } as const;
 
-  /** The skeleton rows' keys. */
-  protected readonly skeletons = [0, 1, 2];
+  /** The panel's heading, which names its lists too: the bell button's own name. */
+  protected readonly name = this.#l10n.ɵtext('tm.attention.bell.label');
 
   /** The stored inbox with this tab's overlays; `undefined` before any copy. */
   protected readonly inbox = this.#attention.inbox;
@@ -668,25 +666,20 @@ export class TmBellPanel {
 
   /**
    * A job's Review: the panel closes, and the record that owns the job opens,
-   * where the user reads its warnings and confirms; without one, the job's
-   * page. A user who moved on while the owner was looked up stays where they
-   * went.
+   * where the user reads its warnings and confirms; without one, or when it
+   * cannot be found in time, the job's page. A user who moved on while the
+   * owner was looked up stays where they went.
    *
    * @param view - The job.
    * @param index - Its index in the list.
    */
   protected review(view: JobView, index: number): void {
     this.#opened('job', index);
+    this.#close();
     // The lookup ends with the first navigation that starts meanwhile, the user's own.
     const life = new AbortController();
-    const owner = this.#owner(view.job, life.signal);
-    if (owner === null) {
-      this.#go(view.url);
-      return;
-    }
-    this.#close();
     const moved = this.#router.events.subscribe((event) => event instanceof NavigationStart && life.abort());
-    void owner.then((url) => {
+    void runInInjectionContext(this.#injector, () => tmJobOwner(view.job, life.signal)).then((url) => {
       moved.unsubscribe();
       if (!life.signal.aborted) {
         void this.#router.navigateByUrl(url ?? view.url);
@@ -749,31 +742,6 @@ export class TmBellPanel {
     };
   }
 
-  /**
-   * The page of the record that owns a job: the row of the handler's result
-   * entity whose navigation to the job names it, read once; `null` at once
-   * when the handler names no routed result entity. The read outlives the
-   * panel, which closes as it starts.
-   */
-  #owner(job: TmInboxRunningJob, signal: AbortSignal): Promise<string | null> | null {
-    const result = this.#metadata.current()?.jobHandlers.find((candidate) => candidate.key === job.handlerKey)?.result;
-    const segment = result && this.#entities.summary(result.entity)?.segment;
-    if (!result || !segment) {
-      return null;
-    }
-    return this.#api
-      .read<{ readonly rows: TmQueryRowSet }>(`${segment}/query`, { select: 'Id', filters: [`${result.via} = ${job.id}`], take: 1 }, { signal })
-      .then(
-        (page) => {
-          const id = page.rows.rows[0]?.[0];
-          // A long id arrives as its decimal text.
-          return typeof id === 'number' || typeof id === 'string' ? this.#urls.target(result.entity, id as TmId) : null;
-        },
-        // Offline, or the row is not the user's to read: the job's page says the rest.
-        () => null,
-      );
-  }
-
   // --- Navigation ---
 
   /** Whether a click is a plain one, which the panel routes in place; a modified click opens a tab. */
@@ -813,7 +781,7 @@ export class TmBellPanel {
     const confirmed = await this.#confirm.confirm({
       title: this.text('bell.clearReadTitle'),
       message: this.text('bell.clearReadMessage'),
-      confirmLabel: this.text('bell.clearReadConfirm'),
+      confirmLabel: this.text('bell.clear'),
       destructive: true,
     });
     if (confirmed) {
@@ -827,13 +795,15 @@ export class TmBellPanel {
   #publish(): void {
     const enabled = computed(() => this.#attention.writable());
     const none = signal<string | null>(null).asReadonly();
-    // A running job's kind, which words Stop's confirmation.
-    const kind = (id: unknown): string =>
-      untracked(this.inbox)?.running.find((job) => job.id === id)?.handlerKey === 'core.import' ? 'import' : 'job';
+    // The running job an invocation names, read from arguments as given: any JSON, null included.
+    const runningJob = (args: TmJson): TmInboxRunningJob | undefined => {
+      const id = typeof args === 'object' && args !== null && !Array.isArray(args) ? (args as TmJsonObject)['id'] : undefined;
+      return untracked(this.inbox)?.running.find((job) => job.id === id);
+    };
     tmPublishPanel(
       'bell',
       {
-        title: computed(() => this.text('bell.heading')),
+        title: this.name,
         status: computed(() => (this.inbox() === undefined ? 'loading' : 'ready')),
         state: computed(() => {
           const inbox = this.inbox();
@@ -855,7 +825,7 @@ export class TmBellPanel {
           return {
             columns: [
               { path: 'Type', label: 'Type' },
-              { path: 'Title', label: this.text('bell.heading') },
+              { path: 'Title', label: this.name() },
               { path: 'State', label: 'State' },
             ],
             rows: rows.slice(0, 200).map((view) => ({
@@ -899,16 +869,20 @@ export class TmBellPanel {
           confirm: {
             titleKey: 'tm.attentionPanels.jobs.stopTitle',
             messageKey: 'tm.attentionPanels.jobs.stopMessage',
-            args: (args) => ({ kind: kind((args as { readonly id?: unknown }).id) }),
+            cancelKey: 'tm.attentionPanels.jobs.keepRunning',
+            args: (args) => ({ kind: runningJob(args)?.handlerKey === 'core.import' ? 'import' : 'job' }),
           },
+          // Only a job the bell shows running is asked about; any other id is refused before the question.
+          accepts: (args) => runningJob(args) !== undefined,
           disabledReason: none,
           params: TM_ROW_PARAMS,
+          // The stop shows in this frame and the action ends; a failed stop toasts, so a second Stop never waits on the first.
           invoke: async (args) => {
-            const { id } = args as { readonly id?: unknown };
-            if (typeof id !== 'number' || !untracked(this.inbox)?.running.some((job) => job.id === id)) {
-              return { outcome: 'failed', error: new Error(`The bell shows no running job ${String(id)}.`) };
+            const job = runningJob(args);
+            if (job === undefined) {
+              return { outcome: 'refused', reason: 'not-found' };
             }
-            await this.#attention.stopJob(id);
+            void this.#attention.stopJob(job.id);
             return { outcome: 'done' };
           },
         },

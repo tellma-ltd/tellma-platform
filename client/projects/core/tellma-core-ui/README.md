@@ -31,7 +31,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/multi-select` | `tm-multi-select` — the overlay multiple-choice select over the same options; its own entry point so a page with only single selects (a pager's page size) never loads it |
 | `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
 | `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent`, and `instantiate()` to render unselected tabs on request |
-| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`) |
+| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`); focus returns to the opener, or to the element `returnFocus` names, on close |
 | `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels, content-sized or at a fixed `sm`/`md`/`lg` width |
 | `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
 | `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |

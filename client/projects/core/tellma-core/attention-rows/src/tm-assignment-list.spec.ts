@@ -70,21 +70,24 @@ function rows(fixture: ComponentFixture<Host>): { readonly title: string; readon
 describe('tm-assignment-list', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it("reads the tray's second line from the row's facts, and marks rows assigned since seenAt by someone else", async () => {
+  it("reads the tray's second line from the row's facts, a system's comment alone, and marks rows assigned since seenAt by someone else", async () => {
     const fixture = await setup([
       tmTestAssignment(1, { captionJson: JSON.stringify({ code: 'HQ-01' }), comment: 'Please review', assignedAt: '2026-11-23T09:00:00.000Z' }),
       tmTestAssignment(2, { captionJson: JSON.stringify({ code: 'HQ-02' }), comment: 'Fix the code', isReturn: true }),
       tmTestAssignment(3, { captionJson: JSON.stringify({ code: 'HQ-03', detail: MANAGED }), assignedAt: '2026-11-23T09:00:00.000Z', assignedById: 42 }),
       tmTestAssignment(4, { captionJson: JSON.stringify({ code: 'HQ-04' }), assignedById: null }),
+      tmTestAssignment(5, { captionJson: JSON.stringify({ code: 'HQ-05' }), assignedById: null, comment: 'Please review' }),
     ]);
     const shown = rows(fixture);
-    expect(shown.map((row) => row.title)).toEqual(['Center HQ-01', 'Center HQ-02', 'Center HQ-03', 'Center HQ-04']);
+    expect(shown.map((row) => row.title)).toEqual(['Center HQ-01', 'Center HQ-02', 'Center HQ-03', 'Center HQ-04', 'Center HQ-05']);
     expect(shown[0]?.line).toMatch(/: Please review$/);
     expect(shown[1]?.line).toMatch(/^Returned by .*: Fix the code$/);
     expect(shown[2]?.line).toBe('Managed by Al Faris Group');
     expect(shown[3]?.line).toBe('Assigned automatically');
+    // A system's assignment with a comment shows the comment alone, after no empty name.
+    expect(shown[4]?.line).toBe('Please review');
     // Row 3 is new by time, but the user assigned it to themselves.
-    expect(shown.map((row) => row.new)).toEqual([true, false, false, false]);
+    expect(shown.map((row) => row.new)).toEqual([true, false, false, false, false]);
   });
 
   it("marks every row new against the epoch, a user's seenAt before any tray, and none without a seenAt", async () => {

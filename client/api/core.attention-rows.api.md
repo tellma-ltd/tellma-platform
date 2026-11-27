@@ -53,7 +53,6 @@ export class TmAssignmentList {
     protected rowLabel(view: RowView): string;
     protected readonly rows: Signal<readonly RowView[]>;
     readonly seenAt: _angular_core.InputSignal<string | null>;
-    protected readonly skeletons: number[];
     protected text(key: string): string;
     readonly variant: _angular_core.InputSignal<TmAssignmentListVariant>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmAssignmentList, "tm-assignment-list", never, { "items": { "alias": "items"; "required": false; "isSignal": true; }; "related": { "alias": "related"; "required": false; "isSignal": true; }; "party": { "alias": "party"; "required": false; "isSignal": true; }; "variant": { "alias": "variant"; "required": false; "isSignal": true; }; "seenAt": { "alias": "seenAt"; "required": false; "isSignal": true; }; "loading": { "alias": "loading"; "required": false; "isSignal": true; }; "fallback": { "alias": "fallback"; "required": false; "isSignal": true; }; "label": { "alias": "label"; "required": false; "isSignal": true; }; }, { "activated": "activated"; }, never, never, true, never>;

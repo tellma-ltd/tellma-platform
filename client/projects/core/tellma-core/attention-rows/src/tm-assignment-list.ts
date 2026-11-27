@@ -35,11 +35,11 @@ import {
 import { TmL10n } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
-import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import FileText from 'lucide/dist/esm/icons/file-text.mjs';
 import Send from 'lucide/dist/esm/icons/send.mjs';
 
 import { ɵTmAttentionRowStyles } from './tm-attention-row-styles';
+import { ɵTmAttentionSkeletonRows } from './tm-attention-skeleton-rows';
 import { type TmAssignmentCaption, TmAttentionText, type TmTextSegment } from './tm-attention-text';
 import { tmRegisterAttentionRowsStrings } from './tm-attention-rows-strings';
 import { TmRovingRows } from './tm-roving-rows';
@@ -138,7 +138,7 @@ const MINUTE_MS = 60_000;
  */
 @Component({
   selector: 'tm-assignment-list',
-  imports: [TmDisplayName, TmIcon, TmRelativeTime, ɵTmAttentionRowStyles, TmRovingRows, TmSkeleton],
+  imports: [TmDisplayName, TmIcon, TmRelativeTime, ɵTmAttentionRowStyles, ɵTmAttentionSkeletonRows, TmRovingRows],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'tm-assignment-list',
@@ -148,17 +148,7 @@ const MINUTE_MS = 60_000;
     <tm-attention-row-styles />
     @if (loading()) {
       <!-- Loading: three rows of the final geometry, read as one busy list. -->
-      <ul class="tm-attention-rows" aria-busy="true" [attr.aria-label]="text('loading')">
-        @for (index of skeletons; track index) {
-          <li class="tm-attention-row" aria-hidden="true">
-            <tm-skeleton class="tm-attention-row__icon" shape="block" width="16px" height="16px" />
-            <span class="tm-attention-row__main">
-              <tm-skeleton width="60%" />
-              <tm-skeleton width="85%" />
-            </span>
-          </li>
-        }
-      </ul>
+      <tm-attention-skeleton-rows [label]="text('loading')" />
     } @else {
       <!-- The rows: one tab stop, each row's link its only control. -->
       <ul class="tm-attention-rows" tmRovingRows [attr.aria-label]="label()" [fallback]="fallback()">
@@ -262,9 +252,6 @@ export class TmAssignmentList {
 
   /** Ticks every minute, so the rows' accessible names keep their relative times current. */
   readonly #minute = signal(0);
-
-  /** The skeleton rows' keys. */
-  protected readonly skeletons = [0, 1, 2];
 
   /** The assignments, newest first. */
   readonly items = input<readonly TmEntityType<'core.Assignment'>[]>([]);
@@ -424,7 +411,8 @@ export class TmAssignmentList {
   }
 
   /**
-   * A row's second line. Tray: the comment, "Returned by" on a return; else
+   * A row's second line. Tray: the comment after who assigned it, or alone
+   * when the system did, "Returned by" on a return; else
    * the detail and amount; else who assigned it, or "Assigned automatically";
    * a row by the user names the assignee instead. Home: the detail, else the
    * comment.
@@ -469,8 +457,9 @@ export class TmAssignmentList {
     if (party === 'by-me') {
       return message('with', { assignee: '' });
     }
+    // A comment with no one who assigned it, a system's, shows alone rather than after an empty name.
     if (comment !== undefined) {
-      return message(row['isReturn'] === true ? 'returned' : 'comment', { assigner: '', comment });
+      return assigner === null ? message('quote', { comment }) : message(row['isReturn'] === true ? 'returned' : 'comment', { assigner: '', comment });
     }
     const assigned = assigner === null ? plain(computed(() => this.text('automatic'))) : message('assignedBy', { assigner: '' });
     return computed(() => {

@@ -143,6 +143,13 @@ export class TmRovingRows {
         return;
       }
     }
+    // --- The focused row's place follows the rows that insert or leave above it, so recovery finds the row in its place ---
+    if (this.#focus !== null && this.#focus.row.isConnected) {
+      const index = rows.indexOf(this.#focus.row);
+      if (index >= 0 && index !== this.#focus.index) {
+        this.#focus = { ...this.#focus, index };
+      }
+    }
     // --- One tabbable control: the last focused one while it is in the list, else the first row's link ---
     const stop = this.#stop !== null && this.#list.contains(this.#stop) ? this.#stop : (this.#primary(rows[0]) ?? null);
     this.#stop = stop;

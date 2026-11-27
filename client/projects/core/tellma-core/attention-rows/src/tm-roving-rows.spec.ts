@@ -12,7 +12,7 @@ import { TmRovingRows } from './tm-roving-rows';
 // The attention lists' roving rows: one tab stop, the arrows, Home and End
 // between rows, Left and Right between a row's controls (mirrored in a
 // right-to-left page), Delete handed to the owner, and focus kept in the
-// list when the focused row leaves.
+// list when the focused row leaves, wherever rows inserted meanwhile.
 
 /** A list of rows with a link and a Clear each. */
 @Component({
@@ -124,5 +124,19 @@ describe('tmRovingRows', () => {
     fixture.componentInstance.ids.set([]);
     await fixture.whenStable();
     expect(document.activeElement?.tagName).toBe('H2');
+  });
+
+  it('moves focus to the row in its place when rows inserted above the focused row before it left', async () => {
+    const fixture = await setup();
+    fixture.componentInstance.ids.set([1, 2, 3, 4]);
+    await fixture.whenStable();
+    control(fixture, 'Row 3').focus();
+
+    // A row arrives at the top, then the focused row leaves: focus moves to the row now in its place.
+    fixture.componentInstance.ids.set([5, 1, 2, 3, 4]);
+    await fixture.whenStable();
+    fixture.componentInstance.ids.set([5, 1, 2, 4]);
+    await fixture.whenStable();
+    expect(document.activeElement?.textContent?.trim()).toBe('Row 4');
   });
 });
