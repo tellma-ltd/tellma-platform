@@ -384,6 +384,12 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-402 — PC-F112 landed; PC-129 re-integrates before PC-123 (2026-11-26)
+
+PC-F112 landed as 70239a8a. Acme searchRoute fell from 109.79 to 94.92, which clears PC-129's blocker (D-389). PC-129 had been released and was then skipped while blocked (D-319). It is the earliest released item, so it re-integrates now: it merges platform-core, moves TmUploads off the /entity barrel and runs the full gates. PC-123 integrates after PC-129's platform-core push (D-087).
+
+PC-128 merges platform-core to pick up the pager change. pc-f is free. PC-F103 starts there once a heavy-agent place frees; five are running now (D-028): PC-128, PC-129, PC-F99, PC-F107 and PC-F100.
+
 ### D-401 — PC-163 parked; PC-F100 fills pc-2 (2026-11-26)
 
 PC-163's fix1 (04f063e2) landed all six neutral trims and fixed R1-2 to R1-5. ./shell measures 19.06 against spec 0027's 16. Its ceiling is 19.5, the package's own figure. Acme initialJs is 233.66 (fixture 232.90) against spec 0024's 230 warn line. PC-163 parks with pc/PC-163 kept, and Ahmad was sent the final figures.
