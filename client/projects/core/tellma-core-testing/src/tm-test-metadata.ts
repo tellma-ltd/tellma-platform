@@ -267,7 +267,7 @@ export function tmTestMetadata(patch: Partial<TmClientMetadata> = {}): TmClientM
     notificationChannels: [{ key: 'core.inbox', defaultEnabled: true }],
     clientEvents: ['core.notification'],
     jobHandlers: [{ key: 'core.notification-delivery', schedulable: false, labelKey: 'Job_NotificationDelivery' }],
-    widgetTypes: ['acme.cash-position'],
+    widgetTypes: ['core.recents', 'acme.cash-position'],
     codedReports: [
       {
         key: 'acme-credit-exposure',

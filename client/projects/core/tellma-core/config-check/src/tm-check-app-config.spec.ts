@@ -211,7 +211,7 @@ describe('tmCheckAppConfig', () => {
       details: lazySpy(),
       defaults: fnSpy({}),
       clone: fnSpy({}),
-      validate: fnSpy(undefined),
+      validate: fnSpy(Promise.resolve(() => undefined)),
       beforeSave: fnSpy({}),
       rowLink: fnSpy(null),
       visibleWhen: fnSpy(true),

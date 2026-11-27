@@ -10,8 +10,10 @@
    content, so nothing after them moves while the user pages. */
 
 :host {
-  /* The size ladder, re-pointed once per step: the select's horizontal
-     padding and text size, which the select's sizer copies. */
+  /* The size ladder, re-pointed once per step: the select's height,
+     horizontal padding and text size, which the select's sizer and its
+     stand-in copy. */
+  --tm-pager-block-size: var(--field-height);
   --tm-pager-padding-x: var(--field-padding-x);
   --tm-pager-font-size: var(--field-font-size);
 
@@ -25,11 +27,13 @@
 }
 
 :host([data-size='sm']) {
+  --tm-pager-block-size: var(--field-height-sm);
   --tm-pager-padding-x: var(--field-padding-xsm);
   --tm-pager-font-size: var(--field-font-size-sm);
 }
 
 :host([data-size='lg']) {
+  --tm-pager-block-size: var(--field-height-lg);
   --tm-pager-padding-x: var(--field-padding-xlg);
   --tm-pager-font-size: var(--field-font-size-lg);
 }
@@ -106,4 +110,57 @@
     );
   font-size: var(--tm-pager-font-size);
   white-space: nowrap;
+}
+
+/* The select's stand-in until it loads: the trigger's chrome, box and text
+   at the same step, so the select lands in its exact place. */
+.tm-pager__proxy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  block-size: var(--tm-pager-block-size);
+  padding-inline: var(--tm-pager-padding-x);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  color: var(--field-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tm-pager__proxy:hover {
+  border-color: var(--field-border-hover);
+}
+
+/* The select's focus glow, with the transparent outline forced colors repaint. */
+.tm-pager__proxy:focus-visible {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+.tm-pager__proxy--disabled {
+  background: var(--field-bg-disabled);
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-pager__proxy-value {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+.tm-pager__proxy-caret {
+  --icon-size: var(--select-check-size);
+  color: var(--field-icon);
+}
+
+.tm-pager__proxy--disabled .tm-pager__proxy-caret {
+  color: var(--field-text-disabled);
 }

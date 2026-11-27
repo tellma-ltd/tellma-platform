@@ -41,9 +41,19 @@ export interface TmCssVarRef {
  *   sheet declares the name (never unconditionally: a typo'd `--tm-` read
  *   is exactly the silent-drop failure this gate exists to catch).
  * - the rest are written onto the element by a component at runtime, as an
- *   inline style, so no static sheet declares them.
+ *   inline style, so no static sheet declares them: the grid's template and
+ *   level, and a dashboard tile's placement, which the tile and the home
+ *   skeleton bind for the global dashboard sheet's cell rules.
  */
-const RUNTIME_SET = new Set(['--grid-template', '--grid-level']);
+const RUNTIME_SET = new Set([
+  '--grid-template',
+  '--grid-level',
+  '--tm-col',
+  '--tm-span',
+  '--tm-row',
+  '--tm-rows',
+  '--tm-row-narrow',
+]);
 
 /**
  * Every custom property the sheet declares. Anchored on a block opener or a
