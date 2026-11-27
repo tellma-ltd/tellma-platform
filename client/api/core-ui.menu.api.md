@@ -103,6 +103,7 @@ export interface TmMenuItem {
 // @public
 export interface TmMenuLink {
     action?(): void;
+    readonly current?: boolean;
     readonly detail?: string;
     readonly disabled?: boolean;
     readonly disabledReason?: string;

@@ -187,6 +187,7 @@ export class ɵTmMenuList {
           [searchTerm]="vm.label()"
           [attr.href]="vm.inert ? null : link.href"
           [attr.target]="link.target ?? null"
+          [attr.aria-current]="link.current ? 'page' : null"
           [attr.aria-label]="nameOf(vm)"
           [attr.aria-describedby]="vm.descriptionId"
           (click)="onLinkClick(vm, $event)"

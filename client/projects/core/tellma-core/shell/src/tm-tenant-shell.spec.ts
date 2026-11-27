@@ -186,10 +186,13 @@ describe('the tenant shell', () => {
       expect(await shell.getMarkers()).toEqual([]);
       expect(await shell.getAvatarTone()).toBeNull();
       expect(await shell.getMain()).toBe('page');
+      // The pinned bar's row holds three chip skeletons until the pins land.
+      expect(document.querySelectorAll('tm-pinned-bar tm-skeleton').length).toBe(3);
       answer(TM_COLD_SYNC);
       await tmSettleUntil(() => document.querySelector('tm-app-bar .tm-app-bar__tenant') !== null, 'the tenant name renders');
       expect(await shell.getTenantName()).toBe('Acme');
       expect(await shell.getUserName()).toBe('Farah');
+      expect(document.querySelectorAll('tm-pinned-bar tm-skeleton').length).toBe(0);
     });
 
     // The widths at which the session button shows names: the tenant's
@@ -259,6 +262,8 @@ describe('the tenant shell', () => {
       await tmSettleUntil(() => document.querySelector('tm-tenant-shell main tm-error-state') !== null, 'the error state renders');
       expect(await shell.getMain()).toBe('error');
       expect(await shell.isTenantNameLoading()).toBe(true);
+      // A failed sync leaves the pinned bar's row empty.
+      expect(document.querySelector('tm-pinned-bar nav')?.children.length).toBe(0);
       rig.api.respond('client/sync', TM_COLD_SYNC);
       await shell.clickErrorAction('Try again');
       await tmSettleUntil(() => document.querySelector('tm-tenant-shell main tm-error-state') === null, 'the error state ends');

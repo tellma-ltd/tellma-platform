@@ -5,6 +5,7 @@
 
 import { NgComponentOutlet } from '@angular/common';
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -27,6 +28,9 @@ import { TmShellOverlays } from './app-bar/tm-shell-overlays';
 import { TmShellSlots } from './app-bar/tm-shell-slots';
 import { TmShellFrame } from './frame/tm-shell-frame';
 import { TmLauncher } from './launcher/tm-launcher';
+import { TmPinnedBar } from './pins/tm-pinned-bar';
+import { TmPins } from './pins/tm-pins';
+import { TmPinsUi } from './pins/tm-pins-ui';
 import { TM_SHELL_ERROR_VIEWS } from './tm-shell-errors';
 import { tmRegisterTenantShellStrings } from './tm-tenant-shell-strings';
 
@@ -44,12 +48,15 @@ import { tmRegisterTenantShellStrings } from './tm-tenant-shell-strings';
 // - what TmShellMain shows instead of the route host, such as spec 0024
 //   §11's tenant-state page, until the next path change restores it.
 //
-// The app bar renders from the launch documents, so a warm launch's first
-// frame is complete with no request. A tenant switch closes the shell's
-// overlays, which end with the shell, and clears the launcher's text. The
-// shell registers the launcher's and the Shortcuts dialog's keys and starts
-// the arrival engine (spec 0028 §8.2). The pinned bar's row stays closed
-// until the pins land.
+// The app bar and the pinned bar render from the launch documents, so a
+// warm launch's first frame is complete with no request; the pinned bar's
+// row is open unless the user hid the bar (spec 0027 §8.11), so a cold
+// launch's skeleton already has the page's geometry, with three chip
+// skeletons in the row while the sync is pending and nothing in it once the
+// sync failed (spec 0027 §7.5). A tenant switch closes
+// the shell's overlays, which end with the shell, and clears the launcher's
+// text. The shell registers the launcher's, the Shortcuts dialog's and the
+// pin control's keys and starts the arrival engine (spec 0028 §8.2).
 
 /**
  * The failures another part of the app answers: the tab's own cancel, the
@@ -61,13 +68,16 @@ const ELSEWHERE: ReadonlySet<TmApiErrorKind> = new Set(['cancelled', 'unauthenti
 /** The tenant shell: the app bar, the banner row, and the routed tenant page, its error state or its replacement in the main landmark. */
 @Component({
   selector: 'tm-tenant-shell',
-  imports: [NgComponentOutlet, RouterOutlet, TmAppBar, TmButton, TmShellFrame],
-  providers: [TmInstalledMode, TmShellIdentity, TmShellOverlays, TmShellSlots],
+  imports: [NgComponentOutlet, RouterOutlet, TmAppBar, TmButton, TmPinnedBar, TmShellFrame],
+  providers: [TmInstalledMode, TmShellIdentity, TmShellOverlays, TmShellSlots, TmPinsUi],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <tm-shell-frame>
-      <!-- The app bar, in the frame's first row. -->
+    <tm-shell-frame [pinnedBar]="pinnedBar()">
+      <!-- The app bar, in the frame's first row, and the pinned bar in its third. -->
       <tm-app-bar tmShellBar />
+      @if (pinnedBar()) {
+        <tm-pinned-bar tmShellPinnedBar [failed]="failure() !== null" />
+      }
       @if (failure() !== null) {
         <!-- A cold sync failed: the error state, with Retry; a line of its own while the error views cannot load. -->
         <div class="tm-tenant-shell__error">
@@ -87,6 +97,8 @@ const ELSEWHERE: ReadonlySet<TmApiErrorKind> = new Set(['cancelled', 'unauthenti
         <router-outlet />
       }
     </tm-shell-frame>
+    <!-- Where the pinned bar's deferred overlays render, outside the landmarks. -->
+    <ng-container #pinOverlays />
   `,
   styles: `
     .tm-tenant-shell__failed {
@@ -107,6 +119,8 @@ export class TmTenantShell {
   readonly #urls = inject(TmUrls);
   /** Where the error state renders. */
   private readonly errorSlot = viewChild('errorSlot', { read: ViewContainerRef });
+  /** Where the pinned bar's overlays render. */
+  private readonly pinOverlays = viewChild.required('pinOverlays', { read: ViewContainerRef });
   // The last cold entry's failure, `{ error: null }` for one that is not an
   // API error; it shows only while the documents are missing.
   readonly #failure = signal<{ readonly error: TmApiError | null } | null>(null);
@@ -119,6 +133,9 @@ export class TmTenantShell {
 
   /** Whether the error views failed to load, so the shell shows its own line. */
   protected readonly errorViewsMissing = this.#errorViewsMissing.asReadonly();
+
+  /** Whether the pinned bar shows, as the user chose. */
+  protected readonly pinnedBar = inject(TmPins).visible;
 
   /** What main shows instead of the route host, or `null`. */
   protected readonly override = inject(TmShellMain).override;
@@ -135,6 +152,8 @@ export class TmTenantShell {
     inject(TmArrivals);
     const overlays = inject(TmShellOverlays);
     const launcher = inject(TmLauncher);
+    const pins = inject(TmPinsUi);
+    afterNextRender(() => pins.attach(this.pinOverlays()));
 
     // --- Entering a tenant: the cold entry's failure, and a switch's clean slate ---
     // No route survives a change of tenant, so a switch creates a new shell:
@@ -150,7 +169,7 @@ export class TmTenantShell {
       });
     });
 
-    // --- The launcher's and the Shortcuts dialog's keys ---
+    // --- The launcher's, the Shortcuts dialog's and the pin control's keys ---
     // Registered for this shell's life: outside a tenant, the tenant picker
     // takes Mod+K for its own search.
     const shortcuts = inject(TmShortcuts);
@@ -167,6 +186,13 @@ export class TmTenantShell {
       labelKey: 'tm.shellOverlays.dialogs.shortcuts',
       scope: 'global',
       run: () => overlays.run((panels) => panels.openDialog('shortcuts')),
+    });
+    shortcuts.register({
+      id: 'tm.pins.toggle',
+      keys: 'Alt+Shift+P',
+      labelKey: 'tm.pins.toggle',
+      scope: 'global',
+      run: () => pins.press('shortcut', null),
     });
 
     // --- The error state, from the lazily loaded error views ---

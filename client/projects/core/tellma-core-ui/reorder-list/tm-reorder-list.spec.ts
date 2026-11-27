@@ -68,6 +68,43 @@ class Host {
   readonly labelOf = (column: Column): string => column.label;
 }
 
+/** Two lists whose rows move between them: kinds by row, each list accepting the other's rows. */
+@Component({
+  imports: [TmReorderList],
+  template: `
+    <tm-reorder-list
+      class="left"
+      [(items)]="left"
+      [itemKey]="keyOf"
+      [itemLabel]="labelOf"
+      [itemKind]="kindOf"
+      [accepts]="['test.column', 'test.locked']"
+      ariaLabel="Left"
+      (received)="leftReceived.push($event)"
+    />
+    <tm-reorder-list
+      class="right"
+      [(items)]="right"
+      [itemKey]="keyOf"
+      [itemLabel]="labelOf"
+      [itemKind]="kindOf"
+      [accepts]="['test.column']"
+      ariaLabel="Right"
+      (received)="rightReceived.push($event)"
+    />
+  `,
+})
+class KindsHost {
+  readonly left = signal<readonly Column[]>(COLUMNS.slice(0, 3));
+  readonly right = signal<readonly Column[]>(COLUMNS.slice(3));
+  readonly leftReceived: { payload: TmDragPayload; index: number }[] = [];
+  readonly rightReceived: { payload: TmDragPayload; index: number }[] = [];
+  readonly keyOf = (column: Column): string => column.key;
+  readonly labelOf = (column: Column): string => column.label;
+  /** The date column is locked to its list's kind, which the right list refuses. */
+  readonly kindOf = (column: Column): string => (column.key === 'date' ? 'test.locked' : 'test.column');
+}
+
 /** The unit page loads no token stylesheet; the row geometry needs one. */
 let tokenSheet: HTMLStyleElement;
 
@@ -373,6 +410,72 @@ describe('tm-reorder-list', () => {
       frame.dispatchEvent(drag('drop', data, rowY(element, 0, -1)));
       expect(host.received).toEqual([{ payload: FIELD, index: 0 }]);
       expect(labels(host.items())).toEqual(labels(COLUMNS));
+    });
+  });
+  describe('row kinds', () => {
+    /** The vertical middle of a row of a list, plus `offset`. */
+    function rowY(list: HTMLElement, index: number, offset = 0): number {
+      const rect = list.querySelectorAll('.tm-reorder-list__row')[index].getBoundingClientRect();
+      return rect.top + rect.height / 2 + offset;
+    }
+
+    async function kinds() {
+      TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+      const fixture = TestBed.createComponent(KindsHost);
+      fixture.autoDetectChanges();
+      await fixture.whenStable();
+      const element = fixture.nativeElement as HTMLElement;
+      return {
+        fixture,
+        host: fixture.componentInstance,
+        left: element.querySelector<HTMLElement>('tm-reorder-list.left')!,
+        right: element.querySelector<HTMLElement>('tm-reorder-list.right')!,
+      };
+    }
+
+    it("drags each row under its kind, which a list that accepts it receives at the drop's index", async () => {
+      const { fixture, host, left, right } = await kinds();
+      const source = left.querySelectorAll<HTMLElement>('.tm-reorder-list__row')[1];
+      const frame = right.querySelector<HTMLElement>('.tm-reorder-list__frame')!;
+      const data = new DataTransfer();
+      source.dispatchEvent(drag('dragstart', data));
+      frame.dispatchEvent(drag('dragenter', data, rowY(right, 0, -1)));
+      frame.dispatchEvent(drag('dragover', data, rowY(right, 0, -1)));
+      await fixture.whenStable();
+      expect(right.querySelector('.tm-reorder-list__indicator')).not.toBeNull();
+      frame.dispatchEvent(drag('drop', data, rowY(right, 0, -1)));
+      source.dispatchEvent(drag('dragend', data));
+      await fixture.whenStable();
+      expect(host.rightReceived).toEqual([{ payload: { kind: 'test.column', data: COLUMNS[1], text: 'Code', label: 'Code' }, index: 0 }]);
+      // The consumer moves it: neither list changed its own items.
+      expect(labels(host.left())).toEqual(['Name', 'Code', 'Date']);
+      expect(labels(host.right())).toEqual(['Amount', 'Status']);
+    });
+
+    it('refuses a row whose kind a list does not accept, and still moves its own rows', async () => {
+      const { fixture, host, left, right } = await kinds();
+      const locked = left.querySelectorAll<HTMLElement>('.tm-reorder-list__row')[2];
+      const frame = right.querySelector<HTMLElement>('.tm-reorder-list__frame')!;
+      const data = new DataTransfer();
+      locked.dispatchEvent(drag('dragstart', data));
+      frame.dispatchEvent(drag('dragenter', data, rowY(right, 0, -1)));
+      frame.dispatchEvent(drag('dragover', data, rowY(right, 0, -1)));
+      await fixture.whenStable();
+      expect(right.querySelector('.tm-reorder-list__indicator')).toBeNull();
+      frame.dispatchEvent(drag('drop', data, rowY(right, 0, -1)));
+      locked.dispatchEvent(drag('dragend', data));
+      expect(host.rightReceived).toEqual([]);
+      // Its own list takes it back to the top.
+      const own = left.querySelector<HTMLElement>('.tm-reorder-list__frame')!;
+      const again = new DataTransfer();
+      locked.dispatchEvent(drag('dragstart', again));
+      own.dispatchEvent(drag('dragenter', again, rowY(left, 0, -1)));
+      own.dispatchEvent(drag('dragover', again, rowY(left, 0, -1)));
+      own.dispatchEvent(drag('drop', again, rowY(left, 0, -1)));
+      locked.dispatchEvent(drag('dragend', again));
+      await fixture.whenStable();
+      expect(labels(host.left())).toEqual(['Date', 'Name', 'Code']);
+      expect(host.leftReceived).toEqual([]);
     });
   });
 });

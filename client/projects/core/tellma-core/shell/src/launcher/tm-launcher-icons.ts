@@ -17,6 +17,7 @@ import List from 'lucide/dist/esm/icons/list.mjs';
 import Pin from 'lucide/dist/esm/icons/pin.mjs';
 import Plus from 'lucide/dist/esm/icons/plus.mjs';
 import Settings from 'lucide/dist/esm/icons/settings.mjs';
+import Settings2 from 'lucide/dist/esm/icons/settings-2.mjs';
 import SquareDashed from 'lucide/dist/esm/icons/square-dashed.mjs';
 import SunMoon from 'lucide/dist/esm/icons/sun-moon.mjs';
 import User from 'lucide/dist/esm/icons/user.mjs';
@@ -24,11 +25,13 @@ import UserCog from 'lucide/dist/esm/icons/user-cog.mjs';
 
 // The icon names the launcher draws (spec 0027 §3.2, §9.3, §9.4): the
 // default icon of each entry kind, the core sections' and the core entries'
-// icons, a recent page's icon by family, the pinned glyph and the create
-// row's plus. No surface of the first frame draws them, so they load in a
-// chunk of their own beside the launcher's panel rather than with the
-// platform's first-frame names. A name the app already registered keeps its
-// own glyph: a distribution may draw `settings` its own way.
+// icons, a recent page's icon by family, the pinned glyph, the create
+// row's plus and the Manage pins command's gear. The Manage pins dialog
+// draws its rows' icons from the same names. No surface of the first frame
+// draws them, so they load in a chunk of their own beside the launcher's
+// panel rather than with the platform's first-frame names. A name the app
+// already registered keeps its own glyph: a distribution may draw
+// `settings` its own way.
 
 /** The launcher's icons, by name. */
 const ICONS: Readonly<Record<string, TmIconSource>> = {
@@ -43,6 +46,7 @@ const ICONS: Readonly<Record<string, TmIconSource>> = {
   pin: Pin,
   plus: Plus,
   settings: Settings,
+  'settings-2': Settings2,
   'square-dashed': SquareDashed,
   'sun-moon': SunMoon,
   user: User,

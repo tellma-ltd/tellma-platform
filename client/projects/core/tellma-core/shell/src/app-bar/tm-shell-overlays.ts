@@ -8,20 +8,21 @@ import { type TmShellSlot, TmTelemetry } from '@tellma/core';
 
 import type { TmShellMarker } from './tm-shell-identity';
 
-// The tenant shell's overlays (spec 0027 §7.2, §7.4, §10, §11): the session
-// menu, the marker popovers, the slot panels and the About and Shortcuts
-// dialogs. Their code is a deferred chunk, so a tenant route's first frame
-// carries only the app bar's buttons. The chunk loads when the browser is
-// first idle after the shell renders, and on the first hover or focus of any
-// of its buttons, so it is in memory by the time a click asks for it and the
-// overlay opens in the click's frame; a click that beats it opens the overlay
-// as soon as it lands. Presses that beat it collapse to their net effect
-// rather than queue as toggles: two presses of one button cancel out, and a
-// press of another button replaces what waits. The buttons keep their ARIA
-// live from the overlays' own state once the chunk is in.
+// The tenant shell's overlays (spec 0027 §7.2, §7.4, §8.10, §10, §11): the
+// session menu, the marker popovers, the slot panels and the About,
+// Shortcuts and Manage pins dialogs. Their code is a deferred chunk, so a
+// tenant route's first frame carries only the app bar's buttons. The chunk
+// loads when the browser is first idle after the shell renders, and on the
+// first hover or focus of any of its buttons, so it is in memory by the time
+// a click asks for it and the overlay opens in the click's frame; a click
+// that beats it opens the overlay as soon as it lands. Presses that beat it
+// collapse to their net effect rather than queue as toggles: two presses of
+// one button cancel out, and a press of another button replaces what waits.
+// The buttons keep their ARIA live from the overlays' own state once the
+// chunk is in.
 
 /** A dialog the shell opens. */
-export type TmShellDialog = 'about' | 'shortcuts';
+export type TmShellDialog = 'about' | 'shortcuts' | 'pins';
 
 /** The shell's overlays, as the deferred chunk implements them. Internal. */
 export interface TmShellPanels {

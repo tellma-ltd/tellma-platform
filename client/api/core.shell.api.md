@@ -94,6 +94,52 @@ export type TmLauncherCloseReason = 'chosen' | 'escape' | 'outside' | 'route' | 
 export type TmLauncherVia = 'field' | 'icon' | 'link' | 'menu' | 'shortcut';
 
 // @public
+export interface TmPinFolderView {
+    readonly folder: string;
+    readonly id: string;
+    readonly items: readonly TmPinView[];
+}
+
+// @public
+export class TmPins {
+    constructor();
+    addFolder(name: string): string;
+    readonly canPinCurrent: Signal<boolean>;
+    readonly current: Signal<TmPinView | null>;
+    readonly items: Signal<readonly (TmPinFolderView | TmPinView)[]>;
+    move(id: string, to: {
+        folderId: string | null;
+        index: number;
+    }): void;
+    pinCurrent(): TmPinView;
+    remove(id: string): void;
+    removeFolder(id: string): void;
+    replace(doc: TmPinsDoc): void;
+    setVisible(visible: boolean): void;
+    update(id: string, patch: {
+        label?: string | null;
+        folderId?: string | null;
+    }): void;
+    readonly visible: Signal<boolean>;
+    // @internal
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmPins, never>;
+    // @internal
+    // @internal
+    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmPins>;
+    // @internal
+}
+
+// @public
+export interface TmPinView {
+    readonly current: Signal<boolean>;
+    readonly folderId: string | null;
+    readonly href: string;
+    readonly id: string;
+    readonly label: Signal<string>;
+    readonly state: Signal<'no-access' | 'ok' | 'unavailable'>;
+}
+
+// @public
 export class TmSessionMenu {
     close(): void;
     controls(button: HTMLElement): string | null;
@@ -180,6 +226,7 @@ export class TmTenantShell {
         readonly error: TmApiError | null;
     } | null>;
     protected readonly override: _angular_core.Signal<_tellma_core.TmShellMainOverride | null>;
+    protected readonly pinnedBar: _angular_core.Signal<boolean>;
     protected retry(): void;
     protected readonly retryLabel: _angular_core.Signal<string>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmTenantShell, "tm-tenant-shell", never, {}, {}, never, never, true, never>;

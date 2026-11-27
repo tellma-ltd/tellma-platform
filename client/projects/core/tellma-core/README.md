@@ -9,7 +9,7 @@ own.
 |---|---|---|
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`), the running build's identity (`TmAppVersion`) and the support facade (`TmSupport`: Report a problem, the diagnostic file and the dump's sections); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the server text of notifications, jobs and assignment captions (`TmAttentionText`); and the outcome toasts (`TmOutcomeToasts`) | eager, preloaded with the app |
-| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button) and its states; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the About and Shortcuts dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
+| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button), its pinned bar and its states, and `TmPins`, the user's pins in the routed tenant; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the pinned bar's menus, popover and drag and drop, a lazy chunk the bar loads at idle; the About, Shortcuts and Manage pins dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
@@ -658,6 +658,38 @@ offline line with Copy diagnostics' shortcut when that cannot load) and the Shor
 general, page, grid and launcher keys with a filter) are a chunk each, which open over a placeholder
 in their final geometry. A tenant switch creates a new shell and clears the launcher's text.
 
+The pinned bar is the frame's 32 px row under the app bar while `TmPins.visible()` holds (the
+default, so the row is open from a cold launch's first frame): the user's pins and folders as
+chips, labels cut at 120 px, the routed page's pin full height in teal with `aria-current="page"`
+and the folder that holds it in the same styling, then as many as fit with the rest in More, then
+the pin control (`Alt+Shift+P`, Pin this page or Edit pin, disabled with a reason at 30 pins, on a
+link past 512 characters and while the tenant is frozen) and Manage pins. The fit reads every
+item's width from a hidden measuring row at the current chip's weight, after each render that
+changed the items, the breakpoint, the language, the direction or the loaded faces, and a
+`ResizeObserver` refits from those widths and renders in the same callback; each chip takes its
+measured width as its box, so becoming current, a hover, focus and, from md up, navigation move
+nothing. The chips stay hidden until the first fit, which waits for `document.fonts`. Below md the
+chips are pills, the current one first. The chips are one tab stop that the arrow keys, Home and End
+move by direction; Down opens a menu chip. A revoked or unavailable pin is a locked chip whose menu
+says why and unpins it, and a folder's chip opens its pins. Pinning opens the Pinned popover on
+the pin control when the new chip shows, else a toast says so once; the popover renames the pin,
+files it in a folder or a new one, and removes it. Chips drag along the bar and into folders.
+`TmPins` holds the edits (`pinCurrent`, `update`, `move`, `remove`, `addFolder`, `removeFolder`,
+`replace`, `setVisible`), each written through `TmPreferences` and reported as
+`tm.shell.pins-changed { op, via, count }` (`tm.shell.pinned-bar-toggled { visible }` for the
+switch). The Manage pins dialog (a reorder list of the pins and folders, each folder with its own,
+Rename, Move to, Remove, New folder, the bar's switch, which applies at once, and Save, which
+replaces the pins) and the launcher's Pinned-band commands, Pin this page or Edit pin and Manage
+pins…, come with the tenant shell.
+
+```ts
+const pins = inject(TmPins);
+if (pins.canPinCurrent()) {
+  const pin = pins.pinCurrent();
+  pins.update(pin.id, { label: 'Month-end invoices' });
+}
+```
+
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
 interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
@@ -827,7 +859,7 @@ pins; `tmPinnedBarVisibleKey` (`nav.pinnedBarVisible`) is the bar's switch, whic
 writes. The rules the pinned bar applies to the items (8-character ids, URLs of at most 512
 characters, titles of at most 80, labels and folder names of 1 to 40, 30 pins and 10 folders per
 tenant, one level; what a pin captures of the routed URL; the current pin and a chip's label) live
-with the bar in `/shell`, as do the terms the launcher's search matches an entry by.
+with the bar and `TmPins` in `/shell`, as do the terms the launcher's search matches an entry by.
 `TM_LAUNCHER_PROVIDERS` is the multi token through which a feature adds a bucket of results below
 the launcher's pages.
 

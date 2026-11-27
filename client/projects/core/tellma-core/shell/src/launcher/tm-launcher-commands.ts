@@ -3,12 +3,15 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { InjectionToken, signal, type Signal } from '@angular/core';
+import { inject, InjectionToken, type Signal } from '@angular/core';
+
+import { TmPins } from '../pins/tm-pins';
 
 // The launcher Pinned band's commands (spec 0027 §9.3): "Pin this page" (or
 // "Edit pin") and "Manage pins…", which the pins service provides with the
-// commands it runs. They follow the routed page, so they are a signal. With
-// none, the band lists the pins alone and shows only when there are pins.
+// commands it runs while a tenant shell renders. They follow the routed
+// page, so they are a signal. With none, the band lists the pins alone and
+// shows only when there are pins.
 
 /** A command option of the launcher's Pinned band. Internal. */
 export interface TmLauncherCommand {
@@ -23,10 +26,11 @@ export interface TmLauncherCommand {
 }
 
 /**
- * The Pinned band's commands, in the band's order after the pins; none by
- * default. Internal: the pins service provides them.
+ * The Pinned band's commands, in the band's order after the pins: the pins
+ * service's, which are the tenant shell's pin commands while it renders.
+ * Internal: a test provides its own.
  */
 export const TM_LAUNCHER_COMMANDS = new InjectionToken<Signal<readonly TmLauncherCommand[]>>('TM_LAUNCHER_COMMANDS', {
   providedIn: 'root',
-  factory: () => signal<readonly TmLauncherCommand[]>([]).asReadonly(),
+  factory: () => inject(TmPins).ɵlauncherCommands,
 });

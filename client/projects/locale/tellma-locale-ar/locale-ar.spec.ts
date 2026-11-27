@@ -25,6 +25,7 @@ import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
 import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
 import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 import { TM_SHELL_STRINGS_AR } from '@tellma/locale-ar/shell-strings';
+import { TM_PINS_STRINGS_AR } from '@tellma/locale-ar/pins-strings';
 import { TM_DETAILS_STRINGS_AR } from '@tellma/locale-ar/details-strings';
 import { TM_SUPPORT_STRINGS_AR } from '@tellma/locale-ar/support-strings';
 import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
@@ -423,18 +424,25 @@ describe("the platform's Arabic plurals", () => {
 });
 
 describe('tmArabic', () => {
-  it("loads the platform's table, its shell's, details page's, Queryex tools' and support tools' parts and the component library's, each from its own entry point", async () => {
+  it("loads the platform's table, its shell's, pinned bar's, details page's, Queryex tools' and support tools' parts and the component library's, each from its own entry point", async () => {
     const arabic = tmArabic();
     expect(arabic).toMatchObject({ code: 'ar', dir: 'rtl' });
     await expect(arabic.strings()).resolves.toEqual({
-      tm: { ...TM_STRINGS_AR, ...TM_SHELL_STRINGS_AR, ...TM_DETAILS_STRINGS_AR, ...TM_QUERYEX_STRINGS_AR, ...TM_SUPPORT_STRINGS_AR },
+      tm: {
+        ...TM_STRINGS_AR,
+        ...TM_SHELL_STRINGS_AR,
+        ...TM_PINS_STRINGS_AR,
+        ...TM_DETAILS_STRINGS_AR,
+        ...TM_QUERYEX_STRINGS_AR,
+        ...TM_SUPPORT_STRINGS_AR,
+      },
       tmUi: TM_LOCALE_AR_STRINGS,
     });
   });
 
-  it("keeps the shell's, the details page's, the Queryex tools' and the support tools' parts apart from the platform's table and from each other", () => {
+  it("keeps the shell's, the pinned bar's, the details page's, the Queryex tools' and the support tools' parts apart from the platform's table and from each other", () => {
     // The merge under `tm` is shallow, so a scope in two tables would lose one side.
-    const scopes = [TM_STRINGS_AR, TM_SHELL_STRINGS_AR, TM_DETAILS_STRINGS_AR, TM_QUERYEX_STRINGS_AR, TM_SUPPORT_STRINGS_AR].flatMap((table) =>
+    const scopes = [TM_STRINGS_AR, TM_SHELL_STRINGS_AR, TM_PINS_STRINGS_AR, TM_DETAILS_STRINGS_AR, TM_QUERYEX_STRINGS_AR, TM_SUPPORT_STRINGS_AR].flatMap((table) =>
       Object.keys(table),
     );
     expect(scopes.filter((scope, index) => scopes.indexOf(scope) !== index)).toEqual([]);
