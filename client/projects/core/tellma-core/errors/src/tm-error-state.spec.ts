@@ -54,6 +54,13 @@ function button(fixture: ComponentFixture<TmErrorState>, label: string): HTMLBut
 }
 
 describe('TmErrorState', () => {
+  // The search page's chunk loads once, before the first setUp waits on the
+  // page: its cold load is the browser's to time, beside every other file's
+  // load in a run, not these tests'. The route still loads it with import().
+  beforeAll(async () => {
+    await import('@tellma/core/search' as string);
+  });
+
   it("shows the words, the reference and the refused permission's raw pair in a left-to-right isolate", async () => {
     const rig = await setUp();
     const fixture = await render(

@@ -215,3 +215,36 @@ R1-1: fixed in fix1 (the commit titled "PC-F99: fix1 (R1-1)"). The finding holds
   - eslint is clean on the three changed files. lint:test passed. tsc tellma-core spec shows
     only the existing TS6059 notices.
 - The screenshot those failures write is gitignored, and I deleted it.
+
+Found during fix1: tm-error-state's setUp wait paid the cold load of the search chunk. Fixed in fix2
+(the commit titled "PC-F99: fix2 (tm-error-state cold search chunk)").
+
+- The cause:
+  - The first test's `setUp` navigates to `/17/centers`. `TmRouteHost.load()` only starts
+    `import('@tellma/core/search')` after the navigation has ended, so the cold load of that chunk
+    falls inside the 4 s "the search page lands" wait. The same is true of the tenant entry and
+    the Entities chunk.
+  - In the 20-file run, the other files load in parallel. Timing probes (temporary, reverted)
+    measured the first `setUp` wait at 3388 ms, or past 4 s (failed), against about 60 ms for each
+    later test.
+  - The cold import alone took 1.0-1.5 s in the 20-file run and 0.5 s with the file alone.
+- The fix: a `beforeAll` in the spec awaits `import('@tellma/core/search' as string)`, with a
+  comment saying why. This follows tm-entity-actions.spec's warm-up of its dialog chunks. The route
+  still loads the chunk with its own `import()`, and the module graph under test is unchanged.
+  - No deadline was raised and no retry was added.
+  - With the warm-up, the first wait measured 338-839 ms in three 20-file runs.
+- Runs:
+  - Reproduced first, at d560f34c, plain: 2 of 7 valid runs failed (an eighth run was set aside
+    because my edit landed while it was starting). Before that, 7 of 9 failed.
+  - After the fix, plain: 5/5 at 639/639, and the file alone 6/6.
+  - After the fix, under the postTask harness: 3/3 at 639/639 (53 sites injected). The harness was
+    reverted, and git status was clean.
+  - One no-warm-up probe run also had a load stall that timed out three unrelated entity tests at
+    15 s. That is the starvation class, not this item's.
+  - eslint is clean on the spec. lint:test passed 563/563 on the second run.
+    - The first lint:test run failed two tests in tools/tests/vitest-instances.spec.mts ("run client
+      on one copy of vitest and one of vite…", for client and for Acme's Client).
+    - Run alone right after, a third test in the same file timed out at 5 s (14.9 s), under the
+      same machine load.
+    - That spec checks the installed node_modules, which this item does not touch. I reported it
+      as a load-sensitive candidate flake.
