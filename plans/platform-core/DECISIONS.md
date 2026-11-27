@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-398 — PC-F111 landed; PC-F112 released; PC-F99 and PC-F107 start (2026-11-26)
+
+PC-F111 landed as f598b284. Its first integration went stale when PC-F110 landed lockfile changes. It re-integrated, and the re-integration found and fixed a lint:test race: lucide-icon-paths walked the fake-emit fixtures/run-* copies, which PC-F110's specs create and delete.
+
+Per D-229, the blocking fix PC-F112 integrates next, then PC-123. pc-f2 and pc-f3 serve fixes (D-035). PC-F99 starts in pc-f2, since PC-126 has landed. PC-F107 starts in pc-f3. That makes five heavy agents (D-028): PC-156 fix2, PC-163 R1, PC-F112 integrate, PC-F99 and PC-F107.
+
+### D-397 — PC-163 blocked on spec budgets; R1 first (2026-11-26)
+
+PC-163's implementer reports blocked. ./shell measures 19.48 KB against spec 0027's 16 KB for eager code. Acme initialJs is 234.07 (fixture 233.16), over spec 0024 §12's 230 warn line, so build.fixture.spec fails. The orchestrator raises neither (D-313), and this would also be ./shell's third raise (D-373).
+
+§8.1 allows resume, re-spawn, split or park. R1 runs first, at high effort, with the budget as its first task: itemize the growth by module, find trims that keep spec behaviour, and judge the implementer's options (a), (b) and (c) against spec 0027. If R1 shows 16 and 230 are both unreachable without bending the spec, PC-163 parks for Ahmad's ruling with the smallest honest figures. Otherwise fix1 applies the trims.
+
 ### D-396 — PC-156 R2 rulings; park on spec 0028 §1 (2026-11-26)
 
 R2 found 1 blocking, 1 major and 9 minor issues. R2-1 (blocking) is the panels chunk: 10.37 against spec 0028 §1's 9. Spec budgets are not the orchestrator's to raise (D-313). The neutral trims (shared skeleton, owner lookup moved into the calls chunk, deduped strings and CSS, the icon-gate artifact) go to fix2. Moving the page contexts to an on-open chunk changes behaviour, so it is not taken. The ceiling stays 9, and PC-156 parks after fix2 on its measured figure. Ahmad was notified with three options: a 10.5 cap, a 10.0 cap if every trim lands, or on-open page contexts at 9.
