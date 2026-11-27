@@ -57,12 +57,13 @@ function action(name: string, patch: Partial<TmActionMetadata>): TmActionMetadat
  * The recorded Entities chunk, with Acme's customer actions: the built-in
  * ones, set-credit-limit as Acme declares it, an archive with no arguments, a
  * single-target run-now, an invite whose dialog is declared, a merge whose
- * argument takes no control, a hold with a required yes/no, and the API
- * actions.
+ * argument takes no control, a hold with a required yes/no, a test's own
+ * actions, and the API actions.
  *
+ * @param extra - The test's own actions, after Acme's; none when omitted.
  * @returns The chunk.
  */
-function acmeChunk(): TmEntitiesChunk {
+function acmeChunk(extra: readonly TmActionMetadata[] = []): TmEntitiesChunk {
   const { chunk } = tmTestEntities();
   return {
     ...chunk,
@@ -110,12 +111,30 @@ function acmeChunk(): TmEntitiesChunk {
             arguments: { type: 'object' },
             fields: [{ name: 'notify', labelKey: 'Hold_Notify', labelFallback: 'Notify the customer', required: true, value: { type: 'bool', nullable: false } }],
           }),
+          ...extra,
           ...api,
         ],
       };
     }),
   };
 }
+
+/**
+ * A retitle action whose argument is a multilingual group: every slot reads
+ * the anchor's key, and the client adds each language's symbol.
+ */
+const RETITLE = action('retitle', {
+  labelFallback: 'Retitle',
+  arguments: { type: 'object' },
+  fields: ([1, 2, 3] as const).map((slot) => ({
+    name: slot === 1 ? 'title' : `title${slot}`,
+    labelKey: 'Acme_Customer_Action_Retitle_Title',
+    labelFallback: 'Title',
+    required: false,
+    value: { type: 'string', nullable: true, maxLength: 200 },
+    multilingual: { group: 'Title', slot },
+  })),
+});
 
 /** The context the declared invite dialog was opened with, for the test to drive. */
 let invite: TmActionDialogContext<{ message: string }> | null = null;
@@ -155,11 +174,20 @@ interface TmActionsTest {
  * customers.
  *
  * @param declarations - The customer's action declarations.
+ * @param options - The tenant's number of content languages, one when omitted, and the test's own actions, none when omitted.
  * @returns The test.
  */
-async function start(declarations: readonly TmEntityActionDeclaration<'acme.Customer'>[] = DECLARATIONS): Promise<TmActionsTest> {
+async function start(
+  declarations: readonly TmEntityActionDeclaration<'acme.Customer'>[] = DECLARATIONS,
+  options: { readonly languages?: 1 | 2 | 3; readonly actions?: readonly TmActionMetadata[] } = {},
+): Promise<TmActionsTest> {
   invite = null;
-  const rig = await tmEntityRig({ access: { isSystem: true }, chunk: acmeChunk(), actions: declarations });
+  const rig = await tmEntityRig({
+    access: { isSystem: true },
+    chunk: acmeChunk(options.actions),
+    actions: declarations,
+    ...(options.languages !== undefined && { languages: options.languages }),
+  });
   TestBed.inject(TmDisplayNames).remember('acme.Customer', [
     { id: 1, name: 'Bayt Foods' },
     { id: 2, name: 'Cedar Mills' },
@@ -484,6 +512,31 @@ describe('TmEntityActions', () => {
       await click('Hold');
       expect(await opened).toEqual({ kind: 'own', result: null });
       expect(callsTo(rig, 'customers/hold')[0]!.body).toEqual({ ids: [1], arguments: { notify: false } });
+    });
+
+    it("labels a multilingual argument's twins by language, directs each input, and sends no twin beyond the tenant's languages", async () => {
+      const { rig, actions } = await start(DECLARATIONS, { languages: 2, actions: [RETITLE] });
+      rig.api.respond('customers/retitle', () => {
+        throw invalid({ path: 'arguments.title2.text', code: 'Format', message: 'Not a valid title.' });
+      });
+
+      const opened = actions.dialog('acme.Customer', 'retitle', [77]);
+      await tmSettleUntil(() => modals().length === 1);
+
+      // Two languages: two controls, the anchor's label with each language's symbol.
+      const fields = [...top().querySelectorAll('tm-form-field')];
+      expect(fields.map((field) => field.querySelector('label')?.textContent?.trim() ?? field.textContent?.trim())).toEqual(['Title (En)', 'Title (ع)']);
+      // The Arabic twin's input is right-to-left on an English page.
+      expect([...top().querySelectorAll('input')].map((input) => input.getAttribute('dir'))).toEqual(['ltr', 'rtl']);
+
+      // The body carries the admitted slots only, and an error the form cannot place reads the twin's label.
+      await click('Retitle');
+      await tmSettleUntil(() => top().querySelector('tm-alert') !== null);
+      expect(Object.keys((callsTo(rig, 'customers/retitle')[0]!.body as { arguments: TmJsonObject }).arguments)).toEqual(['title', 'title2']);
+      expect(top().querySelector('tm-alert')!.textContent).toContain('Title (ع): Not a valid title.');
+
+      await click('Cancel');
+      expect(await opened).toBeNull();
     });
 
     it("shows the action pending under the busy overlay until the answer, in the click's frame", async () => {

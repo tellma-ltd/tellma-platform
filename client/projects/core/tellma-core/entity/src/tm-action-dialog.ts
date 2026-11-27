@@ -37,6 +37,7 @@ import {
   type TmLazyComponent,
   type TmProblemError,
   type TmStringTree,
+  type TmValueDescriptor,
 } from '@tellma/core';
 import { tmSplitErrorPath, tmWalkErrorPath } from '@tellma/core/error-paths';
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
@@ -114,6 +115,8 @@ interface TmGeneratedField {
   readonly field: TmActionFieldDescriptor;
   /** Its label. */
   readonly label: Signal<string>;
+  /** What its editor reads: the type facts, with a slot's content direction; none for a field of no group. */
+  readonly property: TmValueDescriptor & { readonly contentDir: 'ltr' | 'rtl' | undefined };
   /** Its field in the dialog's form. */
   readonly tree: FieldTree<unknown>;
 }
@@ -249,7 +252,7 @@ export async function ɵtmOpenActionDialog(
       <!-- The generated form: one field per argument, in order -->
       <form class="tm-action-dialog__form" novalidate [id]="formId" (submit)="apply($event)">
         @for (generated of fields; track generated.field.name) {
-          <ng-container *ngComponentOutlet="data.field; inputs: { label: generated.label(), property: generated.field.value, field: generated.tree }" />
+          <ng-container *ngComponentOutlet="data.field; inputs: { label: generated.label(), property: generated.property, field: generated.tree }" />
         }
       </form>
       <div tmModalFooter>
@@ -331,10 +334,21 @@ export class ɵTmActionDialog {
     }
   });
 
-  /** The generated dialog's fields, in the metadata's order. */
+  /**
+   * The generated dialog's fields, in the metadata's order. An editor reads
+   * its field's content direction, so an Arabic twin's input is
+   * right-to-left; the getter reads the descriptor's, which follows the
+   * tenant's languages, so the editor's computed sees a change.
+   */
   protected readonly fields: readonly TmGeneratedField[] = (this.data.action.fields ?? []).map((field) => ({
     field,
     label: field.label,
+    property: {
+      ...field.value,
+      get contentDir() {
+        return field.contentDir;
+      },
+    },
     tree: (this.#form as unknown as Readonly<Record<string, FieldTree<unknown>>>)[field.name]!,
   }));
 
