@@ -134,6 +134,7 @@ export class TmValueEditor {
     constructor();
     protected readonly accept: _angular_core.Signal<string>;
     protected readonly asIs: (src: string) => string;
+    readonly blob: InputSignal<TmJsonObject | null | undefined>;
     protected readonly blobSrc: _angular_core.Signal<string>;
     protected readonly boolField: _angular_core.Signal<FieldTree<boolean>>;
     protected readonly chooseLabel: _angular_core.Signal<string>;
@@ -152,6 +153,7 @@ export class TmValueEditor {
     protected readonly fileLabel: _angular_core.Signal<string | null>;
     protected readonly idField: _angular_core.Signal<FieldTree<TmId | null>>;
     protected readonly idsField: _angular_core.Signal<FieldTree<readonly TmId[]>>;
+    protected readonly imageSize = 72;
     protected readonly kind: _angular_core.Signal<ɵTmEditorKind>;
     protected readonly maxLength: _angular_core.Signal<number | null>;
     protected readonly numberField: _angular_core.Signal<FieldTree<number | null>>;
@@ -163,6 +165,7 @@ export class TmValueEditor {
     }[]>;
     protected readonly ownId: string;
     readonly path: InputSignal<string | undefined>;
+    protected readonly percent: _angular_core.Signal<number | null>;
     protected readonly pickLimit: _angular_core.Signal<number>;
     protected readonly policy: _angular_core.Signal<TmBlobKindPolicy | null>;
     readonly property: InputSignal<TmEditedProperty>;
@@ -176,7 +179,7 @@ export class TmValueEditor {
     protected readonly textField: _angular_core.Signal<FieldTree<string>>;
     protected readonly uploading: _angular_core.WritableSignal<boolean>;
     protected readonly writable: _angular_core.Signal<boolean>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmValueEditor, "tm-value-editor", never, { "property": { "alias": "property"; "required": true; "isSignal": true; }; "field": { "alias": "field"; "required": true; "isSignal": true; }; "path": { "alias": "path"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmValueEditor, "tm-value-editor", never, { "property": { "alias": "property"; "required": true; "isSignal": true; }; "field": { "alias": "field"; "required": true; "isSignal": true; }; "path": { "alias": "path"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; "blob": { "alias": "blob"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmValueEditor, never>;
 }
 

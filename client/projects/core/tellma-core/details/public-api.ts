@@ -4,7 +4,8 @@
  * the source page over any other source, the context a layout reads with
  * `injectTmDetails()`, the layout kit a layout is written in, and the
  * validation schema every record's form gets. It loads with the first
- * details route; the edit controls load on the first edit.
+ * details route; the edit controls load on the first edit, and a child
+ * grid's grid once it nears the viewport.
  *
  * @packageDocumentation
  */
@@ -35,6 +36,8 @@ export { TmDetailsKit } from './src/tm-details-kit';
 export { TmDetailsCard, TmDetailsCardSection } from './src/tm-details-card';
 export { TmField, type TmFieldEditContext, TmFieldEdit, TmFieldView, type TmFieldViewContext } from './src/tm-field';
 export { TmFieldGroup } from './src/tm-field-group';
+export { TmChildGrid } from './src/tm-child-grid';
+export { TmChildFiles } from './src/tm-child-files';
 export { TmDetailsTab, TmDetailsTabContent, TmDetailsTabs } from './src/tm-details-tabs';
 export { TmDetailsAside, ɵTmDetailsAsideContent } from './src/tm-details-aside';
 export { TmDetailsAudit } from './src/tm-details-audit';

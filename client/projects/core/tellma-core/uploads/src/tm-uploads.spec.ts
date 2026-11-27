@@ -9,23 +9,33 @@ import type { TmBlobDescriptor, TmDecimal } from '@tellma/core';
 
 import { TmUploads } from './tm-uploads';
 
-// A form's uploads: the paths in flight, the blob each staged, a second
-// upload replacing the first, and the host's end aborting what is left.
+// A form's uploads: the paths in flight, the blob each staged, the share
+// each has sent, a second upload replacing the first, a removed child row
+// moving the later rows' entries up, and the host's end aborting what is
+// left.
 
 /** A blob an upload stages. */
 const blob = (id: number): TmBlobDescriptor => ({ id, kind: 'customer-image', contentType: 'image/webp', size: '120' as TmDecimal });
 
 /** An upload the test settles, and the signal it was given. */
-function deferred(): { run: (signal: AbortSignal) => Promise<TmBlobDescriptor>; resolve(value: TmBlobDescriptor): void; reject(error: unknown): void; signal(): AbortSignal } {
+function deferred(): {
+  run: (signal: AbortSignal, progress: (sent: number) => void) => Promise<TmBlobDescriptor>;
+  resolve(value: TmBlobDescriptor): void;
+  reject(error: unknown): void;
+  signal(): AbortSignal;
+  progress(sent: number): void;
+} {
   let resolve!: (value: TmBlobDescriptor) => void;
   let reject!: (error: unknown) => void;
   let given: AbortSignal | undefined;
+  let report: ((sent: number) => void) | undefined;
   const promise = new Promise<TmBlobDescriptor>((yes, no) => ((resolve = yes), (reject = no)));
   return {
-    run: (signal) => ((given = signal), promise),
+    run: (signal, progress) => ((given = signal), (report = progress), promise),
     resolve,
     reject,
     signal: () => given!,
+    progress: (sent) => report!(sent),
   };
 }
 
@@ -91,6 +101,51 @@ describe('TmUploads', () => {
     expect(uploads.staged('imageId')).toEqual(blob(5));
     uploads.stage('imageId', null);
     expect(uploads.staged('imageId')).toBeUndefined();
+  });
+
+  it('reports the share an upload has sent, clamped, until it settles', async () => {
+    const { uploads } = host();
+    const upload = deferred();
+    const done = uploads.start('fileId', upload.run);
+    expect(uploads.progress('fileId')).toBeNull();
+    upload.progress(0.25);
+    expect(uploads.progress('fileId')).toBe(0.25);
+    upload.progress(1.5);
+    expect(uploads.progress('fileId')).toBe(1);
+    upload.resolve(blob(7));
+    await done;
+    expect(uploads.progress('fileId')).toBeNull();
+  });
+
+  it('moves the later rows’ uploads and blobs up when a child row is removed, aborting the removed row’s', async () => {
+    const { uploads } = host();
+    const removed = deferred();
+    const moved = deferred();
+    const gone = uploads.start('attachments.1.fileId', removed.run);
+    const kept = uploads.start('attachments.2.fileId', moved.run);
+    uploads.stage('attachments.0.fileId', blob(10));
+    uploads.stage('attachments.1.fileId', blob(11));
+    uploads.stage('attachments.3.fileId', blob(13));
+    uploads.stage('imageId', blob(1));
+
+    uploads.removeRow('attachments', 1);
+    expect(removed.signal().aborted).toBe(true);
+    expect([...uploads.running()]).toEqual(['attachments.1.fileId']);
+    expect(uploads.staged('attachments.0.fileId')).toEqual(blob(10));
+    expect(uploads.staged('attachments.2.fileId')).toEqual(blob(13));
+    expect(uploads.staged('attachments.3.fileId')).toBeUndefined();
+    expect(uploads.staged('imageId')).toEqual(blob(1));
+
+    // The moved upload reports and stages under its row's new path.
+    moved.progress(0.5);
+    expect(uploads.progress('attachments.1.fileId')).toBe(0.5);
+    moved.resolve(blob(12));
+    await kept;
+    expect(uploads.staged('attachments.1.fileId')).toEqual(blob(12));
+    expect(uploads.running().size).toBe(0);
+    removed.resolve(blob(99));
+    await expect(gone).rejects.toThrow();
+    expect(uploads.staged('attachments.0.fileId')).toEqual(blob(10));
   });
 
   it('aborts what is in flight when its host ends', () => {

@@ -8,13 +8,34 @@ import * as i0 from '@angular/core';
 import { Signal } from '@angular/core';
 
 // @public
+export type TmUploadFailure =
+/** A later pick, a removal or the host aborted it: it says nothing. */
+    {
+    readonly kind: 'aborted';
+}
+/** The server refused the file: the reason, in the active language. */
+| {
+    readonly kind: 'rejected';
+    readonly message: Signal<string>;
+}
+/** A failure a retry may mend: a server error, a lost connection, a timeout. */
+| {
+    readonly kind: 'failed';
+};
+
+// @public
+export function tmUploadFailure(error: unknown, text: TmServerText): TmUploadFailure;
+
+// @public
 export class TmUploads {
     constructor();
     cancel(path: string): void;
+    progress(path: string): number | null;
+    removeRow(collection: string, index: number): void;
     readonly running: Signal<ReadonlySet<string>>;
     stage(path: string, blob: TmBlobDescriptor | null): void;
     staged(path: string): TmBlobDescriptor | undefined;
-    start(path: string, upload: (signal: AbortSignal) => Promise<TmBlobDescriptor>): Promise<TmBlobDescriptor>;
+    start(path: string, upload: (signal: AbortSignal, progress: (sent: number) => void) => Promise<TmBlobDescriptor>): Promise<TmBlobDescriptor>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmUploads, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmUploads>;
 }

@@ -9,7 +9,8 @@ import { TmDetailsKit } from '@tellma/core/details';
 /**
  * Acme's customer details layout, in the platform's layout kit: one card
  * of the customer's name (a field per tenant language), code, type,
- * currency and credit limit, then the collapsed audit card. The host owns
+ * currency and credit limit, a card of the customer's contacts in a grid
+ * that edits them in place, then the collapsed audit card. The host owns
  * the record's lifecycle, modes, header and errors; each field labels,
  * formats and edits its value from the entity's descriptors.
  */
@@ -25,6 +26,10 @@ import { TmDetailsKit } from '@tellma/core/details';
       <tm-field path="CustomerType" />
       <tm-field path="Currency" />
       <tm-field path="CreditLimit" />
+    </tm-details-card>
+    <!-- The contacts: a grid of their name, email and mobile, edited in place in edit mode. -->
+    <tm-details-card titleKey="Acme_Customer_Contacts">
+      <tm-child-grid collection="Contacts" [columns]="['Name', 'Email', 'Mobile']" />
     </tm-details-card>
     <!-- Who created and last modified the customer, and when. -->
     <tm-details-audit />

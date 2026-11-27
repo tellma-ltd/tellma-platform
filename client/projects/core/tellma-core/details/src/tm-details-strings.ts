@@ -37,4 +37,11 @@ export const TM_DETAILS_STRINGS_EN = {
   audit: 'Audit info',
   aside: 'Related information',
   editorFailed: "This field couldn't be loaded for editing.",
+  total: 'Total {label}',
+  totals: 'Totals',
+  tableFailed: "This table couldn't be loaded.",
+  noFiles: 'No files',
+  filesFailed: "These files couldn't be loaded.",
+  fileRefused: '{name}: {message}',
+  uploading: 'Uploading {name}',
 } as const satisfies TmStringTree;

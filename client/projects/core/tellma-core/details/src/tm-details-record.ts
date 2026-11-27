@@ -20,6 +20,7 @@ import {
 import { type FieldTree, form, type SchemaPathTree } from '@angular/forms/signals';
 import {
   type TmApiError,
+  type TmChildDescriptor,
   type TmEntityDescriptor,
   type TmEntityRules,
   type TmEntities,
@@ -288,6 +289,9 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
   /** The host's view. */
   readonly #host: TmDetailsHostView<T>;
 
+  /** The last id a new child row took; 0 before the first. */
+  #lastRowId = 0;
+
   /** The entity registry. */
   readonly #entities: TmEntities;
 
@@ -448,6 +452,49 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
     destroyRef.onDestroy(() =>
       this.collections.update((collections) => (collections.get(name) === collection ? without(collections, name) : collections)),
     );
+  }
+
+  /**
+   * The id of a new child row: −1, −2 and so on through the record's life,
+   * below every negative id its collections already hold, such as a
+   * restored draft's new rows, so no two new rows share one. The server
+   * inserts a row with a negative id (spec 0031 §6.4). Internal: the kit's
+   * child grids and child files call it.
+   *
+   * @returns The id.
+   */
+  ɵnewRowId(): number {
+    let lowest = this.#lastRowId;
+    const model = untracked(this.model) as Readonly<Record<string, unknown>>;
+    for (const child of this.descriptor.children) {
+      const rows = model[child.json];
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const id = (row as { readonly id?: unknown } | null)?.id;
+        if (typeof id === 'number' && id < lowest) {
+          lowest = id;
+        }
+      }
+    }
+    this.#lastRowId = lowest - 1;
+    return this.#lastRowId;
+  }
+
+  /**
+   * A new row of a child collection: the values given, the next new row's
+   * id, and every other member the client writes, as `null`, so each one
+   * has its node in the form. Its key to the record stays absent, for the
+   * server to write. Internal: the kit's child grids and child files call it.
+   *
+   * @param collection - The collection.
+   * @param values - The row's values, such as a layout's defaults.
+   * @returns The row.
+   */
+  ɵnewChildRow(collection: TmChildDescriptor, values: TmJsonObject = {}): TmJsonObject {
+    const descriptor = this.#child(collection.entity);
+    const key = descriptor?.property(descriptor.key.property)?.json ?? 'id';
+    // The id comes last, so no default can take a stored row's id.
+    const row: TmJsonObject = { ...values, [key]: this.ɵnewRowId() };
+    return descriptor === undefined ? row : tmDetailsComplete(row, descriptor, (entity) => this.#child(entity), collection.parentKey);
   }
 
   /**

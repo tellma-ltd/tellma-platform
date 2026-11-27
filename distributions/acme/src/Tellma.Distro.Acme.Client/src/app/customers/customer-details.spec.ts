@@ -5,16 +5,17 @@
 
 import { NgComponentOutlet } from '@angular/common';
 import { provideLocationMocks } from '@angular/common/testing';
-import { ApplicationInitStatus, ChangeDetectionStrategy, Component, Injector, input, type Type } from '@angular/core';
+import { ApplicationInitStatus, ChangeDetectionStrategy, Component, Injector, input, signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { HarnessLoader } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import type { FieldTree } from '@angular/forms/signals';
 import { provideRouter } from '@angular/router';
-import { provideTellma, TmEntities, type TmEntityRules, tmEnglish, type TmJsonObject } from '@tellma/core';
+import { provideTellma, TmEntities, type TmEntityRules, tmEnglish, type TmJsonObject, TmPermissions } from '@tellma/core';
 import {
   provideTellmaStateTesting,
   provideTellmaTesting,
+  TmChildGridHarness,
   type TmFakeDetails,
   TmFieldHarness,
   tmFakeDetails,
@@ -29,9 +30,9 @@ import customerRules from './customer-rules';
 
 // Acme's own customer layout and rules, rendered over a fake details
 // context and the platform's recorded customer model: the layout in view
-// mode with its collapsed audit card, then in edit mode, where a touched
-// empty field shows its message once, and a corporate customer needs a
-// credit limit.
+// mode with its contacts grid and its collapsed audit card, then in edit
+// mode, where the contacts grid edits, a touched empty field shows its
+// message once, and a corporate customer needs a credit limit.
 
 /** A customer as `customers/get` returns it. */
 const CUSTOMER: TmJsonObject = {
@@ -46,6 +47,7 @@ const CUSTOMER: TmJsonObject = {
   createdById: 1,
   modifiedAt: '2026-11-02T08:00:00.0000000+00:00',
   modifiedById: 1,
+  contacts: [{ id: 51, customerId: 5, name: 'Huda Saleh', email: 'huda@alnoor.example', mobile: '+971 50 123 4567' }],
 };
 
 /** Renders a layout in a details record's injector, as the page's frame does. */
@@ -93,8 +95,16 @@ describe("Acme's customer details layout", () => {
   let loader: HarnessLoader;
 
   beforeEach(async () => {
+    // --- A user who reads everything, unfiltered: the test app signs no one in, and a grid shows only the columns its user may read ---
+    vi.spyOn(TmPermissions.prototype, 'can').mockReturnValue(signal(true));
+    vi.spyOn(TmPermissions.prototype, 'filtered').mockReturnValue(signal(false));
+
     // --- The platform's recorded customer model, with Acme's own feature ---
     const { summaries, chunk } = tmTestEntities();
+    // The recorded contact predates Acme's mobile number; Acme's own model has it.
+    const contact = (chunk.entities as unknown as { name: string; properties: Record<string, unknown>[] }[]).find((entity) => entity.name === 'acme.CustomerContact')!;
+    const email = contact.properties.find((property) => property['name'] === 'Email')!;
+    contact.properties.push({ ...email, name: 'Mobile', json: 'mobile', labelKey: 'Acme_CustomerContact_Mobile', labelFallback: 'Mobile', maxLength: 50 });
     TestBed.configureTestingModule({
       providers: [
         provideTellma({
@@ -132,6 +142,10 @@ describe("Acme's customer details layout", () => {
     await settle();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   /**
    * The form's node of a member.
    *
@@ -156,8 +170,30 @@ describe("Acme's customer details layout", () => {
     expect((await Promise.all(fields.map((field) => field.getPath()))).slice(0, 5)).toEqual(['Name', 'Code', 'CustomerType', 'CurrencyId', 'CreditLimit']);
     expect(await Promise.all(fields.map((field) => field.getMode()))).toEqual(fields.map(() => 'view'));
     expect(await (await loader.getHarness(TmFieldHarness.with({ path: 'Code' }))).getValueText()).toBe('C-005');
-    expect(cards).toHaveLength(2);
-    expect(await cards[1]!.isExpanded()).toBe(false);
+    expect(cards).toHaveLength(3);
+    expect(await cards[2]!.isExpanded()).toBe(false);
+  });
+
+  it('lists the contacts in a grid, read-only in view mode and edited in place in edit mode', async () => {
+    await settleUntil(() => host.querySelector('tm-child-grid tm-grid [role="row"]') !== null, 'the contacts grid renders');
+    const contacts = await loader.getHarness(TmChildGridHarness.with({ collection: 'Contacts' }));
+    const grid = await contacts.getGrid();
+
+    expect(await contacts.isEditable()).toBe(false);
+    expect(await grid.getHeaderTexts()).toEqual(['Name', 'Email', 'Mobile']);
+    expect([await grid.getCellText(0, 0), await grid.getCellText(0, 1), await grid.getCellText(0, 2)]).toEqual(['Huda Saleh', 'huda@alnoor.example', '+971 50 123 4567']);
+
+    details.edit();
+    await settleUntil(() => host.querySelector('tm-child-grid .tm-grid__row--placeholder') !== null, 'the contacts grid edits');
+    await settle();
+    expect(await contacts.isEditable()).toBe(true);
+    await grid.openEditor(1, 0, 'type', 'Omar Haddad');
+    await grid.commitEditor('enter');
+    await settle();
+    expect(details.model()['contacts']).toEqual([
+      expect.objectContaining({ id: 51, name: 'Huda Saleh' }),
+      expect.objectContaining({ id: -1, name: 'Omar Haddad' }),
+    ]);
   });
 
   it('shows a touched empty field’s message once in edit mode, and asks a corporate customer for a credit limit', async () => {

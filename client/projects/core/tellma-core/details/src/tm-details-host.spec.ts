@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Location } from '@angular/common';
-import { Component, computed, type ElementRef, signal, viewChild } from '@angular/core';
+import { Component, computed, type ElementRef, inject, signal, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { type FieldTree, required, type SchemaPath, type SchemaPathTree } from '@angular/forms/signals';
 import { manualChangeDetection } from '@angular/cdk/testing';
@@ -12,7 +12,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Title } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
-import { TmApiError, type TmJsonObject, TmPageActions } from '@tellma/core';
+import { TmApiError, type TmBlobDescriptor, type TmJsonObject, TmPageActions } from '@tellma/core';
 import { TmDetailsPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
 import { TmCardHarness, TmConfirmHarness } from '@tellma/core-ui-testing';
 
@@ -20,6 +20,7 @@ import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../sr
 import { tmLoadTestPage, tmSettle, tmSettleUntil, TmTestPage } from '../../src/routes/tm-app.testing.util';
 import { injectTmDetails } from './tm-details-context';
 import { TmDetailsKit } from './tm-details-kit';
+import { TM_DETAILS_RECORD } from './tm-details-record';
 
 // The routed details host over the recorded customer model, with a layout
 // that registers one field: the load, view → edit → cancel with no request,
@@ -27,7 +28,8 @@ import { TmDetailsKit } from './tm-details-kit';
 // a step and a stale return, the empty record while nothing is held, the
 // quiet refresh, the permission reasons, the read failure's way out, a
 // failed refresh in view and edit mode, a layout that fails to load, an id
-// no record can have, create and clone, and a page left while Save runs.
+// no record can have, create and clone, Save waiting for the form's
+// uploads, and a page left while Save runs.
 
 /** A layout over the record: a name input it registers as its first field, and the server copy's name. */
 @Component({
@@ -46,6 +48,9 @@ class TmTestDetailsLayout {
 
   /** The record. */
   readonly details = injectTmDetails<TmJsonObject>();
+
+  /** The record's state behind it, whose uploads the test drives. */
+  readonly record = inject(TM_DETAILS_RECORD);
 
   /** The name input. */
   private readonly input = viewChild.required<ElementRef<HTMLInputElement>>('name');
@@ -772,6 +777,31 @@ describe('the details host', () => {
     await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
     const form = latest()!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
     expect(form['currencyId']!().errors().map((error) => error.kind)).toEqual(['required']);
+  });
+
+  it("waits for the form's uploads before Save writes, and writes once they settle", async () => {
+    await start();
+    const page = await openCustomer(5);
+    await page.click('edit');
+    latest()!.details.update((model) => ({ ...model, name: 'Renamed' }));
+    rig.api.respond('customers/save', () => saved(5, 'Renamed'));
+    let finish!: (blob: TmBlobDescriptor) => void;
+    const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
+
+    await manualChangeDetection(async () => {
+      // An image still uploading holds Save: nothing is written while it runs.
+      void latest()!.record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((resolve) => (finish = resolve)));
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettle();
+      expect(rig.api.calls().some((call) => call.route === 'customers/save')).toBe(false);
+      expect(latest()!.details.mode()).toBe('edit');
+
+      // Once it settles, Save goes on with the write.
+      finish(blob);
+      expect(await invoked).toEqual({ outcome: 'done' });
+    });
+    expect(rig.api.calls().filter((call) => call.route === 'customers/save')).toHaveLength(1);
+    expect(latest()!.details.mode()).toBe('view');
   });
 
   it('ends Save cleanly when the page is left while the write runs', async () => {

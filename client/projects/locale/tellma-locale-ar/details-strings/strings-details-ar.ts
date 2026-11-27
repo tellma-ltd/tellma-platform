@@ -15,7 +15,8 @@ import type { TmStringTree } from '@tellma/core';
  * The Arabic of the details page, under `tm`: the toolbar's buttons, the
  * Active, Inactive and Unsaved changes badges, the status lines, the
  * Discard changes question, the notice of a refresh that failed under an edit, Edit's reason for a record outside the
- * user's permission, and the layout kit's read-only lock, error names, audit card, aside and failed editor load. The same shape as its English.
+ * user's permission, and the layout kit's read-only lock, error names, audit card, aside and failed editor load, and
+ * its child grids' totals and failed load and its child files' list. The same shape as its English.
  */
 export const TM_DETAILS_STRINGS_AR: TmStringTree = {
   details: {
@@ -45,5 +46,12 @@ export const TM_DETAILS_STRINGS_AR: TmStringTree = {
     audit: 'معلومات التدقيق',
     aside: 'معلومات ذات صلة',
     editorFailed: 'تعذّر تحميل هذا الحقل للتعديل.',
+    total: 'إجمالي {label}',
+    totals: 'الإجماليات',
+    tableFailed: 'تعذّر تحميل هذا الجدول.',
+    noFiles: 'لا توجد ملفات',
+    filesFailed: 'تعذّر تحميل هذه الملفات.',
+    fileRefused: '{name}: {message}',
+    uploading: 'جارٍ رفع {name}',
   },
 };

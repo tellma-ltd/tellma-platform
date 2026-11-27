@@ -506,9 +506,9 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
 
   /**
    * Saves the record: a clean edit returns to view mode and sends nothing;
-   * otherwise one write through the source, whose read-back becomes the
-   * server copy. A create lands on the new record's page. A failure keeps
-   * the edit and shows the error.
+   * otherwise, once the record's uploads have finished, one write through
+   * the source, whose read-back becomes the server copy. A create lands on
+   * the new record's page. A failure keeps the edit and shows the error.
    *
    * @returns `true` once saved and back in view mode.
    */
@@ -526,6 +526,10 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     const mode = record.mode();
     this.#busy.set(true);
     try {
+      // --- The uploads finish first, so the body carries their staged ids (spec 0031 §8.1 step 2) ---
+      if (!(await this.#uploadsSettled(record))) {
+        return false;
+      }
       const saved = await record.source.write({
         model: record.ɵsaveBody(),
         base: mode === 'create' ? null : record.base(),
@@ -796,6 +800,34 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   async #present(error: TmApiError, kind: 'read' | 'save'): Promise<void> {
     const { TmErrorPresenter } = await import('@tellma/core/errors');
     await this.#environment.get(TmErrorPresenter).present(error, { kind, entity: untracked(this.source).entity });
+  }
+
+  /**
+   * Waits until no upload of the record runs: each one has staged its blob
+   * or failed on its field.
+   *
+   * @param record - The record.
+   * @returns `true` once none runs; `false` when the record or the page went away first.
+   */
+  #uploadsSettled(record: TmDetailsRecordState<T>): Promise<boolean> {
+    if (untracked(record.uploads.running).size === 0) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const watch = effect(
+        () => {
+          if (record.uploads.running().size === 0) {
+            watch.destroy();
+            resolve(!this.#destroyed && untracked(this.#record) === record);
+          }
+        },
+        { injector: record.injector, manualCleanup: true },
+      );
+      record.injector.get(DestroyRef).onDestroy(() => {
+        watch.destroy();
+        resolve(false);
+      });
+    });
   }
 
   /**

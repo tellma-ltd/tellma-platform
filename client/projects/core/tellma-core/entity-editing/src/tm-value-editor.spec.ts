@@ -23,6 +23,7 @@ import { TmUploads } from '@tellma/core/uploads';
 import { TmFilePicker } from '@tellma/core-ui/files';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmImage } from '@tellma/core-ui/image';
+import { TmProgressRing } from '@tellma/core-ui/progress-ring';
 import {
   TmCheckboxHarness,
   TmChipHarness,
@@ -41,7 +42,8 @@ import { TmValueEditor } from './tm-value-editor';
 // The value editor in a form over the entity registry's test app: one
 // field per type, each in its tm-form-field, bound to a Signal Forms model;
 // the read-only rules; and the image and file pickers' uploads, listed in
-// the host's TmUploads while they run.
+// the host's TmUploads while they run, with their progress, refusals and
+// retries.
 
 /** One field the host renders: its name, what it edits and its starting value. */
 interface TmTestField {
@@ -504,6 +506,54 @@ describe('tm-value-editor', () => {
       await settle(fixture);
       expect(host.model()['fileId']).toBe(52);
       expect(await field.getErrorTexts()).toEqual([]);
+    });
+
+    it("shows the upload's progress in a ring while it runs", async () => {
+      const { fixture, rig } = await start((entities) => [
+        { name: 'fileId', property: entities.get('core.OutgoingEmailAttachment').property('FileId')!, value: null },
+      ]);
+      let finish!: (blob: TmBlobDescriptor) => void;
+      rig.api.respond('blobs/email-attachment', () => new Promise<TmBlobDescriptor>((resolve) => (finish = resolve)));
+      const picker = fixture.debugElement.query(By.directive(TmFilePicker)).injector.get(TmFilePicker);
+      picker.filesSelected.emit({ accepted: [new File(['%PDF'], 'invoice.pdf', { type: 'application/pdf' })], rejected: [] });
+      await until(() => rig.api.calls().some((call) => call.kind === 'upload'));
+      await settle(fixture);
+      const ring = (): TmProgressRing | undefined => fixture.debugElement.query(By.directive(TmProgressRing))?.componentInstance as TmProgressRing | undefined;
+      // Until the first share is sent, the ring spins.
+      expect(ring()?.value()).toBeNull();
+
+      const upload = rig.api.calls().find((call) => call.kind === 'upload')!;
+      (upload.options as { onProgress(sent: number): void }).onProgress(0.6);
+      await settle(fixture);
+      expect(ring()?.value()).toBe(60);
+
+      finish({ ...BLOB, id: 53, kind: 'email-attachment', fileName: 'invoice.pdf' });
+      await settle(fixture);
+      expect(ring()).toBeUndefined();
+    });
+
+    it("shows the server's reason when it refuses the file, and offers no retry", async () => {
+      const { host, fixture, rig, loader } = await start((entities) => [
+        { name: 'fileId', property: entities.get('core.OutgoingEmailAttachment').property('FileId')!, value: null },
+      ]);
+      rig.api.respond('blobs/email-attachment', () =>
+        Promise.reject(
+          new TmApiError({
+            kind: 'validation',
+            status: 415,
+            code: 'blob-rejected',
+            problem: { code: 'blob-rejected', status: 415, instance: 'trace-1', title: 'The file was refused', errors: [{ path: '', code: 'Acme.Unsigned', message: 'The PDF must be signed.' }] },
+          }),
+        ),
+      );
+      const picker = fixture.debugElement.query(By.directive(TmFilePicker)).injector.get(TmFilePicker);
+      picker.filesSelected.emit({ accepted: [new File(['%PDF'], 'invoice.pdf', { type: 'application/pdf' })], rejected: [] });
+      await settle(fixture);
+      const field = await formField(loader, 'fileId');
+      expect(await field.getErrorTexts()).toEqual(['The PDF must be signed.']);
+      expect(host.model()['fileId']).toBeNull();
+      const buttons = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-testid="fileId"] button')];
+      expect(buttons.some((button) => button.textContent?.trim() === 'Try again')).toBe(false);
     });
   });
 });

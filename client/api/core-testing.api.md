@@ -96,6 +96,27 @@ export interface TmBellPanelNotification {
 }
 
 // @public
+export class TmChildGridHarness extends ComponentHarness {
+    getCollection(): Promise<string>;
+    getFailure(): Promise<string | null>;
+    getGrid(): Promise<TmGridHarness>;
+    getHeight(): Promise<number>;
+    getState(): Promise<TmChildGridState>;
+    getTotals(): Promise<Readonly<Record<string, string>>>;
+    static hostSelector: string;
+    isEditable(): Promise<boolean>;
+    static with(options?: TmChildGridHarnessFilters): HarnessPredicate<TmChildGridHarness>;
+}
+
+// @public
+export interface TmChildGridHarnessFilters extends BaseHarnessFilters {
+    readonly collection?: string;
+}
+
+// @public
+export type TmChildGridState = 'failed' | 'grid' | 'placeholder';
+
+// @public
 export class TmColumnFilterHarness extends ComponentHarness {
     apply(): Promise<void>;
     clear(): Promise<void>;

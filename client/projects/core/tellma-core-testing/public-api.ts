@@ -13,6 +13,7 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
+export { TmChildGridHarness, type TmChildGridHarnessFilters, type TmChildGridState } from './src/tm-child-grid-harness';
 export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
 export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOfflineHarness } from './src/tm-diagnostics-panel-harness';

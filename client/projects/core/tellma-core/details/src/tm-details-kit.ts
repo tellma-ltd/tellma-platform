@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { TmChildFiles } from './tm-child-files';
+import { TmChildGrid } from './tm-child-grid';
 import { TmDetailsAside } from './tm-details-aside';
 import { TmDetailsAudit } from './tm-details-audit';
 import { TmDetailsCard, TmDetailsCardSection } from './tm-details-card';
@@ -17,7 +19,8 @@ import { TmFieldGroup } from './tm-field-group';
 /**
  * Every part of the details layout kit, for a layout's `imports`: cards
  * and their sections, fields and their own templates, the field group,
- * tabs, the aside, the audit card and the record's extras.
+ * child grids and child files, tabs, the aside, the audit card and the
+ * record's extras.
  *
  * @example
  * ```ts
@@ -35,6 +38,8 @@ export const TmDetailsKit = [
   TmFieldEdit,
   TmFieldView,
   TmFieldGroup,
+  TmChildGrid,
+  TmChildFiles,
   TmDetailsTabs,
   TmDetailsTab,
   TmDetailsTabContent,

@@ -20,7 +20,7 @@ import {
 import { type FieldState, FormField, type FieldTree } from '@angular/forms/signals';
 import { TM_UI_TRANSLATE, tmResolveFieldErrors } from '@tellma/core-ui';
 import { TM_FORM_FIELD_CONTROL, TmFormField } from '@tellma/core-ui/form-field';
-import type { TmId, TmNavigationDescriptor, TmPropertyDescriptor } from '@tellma/core';
+import type { TmId, TmJsonObject, TmNavigationDescriptor, TmPropertyDescriptor } from '@tellma/core';
 
 import { TmEntityField } from './tm-entity-field';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
@@ -58,6 +58,8 @@ export interface ɵTmFieldEditorEditing {
   readonly offerCreate: Signal<boolean>;
   /** Whether the record is being created, so a write-once value edits. */
   readonly creating: Signal<boolean>;
+  /** An image's or a file's blob as the read related it, which names the file; `undefined` for any other value. */
+  readonly blob?: Signal<TmJsonObject | null | undefined>;
 }
 
 /** Counts the groups, so each has its own id. */
@@ -135,7 +137,7 @@ export class ɵTmFieldEditGroup {
     } @else if (property(); as edited) {
       <!-- A value: the control its type takes. -->
       <tm-form-field [label]="current.label()" [hint]="field.hint()">
-        <tm-value-editor [property]="edited" [field]="field.node" [path]="path()" [create]="field.creating()" />
+        <tm-value-editor [property]="edited" [field]="field.node" [path]="path()" [create]="field.creating()" [blob]="field.blob?.()" />
       </tm-form-field>
     }
   `,

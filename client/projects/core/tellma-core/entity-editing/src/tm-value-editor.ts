@@ -21,7 +21,6 @@ import {
 import { FormField, type FieldState, type FieldTree } from '@angular/forms/signals';
 import {
   TmApi,
-  TmApiError,
   TmDecimals,
   TmEntities,
   TmLocalization,
@@ -30,6 +29,7 @@ import {
   type TmBlobDescriptor,
   type TmBlobKindPolicy,
   type TmId,
+  type TmJsonObject,
   type TmNavigationDescriptor,
   type TmPropertyDescriptor,
   type TmValueDescriptor,
@@ -47,8 +47,9 @@ import { TmInput } from '@tellma/core-ui/input';
 import { TmNumber } from '@tellma/core-ui/number';
 import { TmOption, TmSelect } from '@tellma/core-ui/select';
 import { TmMultiSelect } from '@tellma/core-ui/multi-select';
-import { ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, type ɵTmEditorKind } from '@tellma/core/entity';
-import { TmUploads } from '@tellma/core/uploads';
+import { TmProgressRing } from '@tellma/core-ui/progress-ring';
+import { ɵtmByteSize, ɵtmCropCoverSquare, tmCheckBlobFile, TmFormats, ɵtmEditorKind, ɵtmParseExact, type ɵTmEditorKind } from '@tellma/core/entity';
+import { tmUploadFailure, TmUploads } from '@tellma/core/uploads';
 
 import { ɵTmExactBinding } from './tm-exact-binding';
 import { ɵTmFormFieldDelegate } from './tm-form-field-delegate';
@@ -59,9 +60,11 @@ import { TmEntityMultiField } from './tm-entity-multi-field';
 // control a value descriptor takes, bound to a Signal Forms field and placed
 // in the caller's `tm-form-field`. Values the user may not write show as
 // read-only text; a related row takes the entity field, a list of them the
-// entity list field; an image or a file uploads as soon as it is picked, its
-// path listed in the nearest `TmUploads` until the upload settles, and the
-// staged blob's id becomes the value.
+// entity list field; an image or a file uploads as soon as it is picked, with
+// a progress ring, its path listed in the nearest `TmUploads` until the
+// upload settles, and the staged blob's id becomes the value (spec 0031
+// §6.3). A file the server refuses says why on the field; any other failure
+// offers a retry.
 
 /** What an editor knows of the property it edits. */
 type TmEditedProperty = TmValueDescriptor | TmPropertyDescriptor | TmNavigationDescriptor;
@@ -71,9 +74,6 @@ const LARGEST_PICK = 20 * 1024 * 1024;
 
 /** The editor's per-instance ids. */
 let nextId = 0;
-
-/** The formats a file size is written in, by locale. */
-const SIZES = new Map<string, Intl.NumberFormat>();
 
 /**
  * The type facts of what an editor edits: a navigation's are its id's.
@@ -123,6 +123,7 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
     TmMultiSelect,
     TmNumber,
     TmOption,
+    TmProgressRing,
     TmSelect,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -139,7 +140,10 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
       display: flex;
       align-items: center;
       flex-wrap: wrap;
-      gap: var(--tm-space-2, 0.5rem);
+      gap: var(--space-2);
+    }
+    .tm-value-editor__ring {
+      flex: none;
     }
   `,
   template: `
@@ -226,12 +230,16 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
             [mode]="writable() ? 'edit' : 'view'"
             [src]="blobSrc()"
             alt=""
-            [width]="96"
-            [height]="96"
+            [width]="imageSize"
+            [height]="imageSize"
             [srcForSize]="asIs"
             [maxFileBytes]="pickLimit()"
             (imageChange)="onImage($event)"
           />
+          <!-- The upload's progress, beside the image so the field's height never moves -->
+          @if (uploading()) {
+            <tm-progress-ring class="tm-value-editor__ring" [value]="percent()" [diameter]="24" />
+          }
           @if (retryable()) {
             <button tmButton type="button" variant="ghost" (click)="retry()">{{ retryLabel() }}</button>
           }
@@ -249,6 +257,10 @@ function valueOf(property: TmEditedProperty): TmValueDescriptor {
         >
           @if (fileLabel(); as label) {
             <tm-chip [label]="label" [href]="fileHref()" [removable]="writable()" (remove)="clear()" />
+          }
+          <!-- The upload's progress, after the chip it fills -->
+          @if (uploading()) {
+            <tm-progress-ring class="tm-value-editor__ring" [value]="percent()" [diameter]="24" />
           }
           @if (writable()) {
             <button
@@ -293,6 +305,12 @@ export class TmValueEditor {
   /** Whether the record is being created, so a write-once value edits. */
   readonly create: InputSignalWithTransform<boolean, unknown> = input(false, { transform: booleanAttribute });
 
+  /** The value's blob as the read related it (its `fileName`, `size` and `variants`), which names a file no upload of this editor staged. */
+  readonly blob: InputSignal<TmJsonObject | null | undefined> = input<TmJsonObject | null | undefined>(undefined);
+
+  /** An image's width and height in pixels: the details view's thumbnail, so both modes measure the same. */
+  protected readonly imageSize = 72;
+
   /** The id of the editor's own group, which the field labels when it renders no inner control. */
   protected readonly ownId = `tm-value-editor-${nextId++}`;
 
@@ -313,6 +331,15 @@ export class TmValueEditor {
 
   /** Whether an upload is in flight. */
   protected readonly uploading = signal(false);
+
+  /** The share of the file the upload has sent, from 0 to 1; `null` before the first report. */
+  readonly #sent = signal<number | null>(null);
+
+  /** The upload's progress in percent, for the ring; `null` spins it. */
+  protected readonly percent = computed(() => {
+    const sent = this.#sent();
+    return sent === null ? null : Math.round(sent * 100);
+  });
 
   /** The upload to try again after a failure that may pass on a retry. */
   readonly #retry = signal<(() => void) | null>(null);
@@ -468,7 +495,9 @@ export class TmValueEditor {
       return null;
     }
     const staged = [this.#uploads?.staged(this.#path()), this.#uploaded()].find((blob) => blob?.id === id);
-    return staged?.fileName || this.#localization.ɵtext('tm.value.file')();
+    const related = this.blob();
+    const name = staged?.fileName ?? (related?.['id'] === id && typeof related['fileName'] === 'string' ? related['fileName'] : '');
+    return name || this.#localization.ɵtext('tm.value.file')();
   });
 
   /** Whether the last upload failed in a way a retry may mend. */
@@ -584,8 +613,18 @@ export class TmValueEditor {
     }
     this.#local.set([]);
     this.#retry.set(null);
+    this.#sent.set(null);
     this.uploading.set(true);
-    const send = (signal: AbortSignal): Promise<TmBlobDescriptor> => this.#api.upload(policy.kind, file, { fileName: file.name, signal });
+    // The share sent feeds the editor's ring, and the host's uploads when they list it.
+    const send = (signal: AbortSignal, progress?: (sent: number) => void): Promise<TmBlobDescriptor> =>
+      this.#api.upload(policy.kind, file, {
+        fileName: file.name,
+        signal,
+        onProgress: (sent) => {
+          this.#sent.set(sent);
+          progress?.(sent);
+        },
+      });
     const path = untracked(() => this.#path());
 
     // --- Through the host's uploads when there are any, else alone ---
@@ -611,15 +650,14 @@ export class TmValueEditor {
       },
       (error: unknown) => {
         // A later pick or a removal aborted this one; it reports nothing.
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return;
-        }
-        if (error instanceof TmApiError && error.kind === 'cancelled') {
+        const failure = tmUploadFailure(error, this.#serverText);
+        if (failure.kind === 'aborted') {
           return;
         }
         this.uploading.set(false);
-        if (error instanceof TmApiError && error.problem !== null && error.status >= 400 && error.status < 500) {
-          this.#local.set([{ kind: 'upload', message: untracked(this.#serverText.problem(error.problem)).title }]);
+        // The server refused the file: its reason, which no retry mends.
+        if (failure.kind === 'rejected') {
+          this.#local.set([{ kind: 'upload', message: untracked(failure.message) }]);
           return;
         }
         this.#fail('upload', 'tm.value.uploadFailed');
@@ -640,12 +678,7 @@ export class TmValueEditor {
       this.#fail('fileType', 'tm.value.fileType');
       return;
     }
-    const locale = untracked(this.#localization.locale);
-    let format = SIZES.get(locale);
-    if (format === undefined) {
-      SIZES.set(locale, (format = new Intl.NumberFormat(locale, { style: 'unit', unit: 'megabyte', maximumFractionDigits: 1 })));
-    }
-    const max = format.format(policy.maxSize / (1024 * 1024));
+    const max = ɵtmByteSize(policy.maxSize, untracked(this.#localization.locale));
     this.#local.set([{ kind: 'fileTooLarge', message: untracked(this.#localization.ɵtext('tm.value.fileTooLarge', { max })) }]);
   }
 
