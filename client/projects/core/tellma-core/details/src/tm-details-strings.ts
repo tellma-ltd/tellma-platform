@@ -23,6 +23,7 @@ export const TM_DETAILS_STRINGS_EN = {
   loading: 'Loading',
   editing: 'Editing {name}',
   saved: 'Saved',
+  uploadsFailed: "Nothing was saved: a file didn't upload.",
   refreshFailed: "This record couldn't be refreshed. Your changes are kept.",
   retry: 'Try again',
   discard: {
@@ -37,4 +38,12 @@ export const TM_DETAILS_STRINGS_EN = {
   audit: 'Audit info',
   aside: 'Related information',
   editorFailed: "This field couldn't be loaded for editing.",
+  listEditorFailed: "This list couldn't be loaded for editing.",
+  total: 'Total {label}',
+  totals: 'Totals',
+  tableFailed: "This table couldn't be loaded.",
+  noFiles: 'No files',
+  filesFailed: "These files couldn't be loaded.",
+  fileRefused: '{name}: {message}',
+  uploading: 'Uploading {name}',
 } as const satisfies TmStringTree;

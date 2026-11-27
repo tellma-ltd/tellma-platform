@@ -690,6 +690,17 @@ describe('tm-menu entry kinds', () => {
       expect(docs.querySelector('.tm-menu__external')).toBeNull();
     });
 
+    it('marks the current page’s link with aria-current', async () => {
+      const { fixture } = await setup((host) => [
+        { id: 'here', label: 'Here', href: '#here', current: true },
+        ...entries(host),
+      ]);
+      await open(fixture);
+
+      expect(row('Here').getAttribute('aria-current')).toBe('page');
+      expect(row('Docs').hasAttribute('aria-current')).toBe(false);
+    });
+
     it('a disabled link carries no address and does nothing', async () => {
       const { fixture, host } = await setup(entries);
       const menu = await open(fixture);

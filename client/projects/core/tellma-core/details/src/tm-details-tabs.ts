@@ -26,14 +26,13 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import type { FieldTree } from '@angular/forms/signals';
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 import { type TmJson, TmLocalization } from '@tellma/core';
 
 import { TmDetailsCard, TmDetailsCardSection } from './tm-details-card';
 import { injectTmDetailsRecord, tmDevMode } from './tm-details-record';
-import { TM_DETAILS_SCOPE, TmDetailsScope } from './tm-details-scope';
+import { TM_DETAILS_SCOPE, TmDetailsScope, ɵtmCollectionShowsError } from './tm-details-scope';
 
 // The record's tabs (spec 0031 §6.6), on the component library's
 // tm-tab-group: every tab keeps its content once visited, hidden and inert
@@ -128,14 +127,8 @@ export class TmDetailsTab {
 
   /** Reports the collection's errors to the tab. */
   constructor() {
-    // The collection's rows show their errors once touched or dirty, in edit and create mode.
-    const rows = computed(() => {
-      const child = this.#child();
-      const form = this.#record.form as unknown as Readonly<Record<string, FieldTree<unknown> | undefined>>;
-      const state = child === undefined ? undefined : form[child.json]?.();
-      return this.#record.mode() !== 'view' && state !== undefined && state.invalid() && (state.touched() || state.dirty());
-    });
-    this.scope.hold(rows, inject(DestroyRef));
+    // The collection's rows show their errors as its grid does, in edit and create mode.
+    this.scope.hold(ɵtmCollectionShowsError(computed(() => this.#child()?.json)), inject(DestroyRef));
   }
 }
 

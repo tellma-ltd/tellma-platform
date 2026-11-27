@@ -96,6 +96,27 @@ export interface TmBellPanelNotification {
 }
 
 // @public
+export class TmChildGridHarness extends ComponentHarness {
+    getCollection(): Promise<string>;
+    getFailure(): Promise<string | null>;
+    getGrid(): Promise<TmGridHarness>;
+    getHeight(): Promise<number>;
+    getState(): Promise<TmChildGridState>;
+    getTotals(): Promise<Readonly<Record<string, string>>>;
+    static hostSelector: string;
+    isEditable(): Promise<boolean>;
+    static with(options?: TmChildGridHarnessFilters): HarnessPredicate<TmChildGridHarness>;
+}
+
+// @public
+export interface TmChildGridHarnessFilters extends BaseHarnessFilters {
+    readonly collection?: string;
+}
+
+// @public
+export type TmChildGridState = 'failed' | 'grid' | 'placeholder';
+
+// @public
 export class TmColumnFilterHarness extends ComponentHarness {
     apply(): Promise<void>;
     clear(): Promise<void>;
@@ -602,6 +623,69 @@ export class TmPathPickerHarness extends ComponentHarness {
 }
 
 // @public
+export class TmPinnedBarChipHarness extends ComponentHarness {
+    click(modifiers?: ModifierKeys): Promise<void>;
+    focus(): Promise<void>;
+    getHref(): Promise<string | null>;
+    getKind(): Promise<TmPinnedBarChipKind>;
+    getLabel(): Promise<string>;
+    getLeft(): Promise<number>;
+    getName(): Promise<string>;
+    getSize(): Promise<{
+        readonly width: number;
+        readonly height: number;
+    }>;
+    static hostSelector: string;
+    hover(): Promise<void>;
+    isAriaCurrent(): Promise<boolean>;
+    isCurrent(): Promise<boolean>;
+    isExpanded(): Promise<boolean>;
+    isFocused(): Promise<boolean>;
+    isTabStop(): Promise<boolean>;
+    pressKey(key: TestKey, modifiers?: ModifierKeys): Promise<void>;
+    static with(options?: TmPinnedBarChipHarnessFilters): HarnessPredicate<TmPinnedBarChipHarness>;
+}
+
+// @public
+export interface TmPinnedBarChipHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+}
+
+// @public
+export type TmPinnedBarChipKind = 'folder' | 'more' | 'pin' | 'revoked';
+
+// @public
+export interface TmPinnedBarControl {
+    readonly disabled: boolean;
+    readonly keys: string | null;
+    readonly name: string | null;
+    readonly pinned: boolean;
+    readonly reason: string | null;
+}
+
+// @public
+export class TmPinnedBarHarness extends ComponentHarness {
+    clickControl(): Promise<void>;
+    getChip(label: string | RegExp): Promise<TmPinnedBarChipHarness>;
+    getChipLabels(): Promise<string[]>;
+    getChips(): Promise<TmPinnedBarChipHarness[]>;
+    getControl(): Promise<TmPinnedBarControl>;
+    getCurrentChipLabel(): Promise<string | null>;
+    getEmptyText(): Promise<string | null>;
+    getFocusedChipLabel(): Promise<string | null>;
+    getManageName(): Promise<string | null>;
+    getName(): Promise<string | null>;
+    getTabStopLabel(): Promise<string | null>;
+    hasMore(): Promise<boolean>;
+    static hostSelector: string;
+    isFitted(): Promise<boolean>;
+    isReady(): Promise<boolean>;
+    openManagePins(): Promise<TmModalHarness>;
+    openMenu(label: string | RegExp): Promise<TmMenuHarness>;
+    openPopover(): Promise<TmPopoverHarness>;
+}
+
+// @public
 export interface TmSearchPageCreate {
     readonly disabledReason: string | null;
     readonly href: string | null;
@@ -716,6 +800,7 @@ export class TmTenantShellHarness extends ComponentHarness {
     getHomeHref(): Promise<string | null>;
     getMain(): Promise<TmTenantShellMain>;
     getMarkers(): Promise<string[]>;
+    getPinnedBar(): Promise<TmPinnedBarHarness | null>;
     getReservedSlots(): Promise<string[]>;
     getSlots(): Promise<TmTenantShellSlot[]>;
     getTenantName(): Promise<string | null>;

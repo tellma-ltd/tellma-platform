@@ -13,6 +13,7 @@
 
 export { provideTellmaTesting } from './src/provide-tellma-testing';
 export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
+export { TmChildGridHarness, type TmChildGridHarnessFilters, type TmChildGridState } from './src/tm-child-grid-harness';
 export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
 export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOfflineHarness } from './src/tm-diagnostics-panel-harness';
@@ -58,6 +59,13 @@ export {
 export { TmHomePageHarness, type TmHomePageView } from './src/tm-home-page-harness';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
+export {
+  TmPinnedBarChipHarness,
+  type TmPinnedBarChipHarnessFilters,
+  type TmPinnedBarChipKind,
+  type TmPinnedBarControl,
+  TmPinnedBarHarness,
+} from './src/tm-pinned-bar-harness';
 export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';
 export { TmSessionMenuHarness, type TmSessionMenuTenantCard } from './src/tm-session-menu-harness';
 export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';

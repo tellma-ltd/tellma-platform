@@ -18,3 +18,5 @@
 
 // A form's uploads.
 export { TmUploads } from './src/tm-uploads';
+// What a failed upload says on its field.
+export { tmUploadFailure, type TmUploadFailure } from './src/tm-upload-failure';

@@ -202,6 +202,7 @@ const TWIN = /^(.+?)([23])$/;
 
     /* A cell, with the field size ladder tm-form-field uses, so both modes measure the same. */
     .tm-field__cell {
+      --tm-details-image-size: 72px;
       --tm-details-field-height: var(--field-height);
       --tm-details-field-font-size: var(--field-font-size);
       --tm-details-field-padding-x: var(--field-padding-x);
@@ -272,6 +273,14 @@ const TWIN = /^(.+?)([23])$/;
       box-shadow: var(--focus-ring);
     }
 
+    /* An image: the thumbnail's box, as tall as the image editor, with no padding around it. */
+    .tm-field__box--image {
+      block-size: auto;
+      min-block-size: var(--tm-details-image-size);
+      padding-inline: 0;
+      border: 0;
+    }
+
     /* Several lines: the three rows the textarea shows, growing with the text. */
     .tm-field__box--multiline {
       align-items: flex-start;
@@ -329,7 +338,7 @@ const TWIN = /^(.+?)([23])$/;
           <dl class="tm-field__view">
             <div class="tm-field__item">
               <dt class="tm-field__label">{{ cell.label() }}</dt>
-              <dd class="tm-field__box" [class.tm-field__box--multiline]="cell.multiline">
+              <dd class="tm-field__box" [class.tm-field__box--multiline]="cell.multiline" [class.tm-field__box--image]="cell.image">
                 <tm-skeleton class="tm-field__value" width="60%" />
               </dd>
               @if (hint()) {
@@ -356,7 +365,7 @@ const TWIN = /^(.+?)([23])$/;
       <dl class="tm-field__view">
         <div class="tm-field__item">
           <dt class="tm-field__label">{{ cell.label() }}</dt>
-          <dd class="tm-field__box" tabindex="-1" [class.tm-field__box--multiline]="cell.multiline">
+          <dd class="tm-field__box" tabindex="-1" [class.tm-field__box--multiline]="cell.multiline" [class.tm-field__box--image]="cell.image">
             @if (viewTemplate(); as view) {
               <span class="tm-field__value">
                 <ng-container [ngTemplateOutlet]="view.template" [ngTemplateOutletContext]="viewContext(cell)" />
@@ -564,7 +573,28 @@ export class TmField {
     if (resolution?.end.kind === 'navigation') {
       return this.#record.related.get(resolution.end.navigation.target, value as TmId | null) ?? value;
     }
+    if (resolution?.end.kind === 'image' || resolution?.end.kind === 'file') {
+      return this.#blobOf(cell, resolution.end.navigation.target) ?? value;
+    }
     return value;
+  }
+
+  /**
+   * The blob an image's or a file's cell names: the row the read related,
+   * which says its name, size and variants, else what this page's upload
+   * staged.
+   *
+   * @param cell - The cell.
+   * @param target - The blob entity, `core.Blob`.
+   * @returns The blob's row, or `undefined` for no value or a blob neither knows.
+   */
+  #blobOf(cell: ɵTmFieldCell, target: string): TmJsonObject | undefined {
+    const id = cell.json === null ? null : ((this.#record.model() as TmJsonObject)[cell.json] as TmId | null | undefined);
+    if (id === null || id === undefined) {
+      return undefined;
+    }
+    const staged = this.#record.uploads.staged(cell.json!);
+    return this.#record.related.get(target, id) ?? (staged?.id === id ? (staged as unknown as TmJsonObject) : undefined);
   }
 
   /**
@@ -597,6 +627,10 @@ export class TmField {
           filter: this.filter,
           offerCreate: this.create,
           creating: computed(() => this.#record.mode() === 'create'),
+          blob: computed(() => {
+            const view = cell.view;
+            return 'end' in view && (view.end.kind === 'image' || view.end.kind === 'file') ? this.#blobOf(cell, view.end.navigation.target) : undefined;
+          }),
         },
       };
       this.#editing.set(cell.key, entry);
@@ -731,6 +765,7 @@ export class TmField {
             json: key?.json ?? null,
             edits: end.kind === 'navigation' ? end.navigation : (key ?? null),
             ownership: key?.ownership ?? end.navigation.ownership,
+            image: end.kind === 'image',
           },
         ];
       }
@@ -767,7 +802,7 @@ export class TmField {
    * @returns The members.
    */
   #base(key: string, labelKey: string, label: Signal<string>): Omit<ɵTmFieldCell, 'view' | 'json' | 'edits'> {
-    return { key, labelKey, label, ownership: 'derived', multiline: false, wide: this.span() === 2 };
+    return { key, labelKey, label, ownership: 'derived', multiline: false, wide: this.span() === 2, image: false };
   }
 
   /**

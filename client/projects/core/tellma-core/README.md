@@ -10,15 +10,15 @@ own.
 | `@tellma/core` | The distribution API: `bootstrapTellma`, `provideTellma`, `tmFeature`, the declaration functions (`tmEntity`, `tmPage`, `tmCodedReport`, `tmWidget`, `tmOverride`) and `TM_APP_DECLARATIONS`, the merged declarations; the client metadata's types, its loaders (`tmMetadataLoaders`) and the loaded Core chunk (`TM_CLIENT_METADATA`); the HTTP layer (`TmApi`, `TmApiError`, `TmProblem`), its plain-JSON value types (`TmJson`, `TmDecimal`, `TmId`) and the exact decimal helpers `TmDecimals`; telemetry (`TmTelemetry`) and the app's error handler (`TmErrorHandler`, with its records' type `TmErrorRecord`), the request log with Copy diagnostics (`TmRequestLog`), the running build's identity (`TmAppVersion`) and the support facade (`TmSupport`: Report a problem, the diagnostic file and the dump's sections); the page context and page actions (`TmPageContexts`, `TmPageActions`, `provideTmPageScope`) and the help seam (`TM_HELP_ARTICLES`); the session (`TmSession`, `tmSessionGuard`, `tmParseProfileCookie`), the launch mark (`TmLaunch`) and the single-membership rule (`tmSingleLiveTenant`); the client store (`TmClientStore`, `TmStoreRefusedError`, `TM_DOC_FORMATS`) and the tab bus (`TmTabBus`) with its message catalogue; the leader tab (`TmLeader`: whether this tab leads, the hub's status and the tenant's hub events) and the documents only the leader refreshes (`TM_LEADER_DOCUMENTS`); the boot script's result types and the app clock (`TM_NOW`); the derived router's pieces: the root component (`TmApp`), the route data (`TmRouteData`), the title strategy (`TmTitleStrategy`), the URL builders and classifier (`TmUrls`) with the search query's types; the entity registry (`TmEntities`, with its descriptors once the entity model loads, and the declaration types `tmEntity` takes, typed paths `TmPath` included), display names (`TmDisplayNames`, `tm-display-name`), client permissions (`TmPermissions`) and `tmRowsToObjects`; localization: `TmLocalization` (the language, the regional formats, the calendar and the zones, and their switches with the coalesced locale write), `TmServerText` (server codes and keys through the string packs) and `tmEnglish()`, the platform's English; the device time zone (`TmDeviceZone`: the per-device option that makes a change of the device's zone automatic, and the check that offers, once per change, to follow it; its zone document's types `TmZoneDoc` and `TmZoneUser`), whose check, prompt and document writes are lazily loaded chunks; the app-level keyboard shortcuts (`TmShortcuts`, `TmShortcut`, `TM_RESERVED_SHORTCUTS`, `TM_BROWSER_KEYS`, `TmShortcutConflictError`) and the shell frame's seams (`TmShell` with immersive mode, `TmShellMain`, `TM_SHELL_LAYOUT`); the banners (`TmBanners`) with the input-idle clock (`TmInputIdle`), the attention documents (`TM_ATTENTION_DOCUMENTS`, `TmInboxSummary`, `TmAssignmentsSummary`) and the toast durations (`TM_TOAST_FEEDBACK_MS`, `TM_TOAST_ARRIVAL_MS`); the navigation registry (`TmNavigation`: the launcher's sections and entries, and a stored URL's state), the pins model (`tmPinsKey`, `tmPinnedBarVisibleKey` and the pin types) and the launcher's provider seam (`TM_LAUNCHER_PROVIDERS`) | eager |
 | `@tellma/core/attention` | The attention surfaces every page shows: the banner host (`tm-banner-host`), which renders the banner row from `TmBanners` and announces each banner as it is queued; the attention model (`TmAttention`: the bell's and the tray's badges, the open panel, the verbs with their same-frame overlays); the arrival engine (`TmArrivals`, with the `tmNotificationToastsKey` preference); the outcome toasts (`TmOutcomeToasts`, whose toasts load as a chunk with the first outcome); and the bell's and the tray's app-bar buttons (`TmAttentionButton`, under `tm-bell-button` and `tm-tray-button`), whose panels load as a chunk of their own on first intent | eager, preloaded with the app |
 | `@tellma/core/attention-rows` | The attention rows the panels, the arrival toasts and the home page share: the server text of notifications, jobs and assignment captions (`TmAttentionText`), the assignment list (`tm-assignment-list`, in its tray and home variants, either party), `tmIcuArguments`, and the row anatomy and keyboard model the attention lists share | with the code that imports it |
-| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button) and its states; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the About and Shortcuts dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
+| `@tellma/core/shell` | The shell frame both shells render (the skip link, the `header` with the app bar, banner row and pinned bar, the one scrolling `main`, and the reserved `aside`); the tenant shell with its app bar (the wordmark, Menu and search, the installed-mode Back and Forward, a lazy chunk loaded only once the app runs installed, the distribution's slots, the reserved bell and tray boxes, the markers and the session button), its pinned bar and its states, and `TmPins`, the user's pins in the routed tenant; the session menu, the markers' popovers and the slots' panels, a lazy chunk the app bar loads at idle; the pinned bar's menus, popover and drag and drop, a lazy chunk the bar loads at idle; the About, Shortcuts and Manage pins dialogs, a lazy chunk each; the tenantless shell with the tenant picker at `/tenants` and the signed-out page, a lazy chunk of this entry point that their routes load; and one placeholder page for the platform's page families | eager, through `import()`; the overlays, the dialogs, the installed-mode history and the tenantless pages lazy |
 | `@tellma/core/memory` | The tab's memory of its pages: page state (`TmPageState`, `tmPageStateKey`) and tree expansion (`TmTreeExpansion`), which the page hosts load with them | lazy |
 | `@tellma/core/drafts` | A tab's unsaved form copies (`TmDrafts`), which the hosts that edit records (the details page, the stock pages, the report studio) load with them | lazy |
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
 | `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`); the edit mode of the details layout kit's fields, which `tm-field` loads with `import()` on the first edit or once the record may be edited; the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
-| `@tellma/core/uploads` | A form's uploads (`TmUploads`): the paths with an upload in flight and the blob each staged, which a form's host provides (a details record does in every mode) and the value editor lists its uploads in; an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
-| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
+| `@tellma/core/uploads` | A form's uploads (`TmUploads`), which a form's host provides (a details record does in every mode) and the value editor lists its uploads in: the paths with an upload in flight, each one's progress, the blob each staged and the paths whose upload failed, with `removeRow` to move a collection's uploads up past a removed row and `cancelAll` to discard them all, as Cancel does; what a failed upload says (`tmUploadFailure`); an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-child-grid` and `tm-child-files` for child collections, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
 | `@tellma/core/dashboards` | The dashboard grid (`tm-dashboard-grid`, `TmDashboardGrid`) with its tiles (`TmDashboardTile`) and its layout (`tmPackDashboard`); the tenant home: the host the home route renders (`TmHomeHost`), which renders a feature's `home` hatch in place of the platform's home page (`TmHomePage`), its greeting and date line (`TmHomeGreeting`) and its widgets (`TM_HOME_WIDGETS`); and the bodies of the core widget types, which their declarations load | lazy, with the home route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
@@ -667,6 +667,38 @@ in their final geometry. A tenant switch creates a new shell and clears the laun
 the launcher is open, a page that renders after a navigation leaves focus in it: the page's focus
 move waits, and runs as the launcher closes, before the launcher gives focus back.
 
+The pinned bar is the frame's 32 px row under the app bar while `TmPins.visible()` holds (the
+default, so the row is open from a cold launch's first frame): the user's pins and folders as
+chips, labels cut at 120 px, the routed page's pin full height in teal with `aria-current="page"`
+and the folder that holds it in the same styling, then as many as fit with the rest in More, then
+the pin control (`Alt+Shift+P`, Pin this page or Edit pin, disabled with a reason at 30 pins, on a
+link past 512 characters and while the tenant is frozen) and Manage pins. The fit reads every
+item's width from a hidden measuring row at the current chip's weight, after each render that
+changed the items, the breakpoint, the language, the direction or the loaded faces, and a
+`ResizeObserver` refits from those widths and renders in the same callback; each chip takes its
+measured width as its box, so becoming current, a hover, focus and, from md up, navigation move
+nothing. The chips stay hidden until the first fit, which waits for `document.fonts`. Below md the
+chips are pills, the current one first. The chips are one tab stop that the arrow keys, Home and End
+move by direction; Down opens a menu chip. A revoked or unavailable pin is a locked chip whose menu
+says why and unpins it, and a folder's chip opens its pins. Pinning opens the Pinned popover on
+the pin control when the new chip shows, else a toast says so once; the popover renames the pin,
+files it in a folder or a new one, and removes it. Chips drag along the bar and into folders.
+`TmPins` holds the edits (`pinCurrent`, `update`, `move`, `remove`, `addFolder`, `removeFolder`,
+`replace`, `setVisible`), each written through `TmPreferences` and reported as
+`tm.shell.pins-changed { op, via, count }` (`tm.shell.pinned-bar-toggled { visible }` for the
+switch). The Manage pins dialog (a reorder list of the pins and folders, each folder with its own,
+Rename, Move to, Remove, New folder, the bar's switch, which applies at once, and Save, which
+replaces the pins) and the launcher's Pinned-band commands, Pin this page or Edit pin and Manage
+pins…, come with the tenant shell.
+
+```ts
+const pins = inject(TmPins);
+if (pins.canPinCurrent()) {
+  const pin = pins.pinCurrent();
+  pins.update(pin.id, { label: 'Month-end invoices' });
+}
+```
+
 `tmSearchNormalize` (`@tellma/core/search-normalize`) folds a query and the terms it matches the
 same way: bidi controls stripped, NFKD with Latin and Arabic marks removed, lowercased, the
 interchangeable Arabic letters folded and tatweel dropped, Arabic-Indic digits as 0-9, and
@@ -869,7 +901,7 @@ pins; `tmPinnedBarVisibleKey` (`nav.pinnedBarVisible`) is the bar's switch, whic
 writes. The rules the pinned bar applies to the items (8-character ids, URLs of at most 512
 characters, titles of at most 80, labels and folder names of 1 to 40, 30 pins and 10 folders per
 tenant, one level; what a pin captures of the routed URL; the current pin and a chip's label) live
-with the bar in `/shell`, as do the terms the launcher's search matches an entry by.
+with the bar and `TmPins` in `/shell`, as do the terms the launcher's search matches an entry by.
 `TM_LAUNCHER_PROVIDERS` is the multi token through which a feature adds a bucket of results below
 the launcher's pages.
 
@@ -1116,10 +1148,35 @@ export default class CustomerDetails {
   the layout and renders the layout once both are in hand; the form applies it after the
   platform's rules, so it adds rules and never weakens one, and its imports of
   `@angular/forms/signals` stay out of the first load. A failed load is the layout's failure.
+- **Images and files.** A `tm-field` over an image or a file edits it through the value editor:
+  the file is checked against its kind when picked, a cover-square image is cropped, and the file
+  uploads at once with a progress ring through the record's `TmUploads`, so Save waits until it
+  settles, even in an edit with no other change; Cancel aborts it and ignores a result arriving
+  after. A failed upload stops Save: nothing is written while a file waits to be tried again or
+  removed, or when an upload Save waited for fails, and the page says why. The staged blob previews through its URL; a refusal (`blob-rejected`) shows the
+  server's reason on the field, any other failure offers Try again, and Remove clears the value.
+- **Child collections.** `<tm-child-grid collection="Lines" [columns]="['Center', 'Amount']" />`
+  shows a child collection in one grid bound to `form.<collection>`, read-only in view mode (a
+  navigation as its link) and edited in place in edit and create mode, where its placeholder row
+  adds rows `{ id: −n, ...defaults() }`. Its frame's height is set when the record lands, never
+  while typing; view mode reserves the placeholder row and the status band, so the frame's box is
+  the same in view mode, in Edit and after Cancel. `[totals]` adds exact decimal totals under it. The grid
+  loads in its own chunk once its placeholder, of the same geometry, enters the viewport
+  (prefetched once the browser is idle), and registers the collection with the page once its rows
+  render, so a save error can `reveal()` a row and column.
+  `<tm-child-files collection="Attachments" file="File" caption="Caption" />` shows a collection
+  of files as chips that download (a plain click previews), loaded the same way, behind a
+  placeholder while the record loads; its rows' errors reach the card and tab; in edit mode its
+  drop zone adds a row per file at once and uploads it under the row's file path, each row with
+  its progress, errors, retry and inline caption; a file the server refuses leaves the list, its
+  reason shown with the drop zone's refusals. When the edit side fails to load, the grid and the
+  list say so in edit mode, with Try again. Both load through `when` triggers rather than
+  `on viewport` and `on idle`, whose code would ride every app's first frame in `@angular/core`.
 - **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
   over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
 - **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
-  mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
+  mode, the progress bar and the error state; `TmChildGridHarness` reads a child grid's frame,
+  state, height and totals and hands out its grid; `tmFakeDetails()` gives a layout test a real record
   state over a fake host, with `providers` to give the layout and `rules` for the form's own rules.
 
 ### Strings of a lazy entry point

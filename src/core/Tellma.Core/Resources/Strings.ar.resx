@@ -787,7 +787,7 @@
     <value>التسلسل الهرمي عميق جدًا.</value>
   </data>
   <data name="Blob_NotAttachable" xml:space="preserve">
-    <value>لا يمكن إرفاق هذا الملف. ارفعه مرة أخرى.</value>
+    <value>{reason, select, expired {انتهت صلاحية هذا الملف. اختره مرة أخرى.} missing {انتهت صلاحية هذا الملف. اختره مرة أخرى.} other {لا يمكن إرفاق هذا الملف. ارفعه مرة أخرى.}}</value>
   </data>
   <data name="Blob_DuplicateReference" xml:space="preserve">
     <value>الملف نفسه مرفق أكثر من مرة.</value>

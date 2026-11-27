@@ -474,16 +474,22 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Leaves edit mode: asks first when there are changes, then resets the
-   * working copy to the base, clears the draft and focuses Edit. In create
-   * mode it leaves the page instead: Back, else the search page.
+   * Leaves edit mode: asks first when there are changes, then aborts the
+   * edit's uploads and drops their staged files, resets the working copy to
+   * the base, clears the draft and focuses Edit. In create mode it leaves
+   * the page instead: Back, else the search page. While Save runs, it
+   * refuses.
    *
-   * @returns `false` when the user kept editing.
+   * @returns `false` when the user kept editing, or Save is running.
    */
   async cancel(): Promise<boolean> {
     const record = this.#record();
     if (record === null || record.mode() === 'view') {
       return true;
+    }
+    // Save owns the record while it waits for uploads and writes; a hatch's cancel() then changes nothing.
+    if (this.#busy()) {
+      return false;
     }
     if (record.dirty() && !(await this.#discard())) {
       return false;
@@ -492,6 +498,8 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (this.#destroyed || this.#record() !== record) {
       return true;
     }
+    // --- The edit's uploads are discarded with it: none finishing later writes into the restored record ---
+    record.uploads.cancelAll();
     this.#clearDraft(record);
     if (record.mode() === 'create') {
       await this.#leave(record);
@@ -505,10 +513,14 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Saves the record: a clean edit returns to view mode and sends nothing;
-   * otherwise one write through the source, whose read-back becomes the
-   * server copy. A create lands on the new record's page. A failure keeps
-   * the edit and shows the error.
+   * Saves the record: a clean edit with no upload in flight returns to view
+   * mode and sends nothing; otherwise, once the record's uploads have
+   * finished, one write through the source, whose read-back becomes the
+   * server copy. While a file's upload has failed, or when one Save waited
+   * for fails, nothing is written: the edit stays, the failure shows on its
+   * field, and the page says why. A create lands on the new record's page.
+   * A failure keeps the edit and shows the error. Uploads still running
+   * when the write lands abort.
    *
    * @returns `true` once saved and back in view mode.
    */
@@ -517,15 +529,39 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     if (record === null || record.mode() === 'view' || !record.landed() || this.#busy()) {
       return false;
     }
-    if (record.mode() === 'edit' && !record.dirty()) {
-      record.base.set(null);
-      record.mode.set('view');
-      this.#afterRender(() => this.ɵfocusEdit());
+    // --- A file whose upload failed holds Save until it is retried or removed: nothing is written without it ---
+    if (untracked(record.uploads.failed).size > 0) {
+      this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
+      return false;
+    }
+    // An upload in flight is a change still arriving: its field takes the staged id only once it lands.
+    if (record.mode() === 'edit' && !record.dirty() && untracked(record.uploads.running).size === 0) {
+      this.#leaveClean(record);
       return true;
     }
     const mode = record.mode();
+    const failures = untracked(record.uploads.failures);
     this.#busy.set(true);
     try {
+      // --- The uploads finish first, so the body carries their staged ids (spec 0031 §8.1 step 2) ---
+      if (!(await this.#uploadsSettled(record))) {
+        return false;
+      }
+      // Cancel refuses while Save waits, but a record whose mode changed meanwhile has nothing of this Save to write.
+      if (record.mode() !== mode) {
+        return false;
+      }
+      // An upload Save waited for failed, even one its editor dismissed as refused: the edit stays,
+      // showing the failure on its field. Spec 0031 §8.1 step 2 does not say; this keeps the user's file.
+      if (untracked(record.uploads.failures) !== failures || untracked(record.uploads.failed).size > 0) {
+        this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
+        return false;
+      }
+      // An upload that landed with nothing else changed, and whose field took no new id, leaves nothing to write.
+      if (mode === 'edit' && !record.dirty()) {
+        this.#leaveClean(record);
+        return true;
+      }
       const saved = await record.source.write({
         model: record.ɵsaveBody(),
         base: mode === 'create' ? null : record.base(),
@@ -534,6 +570,8 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       });
       this.#remember(record.source.entity, saved);
       this.#clearDraft(record);
+      // An upload started while the write ran belongs to nothing saved: it aborts, so no late result writes into the saved record.
+      record.uploads.cancelAll();
       // A page left while the write ran shows nothing of it.
       if (this.#destroyed) {
         return true;
@@ -776,6 +814,17 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
+   * Leaves an edit with no changes: back to view mode, sending nothing, with focus on Edit.
+   *
+   * @param record - The record.
+   */
+  #leaveClean(record: TmDetailsRecordState<T>): void {
+    record.base.set(null);
+    record.mode.set('view');
+    this.#afterRender(() => this.ɵfocusEdit());
+  }
+
+  /**
    * Clears the record's draft.
    *
    * @param record - The record.
@@ -796,6 +845,34 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   async #present(error: TmApiError, kind: 'read' | 'save'): Promise<void> {
     const { TmErrorPresenter } = await import('@tellma/core/errors');
     await this.#environment.get(TmErrorPresenter).present(error, { kind, entity: untracked(this.source).entity });
+  }
+
+  /**
+   * Waits until no upload of the record runs: each one has staged its blob
+   * or failed on its field.
+   *
+   * @param record - The record.
+   * @returns `true` once none runs; `false` when the record or the page went away first.
+   */
+  #uploadsSettled(record: TmDetailsRecordState<T>): Promise<boolean> {
+    if (untracked(record.uploads.running).size === 0) {
+      return Promise.resolve(true);
+    }
+    return new Promise((resolve) => {
+      const watch = effect(
+        () => {
+          if (record.uploads.running().size === 0) {
+            watch.destroy();
+            resolve(!this.#destroyed && untracked(this.#record) === record);
+          }
+        },
+        { injector: record.injector, manualCleanup: true },
+      );
+      record.injector.get(DestroyRef).onDestroy(() => {
+        watch.destroy();
+        resolve(false);
+      });
+    });
   }
 
   /**

@@ -32,6 +32,7 @@ import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
 import { tmEntity, type TmEntityActionDeclaration, type TmEntityDeclarationInput, type TmPickerDeclaration } from './tm-entity-declaration';
+import type { TmEntitySummary } from './tm-entity-metadata';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -137,6 +138,8 @@ export interface TmEntityRigOptions {
   readonly state?: TmTenantFacts['state'];
   /** The Entities chunk, the recorded one when omitted. */
   readonly chunk?: TmEntitiesChunk;
+  /** The Core chunk's summaries of the entities a patched chunk adds; none when omitted. */
+  readonly summaries?: readonly TmEntitySummary[];
   /** Whether the app runs in development; it does when omitted. */
   readonly devMode?: boolean;
   /** Whether the rig loads the Entities chunk before it returns; it does when omitted. */
@@ -230,7 +233,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
       provideTellma({
         metadata: {
           ...base.metadata,
-          core: () => Promise.resolve(tmTestMetadata({ entities: summaries, securables: SECURABLES })),
+          core: () => Promise.resolve(tmTestMetadata({ entities: [...summaries, ...(options.summaries ?? [])], securables: SECURABLES })),
           entities: () => Promise.resolve(options.chunk ?? chunk),
           strings: {
             en: () => Promise.resolve({ ...ENGLISH, ...options.labels?.en }),

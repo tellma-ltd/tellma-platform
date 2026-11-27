@@ -112,7 +112,8 @@ class TmFakeDetailsHost<T> implements ɵTmDetailsHostView<T> {
   }
 
   /**
-   * Leaves edit mode without asking, the working copy back at its base; a new record stays.
+   * Leaves edit mode without asking, the working copy back at its base and
+   * the edit's uploads discarded; a new record stays.
    *
    * @returns `true`.
    */
@@ -120,6 +121,7 @@ class TmFakeDetailsHost<T> implements ɵTmDetailsHostView<T> {
     this.#call('cancel');
     const record = this.#record();
     if (untracked(record.mode) === 'edit') {
+      record.uploads.cancelAll();
       record.model.set(untracked(record.base) ?? untracked(record.model));
       record.base.set(null);
       record.mode.set('view');
