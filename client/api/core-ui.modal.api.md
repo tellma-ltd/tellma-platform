@@ -31,6 +31,7 @@ export interface TmModalConfig {
     escapeDismiss?: boolean;
     panelClass?: string;
     placement?: 'center' | 'end';
+    returnFocus?: HTMLElement;
     role?: 'alertdialog' | 'dialog';
     showClose?: boolean;
     size?: TmModalSize;

@@ -39,7 +39,8 @@ export interface ɵTmFormFieldDelegateOwn {
 /**
  * Stands for the control a wrapper renders, in `tm-form-field`. Internal:
  * the value editors of this entry point provide it as their
- * `TM_FORM_FIELD_CONTROL`.
+ * `TM_FORM_FIELD_CONTROL`, and so does the details kit's group around a
+ * layout's own control.
  */
 export class ɵTmFormFieldDelegate implements TmFormFieldControl {
   readonly #inner: Signal<TmFormFieldControl | undefined>;

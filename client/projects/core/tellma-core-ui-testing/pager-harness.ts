@@ -68,8 +68,25 @@ export class TmPagerHarness extends ComponentHarness {
     return (await this.nextButton()).click();
   }
 
-  /** The page-size select, or `null` when the pager offers no sizes. */
+  /**
+   * The page-size select, or `null` when the pager offers no sizes. The
+   * select loads on demand: when only its stand-in is there, a pointer over
+   * the stand-in loads it, and this waits for it to land (`null` if it
+   * has not landed after a bounded wait).
+   */
   async getSizeSelect(): Promise<TmSelectHarness | null> {
+    const proxy = await this.locatorForOptional('.tm-pager__proxy')();
+    if (proxy !== null) {
+      await proxy.dispatchEvent('pointerenter');
+      // The chunk arrives in its own time; settle until the stand-in
+      // retires, a bounded number of times.
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((await this.locatorForOptional('.tm-pager__proxy')()) === null) {
+          break;
+        }
+        await this.forceStabilize();
+      }
+    }
     return this.locatorForOptional(TmSelectHarness)();
   }
 }

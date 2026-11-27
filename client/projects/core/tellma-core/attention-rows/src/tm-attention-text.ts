@@ -14,7 +14,7 @@ import {
 } from '@tellma/core';
 import { tmStripBidiControls } from '@tellma/core-ui/l10n';
 
-import { tmRegisterAttentionStrings } from './tm-attention-strings';
+import { tmRegisterAttentionRowsStrings } from './tm-attention-rows-strings';
 import { tmIcuArguments, tmIcuObject } from './tm-icu-arguments';
 
 // Server text on the client (spec 0028 §11): notification texts, job labels
@@ -22,6 +22,9 @@ import { tmIcuArguments, tmIcuObject } from './tm-icu-arguments';
 // reader's language through TmServerText. Every result is a signal, so a
 // language, content-language or calendar switch re-renders it with no
 // request. The keys follow the server's: a dotted key's `.` becomes `_`.
+// (Spec 0028 §1 places this service in /attention; it lives in this shared
+// entry point instead, so the first frame never carries it and the panels,
+// the arrival toasts and the pages share one copy.)
 
 /** A placeholder's opening delimiter: a private-use character no message holds. */
 const OPEN = '';
@@ -29,7 +32,7 @@ const OPEN = '';
 const CLOSE = '';
 
 /** An assignment title's key. */
-const TITLE_KEY = 'tm.attention.assignment.title';
+const TITLE_KEY = 'tm.attentionRows.assignment.title';
 /** The arguments an assignment title formats with placeholders, so the code can be split out. */
 const TITLE_ARGS = ['entity', 'code'] as const;
 
@@ -108,9 +111,9 @@ export class TmAttentionText {
   readonly #entities = inject(TmEntities);
   readonly #metadata = inject(ɵTmClientMetadataStore);
 
-  /** Creates the service, which registers the attention strings. */
+  /** Creates the service, which registers the attention rows' strings. */
   constructor() {
-    tmRegisterAttentionStrings(this.#l10n);
+    tmRegisterAttentionRowsStrings(this.#l10n);
   }
 
   /**
@@ -221,7 +224,7 @@ export class TmAttentionText {
    * placeholders, so the plain text around them keeps its translation's
    * order while each value renders in a `<bdi>` of its own.
    *
-   * @param key - The platform key, such as `tm.attention.assignment.title`.
+   * @param key - The platform key, such as `tm.attentionRows.assignment.title`.
    * @param args - The message's arguments.
    * @param isolated - The arguments that render in isolates.
    * @returns The segments in reading order, which follow the language.

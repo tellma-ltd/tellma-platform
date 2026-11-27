@@ -27,6 +27,7 @@ import {
   TmDisplayNames,
   type TmDisplayNameParts,
   type TmEntityDescriptor,
+  type TmEntityRules,
   TmEntities,
   type TmId,
   type TmJsonObject,
@@ -219,6 +220,9 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
 
   /** Counts the layout's loads, so a superseded one is dropped. */
   #layoutRun = 0;
+
+  /** The declaration's rules, once loaded with the layout; every record started after takes them. */
+  #rules: TmEntityRules<T> | undefined = undefined;
 
   /** Whether a write is in flight. */
   readonly #busy = signal(false);
@@ -523,7 +527,7 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     this.#busy.set(true);
     try {
       const saved = await record.source.write({
-        model: record.model(),
+        model: record.ɵsaveBody(),
         base: mode === 'create' ? null : record.base(),
         concurrency: 'Check',
         confirmations: [],
@@ -617,6 +621,7 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       host: this,
       parent: this.#injector,
       entities: this.#entities,
+      rules: this.#rules,
     });
     if (routed.id === null) {
       record.base.set(model);
@@ -675,19 +680,30 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Loads the layout's component.
+   * Loads the layout's component and, beside it, the declaration's rules:
+   * the layout renders once both are in hand, after the record on screen
+   * has taken the rules, and a failure of either is the layout's.
    *
    * @param layout - The component, or its loader.
    */
   async #loadLayout(layout: TmLazyComponent | Type<unknown>): Promise<void> {
     const run = ++this.#layoutRun;
-    if (reflectComponentType(layout as Type<unknown>) !== null) {
-      this.#layout.set(layout as Type<unknown>);
+    const rulesLoader = untracked(this.descriptor).declaration['validate'] as
+      | (() => Promise<TmEntityRules<T> | { readonly default: TmEntityRules<T> }>)
+      | undefined;
+    const component = reflectComponentType(layout as Type<unknown>) !== null ? (layout as Type<unknown>) : null;
+    // With no rules to wait for, a component renders at once.
+    if (component !== null && rulesLoader === undefined) {
+      this.#layout.set(component);
       return;
     }
     try {
-      const loaded = await (layout as TmLazyComponent)();
+      const [loaded, rules] = await Promise.all([component ?? (layout as TmLazyComponent)(), rulesLoader?.()]);
       if (run === this.#layoutRun) {
+        this.#rules = typeof rules === 'function' ? rules : rules?.default;
+        if (this.#rules !== undefined) {
+          this.#record()?.ɵrules(this.#rules);
+        }
         this.#layout.set(typeof loaded === 'function' ? loaded : loaded.default);
       }
     } catch {

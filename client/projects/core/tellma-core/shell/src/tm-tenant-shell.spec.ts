@@ -163,12 +163,14 @@ describe('the tenant shell', () => {
       expect(await shell.getAvatarTone()).toBe(tmAvatarTone('core.User:42'));
     });
 
-    it('reserves the boxes of the bell, the tray, help and the assistant', async () => {
+    it("places the bell's and the tray's 30 px buttons and reserves help's and the assistant's boxes", async () => {
       await start();
       const shell = await open();
-      expect(await shell.getReservedSlots()).toEqual(['bell', 'tray', 'help', 'assistant']);
-      const [bell, tray, help, assistant] = Array.from(document.querySelectorAll<HTMLElement>('tm-app-bar span[data-tm-slot]'));
+      expect(await shell.getReservedSlots()).toEqual(['help', 'assistant']);
+      const bell = document.querySelector<HTMLElement>('tm-app-bar [data-tm-slot="bell"] button')!;
+      const tray = document.querySelector<HTMLElement>('tm-app-bar [data-tm-slot="tray"] button')!;
       expect([bell.offsetWidth, bell.offsetHeight, tray.offsetWidth, tray.offsetHeight]).toEqual([30, 30, 30, 30]);
+      const [help, assistant] = Array.from(document.querySelectorAll<HTMLElement>('tm-app-bar span[data-tm-slot]'));
       expect([help.offsetWidth, assistant.offsetWidth]).toEqual([0, 0]);
     });
   });
@@ -186,10 +188,13 @@ describe('the tenant shell', () => {
       expect(await shell.getMarkers()).toEqual([]);
       expect(await shell.getAvatarTone()).toBeNull();
       expect(await shell.getMain()).toBe('page');
+      // The pinned bar's row holds three chip skeletons until the pins land.
+      expect(document.querySelectorAll('tm-pinned-bar tm-skeleton').length).toBe(3);
       answer(TM_COLD_SYNC);
       await tmSettleUntil(() => document.querySelector('tm-app-bar .tm-app-bar__tenant') !== null, 'the tenant name renders');
       expect(await shell.getTenantName()).toBe('Acme');
       expect(await shell.getUserName()).toBe('Farah');
+      expect(document.querySelectorAll('tm-pinned-bar tm-skeleton').length).toBe(0);
     });
 
     // The widths at which the session button shows names: the tenant's
@@ -259,6 +264,8 @@ describe('the tenant shell', () => {
       await tmSettleUntil(() => document.querySelector('tm-tenant-shell main tm-error-state') !== null, 'the error state renders');
       expect(await shell.getMain()).toBe('error');
       expect(await shell.isTenantNameLoading()).toBe(true);
+      // A failed sync leaves the pinned bar's row empty.
+      expect(document.querySelector('tm-pinned-bar nav')?.children.length).toBe(0);
       rig.api.respond('client/sync', TM_COLD_SYNC);
       await shell.clickErrorAction('Try again');
       await tmSettleUntil(() => document.querySelector('tm-tenant-shell main tm-error-state') === null, 'the error state ends');

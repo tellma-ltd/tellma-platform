@@ -125,6 +125,12 @@ export interface TmMenuLink {
   action?(): void;
   /** Disables the link and says why, as on {@link TmMenuItem.disabledReason}. */
   readonly disabledReason?: string;
+  /**
+   * Marks the link as the page the user is on: the row renders
+   * `aria-current="page"`, as a navigation menu tells assistive
+   * technology where the user is.
+   */
+  readonly current?: boolean;
 }
 
 /**

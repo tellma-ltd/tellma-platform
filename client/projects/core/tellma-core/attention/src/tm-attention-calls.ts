@@ -9,24 +9,35 @@ import {
   TmApi,
   TmApiError,
   TmClientStore,
+  TmEntities,
+  type TmEntityType,
+  type TmId,
+  type TmInboxRunningJob,
+  type TmInboxSummary,
   type TmInboxVerbResult,
   type TmJson,
   TmLocalization,
   type TmPartition,
+  type TmQueryRowSet,
   TmStoreRefusedError,
   TmTelemetry,
+  TmUrls,
   ɵTM_UNIQUE_LEADER_DOCUMENTS,
+  ɵTmClientMetadataStore,
 } from '@tellma/core';
 import { TmToasts } from '@tellma/core-ui/toast';
 
-import type { TmPanel, TmSeenRelease } from './tm-attention';
+import type { TmInboxOverlay, TmPanel, TmSeenRelease } from './tm-attention';
 
 // The attention model's server calls (spec 0028 §5.2–§5.4): the verbs, the
-// seen and the panel's read, with their telemetry and the failure toast.
-// The model applies every overlay in the same frame itself and loads this
-// file with import() at its first call: nothing on the first frame talks
-// to the server about attention, so it is a chunk of its own rather than
-// part of the eager entry point.
+// seen and the panel's read, with their telemetry and the failure toast,
+// Review's lookup of the record that owns a job (§6.2), and how the verbs'
+// overlays change a copy, which the model applies in the
+// same frame as a verb once this chunk is in. The model loads this file
+// with import() at its first call, which opening a panel makes, and the
+// panels' chunk imports it, so it loads with them at idle: nothing on the
+// first frame talks to the server about attention or overlays a copy, so
+// it is a chunk of its own rather than part of the eager entry point.
 
 /** A tenant's partition. */
 type TenantPartition = Extract<TmPartition, { readonly kind: 'tenant' }>;
@@ -37,8 +48,120 @@ type TmVerbName = 'read' | 'read-all' | 'clear' | 'clear-read' | 'stop-job' | 's
 /** The verbs' failure toast's key, so a repeated failure replaces it. */
 const FAILED_KEY = 'tm.attention.failed';
 
+/** How long Review waits for the record that owns a job before it opens the job's page instead. */
+const OWNER_DEADLINE_MS = 2000;
+
 /** The document each panel shows. */
 const DOCUMENTS = { bell: 'inbox', tray: 'assignments' } as const;
+
+/**
+ * The summaries' count cap, the model's own: a count at it reads "99+".
+ * Repeated here, so the chunk imports nothing but types from the model.
+ */
+const CAP = 100;
+
+/** A notification's member as a number, else `undefined`; a member the row's type names, emitted or open. */
+function numberOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number | undefined {
+  const value: unknown = row[member];
+  return typeof value === 'number' ? value : undefined;
+}
+
+/** A notification's instant member in epoch milliseconds, else `NaN`; a member the row's type names, emitted or open. */
+function timeOf(row: TmEntityType<'core.Notification'>, member: keyof TmEntityType<'core.Notification'>): number {
+  const value: unknown = row[member];
+  return typeof value === 'string' ? Date.parse(value) : Number.NaN;
+}
+
+/** Lowers a capped count, which stays capped: past the cap the true count is unknown. */
+function lower(count: number, by: number): number {
+  return count >= CAP ? count : Math.max(0, count - by);
+}
+
+/**
+ * An inbox copy with the verbs' overlays that still hold, and the stops
+ * asked, applied. Internal: the model applies it.
+ *
+ * @param copy - The stored copy.
+ * @param overlays - The overlays that still hold over it, oldest first.
+ * @param stopping - The jobs this tab asked to stop.
+ * @param now - The time, in epoch milliseconds, that marks a row read or a stop asked.
+ * @returns The copy as the user sees it.
+ */
+export function tmApplyOverlays(
+  copy: TmInboxSummary,
+  overlays: readonly TmInboxOverlay[],
+  stopping: ReadonlySet<number>,
+  now: number,
+): TmInboxSummary {
+  // A row is unseen when it arrived after the user last opened the bell.
+  const seenAt = Date.parse(copy.seenAt ?? '');
+  const unseen = (row: TmEntityType<'core.Notification'>): boolean => !(timeOf(row, 'createdAt') <= seenAt);
+  const unread = (row: TmEntityType<'core.Notification'>): boolean => row['readAt'] === undefined || row['readAt'] === null;
+  let { latest, unread: unreadCount, unseen: unseenCount } = copy;
+  const at = new Date(now).toISOString();
+  for (const overlay of overlays) {
+    const named = (row: TmEntityType<'core.Notification'>): boolean => overlay.ids === null || overlay.ids.has(numberOf(row, 'id') ?? NaN);
+    if (overlay.verb === 'read' || overlay.verb === 'read-all') {
+      // Read rows stay, marked read; the count drops by those it marks.
+      const marked = latest.filter((row) => named(row) && unread(row)).length;
+      latest = latest.map((row) => (named(row) && unread(row) ? { ...row, readAt: at } : row));
+      unreadCount = overlay.verb === 'read-all' ? 0 : lower(unreadCount, marked);
+    } else {
+      // Cleared rows leave, and their counts with them.
+      const cleared = latest.filter((row) => (overlay.verb === 'clear' ? named(row) : !unread(row)));
+      latest = latest.filter((row) => !cleared.includes(row));
+      unreadCount = lower(unreadCount, cleared.filter(unread).length);
+      unseenCount = lower(unseenCount, cleared.filter(unseen).length);
+    }
+  }
+  const running = copy.running.map((job) => (stopping.has(job.id) && job.cancelRequestedAt === undefined ? { ...job, cancelRequestedAt: at } : job));
+  return { ...copy, latest, unread: unreadCount, unseen: unseenCount, running };
+}
+
+/**
+ * The page of the record that owns a job, for Review: the row of the
+ * handler's result entity whose navigation to the job names it, inactive
+ * rows included, read once within 2 s. `null` when the handler names no
+ * routed result entity, when the row cannot be read, or when the read
+ * outlasts its deadline, which aborts it: the job's page says the rest.
+ * Internal: the bell's Review calls it in an injection context.
+ *
+ * @param job - The job.
+ * @param signal - Ends the read, as the user's own navigation does.
+ * @returns The owner's app URL, or `null`.
+ */
+export function tmJobOwner(job: TmInboxRunningJob, signal: AbortSignal): Promise<string | null> {
+  const urls = inject(TmUrls);
+  const result = inject(ɵTmClientMetadataStore)
+    .current()
+    ?.jobHandlers.find((candidate) => candidate.key === job.handlerKey)?.result;
+  const summary = result && inject(TmEntities).summary(result.entity);
+  if (!result || !summary?.segment) {
+    return Promise.resolve(null);
+  }
+  return inject(TmApi)
+    .read<{ readonly rows: TmQueryRowSet }>(
+      `${summary.segment}/query`,
+      {
+        select: 'Id',
+        filters: [`${result.via} = ${job.id}`],
+        take: 1,
+        // An owner deactivated since still owns the job; the server ignores the flag on an entity that cannot be deactivated.
+        includeInactive: true,
+      },
+      // The read ends at the deadline or with the caller's signal, whichever comes first; an aborted read rejects at once.
+      { signal: AbortSignal.any([signal, AbortSignal.timeout(OWNER_DEADLINE_MS)]) },
+    )
+    .then(
+      (page) => {
+        const id = page.rows.rows[0]?.[0];
+        // No row, or its id: a number, or a long one's decimal text.
+        return id === undefined ? null : urls.target(result.entity, id as TmId);
+      },
+      // Offline, aborted, or the row is not the user's to read.
+      () => null,
+    );
+}
 
 /**
  * The attention model's server calls. Created in an injection context, once

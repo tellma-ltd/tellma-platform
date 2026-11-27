@@ -8,6 +8,7 @@ using Tellma.Core.Abstractions.Caching;
 using Tellma.Core.Abstractions.Calendars;
 using Tellma.Core.Abstractions.Client;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Dashboards;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Abstractions.Excel;
@@ -27,6 +28,7 @@ using Tellma.Core.Blobs;
 using Tellma.Core.Caching;
 using Tellma.Core.Calendars;
 using Tellma.Core.Client;
+using Tellma.Core.Dashboards;
 using Tellma.Core.Data;
 using Tellma.Core.Excel;
 using Tellma.Core.Identity;
@@ -342,6 +344,14 @@ namespace Tellma.Core.Composition
                 .Shareable<Report, ReportShare>(ReportNotices.SharedType)
                 .Model<ReportConfiguration>()
                 .TableType<ShareGrantList>();
+
+            // --- Dashboards: the widget types the platform registers (spec 0035 §4) ---
+            // The registry lists every feature's types, Core's first, and the client metadata writes
+            // their keys, so the client's build can check each type it declares against them.
+            _ = contribution
+                .Singleton<IWidgetTypeRegistry, WidgetTypeRegistry>()
+                .Singleton<IClientAssetContributor, WidgetTypeClientAssetContributor>()
+                .WidgetType(WidgetTypeKeys.Recents);
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
             _ = contribution

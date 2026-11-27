@@ -76,8 +76,12 @@ const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
 
 /** The texts the flows match, in a project's language. */
 export interface AcmeText {
-  /** The tenant home's heading. */
+  /** The tenant home's heading: its greeting, at whatever hour the flow runs. */
   readonly home: string | RegExp;
+  /** The tenant home's grid. */
+  readonly yourWork: string | RegExp;
+  /** The recently visited pages' tile. */
+  readonly recents: string | RegExp;
   /** The customers pages' heading. */
   readonly customers: string | RegExp;
   /** The tenant picker's heading. */
@@ -101,7 +105,9 @@ export interface AcmeText {
 /** The texts in each language, as the app's string packs word them; an Arabic imperative takes either gender's form. */
 export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
   en: {
-    home: 'Home',
+    home: /^Good (?:morning|afternoon|evening), \S/,
+    yourWork: 'Your work',
+    recents: 'Recently visited',
     customers: 'Customers',
     chooseTenant: 'Choose a tenant',
     sessionEnded: 'Your session ended',
@@ -113,7 +119,9 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     cancel: 'Cancel',
   },
   ar: {
-    home: 'الرئيسية',
+    home: /^(?:صباح|مساء) الخير، \S/,
+    yourWork: 'عملك',
+    recents: 'الصفحات الأخيرة',
     customers: 'العملاء',
     chooseTenant: /^(?:اختر|اختاري) شركة$/,
     sessionEnded: 'انتهت جلستك',
@@ -221,6 +229,54 @@ export async function comeIntoViewUntil(page: Page, shown: Locator): Promise<voi
     await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
     await expect(shown).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 30_000 });
+}
+
+/** A hold on the script files that carry the select component. */
+export interface SelectChunksHold {
+  /** Answers the held files and every later one. */
+  release(): Promise<void>;
+}
+
+/**
+ * Holds every script file of the page that carries the select component (its
+ * trigger's class names it), so the pager's size select cannot land until
+ * the flow lets it. The context must block the service worker
+ * (`serviceWorkers: 'block'`), which would answer the files from its own
+ * cache once it claims the page. The test must end the hold's route with
+ * `page.unrouteAll({ behavior: 'ignoreErrors' })` before it ends, since a
+ * file still being fetched then would fail the worker.
+ *
+ * @param page - The page.
+ * @returns The hold.
+ */
+export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
+  const held: (() => Promise<void>)[] = [];
+  let holding = true;
+  await page.route('**/*.js', async (route) => {
+    try {
+      const response = await route.fetch();
+      const body = await response.text();
+      const answer = () => route.fulfill({ response, body });
+      if (holding && body.includes('tm-select__trigger')) {
+        held.push(answer);
+      } else {
+        await answer();
+      }
+    } catch (error) {
+      // A request the page cancels, as a navigation does to the files the last
+      // page was still loading, disposes its fetched response before its body
+      // is read. Nothing waits for that file any more, so it stays unanswered.
+      if (!(error instanceof Error && error.message.includes('Response has been disposed'))) {
+        throw error;
+      }
+    }
+  });
+  return {
+    release: async () => {
+      holding = false;
+      await Promise.all(held.splice(0).map((answer) => answer()));
+    },
+  };
 }
 
 /** What the document looked like when its first frame was about to paint. */

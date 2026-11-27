@@ -4,10 +4,10 @@
  * `TmBanners` and announces each banner as it is queued; the attention
  * model behind the bell and the tray, with its badges, panels and verbs;
  * the arrival engine, which toasts what arrives in the visible, focused
- * tab; the outcome toasts of background work; and the rendering of
- * notification texts, job labels and assignment captions. It loads with the
- * app, preloaded beside the primary entry point, and imports only that
- * entry point.
+ * tab; the outcome toasts of background work; and the bell's and the
+ * tray's buttons, whose panels load as a chunk of their own. It loads with
+ * the app, preloaded beside the primary entry point; it imports the
+ * primary, and the attention rows only from its lazy chunks.
  *
  * @packageDocumentation
  */
@@ -20,11 +20,5 @@
 export { TmBannerHost } from './src/tm-banner-host';
 export { TmAttention, type TmBellBadge, type TmPanel, type TmTrayBadge } from './src/tm-attention';
 export { TmArrivals, tmNotificationToastsKey } from './src/tm-arrivals';
-export {
-  TmAttentionText,
-  type TmAssignmentCaption,
-  type TmJobLabelSource,
-  type TmNotificationText,
-  type TmTextSegment,
-} from './src/tm-attention-text';
 export { TmOutcomeToasts } from './src/tm-outcome-toasts';
+export { TmAttentionButton } from './src/tm-attention-buttons';

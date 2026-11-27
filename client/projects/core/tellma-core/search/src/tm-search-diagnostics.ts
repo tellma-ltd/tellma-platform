@@ -3,10 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import type { TmApiError, TmJson, TmJsonObject } from '@tellma/core';
+import type { TmApiError, TmContextError, TmJson, TmJsonObject } from '@tellma/core';
 
 import type { TmSearchMode } from './tm-search-model';
 import type { TmSearchClauseOrigin, TmSearchRequest } from './tm-search-request';
+import type { TmSearchRegionState } from './tm-search-state';
 
 // A refused query's diagnostics mapped back to their controls (spec 0030
 // §5.3). The server names each diagnostic's clause, `filters[i]` or
@@ -120,6 +121,68 @@ export function tmSearchDiagnose(request: TmSearchRequest, mode: TmSearchMode, e
     return { state: 'invalid-code', diagnostic: code, diagnostics };
   }
   return { state: 'other', diagnostic: diagnostics[0] ?? null, diagnostics };
+}
+
+/**
+ * The state the results region shows for a refused query: the invalid
+ * filter's or the code's, with the first diagnostic's message and the text
+ * it points at, or the invalid link's.
+ *
+ * @param request - The request that was refused.
+ * @param mode - Where the page runs.
+ * @param error - The error the read rejected with.
+ * @returns The state, or `null` when no leaf is at fault and the error view shows.
+ */
+export function tmSearchRefusedState(request: TmSearchRequest, mode: TmSearchMode, error: TmApiError): TmSearchRegionState | null {
+  const diagnosis = tmSearchDiagnose(request, mode, error);
+  if (diagnosis === null || diagnosis.state === 'other') {
+    return null;
+  }
+  if (diagnosis.state === 'invalid-link') {
+    return { kind: 'invalid-link' };
+  }
+  // The token is the slice of the leaf's own text the diagnostic points at;
+  // a list's fixed leaf is the link's, and shows none.
+  const diagnostic = diagnosis.diagnostic;
+  const filters = request.body['filters'];
+  const clause = diagnostic?.origin?.kind === 'fixed' || diagnostic === null ? null : Array.isArray(filters) ? filters[indexOf(diagnostic.clause)] : null;
+  const token = typeof clause === 'string' && diagnostic !== null && diagnostic.length > 0 ? clause.slice(diagnostic.start, diagnostic.start + diagnostic.length) : null;
+  return { kind: diagnosis.state, message: diagnostic?.message ?? null, token };
+}
+
+/**
+ * A failed read's errors as the page context carries them: each diagnostic
+ * of a refused query, else the error itself, with its trace id.
+ *
+ * @param request - The request that failed.
+ * @param mode - Where the page runs.
+ * @param error - The error the read rejected with.
+ * @returns The errors.
+ */
+export function tmSearchContextErrors(request: TmSearchRequest, mode: TmSearchMode, error: TmApiError): readonly TmContextError[] {
+  const trace = error.traceId !== '' && { traceId: error.traceId };
+  const diagnosis = tmSearchDiagnose(request, mode, error);
+  if (diagnosis !== null && diagnosis.diagnostics.length > 0) {
+    return diagnosis.diagnostics.map((diagnostic) => ({
+      source: 'request',
+      code: diagnostic.code,
+      message: diagnostic.message ?? diagnostic.code,
+      path: diagnostic.clause,
+      ...trace,
+    }));
+  }
+  return [{ source: 'request', code: error.code, message: error.message, ...trace }];
+}
+
+/**
+ * The index a clause such as `filters[1]` names.
+ *
+ * @param clause - The clause.
+ * @returns The index, or -1.
+ */
+function indexOf(clause: string): number {
+  const match = /^filters\[(\d+)\]$/.exec(clause);
+  return match === null ? -1 : Number(match[1]);
 }
 
 /**

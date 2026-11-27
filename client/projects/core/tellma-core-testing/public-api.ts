@@ -18,10 +18,20 @@ export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details
 export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOfflineHarness } from './src/tm-diagnostics-panel-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmExpressionEditorHarness, type TmExpressionEditorChip } from './src/tm-expression-editor-harness';
+export { type TmFieldGeometry, TmFieldHarness, type TmFieldHarnessFilters, type TmFieldMode } from './src/tm-field-harness';
 export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
+export {
+  TmAttentionPanelHarness,
+  TmBellPanelHarness,
+  type TmBellPanelJob,
+  type TmBellPanelNotification,
+  TmTrayPanelHarness,
+  type TmTrayPanelRow,
+} from './src/tm-attention-panel-harness';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
+export { TmFakeClientCache, type TmFakeClientCacheSweep } from './src/tm-fake-client-cache';
 export { TmFakeDiscover, type TmFakeDiscoverAnswer } from './src/tm-fake-discover';
 export { TmFakeHub, TmFakeHubConnection } from './src/tm-fake-hub';
 export { TmFakeLocks } from './src/tm-fake-locks';
@@ -39,6 +49,13 @@ export {
 } from './src/tm-launcher-harness';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
+export {
+  TmPinnedBarChipHarness,
+  type TmPinnedBarChipHarnessFilters,
+  type TmPinnedBarChipKind,
+  type TmPinnedBarControl,
+  TmPinnedBarHarness,
+} from './src/tm-pinned-bar-harness';
 export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';
 export { TmSessionMenuHarness, type TmSessionMenuTenantCard } from './src/tm-session-menu-harness';
 export { TmTenantPickerHarness, type TmTenantPickerName, TmTenantPickerRowHarness } from './src/tm-tenant-picker-harness';

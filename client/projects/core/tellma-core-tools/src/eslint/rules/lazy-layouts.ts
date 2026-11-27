@@ -59,21 +59,27 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
     : node;
 }
 
-/** Whether `node` is `import('…')` with a literal specifier. */
+/**
+ * Whether `node` is `import('…')` with a literal specifier. The specifier and
+ * the import itself may be cast: the platform's own declarations load its
+ * lazy entry points as `(import('@tellma/core/x' as string) as Promise<M>)`,
+ * so that the package build does not follow the import back into a cycle.
+ */
 function isLiteralImport(node: TSESTree.Node): boolean {
-  return node.type === AST_NODE_TYPES.ImportExpression && tmStaticString(node.source) !== null;
+  const call = unwrap(node);
+  return call.type === AST_NODE_TYPES.ImportExpression && tmStaticString(unwrap(call.source)) !== null;
 }
 
 /**
  * Whether `node` is a lazy loader: an arrow function with no parameters whose
- * body is `import('…')`, optionally followed by one `.then(…)` that picks the
- * export.
+ * body is `import('…')`, optionally cast, and optionally followed by one
+ * `.then(…)` that picks the export.
  */
 function isLazyLoader(node: TSESTree.Node): boolean {
   if (node.type !== AST_NODE_TYPES.ArrowFunctionExpression || node.params.length > 0) {
     return false;
   }
-  const body = node.body;
+  const body = unwrap(node.body);
   if (isLiteralImport(body)) {
     return true;
   }
@@ -90,7 +96,7 @@ function isLazyLoader(node: TSESTree.Node): boolean {
  * `tmPage`, `tmFeature`, `tmWidget`, `tmOverride`, `tmCodedReport`), every
  * layout member (`details`, `page`, `create`, `search`, `component`,
  * `display`, `dialog`, `home`, `settingsEditor`, `panel`) must be
- * `() => import('…')`. An entity's `details` may instead be an object whose
+ * `() => import('…')`, its specifier a literal, even when cast. An entity's `details` may instead be an object whose
  * own layout members (`page`, `create`) are checked; `icons` and `providers`
  * are not entered.
  */

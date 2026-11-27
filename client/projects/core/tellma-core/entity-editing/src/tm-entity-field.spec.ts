@@ -13,8 +13,8 @@ import { TmEntityFieldHarness, TmEntityMultiFieldHarness, type TmFakeApiCall } f
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmFormFieldHarness } from '@tellma/core-ui-testing';
 
-import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
-import { tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmDisplayNameRead, tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
+import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { TmEntityField } from './tm-entity-field';
 import { TmEntityMultiField } from './tm-entity-multi-field';
 
@@ -146,6 +146,8 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
 /**
  * Waits for the next frame and the reads it starts: a display name read
  * for an unknown row flushes on a frame, which must not outlive the test.
+ * Only for a user who may not query the target, whose read ends before it
+ * loads any chunk; a read that queries is waited on by its query.
  *
  * @param fixture - The fixture.
  */
@@ -182,12 +184,13 @@ describe('TmEntityField', () => {
   });
 
   it('shows a chosen row by its display name once read', async () => {
-    const { loader, fixture } = await startHost(SYSTEM, { centerId: 3 });
+    const { loader, rig, fixture } = await startHost(SYSTEM, { centerId: 3 });
     const field = await (await within(loader, 'center')).getHarness(TmEntityFieldHarness);
-    await vi.waitFor(async () => {
-      await settle(fixture);
-      expect(await field.getText()).toBe('C');
-    });
+    // The read flushes on a frame and its code is in the entity model's chunk,
+    // which each read loads first; the picker then shows the name.
+    await tmSettleUntil(() => rig.names.label('gl.Center', 3)() !== null, 'the chosen center is named');
+    await settle(fixture);
+    expect(await field.getText()).toBe('C');
   });
 
   it('forwards the field’s state to the picker, which tm-form-field labels and marks', async () => {
@@ -207,14 +210,15 @@ describe('TmEntityField', () => {
   });
 
   it('holds the form invalid while its text names no row', async () => {
-    const { loader, host, fixture } = await startHost(SYSTEM, { centerId: 1 });
+    const { loader, host, rig, fixture } = await startHost(SYSTEM, { centerId: 1 });
     const field = await (await within(loader, 'center')).getHarness(TmEntityFieldHarness);
     await field.search('Nowhere');
     await (await field.getPicker()).blur();
     await settle(fixture);
     // The text clears the value, and the picker's parse error holds the field invalid beside the requirement.
     expect([host.model().centerId, host.form.centerId().errors().map((error) => error.kind)]).toEqual([null, ['parse', 'required']]);
-    await frame(fixture);
+    // The first render asked for the chosen row's name; that read must not outlive the test.
+    await tmDisplayNameRead(rig, 'centers/query', 1);
   });
 
   it('disables the picker with its field', async () => {

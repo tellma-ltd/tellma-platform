@@ -6,7 +6,7 @@
 import { TmLocalization } from '@tellma/core';
 
 // The attention surfaces' English strings, under `tm.attention` (spec 0028
-// §5.2, §8.1, §11.3). They ship with this entry point rather than with the
+// §5.2, §8.1). They ship with this entry point rather than with the
 // first frame; each service registers them when it is created, which merges
 // them beside the primary's own `tm.attention.banners` keys. A language's
 // table that holds a key wins over them.
@@ -32,8 +32,6 @@ const STRINGS_EN = {
   },
   /** What joins the parts of an accessible name. */
   separator: ', ',
-  /** An assignment's caption: the entity's singular label and the target's code. */
-  assignment: { title: '{entity} {code}' },
   /** The toasts' overflow pill, and the verbs' failure toast; the arrival toasts' own strings ship with them. */
   toasts: {
     more: '{count, number} more · Open notifications',

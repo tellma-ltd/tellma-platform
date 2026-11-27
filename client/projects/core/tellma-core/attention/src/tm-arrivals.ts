@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { DestroyRef, DOCUMENT, effect, inject, Injectable, Injector, runInInjectionContext, type Signal, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import {
@@ -21,7 +23,9 @@ import {
   type TmTenantFacts,
   TmUrls,
 } from '@tellma/core';
+import { TmIconRegistry } from '@tellma/core-ui/icon';
 import { TmToasts } from '@tellma/core-ui/toast';
+import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
 
 import type { TmArrivalToasts } from './tm-arrival-toasts';
 import { tmRegisterAttentionStrings } from './tm-attention-strings';
@@ -93,6 +97,8 @@ export class TmArrivals {
   /** Creates the engine, which watches the routed tenant's attention documents. */
   constructor() {
     tmRegisterAttentionStrings(this.#l10n);
+    // The assignment toasts draw the inbox by name.
+    inject(TmIconRegistry).register({ inbox: Inbox });
 
     // --- The overflow pill: "{n} more · Open notifications" inside a tenant, else the default ---
     this.#toasts.ɵsetOverflow((hidden) =>

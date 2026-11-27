@@ -72,7 +72,8 @@ import { TmProgressBar, TmProgressRing } from '@tellma/core-ui/progress';
 import { TmRadio, TmRadioGroup } from '@tellma/core-ui/radio';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
 import { TmReorderEmpty, TmReorderItem, TmReorderList } from '@tellma/core-ui/reorder-list';
-import { TmSearch, TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSearchField } from '@tellma/core-ui/search-field';
+import { TmSearch } from '@tellma/core-ui/search-input';
 import { TmSegment, TmSegmented } from '@tellma/core-ui/segmented';
 import { TmOption, TmOptionGroup, TmSelect } from '@tellma/core-ui/select';
 import { TmMultiSelect } from '@tellma/core-ui/multi-select';
@@ -131,11 +132,11 @@ import * as pagerExamples from './pager/tm-pager.examples';
 import * as pivotExamples from './pivot/tm-pivot.examples';
 import * as popoverExamples from './popover/tm-popover.examples';
 import * as progressBarExamples from './progress/tm-progress-bar.examples';
-import * as progressRingExamples from './progress/tm-progress-ring.examples';
+import * as progressRingExamples from './progress-ring/tm-progress-ring.examples';
 import * as radioGroupExamples from './radio/tm-radio-group.examples';
 import * as relativeTimeExamples from './relative-time/tm-relative-time.examples';
 import * as reorderListExamples from './reorder-list/tm-reorder-list.examples';
-import * as searchExamples from './search-field/tm-search.examples';
+import * as searchExamples from './search-input/tm-search.examples';
 import * as searchFieldExamples from './search-field/tm-search-field.examples';
 import * as segmentedExamples from './segmented/tm-segmented.examples';
 import * as multiSelectExamples from './multi-select/tm-multi-select.examples';
@@ -991,7 +992,7 @@ const SUITES = [
   { source: 'radio/tm-radio-group.examples.ts', examples: radioGroupExamples },
   { source: 'segmented/tm-segmented.examples.ts', examples: segmentedExamples },
   { source: 'switch/tm-switch.examples.ts', examples: switchExamples },
-  { source: 'search-field/tm-search.examples.ts', examples: searchExamples },
+  { source: 'search-input/tm-search.examples.ts', examples: searchExamples },
   { source: 'search-field/tm-search-field.examples.ts', examples: searchFieldExamples },
   { source: 'entity-picker/tm-entity-picker.examples.ts', examples: entityPickerExamples },
   {
@@ -1029,7 +1030,7 @@ const SUITES = [
   { source: 'tiles-tree/tm-tiles-tree.examples.ts', examples: tilesTreeExamples },
   { source: 'avatar/tm-avatar.examples.ts', examples: avatarExamples },
   { source: 'progress/tm-progress-bar.examples.ts', examples: progressBarExamples },
-  { source: 'progress/tm-progress-ring.examples.ts', examples: progressRingExamples },
+  { source: 'progress-ring/tm-progress-ring.examples.ts', examples: progressRingExamples },
   { source: 'skeleton/tm-skeleton.examples.ts', examples: skeletonExamples },
   { source: 'relative-time/tm-relative-time.examples.ts', examples: relativeTimeExamples },
   { source: 'copy/tm-copy-button.examples.ts', examples: copyButtonExamples },
