@@ -59,6 +59,12 @@ function logFocusState(label: string): void {
         openDialog: document.querySelector('dialog[open]') !== null,
         modal: document.querySelector(':modal') !== null,
         top: window.top === window,
+        skips: document.querySelectorAll('.tm-shell-frame__skip').length,
+        frames: document.querySelectorAll('tm-shell-frame').length,
+        // The test roots in the document, and the one that holds the skip link the test queries.
+        roots: [...document.body.children].map((child) => `${child.localName}#${child.id}`).join(' '),
+        skipRoot: document.querySelector('.tm-shell-frame__skip')?.closest('body > *')?.id ?? null,
+        href: document.location.href,
       }),
   );
 }
