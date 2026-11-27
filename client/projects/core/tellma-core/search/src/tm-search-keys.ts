@@ -19,7 +19,7 @@ import { tmSearchCapturesKey, tmSearchInsert, tmSearchOnTop, tmSearchPastedText,
 const ANNOUNCE_QUIET_MS = 500;
 
 /** Where the keys are listened for, and what they reach. */
-export interface ɵTmSearchKeysOptions {
+export interface TmSearchKeysOptions {
   /** Where the page runs. */
   readonly mode: TmSearchFieldMode;
   /** The document for a page or a list; the picker modal's pane for a picker. */
@@ -42,7 +42,7 @@ export interface ɵTmSearchKeysOptions {
  * it in an injection context; it stops listening when that context is
  * destroyed.
  */
-export class ɵTmSearchKeys {
+export class TmSearchKeys {
   /** The live region. */
   readonly #announcer = inject(LiveAnnouncer);
 
@@ -71,7 +71,7 @@ export class ɵTmSearchKeys {
    *
    * @param options - Where to listen, and what the keys reach.
    */
-  listen(options: ɵTmSearchKeysOptions): void {
+  listen(options: TmSearchKeysOptions): void {
     const { mode, scope } = options;
     const onTop = (): boolean => tmSearchOnTop(mode, scope, options.overlays());
     const typeIn = (input: HTMLInputElement, text: string): void => {

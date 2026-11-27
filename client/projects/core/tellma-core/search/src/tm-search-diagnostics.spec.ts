@@ -5,7 +5,7 @@
 
 import { TmApiError, type TmJsonObject } from '@tellma/core';
 
-import { ɵtmSearchDiagnose as tmSearchDiagnose, type TmSearchOrigins } from './tm-search-diagnostics';
+import { tmSearchDiagnose, type TmSearchOrigins } from './tm-search-diagnostics';
 
 // A refused query's diagnostics mapped back to the controls their clauses
 // came from, by the request's leaf order: the advanced filter offers Edit

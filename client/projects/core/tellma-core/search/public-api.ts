@@ -7,9 +7,9 @@
  * extends `TmSearchCell`; its search component and its page actions reach
  * the page through `injectTmSearch()`. The query model (the query state's
  * sources, its canonical URL, how a change reaches history and the
- * preferences, and the rows request) is internal to the entry point; the
- * page's view parts (the field and its keys, the region's states, a refused
- * query's diagnostics) load with it from `@tellma/core/search-view`.
+ * preferences, and the rows request) is internal to the entry point, and so
+ * are the page's view parts (the field and its keys, the region's states, a
+ * refused query's diagnostics).
  *
  * @packageDocumentation
  */

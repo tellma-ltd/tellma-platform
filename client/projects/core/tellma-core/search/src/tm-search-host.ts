@@ -75,16 +75,6 @@ import {
 } from '@tellma/core';
 import { TmFormats, TmValue, tmGridColumnFor, type TmGridColumnConfig } from '@tellma/core/entity';
 import { tmPageStateKey } from '@tellma/core/memory';
-import {
-  ɵTmSearchKeys,
-  ɵTmSearchPageField,
-  ɵTmSearchState as TmSearchStateView,
-  ɵtmSearchContextErrors as tmSearchContextErrors,
-  ɵtmSearchDiagnose as tmSearchDiagnose,
-  ɵtmSearchRefusedState as tmSearchRefusedState,
-  ɵtmSearchStateMessage as tmSearchStateMessage,
-  type ɵTmSearchRegionState as TmSearchRegionState,
-} from '@tellma/core/search-view';
 import { TmBreakpoints } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmRowId } from '@tellma/core-ui/contracts';
@@ -111,6 +101,8 @@ import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import { tmSearchCanonical, tmSearchQuiet, tmSearchText, tmSearchUrl } from './tm-search-canonical';
 import { tmSearchApply, tmSearchResize, tmSearchUpdate, type TmSearchTransition } from './tm-search-change';
 import { ɵTM_SEARCH_CONTEXT } from './tm-search-context';
+import { tmSearchContextErrors, tmSearchDiagnose, tmSearchRefusedState } from './tm-search-diagnostics';
+import { TmSearchKeys } from './tm-search-keys';
 import {
   TM_SEARCH_EXPRESSION_LABEL,
   tmSearchColumnKey,
@@ -127,6 +119,7 @@ import {
   type TmSearchState,
   type TmSearchWidth,
 } from './tm-search-model';
+import { TmSearchPageField } from './tm-search-page-field';
 import { tmSearchColumnsKey, tmSearchPageSizeKey, tmSearchViewKey } from './tm-search-preferences';
 import {
   tmSearchApiError,
@@ -142,6 +135,7 @@ import {
 } from './tm-search-read';
 import { tmSearchPlan, tmSearchRequest, type TmSearchRequest } from './tm-search-request';
 import { tmSearchColumnsOf, tmSearchResolve, type TmSearchOpening } from './tm-search-resolve';
+import { TmSearchState as TmSearchStateView, tmSearchStateMessage, type TmSearchRegionState } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
 
 // The search host (spec 0030 §3, §5, §7, §13.1, §13.4, §14, §19): the page
@@ -326,7 +320,7 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
     TmPager,
     TmProgressBar,
     TmSearchStateView,
-    ɵTmSearchPageField,
+    TmSearchPageField,
     TmSkeleton,
     TmValue,
   ],
@@ -909,7 +903,7 @@ export class TmSearchHost implements OnInit {
   readonly #fieldQuery = computed(() => tmSearchText(this.fieldText(), this.#descriptor().limits.maxSearchLength));
 
   /** The field. */
-  private readonly field = viewChild(ɵTmSearchPageField);
+  private readonly field = viewChild(TmSearchPageField);
 
   /** The grid, while the page shows one. */
   private readonly grid = viewChild(TmGrid);
@@ -942,7 +936,7 @@ export class TmSearchHost implements OnInit {
   #restoring: string | null = null;
 
   /** The page's keys: type-to-search, and the pause the live region waits for. */
-  protected readonly keys = new ɵTmSearchKeys();
+  protected readonly keys = new TmSearchKeys();
 
   /** The ids the header and the field name each other by. */
   protected readonly ids = ((page) => ({ title: `tm-search-title-${page}`, region: `tm-search-region-${page}` }))(++pages);

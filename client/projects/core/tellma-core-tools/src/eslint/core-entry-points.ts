@@ -81,12 +81,7 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // hosts that edit records load the drafts: the details page, the stock
   // pages and the report studio. The home page, in `/dashboards`, lists the
   // recent pages.
-  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker', './search-view'] },
-  // The search page's view parts (spec 0030 §5.3, §6.1, §6.2): the field in
-  // the form field's chrome, type-to-search, the live region's pause and the
-  // results region's states, split off /search, whose host imports them
-  // statically with its route.
-  './search-view': { load: 'lazy', imports: [] },
+  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
   './details': { load: 'lazy', imports: ['./entity', './memory', './drafts'] },
   './admin': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
   './attention-pages': { load: 'lazy', imports: [] },

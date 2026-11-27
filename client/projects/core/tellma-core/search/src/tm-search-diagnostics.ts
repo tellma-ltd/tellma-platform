@@ -101,7 +101,7 @@ const CLAUSE = /^(filters|namedFilters)\[(\d+)\]$/;
  * @param error - The error the read rejected with.
  * @returns The diagnosis, or `null` when the error is not an invalid query.
  */
-export function ɵtmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchDiagnosis<O> | null {
+export function tmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchDiagnosis<O> | null {
   if (error.kind !== 'query-invalid') {
     return null;
   }
@@ -164,8 +164,8 @@ export function ɵtmSearchDiagnose<O extends TmSearchOriginLike>(request: TmSear
  * @param error - The error the read rejected with.
  * @returns The state, or `null` when no leaf is at fault and the error view shows.
  */
-export function ɵtmSearchRefusedState<O extends TmSearchOriginLike>(request: TmSearchRefusedRequest<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchRegionState | null {
-  const diagnosis = ɵtmSearchDiagnose(request, mode, error);
+export function tmSearchRefusedState<O extends TmSearchOriginLike>(request: TmSearchRefusedRequest<O>, mode: TmSearchFieldMode, error: TmApiError): TmSearchRegionState | null {
+  const diagnosis = tmSearchDiagnose(request, mode, error);
   if (diagnosis === null || diagnosis.state === 'other') {
     return null;
   }
@@ -191,9 +191,9 @@ export function ɵtmSearchRefusedState<O extends TmSearchOriginLike>(request: Tm
  * @param error - The error the read rejected with.
  * @returns The errors.
  */
-export function ɵtmSearchContextErrors<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): readonly TmContextError[] {
+export function tmSearchContextErrors<O extends TmSearchOriginLike>(request: TmSearchOrigins<O>, mode: TmSearchFieldMode, error: TmApiError): readonly TmContextError[] {
   const trace = error.traceId !== '' && { traceId: error.traceId };
-  const diagnosis = ɵtmSearchDiagnose(request, mode, error);
+  const diagnosis = tmSearchDiagnose(request, mode, error);
   if (diagnosis !== null && diagnosis.diagnostics.length > 0) {
     return diagnosis.diagnostics.map((diagnostic) => ({
       source: 'request',

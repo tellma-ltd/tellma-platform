@@ -4,7 +4,7 @@
 
 ```ts
 
-import * as i0 from '@angular/core';
+import * as _angular_core from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
 import { OnInit } from '@angular/core';
@@ -21,8 +21,8 @@ export abstract class TmSearchCell<V = unknown> {
     readonly column: InputSignal<TmColumnPlan | undefined>;
     readonly row: InputSignal<TmPlanRow>;
     readonly value: InputSignal<V>;
-    static ɵdir: i0.ɵɵDirectiveDeclaration<TmSearchCell<any>, never, never, { "value": { "alias": "value"; "required": true; "isSignal": true; }; "row": { "alias": "row"; "required": true; "isSignal": true; }; "column": { "alias": "column"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmSearchCell<any>, never>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmSearchCell<any>, never, never, { "value": { "alias": "value"; "required": true; "isSignal": true; }; "row": { "alias": "row"; "required": true; "isSignal": true; }; "column": { "alias": "column"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchCell<any>, never>;
 }
 
 // @public
@@ -80,7 +80,7 @@ export class TmSearchHost implements OnInit {
         region: string;
     };
     protected invoke(id: string): Promise<TmActionResult>;
-    protected readonly keys: ɵTmSearchKeys;
+    protected readonly keys: TmSearchKeys;
     protected readonly loading: Signal<boolean>;
     protected readonly maxLength: Signal<number | null>;
     protected readonly menuActions: Signal<readonly TmMenuItem[]>;
@@ -128,8 +128,8 @@ export class TmSearchHost implements OnInit {
     protected readonly title: Signal<string>;
     protected readonly total: Signal<number | null>;
     protected typed(text: string): void;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmSearchHost, "tm-search-host", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmSearchHost, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSearchHost, "tm-search-host", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchHost, never>;
 }
 
 ```

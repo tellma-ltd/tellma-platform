@@ -76,7 +76,7 @@ let fields = 0;
     '[class.tm-search-page-field--lg]': 'size() === "lg"',
   },
 })
-export class ɵTmSearchPageField {
+export class TmSearchPageField {
   /** What the field's arrow keys and Enter drive: the results' highlight. */
   readonly driver = input.required<TmGridDriverTarget>();
 

@@ -12,7 +12,7 @@ import type { TmGridDriverTarget } from '@tellma/core-ui/grid';
 import { TmInput } from '@tellma/core-ui/input';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 
-import { ɵTmSearchPageField } from './tm-search-page-field';
+import { TmSearchPageField } from './tm-search-page-field';
 
 // The search page's field draws the form field's chrome itself, around its
 // magnifier, input and clear button, so a page that shows it never loads
@@ -62,7 +62,7 @@ const DRIVER: TmGridDriverTarget = {
 
 /** The search page's field beside a form field with an input, both at the workspace's size step. */
 @Component({
-  imports: [ɵTmSearchPageField, TmFormField, TmInput],
+  imports: [TmSearchPageField, TmFormField, TmInput],
   template: `
     <tm-search-page-field [driver]="driver" titleId="title" />
     <tm-form-field label="Reference">

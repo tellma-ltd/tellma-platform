@@ -23,7 +23,7 @@ import { TmLocalization, TmTelemetry, type TmApiError } from '@tellma/core';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 
-import type { ɵTmSearchKeys } from './tm-search-keys';
+import type { TmSearchKeys } from './tm-search-keys';
 
 // The results region's states (spec 0030 §5.3): each a `tm-empty-state`,
 // or the error view of any other failed read. They render no live region
@@ -207,7 +207,7 @@ export class TmSearchState {
   readonly state: InputSignal<TmSearchRegionState> = input.required<TmSearchRegionState>();
 
   /** The page's keys, whose live region says the error view once it loads; `null`, it is silent. */
-  readonly speaker: InputSignal<ɵTmSearchKeys | null> = input<ɵTmSearchKeys | null>(null);
+  readonly speaker: InputSignal<TmSearchKeys | null> = input<TmSearchKeys | null>(null);
 
   /** Emits when the user asks to clear the filters or the search text. */
   readonly clear: OutputEmitterRef<'filters' | 'search'> = output<'filters' | 'search'>();
@@ -288,7 +288,7 @@ export class TmSearchState {
  * @param shown - The state.
  * @returns The message, or `null`.
  */
-export function ɵtmSearchStateMessage(l10n: TmLocalization, shown: TmSearchRegionState): string | null {
+export function tmSearchStateMessage(l10n: TmLocalization, shown: TmSearchRegionState): string | null {
   const text = (key: string): string => l10n.ɵtext(`tm.search.${key}`)();
   switch (shown.kind) {
     case 'error':

@@ -27,7 +27,7 @@ import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
 import { tmEntityDocs, tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil, tmWaitUntil } from '../../src/routes/tm-app.testing.util';
-import { ɵTM_SEARCH_ERROR_VIEWS } from '@tellma/core/search-view';
+import { ɵTM_SEARCH_ERROR_VIEWS } from './tm-search-state';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
 import { tmSearchTestHash } from './tm-search.testing.util';
 
