@@ -8,11 +8,11 @@ import type { TmLanguageDefinition } from '@tellma/core';
 // Arabic as a Tellma app's language (spec 0024 §7.3): the platform's `tm`
 // table and the component library's Arabic, which the localization service
 // merges into the language's strings on Arabic's first use. The tables live
-// in six entry points, ./platform-strings, ./shell-strings,
-// ./details-strings, ./queryex-strings and ./support-strings (the shell's,
-// the details page's, the Queryex tools' and the support tools' parts of the
-// tm table) and ./strings, all loaded at
-// once on that first use, so an app's other languages never download them
+// in seven entry points, ./platform-strings, ./shell-strings,
+// ./details-strings, ./dashboards-strings, ./queryex-strings and
+// ./support-strings (the shell's, the details page's, the home page's and
+// dashboards', the Queryex tools' and the support tools' parts of the tm
+// table) and ./strings, all loaded at once on that first use, so an app's other languages never download them
 // (as §7.4 loads a calendar); one entry point per table keeps each one's
 // growth under its own ceiling.
 
@@ -36,14 +36,16 @@ export function tmArabic(): TmLanguageDefinition {
         import('@tellma/locale-ar/platform-strings'),
         import('@tellma/locale-ar/shell-strings'),
         import('@tellma/locale-ar/details-strings'),
+        import('@tellma/locale-ar/dashboards-strings'),
         import('@tellma/locale-ar/queryex-strings'),
         import('@tellma/locale-ar/support-strings'),
         import('@tellma/locale-ar/strings'),
-      ]).then(([platform, shell, details, queryex, support, library]) => ({
+      ]).then(([platform, shell, details, dashboards, queryex, support, library]) => ({
         tm: {
           ...platform.TM_STRINGS_AR,
           ...shell.TM_SHELL_STRINGS_AR,
           ...details.TM_DETAILS_STRINGS_AR,
+          ...dashboards.TM_DASHBOARDS_STRINGS_AR,
           ...queryex.TM_QUERYEX_STRINGS_AR,
           ...support.TM_SUPPORT_STRINGS_AR,
         },

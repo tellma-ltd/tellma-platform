@@ -14,7 +14,9 @@ import type { TmRouteSkeleton } from '../app/tm-route-data';
 // details, the My settings hub and plain pages; the compact header's one row
 // for reports and dashboards; and the home page's greeting over its three
 // tile frames, in the dashboard column. Each body has its family's final
-// geometry; the page specs pin zero shift against their own pages.
+// geometry; the page specs pin zero shift against their own pages. The home
+// skeleton's boxes are the global dashboard stylesheet's, which the home page
+// itself draws with, so the two share one set of rules.
 
 /** The skeleton of one page family, drawn while its page loads. */
 @Component({
@@ -24,16 +26,28 @@ import type { TmRouteSkeleton } from '../app/tm-route-data';
   template: `
     @switch (kind()) {
       @case ('home') {
-        <!-- Home: two greeting lines over three tile frames, each a header and five rows. -->
-        <div class="tm-page-skeleton__column">
-          <tm-skeleton shape="line" [lines]="2" width="20rem" />
-          <div class="tm-page-skeleton__tiles">
-            @for (tile of tiles; track tile) {
-              <div class="tm-page-skeleton__tile">
-                <tm-skeleton shape="line" width="8rem" />
-                <tm-skeleton shape="line" [lines]="5" />
+        <!-- Home: the greeting's two lines over the home grid's tile frames, each its header and five list rows,
+             in the boxes the home page draws (the global dashboard stylesheet's). -->
+        <div class="tm-home">
+          <div class="tm-dashboard-column tm-home-greeting">
+            <tm-skeleton class="tm-home-greeting__lines" shape="line" [lines]="2" width="20rem" />
+          </div>
+          <div class="tm-dashboard-band">
+            <div class="tm-dashboard-column tm-dashboard-grid tm-home-skeleton">
+              <!-- Three frames, which the stylesheet places where the home page places its widgets. -->
+              <div class="tm-dashboard-grid__cell tm-dashboard-frame">
+                <div class="tm-dashboard-frame__header"><tm-skeleton shape="line" width="8rem" /></div>
+                <tm-skeleton class="tm-dashboard-frame__rows" shape="line" [lines]="5" />
               </div>
-            }
+              <div class="tm-dashboard-grid__cell tm-dashboard-frame">
+                <div class="tm-dashboard-frame__header"><tm-skeleton shape="line" width="8rem" /></div>
+                <tm-skeleton class="tm-dashboard-frame__rows" shape="line" [lines]="5" />
+              </div>
+              <div class="tm-dashboard-grid__cell tm-dashboard-frame">
+                <div class="tm-dashboard-frame__header"><tm-skeleton shape="line" width="8rem" /></div>
+                <tm-skeleton class="tm-dashboard-frame__rows" shape="line" [lines]="5" />
+              </div>
+            </div>
           </div>
         </div>
       }
@@ -45,7 +59,8 @@ import type { TmRouteSkeleton } from '../app/tm-route-data';
         <tm-skeleton class="tm-page-skeleton__body" shape="block" height="24rem" />
       }
       @case ('dashboard') {
-        <div class="tm-page-skeleton__column">
+        <!-- A dashboard: the compact header and the body, in the dashboard column. -->
+        <div class="tm-dashboard-column tm-page-skeleton__column">
           <tm-page-header>
             <span tmPageTitle><tm-skeleton shape="line" width="14rem" /></span>
           </tm-page-header>
@@ -78,8 +93,10 @@ import type { TmRouteSkeleton } from '../app/tm-route-data';
     }
   `,
   styles: `
+    /* The skeleton fills the route host, so the home skeleton's band reaches the bottom of main. */
     :host {
       display: block;
+      block-size: 100%;
     }
     .tm-page-skeleton__body {
       margin-inline: var(--page-header-padding-x);
@@ -89,19 +106,7 @@ import type { TmRouteSkeleton } from '../app/tm-route-data';
       display: flex;
       flex-direction: column;
       gap: var(--space-4);
-      max-inline-size: var(--tm-dashboard-max-inline, 1200px);
-      margin-inline: auto;
       padding: var(--page-header-padding-y) var(--page-header-padding-x);
-    }
-    .tm-page-skeleton__tiles {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-      gap: var(--space-4);
-    }
-    .tm-page-skeleton__tile {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-3);
     }
     .tm-page-skeleton__hub {
       display: flex;
@@ -113,6 +118,4 @@ export class TmPageSkeleton {
   /** The page family whose skeleton to draw. */
   readonly kind = input.required<TmRouteSkeleton>();
 
-  /** The home page's three tile frames. */
-  protected readonly tiles = [0, 1, 2];
 }

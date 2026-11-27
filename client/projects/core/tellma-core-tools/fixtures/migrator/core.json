@@ -50,7 +50,7 @@
   "notificationChannels": [],
   "clientEvents": [],
   "jobHandlers": [],
-  "widgetTypes": [],
+  "widgetTypes": ["core.recents"],
   "codedReports": [],
   "routing": {
     "serverFirstSegments": [

@@ -5,6 +5,7 @@
 
 import { tmMarkDeclaration } from '../declarations/tm-declaration-registry';
 import type { TmLazyComponent, TmSecurableRef } from '../declarations/tm-declaration-types';
+import type { TmJson } from '../json/tm-json';
 
 // The client half of a dashboard widget type (spec 0035 §4.3). The server
 // registers each type's key and validates its settings; the client declares
@@ -49,6 +50,45 @@ export interface TmWidgetTypeDeclaration {
   readonly key: string;
   /** The members the feature set. */
   readonly [member: string]: unknown;
+}
+
+/**
+ * A text in the three content slots, in the order the tenant's settings
+ * name them; `null` where a slot has no text.
+ */
+export type TmTextSlots = readonly [string | null, string | null, string | null];
+
+/**
+ * One widget on a dashboard grid: a stored row's or a code-defined one,
+ * such as the home page's. Its position and size are in grid cells, `x`
+ * counting columns from the inline-start edge, so a layout is
+ * direction-neutral.
+ */
+export interface TmDashboardWidgetModel {
+  /** The tile's identity on its grid: `w42` for stored row 42, or a code key such as `home.recents`. */
+  readonly key: string;
+  /** The widget type's key, such as `core.recents`. */
+  readonly type: string;
+  /** The widget's own title, in the content slots; absent when it has none. */
+  readonly title?: TmTextSlots;
+  /** The string key of a code-defined widget's title. */
+  readonly titleKey?: string;
+  /** The widget's own description, in the content slots; absent when it has none. */
+  readonly description?: TmTextSlots;
+  /** The string key of a code-defined widget's description. */
+  readonly descriptionKey?: string;
+  /** The first column, from 0 at the inline-start edge. */
+  readonly x: number;
+  /** The first row, from 0 at the top. */
+  readonly y: number;
+  /** The width, in columns from 1 to 12. */
+  readonly w: number;
+  /** The height, in rows from 1 to 24. */
+  readonly h: number;
+  /** The widget's own refresh interval in minutes; `null` or absent: the dashboard's. */
+  readonly refreshMinutes?: number | null;
+  /** The type's settings, parsed. */
+  readonly settings?: TmJson;
 }
 
 /**

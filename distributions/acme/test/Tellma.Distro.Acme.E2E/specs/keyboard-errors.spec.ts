@@ -13,6 +13,13 @@ import { expect, expireInApp, removeWebLocks, sessionEndedDialog, test } from '.
 // in-app navigation moves the focus to the new page's title.
 
 test.describe('keyboard and errors', () => {
+  // On a localhost scope the Angular worker prefetches its whole shell group before it answers
+  // any fetch, so a worker registered on the first page would hold the next lazy chunk a test
+  // waits for (the home page's after the picker, the session flows' after an expiry) behind that
+  // prefetch, which a production scope runs at idle instead. None of these tests is about the
+  // worker.
+  test.use({ serviceWorkers: 'block' });
+
   test('the session-ended dialog takes and keeps the focus, ignores Escape and signs in with Enter', async ({
     page,
     text,

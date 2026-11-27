@@ -13,8 +13,9 @@ import type { TmRouteDataInternal } from './tm-routes';
 // `[tmPageTitle]` heading once the page renders, else to `main`. A path
 // change the page absorbs in place, such as a settings tab, moves no focus:
 // focus stays on the tab list, as spec 0032 §7.1 says. A route host holds
-// the move until its page has rendered; any other route settles it after
-// the navigation's render.
+// the move until its page has rendered, and a family's host that loads its
+// own page, such as the home's hatch, holds it on until that page renders;
+// any other route settles it after the navigation's render.
 
 /** The path of a router URL, without its query and fragment. */
 function pathOf(url: string): string {
@@ -78,7 +79,7 @@ export class TmPageFocus {
   }
 
   /**
-   * Holds the focus move while a route host loads its page.
+   * Holds the focus move while a route host, or a family's host inside it, loads its page.
    *
    * @returns Releases the hold once the page has rendered, moving focus when a path change waits.
    */
