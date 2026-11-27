@@ -8,8 +8,7 @@ import type { TmDashboardWidgetModel } from '@tellma/core';
 import { TM_HOME_WIDGETS } from './tm-home-widgets';
 import { tmPackDashboard } from './tm-pack-dashboard';
 
-// The layout's vectors: the home default and the recents-only home it
-// renders while the assignment types have not shipped, a hidden tile's
+// The layout's vectors: the home default in both layouts, a hidden tile's
 // hole closing, a band that a joining tile pushes down, reading order
 // within a band, and stored positions clamped onto the grid.
 
@@ -33,14 +32,6 @@ describe('tmPackDashboard', () => {
       { key: 'home.to-me', col: 1, span: 7, row: 1, rows: 9, rowNarrow: 1 },
       { key: 'home.recents', col: 8, span: 5, row: 1, rows: 9, rowNarrow: 10 },
       { key: 'home.by-me', col: 1, span: 7, row: 10, rows: 9, rowNarrow: 19 },
-    ]);
-  });
-
-  it('keeps the recently visited list in its stored columns when it is the only home widget', () => {
-    const recents = TM_HOME_WIDGETS.filter((candidate) => candidate.type === 'core.recents');
-
-    expect(tmPackDashboard(recents)).toEqual([
-      { key: 'home.recents', col: 8, span: 5, row: 1, rows: 9, rowNarrow: 1 },
     ]);
   });
 

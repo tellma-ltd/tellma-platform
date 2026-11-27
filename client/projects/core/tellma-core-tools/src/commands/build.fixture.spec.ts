@@ -97,7 +97,7 @@ describe('tellma-client build on the fixture app', () => {
     expect(first.code).toBe(TM_CLI_EXIT.success);
     expect(first.out).toContain('Built with 0 error(s) and 0 warning(s).');
     // The fixture's package.json lowers the warn line; the error line is the platform's.
-    expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +227\.5 +260 +\d+$/m);
+    expect(first.out).toMatch(/^initialJs +\d+\.\d\d +\d+\.\d\d +229 +260 +\d+$/m);
     expect(first.out).toMatch(/^corePrimaryFirstFrame +\d+\.\d\d +\d+\.\d\d +- +55 +[1-9]\d*$/m);
     // The lazy page, which no budget covers, prints on a line of its own with no level.
     expect(first.out).toMatch(/^lazy:src\/app\/review-page\.ts +\d+\.\d\d +\d+\.\d\d +- +- +\d+$/m);

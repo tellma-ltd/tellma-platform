@@ -4,9 +4,29 @@
 
 ```ts
 
-import * as i0 from '@angular/core';
+import { ActivatedRouteSnapshot } from '@angular/router';
+import * as _angular_core from '@angular/core';
+import { ApplicationConfig } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { DestroyRef } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
+import { InjectionToken } from '@angular/core';
+import { Injector } from '@angular/core';
+import { InputSignal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { Provider } from '@angular/core';
+import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
+import { TemplateRef } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
+import { WritableSignal } from '@angular/core';
+
+// @public
+export function injectTmWidget(): TmWidgetContext;
 
 // @public
 export const TM_HOME_WIDGETS: readonly TmDashboardWidgetModel[];
@@ -14,30 +34,59 @@ export const TM_HOME_WIDGETS: readonly TmDashboardWidgetModel[];
 // @public
 export class TmDashboardGrid {
     constructor();
-    readonly denied: i0.InputSignal<"hide" | "show">;
-    readonly label: i0.InputSignal<string>;
+    readonly denied: _angular_core.InputSignal<"hide" | "show">;
+    readonly label: _angular_core.InputSignal<string>;
     protected readonly layout: Signal<readonly TmGridTile[]>;
+    readonly parameters: _angular_core.InputSignal<Readonly<Record<string, _tellma_core.TmJson>>>;
+    readonly presenting: _angular_core.InputSignal<boolean>;
+    refreshAll(): void;
+    protected readonly tick: _angular_core.WritableSignal<TmWidgetTick>;
     readonly tiles: Signal<readonly TmTileState[]>;
-    readonly widgets: i0.InputSignal<readonly TmDashboardWidgetModel[]>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmDashboardGrid, "tm-dashboard-grid", never, { "widgets": { "alias": "widgets"; "required": true; "isSignal": true; }; "label": { "alias": "label"; "required": true; "isSignal": true; }; "denied": { "alias": "denied"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmDashboardGrid, never>;
+    readonly widgets: _angular_core.InputSignal<readonly TmDashboardWidgetModel[]>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDashboardGrid, "tm-dashboard-grid", never, { "widgets": { "alias": "widgets"; "required": true; "isSignal": true; }; "label": { "alias": "label"; "required": true; "isSignal": true; }; "denied": { "alias": "denied"; "required": false; "isSignal": true; }; "parameters": { "alias": "parameters"; "required": false; "isSignal": true; }; "presenting": { "alias": "presenting"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDashboardGrid, never>;
 }
 
 // @public
 export class TmDashboardTile {
     constructor();
     protected readonly body: Signal<Type<unknown> | null>;
+    protected readonly bodyInjector: _angular_core.DestroyableInjector;
+    protected readonly busy: Signal<boolean>;
+    protected readonly descriptionId: string;
+    readonly executedAt: Signal<string | null>;
     protected readonly forbiddenMessage: Signal<string>;
     protected readonly forbiddenTitle: Signal<string>;
+    protected href(url: string): string;
     protected readonly loadFailed: Signal<string>;
-    readonly placement: i0.InputSignal<TmPlacement>;
+    protected readonly menu: Signal<readonly TmMenuEntry[]>;
+    protected readonly menuShown: Signal<boolean>;
+    protected readonly optionsLabel: Signal<string>;
+    readonly parameters: _angular_core.InputSignal<Readonly<Record<string, TmJson>>>;
+    readonly placement: _angular_core.InputSignal<TmPlacement>;
+    readonly presenting: _angular_core.InputSignal<boolean>;
+    refresh(): void;
     protected retry(): void;
     protected readonly retryLabel: Signal<string>;
-    readonly tile: i0.InputSignal<TmTileModel>;
+    readonly run: Signal<TmWidgetRun | null>;
+    protected readonly statusPending: Signal<boolean>;
+    protected readonly statusTooltip: Signal<string>;
+    readonly tick: _angular_core.InputSignal<TmWidgetTick>;
+    readonly tile: _angular_core.InputSignal<TmTileModel>;
     protected readonly unavailable: Signal<string>;
+    protected readonly updated: Signal<{
+        readonly at: string;
+        readonly text: string;
+        readonly stale: boolean;
+        readonly staleLabel: string;
+        readonly totals: string | null;
+    } | null>;
     readonly view: Signal<TmTileView>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmDashboardTile, "tm-dashboard-tile", never, { "tile": { "alias": "tile"; "required": true; "isSignal": true; }; "placement": { "alias": "placement"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmDashboardTile, never>;
+    protected viewAll(event: MouseEvent, url: string): void;
+    protected readonly viewAllLabel: Signal<string>;
+    protected readonly viewAllText: Signal<string>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDashboardTile, "tm-dashboard-tile", never, { "tile": { "alias": "tile"; "required": true; "isSignal": true; }; "placement": { "alias": "placement"; "required": true; "isSignal": true; }; "parameters": { "alias": "parameters"; "required": false; "isSignal": true; }; "presenting": { "alias": "presenting"; "required": false; "isSignal": true; }; "tick": { "alias": "tick"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDashboardTile, never>;
 }
 
 // @public
@@ -47,25 +96,28 @@ export class TmHomeGreeting {
     protected readonly greeting: Signal<readonly [string, string]>;
     protected readonly name: Signal<string>;
     protected readonly timeOfDay: Signal<TmTimeOfDay>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmHomeGreeting, "tm-home-greeting", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmHomeGreeting, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmHomeGreeting, "tm-home-greeting", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmHomeGreeting, never>;
 }
 
 // @public
 export class TmHomeHost {
     constructor();
-    protected readonly page: i0.WritableSignal<Type<unknown> | null>;
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmHomeHost, "tm-home-host", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmHomeHost, never>;
+    protected readonly page: _angular_core.WritableSignal<Type<unknown> | null>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmHomeHost, "tm-home-host", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmHomeHost, never>;
 }
+
+// @public
+export type TmHomeList = 'by-me' | 'recents' | 'to-me';
 
 // @public
 export class TmHomePage {
     constructor();
-    protected readonly label: i0.Signal<string>;
-    protected readonly widgets: readonly TmDashboardWidgetModel[];
-    static ɵcmp: i0.ɵɵComponentDeclaration<TmHomePage, "tm-home-page", never, {}, {}, never, never, true, never>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmHomePage, never>;
+    protected readonly label: _angular_core.Signal<string>;
+    protected readonly widgets: readonly _tellma_core.TmDashboardWidgetModel[];
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmHomePage, "tm-home-page", never, {}, {}, never, never, true, never>;
+    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmHomePage, never>;
 }
 
 // @public
@@ -82,11 +134,24 @@ export interface TmPlacement {
 }
 
 // @public
+export interface TmTileList {
+    readonly count: Signal<number | null>;
+    readonly list: TmHomeList;
+    readonly viewAll: string | null;
+}
+
+// @public
 export interface TmTileModel {
     readonly component: TmLazyComponent | undefined;
     readonly denied: TmSecurableRef | null;
+    readonly description: string | null;
     readonly key: string;
+    readonly list: TmTileList | null;
+    readonly settings: TmJson | null;
+    readonly size: TmWidgetSize;
+    readonly status: boolean;
     readonly title: string;
+    readonly type: string;
 }
 
 // @public
@@ -99,5 +164,32 @@ export interface TmTileState {
 
 // @public
 export type TmTileView = 'denied' | 'error' | 'loading' | 'ready' | 'unavailable';
+
+// @public
+export interface TmWidgetContext {
+    readonly key: string;
+    readonly mode: Signal<'edit' | 'view'>;
+    readonly parameters: Signal<TmReportArgs>;
+    report(state: TmWidgetRun): void;
+    readonly settings: Signal<TmJson | null>;
+    readonly size: Signal<TmWidgetSize>;
+    readonly tick: Signal<TmWidgetTick>;
+    readonly type: string;
+}
+
+// @public
+export interface TmWidgetRun {
+    readonly error?: TmApiError | null;
+    readonly executedAt?: string | null;
+    readonly status: 'error' | 'loading' | 'ready';
+    readonly totalsOmitted?: boolean;
+}
+
+// @public
+export interface TmWidgetTick {
+    readonly background: boolean;
+    readonly clear: boolean;
+    readonly generation: number;
+}
 
 ```

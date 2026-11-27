@@ -49,6 +49,7 @@ export class TmAssignmentList {
     readonly label: _angular_core.InputSignal<string | null>;
     readonly loading: _angular_core.InputSignal<boolean>;
     readonly party: _angular_core.InputSignal<TmAssignmentParty>;
+    protected preload(view: RowView): void;
     readonly related: _angular_core.InputSignal<Readonly<Record<string, readonly TmJson[]>>>;
     protected rowLabel(view: RowView): string;
     protected readonly rows: Signal<readonly RowView[]>;

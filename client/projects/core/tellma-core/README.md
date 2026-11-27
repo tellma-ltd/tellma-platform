@@ -1152,8 +1152,10 @@ and a set of the scopes registered.
 ## Dashboards and the home page
 
 A widget type is a `tmWidget(key, …)` declaration in a feature's `widgets`: its label, icon, body
-(a lazy component), default and minimum sizes, and the permission its tiles require. The core
-feature declares `core.recents`, the recently visited pages. The app's configuration check holds
+(a lazy component), default and minimum sizes, the permission its tiles require, and whether its
+tiles show the status line. The core feature declares the three built-in lists:
+`core.assignments-to-me` and `core.assignments-by-me`, the open assignments either way, and
+`core.recents`, the recently visited pages. The app's configuration check holds
 the declarations to the server's emitted widget types, so a type the server does not register
 fails the check. A widget (`TmDashboardWidgetModel`) places one type on a dashboard: its key, its
 title, its box on twelve columns of 30 px rows, and its settings.
@@ -1169,16 +1171,30 @@ declaration knows renders "This widget isn't available."; a type whose permissio
 leaves the grid, or shows its lock with `denied="show"`, and never loads its body; a body loads
 behind five skeleton rows in a busy section (`aria-busy`), and one whose chunk fails offers to try
 again. A tile takes what the grid resolved for it (`TmTileModel`) and shows one view of it
-(`TmTileView`); the grid reports each tile's state in `tiles`.
+(`TmTileView`); the grid reports each tile's state in `tiles`. The header never changes with
+state: a list type shows its count and "View all", any other type its options menu (Refresh; none
+on a denied tile or while presented), and a type with the status line reserves its row, which
+shows "Updated {time}" once the body reports a result, a stale marker after a failed run over it,
+and a note when totals were left out. A body reads its context with `injectTmWidget()`: its key,
+type, settings, the dashboard's arguments, the mode, its size, and a tick each refresh renews; it
+reports its runs back through `report`. A tile's Refresh and the grid's `refreshAll` tick it,
+clearing what it shows first.
+
+The assignment lists follow the stored assignments document live: the newest ten open rows, each
+its target's link, preloaded on hover or focus; five skeleton rows before the document exists,
+or, offline, a note that the rows show on reconnecting; and an empty state. Only a forced refresh
+reads the document again.
 
 The home route renders `TmHomeHost`, which renders the last `home` hatch a feature sets, else
 `TmHomePage`: the greeting by the hour in the display zone with the user's name, today's date in
-the user's calendar, and the grid of `TM_HOME_WIDGETS` whose types the app declares. The
+the user's calendar, and the grid of `TM_HOME_WIDGETS`. The
 greeting's one timer waits for the next boundary in the zone, an hour at most, so a night that
 springs forward delays it by no more than one wait. A hatch loads behind the home skeleton, holding
 the arrival focus until it renders, and one whose chunk fails leaves the platform's home page in
 its place. Hovering or focusing a recent page preloads it; preloading the home route preloads the
-hatch.
+hatch. The host registers the `home` page context, with the three lists' rows, and times each
+visit once as `tm.home.rendered`, from the route's start to the first frame with every tile's
+body; opening a list's row and following "View all" are reported too.
 
 ## The search page's query model
 

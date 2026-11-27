@@ -19,6 +19,14 @@ export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOffl
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmExpressionEditorHarness, type TmExpressionEditorChip } from './src/tm-expression-editor-harness';
 export { type TmFieldGeometry, TmFieldHarness, type TmFieldHarnessFilters, type TmFieldMode } from './src/tm-field-harness';
+export {
+  type TmDashboardBox,
+  TmDashboardGridHarness,
+  TmDashboardTileHarness,
+  type TmDashboardTileHarnessFilters,
+  type TmDashboardTilePlacement,
+} from './src/tm-dashboard-grid-harness';
+export { type TmFakeDashboard, type TmFakeDashboardOptions, tmFakeDashboard } from './src/tm-fake-dashboard';
 export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
@@ -47,6 +55,7 @@ export {
   type TmLauncherOptionHarnessFilters,
   type TmLauncherSurfaceKind,
 } from './src/tm-launcher-harness';
+export { TmHomePageHarness, type TmHomePageView } from './src/tm-home-page-harness';
 export { TmPageContextHarness } from './src/tm-page-context-harness';
 export { TmPathPickerHarness } from './src/tm-path-picker-harness';
 export { TmSearchPageHarness, type TmSearchPageCreate } from './src/tm-search-page-harness';

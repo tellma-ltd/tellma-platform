@@ -150,6 +150,8 @@ export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-r
 export { TmPageSkeleton as ɵTmPageSkeleton } from './src/routes/tm-page-skeleton';
 // The arrival focus, which a family's host holds while its own page loads; not for app code.
 export { TmPageFocus as ɵTmPageFocus } from './src/routes/tm-page-focus';
+// Where the shown page's route started and whether its entry was cold, which a host's render timing reads; not for app code.
+export { TmLaunchTimer as ɵTmLaunchTimer } from './src/routes/tm-route-host';
 
 // The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';

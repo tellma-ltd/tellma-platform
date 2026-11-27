@@ -13,17 +13,36 @@ import { tmWidget, type TmWidgetTypeDeclaration } from './tm-widget';
 // must agree; the build's configuration check refuses a difference. The
 // loader's specifier is cast so that the package build does not follow it:
 // the dashboards entry point imports this one, and the build would report
-// the import back as a cycle.
+// the import back as a cycle. The two assignment lists share one body,
+// which reads its party from its widget type.
 
 /** What `@tellma/core/dashboards` holds for the core widget types' bodies. Internal. */
 interface TmCoreWidgetBodies {
+  /** The body of `core.assignments-to-me` and `core.assignments-by-me`: the open assignments either way. */
+  readonly ɵTmAssignmentsWidget: Type<unknown>;
   /** The body of `core.recents`: the pages the user last visited. */
   readonly ɵTmRecentsWidget: Type<unknown>;
 }
 
 /** The widget types of the platform's implicit `core` feature. */
 export const TM_CORE_WIDGETS: readonly TmWidgetTypeDeclaration[] = [
-  // The recently visited pages, beside the assignment lists on the home page.
+  // The open assignments waiting on the user, first on the home page.
+  tmWidget('core.assignments-to-me', {
+    labelKey: 'tm.dashboard.toMe.title',
+    icon: 'inbox',
+    component: () => (import('@tellma/core/dashboards' as string) as Promise<TmCoreWidgetBodies>).then((m) => m.ɵTmAssignmentsWidget),
+    defaultSize: { w: 7, h: 9 },
+    minSize: { w: 4, h: 5 },
+  }),
+  // The open assignments the user handed to others, under them.
+  tmWidget('core.assignments-by-me', {
+    labelKey: 'tm.dashboard.byMe.title',
+    icon: 'send',
+    component: () => (import('@tellma/core/dashboards' as string) as Promise<TmCoreWidgetBodies>).then((m) => m.ɵTmAssignmentsWidget),
+    defaultSize: { w: 7, h: 9 },
+    minSize: { w: 4, h: 5 },
+  }),
+  // The recently visited pages, beside the assignment lists.
   tmWidget('core.recents', {
     labelKey: 'tm.dashboard.recents.title',
     icon: 'history',

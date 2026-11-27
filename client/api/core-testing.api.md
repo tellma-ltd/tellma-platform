@@ -118,6 +118,61 @@ export class TmColumnFilterHarness extends ComponentHarness {
 }
 
 // @public
+export interface TmDashboardBox {
+    readonly height: number;
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+}
+
+// @public
+export class TmDashboardGridHarness extends ComponentHarness {
+    getLabel(): Promise<string | null>;
+    getTile(filters: TmDashboardTileHarnessFilters): Promise<TmDashboardTileHarness>;
+    getTiles(filters?: TmDashboardTileHarnessFilters): Promise<TmDashboardTileHarness[]>;
+    getTitles(): Promise<string[]>;
+    static hostSelector: string;
+}
+
+// @public
+export class TmDashboardTileHarness extends ComponentHarness {
+    getBox(): Promise<TmDashboardBox>;
+    getCount(): Promise<string | null>;
+    getKey(): Promise<string>;
+    getPlacement(): Promise<TmDashboardTilePlacement>;
+    getRows(): Promise<string[]>;
+    getSkeletonRows(): Promise<number>;
+    getState(): Promise<string | null>;
+    getStatusLine(): Promise<string | null>;
+    getTitle(): Promise<string>;
+    getViewAllHref(): Promise<string | null>;
+    hasMenu(): Promise<boolean>;
+    static hostSelector: string;
+    isBusy(): Promise<boolean>;
+    isStale(): Promise<boolean>;
+    isStatusPending(): Promise<boolean>;
+    openMenu(): Promise<TmMenuHarness>;
+    refresh(): Promise<void>;
+    viewAll(): Promise<void>;
+    static with(options?: TmDashboardTileHarnessFilters): HarnessPredicate<TmDashboardTileHarness>;
+}
+
+// @public
+export interface TmDashboardTileHarnessFilters extends BaseHarnessFilters {
+    readonly key?: string;
+    readonly title?: string | RegExp;
+}
+
+// @public
+export interface TmDashboardTilePlacement {
+    readonly col: number;
+    readonly row: number;
+    readonly rowNarrow: number;
+    readonly rows: number;
+    readonly span: number;
+}
+
+// @public
 export type TmDetailsPageButton = 'actions' | 'cancel' | 'create' | 'edit' | 'refresh' | 'save';
 
 // @public
@@ -256,6 +311,33 @@ export class TmFakeClientCache implements TmClientCacheSurface {
 // @public
 export interface TmFakeClientCacheSweep {
     readonly deleted: Readonly<Record<TmClientCacheArea, readonly string[]>>;
+}
+
+// @public
+export interface TmFakeDashboard {
+    readonly mode: WritableSignal<'edit' | 'view'>;
+    readonly parameters: WritableSignal<TmReportArgs>;
+    readonly providers: Provider[];
+    refresh(flags?: {
+        readonly clear?: boolean;
+        readonly background?: boolean;
+    }): void;
+    readonly reports: Signal<readonly TmWidgetRun[]>;
+    readonly settings: WritableSignal<TmJson | null>;
+    readonly size: WritableSignal<TmWidgetSize>;
+    readonly tick: Signal<TmWidgetTick>;
+}
+
+// @public
+export function tmFakeDashboard(options: TmFakeDashboardOptions): TmFakeDashboard;
+
+// @public
+export interface TmFakeDashboardOptions {
+    readonly key?: string;
+    readonly parameters?: TmReportArgs;
+    readonly settings?: TmJson | null;
+    readonly size?: TmWidgetSize;
+    readonly type: string;
 }
 
 // @public
@@ -416,6 +498,18 @@ export interface TmFieldHarnessFilters extends BaseHarnessFilters {
 
 // @public
 export type TmFieldMode = 'edit' | 'loading' | 'view';
+
+// @public
+export class TmHomePageHarness extends ComponentHarness {
+    getDate(): Promise<string | null>;
+    getGreeting(): Promise<string | null>;
+    getGrid(): Promise<TmDashboardGridHarness | null>;
+    getView(): Promise<TmHomePageView>;
+    static hostSelector: string;
+}
+
+// @public
+export type TmHomePageView = 'hatch' | 'loading' | 'page';
 
 // @public
 export class TmLauncherGroupHarness extends ComponentHarness {

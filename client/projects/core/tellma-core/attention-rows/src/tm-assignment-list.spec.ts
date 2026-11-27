@@ -5,7 +5,7 @@
 
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import type { TmEntityType } from '@tellma/core';
+import { TmUrls, type TmEntityType } from '@tellma/core';
 
 import { type TmAssignmentActivation, TmAssignmentList, type TmAssignmentListVariant, type TmAssignmentParty } from './tm-assignment-list';
 import { tmAttentionRig, tmSettle, tmTestAssignment } from '../../src/attention/tm-attention.testing.util';
@@ -13,7 +13,7 @@ import { tmAttentionRig, tmSettle, tmTestAssignment } from '../../src/attention/
 // The assignment list in a whole test app entered into tenant 17: the
 // tray's and the home page's variants, either party, the second line by
 // the row's facts, the "New" marks against seenAt, the loading skeletons,
-// and the row links.
+// the home rows' one-line geometry, and the row links and their preloads.
 
 /** The list's inputs, as signals a test sets. */
 @Component({
@@ -132,6 +132,41 @@ describe('tm-assignment-list', () => {
     expect(list.getAttribute('aria-busy')).toBe('true');
     expect(list.getAttribute('aria-label')).toBe('Loading assignments');
     expect(list.querySelectorAll('li[aria-hidden="true"]')).toHaveLength(3);
+  });
+
+  it('shows five bars in the list rows, read as one busy region, while the home list loads', async () => {
+    const fixture = await setup([]);
+    fixture.componentInstance.variant.set('home');
+    fixture.componentInstance.loading.set(true);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    const region = host.querySelector('.tm-assignment-list__loading')!;
+    expect(region.getAttribute('role')).toBe('region');
+    expect(region.getAttribute('aria-busy')).toBe('true');
+    expect(region.getAttribute('aria-label')).toBe('Loading assignments');
+    expect(region.querySelectorAll('.tm-dashboard-frame__rows .tm-skeleton__bar')).toHaveLength(5);
+    expect(host.querySelector('ul')).toBeNull();
+  });
+
+  it("lays each home row on one line of the list row's height", async () => {
+    const fixture = await setup([
+      tmTestAssignment(1, { captionJson: JSON.stringify({ code: 'HQ-01', detail: MANAGED }) }),
+      tmTestAssignment(2, { captionJson: JSON.stringify({ code: 'HQ-02' }), comment: 'Please review' }),
+    ]);
+    fixture.componentInstance.variant.set('home');
+    await fixture.whenStable();
+    const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('[data-tm-row-control]')];
+    expect(links.map((link) => link.getBoundingClientRect().height)).toEqual([31, 31]);
+    expect(links[1]!.getBoundingClientRect().top - links[0]!.getBoundingClientRect().top).toBe(31);
+  });
+
+  it("preloads a row's target page on hover and on focus", async () => {
+    const fixture = await setup([tmTestAssignment(1, { captionJson: JSON.stringify({ code: 'HQ-01' }) })]);
+    const preload = vi.spyOn(TestBed.inject(TmUrls), 'preload').mockImplementation(() => undefined);
+    const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('[data-tm-row-control]')!;
+    link.dispatchEvent(new PointerEvent('pointerenter'));
+    link.dispatchEvent(new FocusEvent('focus'));
+    expect(preload.mock.calls).toEqual([['/17/centers/23'], ['/17/centers/23']]);
   });
 
   it("links each row to its target's page, and reports the row a plain click opens", async () => {

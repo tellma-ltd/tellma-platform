@@ -82,6 +82,10 @@ export interface AcmeText {
   readonly yourWork: string | RegExp;
   /** The recently visited pages' tile. */
   readonly recents: string | RegExp;
+  /** The tile of the open assignments waiting on the user. */
+  readonly toMe: string | RegExp;
+  /** The tile of the open assignments the user handed to others. */
+  readonly byMe: string | RegExp;
   /** The customers pages' heading. */
   readonly customers: string | RegExp;
   /** The tenant picker's heading. */
@@ -108,6 +112,8 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     home: /^Good (?:morning|afternoon|evening), \S/,
     yourWork: 'Your work',
     recents: 'Recently visited',
+    toMe: 'My assignments',
+    byMe: 'Assigned by me',
     customers: 'Customers',
     chooseTenant: 'Choose a tenant',
     sessionEnded: 'Your session ended',
@@ -122,6 +128,8 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     home: /^(?:صباح|مساء) الخير، \S/,
     yourWork: 'عملك',
     recents: 'الصفحات الأخيرة',
+    toMe: 'مهامي',
+    byMe: 'ما أسندتُه',
     customers: 'العملاء',
     chooseTenant: /^(?:اختر|اختاري) شركة$/,
     sessionEnded: 'انتهت جلستك',

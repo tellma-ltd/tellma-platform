@@ -14,6 +14,12 @@ namespace Tellma.Core.Dashboards
     /// </summary>
     internal static partial class WidgetTypeKeys
     {
+        /// <summary>The open assignments waiting on the user.</summary>
+        public const string AssignmentsToMe = "core.assignments-to-me";
+
+        /// <summary>The open assignments the user handed to others.</summary>
+        public const string AssignmentsByMe = "core.assignments-by-me";
+
         /// <summary>The recently visited pages.</summary>
         public const string Recents = "core.recents";
 

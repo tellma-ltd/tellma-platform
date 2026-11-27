@@ -347,10 +347,13 @@ namespace Tellma.Core.Composition
 
             // --- Dashboards: the widget types the platform registers (spec 0035 §4) ---
             // The registry lists every feature's types, Core's first, and the client metadata writes
-            // their keys, so the client's build can check each type it declares against them.
+            // their keys, so the client's build can check each type it declares against them. The
+            // three built-in lists carry no settings and no subject (spec 0035 §4.2).
             _ = contribution
                 .Singleton<IWidgetTypeRegistry, WidgetTypeRegistry>()
                 .Singleton<IClientAssetContributor, WidgetTypeClientAssetContributor>()
+                .WidgetType(WidgetTypeKeys.AssignmentsToMe)
+                .WidgetType(WidgetTypeKeys.AssignmentsByMe)
                 .WidgetType(WidgetTypeKeys.Recents);
 
             // --- The standalone table types: the canonical bulk-operation shapes, and the version-tag guard's ---
