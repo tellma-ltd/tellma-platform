@@ -384,6 +384,14 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-405 — PC-129 landed; PC-123 released; PC-156 resumes in pc-4 (2026-11-27)
+
+PC-129 landed as f1d25ec5 after the D-292 re-integration; CI 45948538904 was green. PC-123 is the next held item, so it is released to integrate (D-087). pc-4 frees, and per D-403 PC-156 resumes there: it sets the panels ceiling to 10.5, re-runs lint:test, then holds. PC-163 takes the next T1 slot that frees. The integration order after PC-123 is PC-F99, PC-F107, PC-156 and PC-128, with fixes ahead of T1 per D-229, then PC-F100 when its fix round is done. check_deps lists only T3s as ready.
+
+### D-404 — PC-129 CI red on an unrelated C# test; PC-F113 opened (2026-11-27)
+
+PC-129's integration CI 45945997084 (424e67df) failed only build-test (windows-latest), on HubConnectTests.Neither_the_negotiate_nor_the_connect_renews_or_stamps_the_session: the negotiate answered 503 instead of 200. PC-129 changes no C#, so per D-292 it merges platform-core again under ": integrate" and gets a fresh CI run. PC-F113 is opened to root-cause the test (D-011), with a Flaky row. PC-129 also brings a new lazy entry point, @tellma/core/uploads, which moves TmUploads off /entity. That departs from spec 0029 §1, which places uploads in /entity, and goes to Ahmad.
+
 ### D-403 — Ahmad raises the PC-156 and PC-163 budgets (2026-11-26)
 
 Ahmad ruled "Increase their size limits" for the two parked items. This is a spec-budget raise on his authority (D-313), applied as each item's clean-build measure rounded up to the next 0.5 (D-031 rounding):
