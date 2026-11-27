@@ -9,9 +9,10 @@
  * lazily loaded dialogs, the client Queryex (a lexer, and a builder and
  * printer for the Queryex the client writes), and the column filters with
  * their descriptions. The edit side (the value editor, the entity picker
- * binding with the entity fields, a form's uploads and the editable grid
- * columns) is `@tellma/core/entity-editing`'s; the control that edits a
- * column filter is `@tellma/core/column-filter`'s.
+ * binding with the entity fields and the editable grid columns) is
+ * `@tellma/core/entity-editing`'s; a form's uploads are
+ * `@tellma/core/uploads`'; the control that edits a column filter is
+ * `@tellma/core/column-filter`'s.
  *
  * @packageDocumentation
  */

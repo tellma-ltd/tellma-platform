@@ -6,6 +6,9 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
+import * as kbd from '@tellma/core-ui/kbd';
+import * as keys from '@tellma/core-ui/keys';
+
 import { TmKbd } from './tm-kbd';
 
 @Component({
@@ -48,5 +51,19 @@ describe('tm-kbd', () => {
     host.keys.set('F2');
     fixture.detectChanges();
     expect(caps()).toEqual(['F2']);
+  });
+});
+
+describe('@tellma/core-ui/kbd', () => {
+  // The grammar has one home: kbd re-exports the keys entry point's own
+  // functions rather than shipping a second copy, so an app that loads both
+  // carries the parser, its cache and the platform check once.
+  it('re-exports the keys grammar itself, not a copy', () => {
+    expect(kbd.tmFormatKeys).toBe(keys.tmFormatKeys);
+    expect(kbd.tmKeysText).toBe(keys.tmKeysText);
+    expect(kbd.tmKeysMatch).toBe(keys.tmKeysMatch);
+    expect(kbd.tmAriaKeyShortcuts).toBe(keys.tmAriaKeyShortcuts);
+    expect(kbd.tmIsApplePlatform).toBe(keys.tmIsApplePlatform);
+    expect(kbd.TmKbd).toBe(TmKbd);
   });
 });

@@ -47,7 +47,7 @@ import {
 import type { TmRecents } from '@tellma/core/recents';
 import { TmBreakpoints } from '@tellma/core-ui';
 import { TmIcon, TmIconRegistry } from '@tellma/core-ui/icon';
-import { tmAriaKeyShortcuts, tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmAriaKeyShortcuts, tmKeysMatch } from '@tellma/core-ui/keys';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { tmPushEscapeDismissal, ɵtmOpenModals, ɵtmRaiseTopLayer, ɵtmWatchModals } from '@tellma/core-ui/overlay';
 import Search from 'lucide/dist/esm/icons/search.mjs';

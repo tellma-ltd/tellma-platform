@@ -66,7 +66,19 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      - run: dotnet build Tellma.slnx -c Release --no-restore
+      # Under a time limit, with its diagnostics uploaded when it fails, as in ci.yml's build-test.
+      - name: Build
+        id: build
+        shell: bash
+        timeout-minutes: 14
+        run: bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+      - name: Upload the build evidence
+        if: always() && (steps.build.outcome == 'failure' || steps.build.outcome == 'cancelled')
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: ${{ runner.temp }}/build-evidence
+          if-no-files-found: ignore
       # Not `install --with-deps`: the script installs the OS packages with bounded retries and, when
       # the apt mirrors are down, lets the job go on with a warning as long as Chromium launches.
       - name: Install Chromium
@@ -97,7 +109,19 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      - run: dotnet build Tellma.slnx -c Release --no-restore
+      # Under a time limit, with its diagnostics uploaded when it fails, as in ci.yml's build-test.
+      - name: Build
+        id: build
+        shell: bash
+        timeout-minutes: 14
+        run: bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+      - name: Upload the build evidence
+        if: always() && (steps.build.outcome == 'failure' || steps.build.outcome == 'cancelled')
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: ${{ runner.temp }}/build-evidence
+          if-no-files-found: ignore
       - name: Nightly-tier dotnet unit tests
         run: dotnet test Tellma.slnx -c Release --no-build --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
 

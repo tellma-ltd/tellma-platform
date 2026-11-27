@@ -129,11 +129,13 @@ test.describe('cold deep link', () => {
     // Every request for data counts, whatever its route: the round trip sends
     // none. The launch documents' sync is left out: the cache refresher runs
     // it on its own schedule (a response header, the leader, a poll), not for
-    // the page.
+    // the page. So is a cacheable list's load (`{segment}/all`): the launch
+    // cache loads a list at its first read, here the edit-mode currency
+    // field's label, not the record's round trip.
     const calls: string[] = [];
     page.on('request', (request) => {
       const path = new URL(request.url()).pathname;
-      if (tmIsServerPath(path) && !path.endsWith('/client/sync')) {
+      if (tmIsServerPath(path) && !path.endsWith('/client/sync') && !path.endsWith('/all')) {
         calls.push(request.url());
       }
     });

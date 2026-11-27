@@ -26,7 +26,7 @@ import { TmLocalization, type TmShellSlot, TmTelemetry, TmUrls } from '@tellma/c
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
-import { tmAriaKeyShortcuts, tmFormatKeys } from '@tellma/core-ui/kbd';
+import { tmAriaKeyShortcuts, tmFormatKeys } from '@tellma/core-ui/keys';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import Eye from 'lucide/dist/esm/icons/eye.mjs';
 import FlaskConical from 'lucide/dist/esm/icons/flask-conical.mjs';

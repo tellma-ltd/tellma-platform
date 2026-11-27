@@ -53,6 +53,7 @@ export const TM_LOCALE_AR_STRINGS = {
     maxDate: `${enter} تاريخا لا يتجاوز {maxDate}`,
     parse: `${enter} رقما صالحا، مثل {example}`,
     numberPrecision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}`,
+    precision: `${enter} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}} قبل الفاصلة العشرية`,
     parseDate: `${enter} تاريخا مثل {example}`,
     parseTime: `${enter} وقتا مثل {example}`,
     dateRangeOrder: 'يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده',

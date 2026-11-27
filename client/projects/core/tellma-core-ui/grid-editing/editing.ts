@@ -39,7 +39,7 @@ import type {
   TmGridResolutionRequest,
   TmRowCol,
 } from '@tellma/core-ui/grid-engine';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 
 import {
   ɵTmGridEditorSession,

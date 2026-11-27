@@ -15,8 +15,9 @@ own.
 | `@tellma/core/page-snapshot` | `tmSerializePageContext` and `TmPageContextSnapshot`: a page context read once into plain JSON, for the support dump and a future assistant | lazy, through `import()` by its callers |
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
-| `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`), with a form's uploads (`TmUploads`); the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
-| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); and the record's context a layout reads with `injectTmDetails()` | lazy, with the first details route |
+| `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`); the edit mode of the details layout kit's fields, which `tm-field` loads with `import()` on the first edit or once the record may be edited; the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
+| `@tellma/core/uploads` | A form's uploads (`TmUploads`): the paths with an upload in flight and the blob each staged, which a form's host provides (a details record does in every mode) and the value editor lists its uploads in; an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
 | `@tellma/core/dashboards` | The dashboard grid (`tm-dashboard-grid`, `TmDashboardGrid`) with its tiles (`TmDashboardTile`) and its layout (`tmPackDashboard`); the tenant home: the host the home route renders (`TmHomeHost`), which renders a feature's `home` hatch in place of the platform's home page (`TmHomePage`), its greeting and date line (`TmHomeGreeting`) and its widgets (`TM_HOME_WIDGETS`); and the bodies of the core widget types, which their declarations load | lazy, with the home route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
@@ -627,10 +628,12 @@ them; `tellma-client build` prefetches that chunk, so a launch to either page fe
 An app's bundler puts the code a lazy chunk uses from a file into the first frame's chunks
 whenever the first frame reaches that file through static imports. So the size gate's
 static-graph check (`"tellma".staticGraphExcludes`) fails if any chain of static imports from
-the primary reaches `@tellma/core-ui/menu`, `@tellma/core-ui/image` or
-`@tellma/core-ui/l10n-input` (the parsers a lazily loaded grid or form uses), even one the
-primary never uses. The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher` for
-this reason. The tenant picker renders the stored memberships in its first frame and reads them again with
+the primary reaches `@tellma/core-ui/menu`, `@tellma/core-ui/image`,
+`@tellma/core-ui/l10n-input` (the parsers a lazily loaded grid or form uses) or
+`@tellma/core-ui/kbd` (the key caps a lazily loaded menu or dialog draws), even one the primary
+never uses; the same check keeps `@tellma/core-ui/kbd` off the eager `/shell` and `/attention`.
+The primary takes `TM_BLOB_FETCHER` from `@tellma/core-ui/blob-fetcher`, and the shortcut
+registry and the app bar take the keys grammar from `@tellma/core-ui/keys`, for this reason. The tenant picker renders the stored memberships in its first frame and reads them again with
 `TmLaunchCache.revalidateUser()` only after that frame: live tenants by their name in the active
 language, each sandbox indented under its live tenant, the badges and the reason a tenant cannot be
 opened, a search from seven memberships kept in `?q=` (Enter follows the only enabled match, Mod+K
@@ -1072,11 +1075,16 @@ export default class CustomerDetails {
   before it, else to the search page. `new?clone={id}` reads that record and starts from its
   copy, stripped of its key, the members the server writes and its blobs, its child rows numbered
   as new rows, then passed through the declaration's `clone(copy, source)`.
+- **The form's own rules.** The declaration's `validate` is a loader, such as
+  `() => import('./customer-rules')`, of a Signal Forms schema function. The page loads it beside
+  the layout and renders the layout once both are in hand; the form applies it after the
+  platform's rules, so it adds rules and never weakens one, and its imports of
+  `@angular/forms/signals` stay out of the first load. A failed load is the layout's failure.
 - **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
   over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
 - **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
   mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
-  state over a fake host, with `providers` to give the layout.
+  state over a fake host, with `providers` to give the layout and `rules` for the form's own rules.
 
 ### Strings of a lazy entry point
 

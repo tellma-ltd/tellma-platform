@@ -25,6 +25,7 @@ export const TM_UI_STRINGS_EN = {
     parse: 'Enter a valid number, like {example}',
     numberPrecision:
       'Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}',
+    precision: 'Enter no more than {maxDigits, plural, one {# digit} other {# digits}} before the decimal point',
     parseDate: 'Enter a date like {example}',
     parseTime: 'Enter a time like {example}',
     dateRangeOrder: 'The end date must be on or after the start date',

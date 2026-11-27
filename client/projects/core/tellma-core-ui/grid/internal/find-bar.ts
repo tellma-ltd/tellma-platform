@@ -21,7 +21,7 @@ import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { tmKeysMatch } from '@tellma/core-ui/kbd';
+import { tmKeysMatch } from '@tellma/core-ui/keys';
 
 import type { ɵTmGridViewCore } from './grid-core';
 import { TM_GRID_FIND_KEYS } from './grid-keymap';
