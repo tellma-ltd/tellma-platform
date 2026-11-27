@@ -22,7 +22,16 @@ export { type TmFieldGeometry, TmFieldHarness, type TmFieldHarnessFilters, type 
 export { type TmFakeDetails, type TmFakeDetailsCall, type TmFakeDetailsOptions, tmFakeDetails } from './src/tm-fake-details';
 export { tmFakeAssignmentsSummary, tmFakeInboxSummary } from './src/tm-fake-attention';
 export { TmBannerHostHarness } from './src/tm-banner-host-harness';
+export {
+  TmAttentionPanelHarness,
+  TmBellPanelHarness,
+  type TmBellPanelJob,
+  type TmBellPanelNotification,
+  TmTrayPanelHarness,
+  type TmTrayPanelRow,
+} from './src/tm-attention-panel-harness';
 export { TmFakeApi, type TmFakeApiCall, type TmFakeApiCallKind, type TmFakeApiResponder } from './src/tm-fake-api';
+export { TmFakeClientCache, type TmFakeClientCacheSweep } from './src/tm-fake-client-cache';
 export { TmFakeDiscover, type TmFakeDiscoverAnswer } from './src/tm-fake-discover';
 export { TmFakeHub, TmFakeHubConnection } from './src/tm-fake-hub';
 export { TmFakeLocks } from './src/tm-fake-locks';

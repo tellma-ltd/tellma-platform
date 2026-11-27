@@ -5,6 +5,7 @@
 ```ts
 
 import * as i0 from '@angular/core';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 
 // @public
@@ -12,14 +13,6 @@ export class TmArrivals {
     constructor();
     static ɵfac: i0.ɵɵFactoryDeclaration<TmArrivals, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmArrivals>;
-}
-
-// @public
-export interface TmAssignmentCaption {
-    readonly amount: string | null;
-    readonly detail: string | null;
-    readonly title: string;
-    readonly titleSegments: readonly TmTextSegment[];
 }
 
 // @public
@@ -44,15 +37,22 @@ export class TmAttention {
 }
 
 // @public
-export class TmAttentionText {
+export class TmAttentionButton {
     constructor();
-    caption(row: TmEntityType<'core.Assignment'>): Signal<TmAssignmentCaption>;
-    isolate(key: string, args: Readonly<Record<string, unknown>>, isolated: readonly string[]): Signal<readonly TmTextSegment[]>;
-    job(job: TmJobLabelSource): Signal<string>;
-    jobMessage(key: string | null, argumentsJson: string | null): Signal<string | null>;
-    notification(type: string, argumentsJson: string | null): Signal<TmNotificationText>;
-    static ɵfac: i0.ɵɵFactoryDeclaration<TmAttentionText, never>;
-    static ɵprov: i0.ɵɵInjectableDeclaration<TmAttentionText>;
+    protected readonly badge: Signal<{
+        readonly count: number | null;
+        readonly tone: 'accent' | 'attention' | 'neutral';
+        readonly label: string;
+    }>;
+    protected readonly controls: string;
+    protected readonly expanded: Signal<boolean>;
+    protected readonly icon: lucide.IconNode;
+    protected readonly keys: string;
+    protected preload(): void;
+    protected readonly ring: Signal<boolean>;
+    protected toggle(via: 'click' | 'shortcut'): void;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmAttentionButton, "tm-bell-button, tm-tray-button", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmAttentionButton, never>;
 }
 
 // @public
@@ -76,19 +76,6 @@ export interface TmBellBadge {
 }
 
 // @public
-export interface TmJobLabelSource {
-    readonly handlerKey: string;
-    readonly labelArgumentsJson?: string | null;
-    readonly labelKey?: string | null;
-}
-
-// @public
-export interface TmNotificationText {
-    readonly detail: string | null;
-    readonly title: string;
-}
-
-// @public
 export const tmNotificationToastsKey: TmPreferenceKey<boolean>;
 
 // @public
@@ -102,12 +89,6 @@ export class TmOutcomeToasts {
 
 // @public
 export type TmPanel = 'bell' | 'tray';
-
-// @public
-export interface TmTextSegment {
-    readonly arg?: string;
-    readonly text: string;
-}
 
 // @public
 export interface TmTrayBadge {

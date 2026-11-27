@@ -7,7 +7,7 @@ import { inject, makeEnvironmentProviders, type EnvironmentProviders } from '@an
 import { TmApi, TmTelemetry, ɵTmClientMetadataStore } from '@tellma/core';
 import { TM_BLOB_FETCHER, type TmBlobFetcher } from '@tellma/core-ui/blob-fetcher';
 
-import { tmMemoryStoreProvider } from './provide-tellma-state-testing';
+import { tmMemoryStorageProviders } from './provide-tellma-state-testing';
 import { TmFakeApi } from './tm-fake-api';
 import { TmFakeTelemetry } from './tm-fake-telemetry';
 import { tmTestMetadata } from './tm-test-metadata';
@@ -19,8 +19,9 @@ import { tmTestMetadata } from './tm-test-metadata';
  * (`tm-image`'s `TM_BLOB_FETCHER` goes to `TmFakeApi.fetchBlob`), telemetry goes to
  * {@link TmFakeTelemetry}, which records items and sends nothing, the
  * client metadata is {@link tmTestMetadata}'s, loaded from the start, and
- * the client store runs in memory, so no test touches the browser's
- * IndexedDB or local storage.
+ * the client store runs in memory and `TmClientCache` sweeps stores kept in
+ * memory (a `TmFakeClientCache`), so no test touches the browser's
+ * IndexedDB, CacheStorage or web storage.
  *
  * @example
  * ```ts
@@ -51,6 +52,6 @@ export function provideTellmaTesting(): EnvironmentProviders {
         return store;
       },
     },
-    tmMemoryStoreProvider(),
+    ...tmMemoryStorageProviders(),
   ]);
 }

@@ -42,9 +42,12 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /**
  * The library's folders that are not additions: the entry points that came
  * before them or stand outside them (the pivot and the chart, whose own
- * suites, pivot.spec.ts and chart.spec.ts, run their axe scans, and the
- * multi-select, which the select story shows and select.spec.ts scans), the
- * shared folders with no entry point of their own, the image's blob-fetching
+ * suites, pivot.spec.ts and chart.spec.ts, run their axe scans, the
+ * multi-select, which the select story shows and select.spec.ts scans, and
+ * the progress ring, split out of the progress entry point so that a bar
+ * alone never loads it, which the progress story shows beside the bar and
+ * this battery scans with it), the shared folders with no entry point of
+ * their own, the image's blob-fetching
  * seam, split out of the image's entry point with no UI to scan, the avatar's
  * initials and tone helpers, split out of the avatar's entry point with no UI
  * of their own (the avatar's story scans the faces they draw), l10n's input
@@ -90,6 +93,7 @@ const OLDER_FOLDERS: readonly string[] = [
   'pivot',
   'popover',
   'private',
+  'progress-ring',
   'providers',
   'select',
   'spinner',

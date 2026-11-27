@@ -141,6 +141,16 @@ export class TmBanners {
    */
   readonly ɵhead: Signal<TmBannerView | null> = this.#head.asReadonly();
 
+  /**
+   * The banners the user can see and page through, in precedence order.
+   * Internal: the support dump reads them.
+   *
+   * @returns Each banner's options.
+   */
+  ɵshowable(): readonly TmBannerOptions[] {
+    return this.#showable().map((entry) => entry.options);
+  }
+
   /** Creates the service; a page that turns hidden takes any waiting change at once. */
   constructor() {
     const stop = this.#host.listen('document', 'visibilitychange', () => this.#settle(false));

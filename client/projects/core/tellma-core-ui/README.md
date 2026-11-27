@@ -31,7 +31,7 @@ disabled/readonly/required).
 | `@tellma/core-ui/multi-select` | `tm-multi-select` — the overlay multiple-choice select over the same options; its own entry point so a page with only single selects (a pager's page size) never loads it |
 | `@tellma/core-ui/button` | `tmButton` on a `<button>` or a link — variants, sizes (sizing `tm-icon` children), the `pending` suppressed-activation state, and `disabledReason` (focusable, activation swallowed, the reason as tooltip and description) |
 | `@tellma/core-ui/tabs` | `tm-tab-group` + `tm-tab` — active-only-DOM tabs with `preserveContent`, and `instantiate()` to render unselected tabs on request |
-| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`) |
+| `@tellma/core-ui/modal` | `TmModal` + `TmModalRef` — service-opened dialogs with a typed result channel: centered, as a drawer at the inline-end edge (`placement: 'end'`), or as an alert dialog (`role: 'alertdialog'`); focus returns to the opener, or to the element `returnFocus` names, on close |
 | `@tellma/core-ui/popover` | `tm-popover` + `tmPopoverTriggerFor` — anchored non-modal dialog panels, content-sized or at a fixed `sm`/`md`/`lg` width |
 | `@tellma/core-ui/tooltip` | `tmTooltip` — plain-text tooltips with an always-available description |
 | `@tellma/core-ui/alert` | `tm-alert` — page/section status messaging with live announcement |
@@ -54,7 +54,8 @@ disabled/readonly/required).
 | `@tellma/core-ui/counter` | `tm-counter` — a count inline or on its parent's corner, capped at `max` ("99+"); its own entry point so a first-frame surface paints counts without `tm-badge` |
 | `@tellma/core-ui/avatar` | `tm-avatar` — a person as a round photo, or as initials on a tint a stable key picks; re-exports `tmInitials` and `tmAvatarTone` |
 | `@tellma/core-ui/initials` | `tmInitials` and `tmAvatarTone` — the initials a name gives and the tone a stable key picks; their own entry point so a first-frame surface paints an avatar's face without reaching `tm-image` (`@tellma/core-ui/avatar` re-exports them) |
-| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring` — the same as a ring around an icon button |
+| `@tellma/core-ui/progress` | `tm-progress-bar` — a 4 px determinate or sweeping bar that stays at least 250 ms once shown; `tm-progress-ring`, re-exported from `@tellma/core-ui/progress-ring` |
+| `@tellma/core-ui/progress-ring` | `tm-progress-ring` — the same as a ring around an icon button; its own entry point so a first-frame surface (the app bar's bell) draws the ring without `tm-progress-bar` |
 | `@tellma/core-ui/skeleton` | `tm-skeleton` — static line, block, circle and table placeholders with the final geometry of what replaces them |
 | `@tellma/core-ui/relative-time` | `tm-relative-time` — "2 min ago", kept current by one shared minute ticker that stops while the page is hidden |
 | `@tellma/core-ui/copy` | `tm-copy-button` — one-click copy with a "Press Ctrl+C to copy" fallback; `tm-reference` — a trace id or version as a mono chip with that button |
