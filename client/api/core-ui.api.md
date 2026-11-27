@@ -73,6 +73,7 @@ export const TM_UI_STRINGS_EN: {
         readonly maxDate: "Enter a date on or before {maxDate}";
         readonly parse: "Enter a valid number, like {example}";
         readonly numberPrecision: "Enter a number with at most {maxDigits, plural, one {# digit} other {# digits}}";
+        readonly precision: "Enter no more than {maxDigits, plural, one {# digit} other {# digits}} before the decimal point";
         readonly parseDate: "Enter a date like {example}";
         readonly parseTime: "Enter a time like {example}";
         readonly dateRangeOrder: "The end date must be on or after the start date";

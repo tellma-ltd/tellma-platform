@@ -65,7 +65,13 @@ Every unit test target in `angular.json` names `vitest-base.config.mjs` as its `
 the file's reporters) in its options or a configuration. The file re-exports `@tellma/core-tools`'
 Vitest preset, whose watchdog ends a run that makes no progress for 5 minutes, or a Vitest that has
 not finished closing 2 minutes after its run, with exit code 1 and a report of what was pending: the unfinished files, tests and
-hooks, each browser session's page, frames and open requests, and the dependency optimizer.
+hooks, each browser session's page, frames and open requests, and the dependency optimizer. The
+preset also restores every `vi.spyOn` spy and `vi.stubGlobal` or `vi.stubEnv` stub before each
+test: a project's files share one page per worker, and a spy one file left on a prototype would
+otherwise reach the tests of whichever files the run happens to put after it in that page. It is
+still live during the next file's import and `beforeAll` hooks, so a spec restores a spy on shared
+page state at the end of the test that made it. `tm-unit-runner.spec.ts` in `@tellma/core` fails
+if the restore stops reaching the project.
 `lint:test` then runs in two groups (`tools/vitest.config.mts`): every other spec file in
 parallel, then the core-tools fixture build spec alone, so its real `ng build` never competes
 with the other specs for the machine.

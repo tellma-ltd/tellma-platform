@@ -195,6 +195,37 @@ namespace Tellma.Core.Abstractions.Composition
         }
 
         /// <summary>
+        ///     Registers a dashboard widget type without settings. The client declares how it renders;
+        ///     the startup gate refuses a key registered twice, one that breaks the grammar, or one whose
+        ///     first segment is not this feature's name.
+        /// </summary>
+        /// <param name="key">The type's key, such as <c>acme.cash-position</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="key" /> is null.</exception>
+        public FeatureContribution WidgetType(string key)
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return Add(new WidgetTypeContributionItem(key, null));
+        }
+
+        /// <summary>
+        ///     Registers a dashboard widget type whose settings bind to <typeparamref name="TSettings" />.
+        ///     A widget's settings are deserialized strictly into it and validated by its data
+        ///     annotations when a dashboard is saved; the startup gate refuses a key registered twice,
+        ///     one that breaks the grammar, or one whose first segment is not this feature's name.
+        /// </summary>
+        /// <typeparam name="TSettings">The class the settings bind to.</typeparam>
+        /// <param name="key">The type's key, such as <c>acme.cash-position</c>.</param>
+        /// <returns>This contribution, for chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="key" /> is null.</exception>
+        public FeatureContribution WidgetType<TSettings>(string key)
+            where TSettings : class
+        {
+            ArgumentNullException.ThrowIfNull(key);
+            return Add(new WidgetTypeContributionItem(key, typeof(TSettings)));
+        }
+
+        /// <summary>
         ///     Transforms the policy of a blob kind an entity of the feature declares with
         ///     <c>[BlobReference]</c>, such as turning off its thumbnail. Transforms apply in the
         ///     features' dependency order, then the host's, each to the result of the one before; the

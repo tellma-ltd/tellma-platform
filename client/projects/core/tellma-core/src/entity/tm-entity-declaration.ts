@@ -239,6 +239,23 @@ export interface TmDetailsDeclaration<N extends string> {
 }
 
 /**
+ * A details form's own rules: a Signal Forms schema function over the
+ * wire-shaped record, which adds rules after the platform's and never
+ * weakens one.
+ *
+ * @example
+ * ```ts
+ * import { required, type SchemaPathTree } from '@angular/forms/signals';
+ * import type { TmEntityType } from '@tellma/core';
+ *
+ * export default function customerRules(p: SchemaPathTree<TmEntityType<'acme.Customer'>>): void {
+ *   required(p.creditLimit, { when: ({ valueOf }) => valueOf(p.customerType) === 'Corporate' });
+ * }
+ * ```
+ */
+export type TmEntityRules<T> = (path: SchemaPathTree<T>) => void;
+
+/**
  * How the platform offers one of an entity's actions.
  *
  * @example
@@ -365,11 +382,18 @@ export interface TmEntityDeclarationInput<N extends string = string> {
    */
   readonly clone?: (copy: TmEntityType<N>, source: TmEntityType<N>) => TmEntityType<N>;
   /**
-   * The details form's validation, as a Signal Forms schema function.
+   * Loads the details form's own rules, a Signal Forms schema function the
+   * page applies after the platform's. The rules load with the layout, so
+   * their imports of `@angular/forms/signals` stay out of the first load.
    *
-   * @param path - The form's schema path tree.
+   * @example
+   * ```ts
+   * validate: () => import('./customer-rules'),
+   * ```
+   *
+   * @returns The rules, or a module whose default export they are.
    */
-  readonly validate?: (path: SchemaPathTree<TmEntityType<N>>) => void;
+  readonly validate?: () => Promise<TmEntityRules<TmEntityType<N>> | { readonly default: TmEntityRules<TmEntityType<N>> }>;
   /**
    * Adjusts a record's values before it is saved; every collection keeps
    * its length and order.

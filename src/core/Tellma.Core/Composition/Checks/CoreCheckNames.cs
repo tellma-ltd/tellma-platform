@@ -82,6 +82,12 @@ namespace Tellma.Core.Composition.Checks
         public const string ClientEvents = "core.client-events";
 
         /// <summary>
+        ///     Dashboard widget type keys are well formed, start with their feature's name and are
+        ///     unique, and every settings type is a concrete, closed class.
+        /// </summary>
+        public const string WidgetTypes = "core.widget-types";
+
+        /// <summary>
         ///     The securables compose without conflict, their names follow the grammar, their filter
         ///     roots are query entities, a child's owner is reached through its navigation, owner
         ///     chains end, and every securable belongs to a composed feature.

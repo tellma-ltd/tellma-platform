@@ -23,6 +23,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { TmLocalization, type TmShellSlot, TmTelemetry, TmUrls } from '@tellma/core';
+import { TmAttentionButton } from '@tellma/core/attention';
 import { TmCounter } from '@tellma/core-ui/counter';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { tmAvatarTone, tmInitials } from '@tellma/core-ui/initials';
@@ -75,8 +76,8 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
 /**
  * The tenant shell's app bar: the wordmark, the grouped Menu and search,
  * the installed-mode history buttons, the distribution's slots, the
- * reserved boxes of the attention bell and tray, the tenant markers and the
- * session button. The tenant shell renders it in the frame's first row.
+ * attention bell and tray, the tenant markers and the session button. The
+ * tenant shell renders it in the frame's first row.
  *
  * @example
  * ```html
@@ -88,7 +89,7 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
  */
 @Component({
   selector: 'tm-app-bar',
-  imports: [NgComponentOutlet, RouterLink, TmCounter, TmIcon, TmSkeleton],
+  imports: [NgComponentOutlet, RouterLink, TmAttentionButton, TmCounter, TmIcon, TmSkeleton],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <!-- The wordmark, a link to the tenant's home: the mark below md. -->
@@ -195,9 +196,9 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
         }
       </button>
     }
-    <!-- The attention bell and tray: fixed boxes their own spec fills. -->
-    <span class="tm-app-bar__reserved" data-tm-slot="bell"></span>
-    <span class="tm-app-bar__reserved" data-tm-slot="tray"></span>
+    <!-- The attention bell and tray: 30 px buttons whose panels load on first intent. -->
+    <tm-bell-button data-tm-slot="bell" />
+    <tm-tray-button data-tm-slot="tray" />
     <!-- The help and assistant slots: reserved, with no width. -->
     <span data-tm-slot="help" hidden></span>
     <span data-tm-slot="assistant" hidden></span>
@@ -440,13 +441,6 @@ const MARKER_SUFFIXES: Readonly<Record<TmShellMarker, string>> = {
 
     .tm-app-bar__spacer {
       flex: 1 1 0;
-    }
-
-    /* The attention bell's and tray's boxes. */
-    .tm-app-bar__reserved {
-      flex: none;
-      inline-size: 30px;
-      block-size: 30px;
     }
 
     /* The markers: 20 px pills, a sandbox's in the accent tint and a state's in the warning tint. */

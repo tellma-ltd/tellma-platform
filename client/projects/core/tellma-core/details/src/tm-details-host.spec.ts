@@ -6,6 +6,7 @@
 import { Location } from '@angular/common';
 import { Component, computed, type ElementRef, signal, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { type FieldTree, required, type SchemaPath, type SchemaPathTree } from '@angular/forms/signals';
 import { manualChangeDetection } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Title } from '@angular/platform-browser';
@@ -13,11 +14,12 @@ import { Router } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import { TmApiError, type TmJsonObject, TmPageActions } from '@tellma/core';
 import { TmDetailsPageHarness, type TmFakeApiCall } from '@tellma/core-testing';
-import { TmConfirmHarness } from '@tellma/core-ui-testing';
+import { TmCardHarness, TmConfirmHarness } from '@tellma/core-ui-testing';
 
-import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
+import { tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmLoadTestPage, tmSettle, tmSettleUntil, TmTestPage } from '../../src/routes/tm-app.testing.util';
 import { injectTmDetails } from './tm-details-context';
+import { TmDetailsKit } from './tm-details-kit';
 
 // The routed details host over the recorded customer model, with a layout
 // that registers one field: the load, view → edit → cancel with no request,
@@ -70,6 +72,45 @@ class TmTestDetailsLayout {
   }
 }
 
+/** A layout in the kit: a half card, an aside and a title extra. */
+@Component({
+  selector: 'tm-test-kit-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-card width="half"><tm-field path="Code" /></tm-details-card>
+    <tm-details-card width="half"><tm-field path="Name" /></tm-details-card>
+    <tm-details-aside titleKey="Code"><p class="tm-test-layout__aside">Related</p></tm-details-aside>
+    <ng-template tmDetailsTitleExtra><span class="tm-test-layout__extra">Draft</span></ng-template>
+  `,
+})
+class TmTestKitLayout {}
+
+/** A layout in the kit whose fields sit in a collapsed card and on a tab, which keeps its record for the test. */
+@Component({
+  selector: 'tm-test-dots-layout',
+  imports: [TmDetailsKit],
+  template: `
+    <tm-details-card id="terms" titleKey="Code" collapsible collapsed><tm-field path="Code" /></tm-details-card>
+    <tm-details-tabs>
+      <tm-details-tab id="general" labelKey="Name">
+        <ng-template tmDetailsTabContent><tm-field path="Name" /></ng-template>
+      </tm-details-tab>
+    </tm-details-tabs>
+  `,
+})
+class TmTestDotsLayout {
+  /** The latest instance. */
+  static latest: TmTestDotsLayout | null = null;
+
+  /** The record. */
+  readonly details = injectTmDetails<TmJsonObject>();
+
+  /** Keeps itself for the test. */
+  constructor() {
+    TmTestDotsLayout.latest = this;
+  }
+}
+
 /** A read the test answers when it chooses. */
 interface TmPendingRead {
   /** The read's call. */
@@ -107,6 +148,26 @@ function saved(id: number, name: string): TmJsonObject {
   return { ...result, entities: [{ ...entity, name }] };
 }
 
+/**
+ * A model as the wire would carry it, without the nulls the working copy
+ * holds for each member the client writes, which give every member a form field.
+ *
+ * @param model - The model.
+ * @returns Its JSON, nulls dropped.
+ */
+function valued(model: TmJsonObject): unknown {
+  return JSON.parse(JSON.stringify(model, (_key, value: unknown) => (value === null ? undefined : value)));
+}
+
+/**
+ * A declaration's own rule: the currency, which is nullable, is required.
+ *
+ * @param p - The customer form's schema path tree.
+ */
+function currencyRule(p: SchemaPathTree<TmJsonObject>): void {
+  required((p as unknown as Readonly<Record<string, SchemaPath<unknown>>>)['currencyId']!);
+}
+
 /** An offline failure, as the API client raises it. */
 function offline(): never {
   throw new TmApiError({ kind: 'offline' });
@@ -129,9 +190,10 @@ describe('the details host', () => {
    * Starts the app with the customer permissions given.
    *
    * @param actions - The customer actions granted.
+   * @param declaration - More of the customer's declaration.
    */
-  async function start(actions: readonly string[] = ['Read', 'Save']): Promise<void> {
-    rig = await tmEntityRig({ access: { securables: actions.map(grant) } });
+  async function start(actions: readonly string[] = ['Read', 'Save'], declaration: TmEntityRigOptions['customer'] = {}): Promise<void> {
+    rig = await tmEntityRig({ access: { securables: actions.map(grant) }, customer: declaration });
     rig.api.respond('customers/get', (call: TmFakeApiCall) => {
       const id = (call.body as { readonly id: number }).id;
       if (!hold) {
@@ -197,6 +259,37 @@ describe('the details host', () => {
     return [...document.querySelectorAll<HTMLButtonElement>('tm-error-state button')].find((button) => button.textContent?.trim() === label)!;
   }
 
+  /**
+   * Opens a record whose read lands after its kit layout renders, empties
+   * the card's field and the tab's, and reads the card's and the tab's
+   * error state.
+   *
+   * @param url - The page's URL: a record's id, or a clone.
+   * @returns Whether the card's dot shows, and the tab's name.
+   */
+  async function lateErrors(url: string): Promise<{ readonly card: boolean; readonly tab: string | null }> {
+    tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestDotsLayout));
+    await start();
+    hold = true;
+    // The held read keeps the page unstable, so the harness must not wait for it.
+    const page = await manualChangeDetection(() => open(url));
+    await tmSettleUntil(() => TmTestDotsLayout.latest !== null && pending.length === 1, 'the layout renders before the read lands');
+    pending[0]!.resolve(5);
+    await tmSettleUntil(() => TmTestDotsLayout.latest!.details.model()['code'] !== undefined, 'the read lands');
+    if (TmTestDotsLayout.latest!.details.mode() === 'view') {
+      await page.click('edit');
+    }
+    await tmSettleUntil(() => document.querySelector('[data-tm-field="Name"] tm-form-field') !== null, 'the controls load');
+    const form = TmTestDotsLayout.latest!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    for (const json of ['code', 'name']) {
+      form[json]!().value.set('');
+      form[json]!().markAsTouched();
+    }
+    await tmSettle();
+    const card = await TestbedHarnessEnvironment.loader(router.fixture).getHarness(TmCardHarness);
+    return { card: await card.isInvalid(), tab: document.querySelector('.tm-details-tabs__name')?.textContent?.trim() ?? null };
+  }
+
   /** What the status strip's notice says, or `null` while it shows none. */
   function notice(): string | null {
     return document.querySelector('.tm-details__notice')?.textContent?.trim() ?? null;
@@ -220,6 +313,7 @@ describe('the details host', () => {
 
   beforeEach(() => {
     TmTestDetailsLayout.instances.length = 0;
+    TmTestDotsLayout.latest = null;
     pending = [];
     hold = false;
     tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestDetailsLayout));
@@ -443,7 +537,7 @@ describe('the details host', () => {
     expect(await page.getTitle()).toBe('New customer');
     expect(await page.getMode()).toBe('edit');
     expect(await page.getBadges()).toEqual([]);
-    expect(latest()!.details.model()).toEqual({ contacts: [] });
+    expect(valued(latest()!.details.model())).toEqual({ contacts: [] });
 
     // The app opened another page before this one, so Cancel goes Back to it;
     // the history moves, which the testing router does not follow.
@@ -462,7 +556,64 @@ describe('the details host', () => {
     const details = latest()!.details;
     expect([details.mode(), details.id(), details.dirty()]).toEqual(['create', null, false]);
     // The form tracks each child row by a symbol of its own, which the wire never carries.
-    expect(JSON.parse(JSON.stringify(details.model()))).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
+    expect(valued(details.model())).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
+  });
+
+  it("saves a clone's child rows without a key to the parent, exactly as the body is sent", async () => {
+    await start();
+    const page = await open('/17/customers/new?clone=5');
+    await tmSettleUntil(() => latest()?.details.model()['name'] !== undefined, 'the copy lands');
+    const details = latest()!.details;
+    // The copied customer has no type, which the platform's rules require before a save writes.
+    details.update((model) => ({ ...model, customerType: 'Retail' }));
+    rig.api.respond('customers/save', () => saved(6, 'Customer 5'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    // The raw body, nulls included: a null for the contact's customerId is a value the server refuses.
+    const body = JSON.stringify(rig.api.calls().find((call) => call.route === 'customers/save')!.body);
+    expect(body).not.toContain('customerId');
+    expect(JSON.parse(body)).toEqual(expect.objectContaining({ entities: [expect.objectContaining({ contacts: [{ id: -1, name: 'Huda', email: null }] })] }));
+  });
+
+  it("shows the card's and the tab's error state on a record opened at its id that lands after its layout renders", async () => {
+    expect(await lateErrors('/17/customers/5')).toEqual({ card: true, tab: 'Name, has errors' });
+  });
+
+  it("shows the card's and the tab's error state on a clone whose copy lands after its layout renders", async () => {
+    expect(await lateErrors('/17/customers/new?clone=5')).toEqual({ card: true, tab: 'Name, has errors' });
+  });
+
+  it("saves a new record's defaulted member exactly as the body is sent: left out while empty, sent once filled", async () => {
+    await start();
+    const page = await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    const details = latest()!.details;
+    details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail' }));
+    rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    // The raw body, nulls included: the rank is left for the server to fill, and every other empty member is sent as null.
+    const [entity] = (JSON.parse(JSON.stringify(rig.api.calls().find((call) => call.route === 'customers/save')!.body)) as { entities: TmJsonObject[] }).entities;
+    expect(Object.keys(entity!)).not.toContain('rank');
+    expect(entity).toEqual(expect.objectContaining({ code: 'C-009', currencyId: null }));
+  });
+
+  it("sends a new record's defaulted member the user filled", async () => {
+    await start();
+    const page = await open('/17/customers/new');
+    await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
+    latest()!.details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail', rank: 'A' }));
+    rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
+
+    await page.click('save');
+    await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+
+    const body = rig.api.calls().find((call) => call.route === 'customers/save')!.body as { entities: TmJsonObject[] };
+    expect(body.entities[0]!['rank']).toBe('A');
   });
 
   it('keeps Save disabled while the copied record loads', async () => {
@@ -574,6 +725,53 @@ describe('the details host', () => {
     await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
     expect(await page.getErrorState()).toBeNull();
     expect(await page.getTitle()).toBe(nameOf(5));
+  });
+
+  it("renders a kit layout's cards as the band's grid items, its aside in a labelled column and its title extra after the badges", async () => {
+    tmLoadTestPage.mockImplementation(() => Promise.resolve(TmTestKitLayout));
+    await start();
+    await open('/17/customers/5');
+    await tmSettleUntil(() => document.querySelector('.tm-details__aside .tm-test-layout__aside') !== null, 'the aside renders');
+
+    const layout = document.querySelector<HTMLElement>('.tm-details__cards > tm-test-kit-layout')!;
+    const aside = document.querySelector<HTMLElement>('aside.tm-details__aside')!;
+    expect(getComputedStyle(layout).display).toBe('contents');
+    expect(document.querySelectorAll('.tm-details__cards > tm-test-kit-layout > .tm-details-card--half')).toHaveLength(2);
+    expect(document.querySelector('.tm-details__columns')!.classList).toContain('tm-details__columns--aside');
+    expect(aside.getAttribute('aria-label')).toBe('Code');
+    expect(document.querySelector('tm-test-kit-layout .tm-test-layout__aside')).toBeNull();
+    expect(document.querySelector('[tmpagetitleextra] .tm-test-layout__extra, .tm-details__badge .tm-test-layout__extra')).not.toBeNull();
+  });
+
+  it("applies the declaration's own rules, which load with the layout, after the platform's: the layout renders once both are in hand", async () => {
+    let answer!: (rules: { readonly default: typeof currencyRule }) => void;
+    await start(undefined, { validate: () => new Promise((resolve) => (answer = resolve as never)) });
+    await open('/17/customers/5');
+    await tmSettle();
+    expect(latest()).toBeUndefined();
+
+    answer({ default: currencyRule });
+    await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout renders');
+    const form = latest()!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    // The currency is nullable, so only the declaration's rule requires it; the code keeps the platform's.
+    expect(form['currencyId']!().errors().map((error) => error.kind)).toEqual(['required']);
+    expect(form['code']!().errors()).toEqual([]);
+  });
+
+  it("shows the offline state when the declaration's rules fail to load, and loads both on Try again", async () => {
+    let fail = true;
+    await start(undefined, {
+      validate: () => (fail ? Promise.reject(new Error('The chunk failed to load.')) : Promise.resolve({ default: currencyRule as never })),
+    });
+    await open('/17/customers/5');
+    await errorState('the error state renders');
+    expect(document.querySelector('tm-test-details-layout')).toBeNull();
+
+    fail = false;
+    errorButton('Try again').click();
+    await tmSettleUntil(() => latest()?.details.status() === 'ready', 'the layout loads');
+    const form = latest()!.details.form as unknown as Readonly<Record<string, FieldTree<unknown>>>;
+    expect(form['currencyId']!().errors().map((error) => error.kind)).toEqual(['required']);
   });
 
   it('ends Save cleanly when the page is left while the write runs', async () => {

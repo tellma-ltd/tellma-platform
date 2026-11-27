@@ -355,7 +355,7 @@ export class TmPageRegistry {
   async #dispatch(found: TmFound, args: TmJson, origin: TmActionOrigin): Promise<TmActionResult> {
     let { action } = found;
     const { id } = action;
-    let refusal = this.#gate(action, origin);
+    let refusal = this.#gate(action, origin, args);
     if (refusal !== null) {
       return refusal;
     }
@@ -370,7 +370,7 @@ export class TmPageRegistry {
       }
       this.#confirming.add(id);
       try {
-        if (!(await this.#confirm(action))) {
+        if (!(await this.#confirm(action, args))) {
           return { outcome: 'cancelled' };
         }
       } catch (error) {
@@ -386,7 +386,7 @@ export class TmPageRegistry {
         return NOT_FOUND;
       }
       action = again.action;
-      refusal = this.#gate(action, origin);
+      refusal = this.#gate(action, origin, args);
       if (refusal !== null) {
         return refusal;
       }
@@ -411,8 +411,12 @@ export class TmPageRegistry {
     }
   }
 
-  /** Steps 2 and 3: a disabled action is refused with its reason, announced to a user; a busy one is refused. */
-  #gate(action: TmPageAction, origin: TmActionOrigin): TmActionResult | null {
+  /**
+   * Steps 2 and 3: a disabled action is refused with its reason, announced
+   * to a user; a busy one is refused; and so is one that does not accept the
+   * arguments, before any confirmation names what they do not.
+   */
+  #gate(action: TmPageAction, origin: TmActionOrigin, args: TmJson): TmActionResult | null {
     return untracked(() => {
       if (!action.enabled()) {
         const message = action.disabledReason();
@@ -424,7 +428,10 @@ export class TmPageRegistry {
         }
         return { outcome: 'refused', reason: 'disabled', message };
       }
-      return this.#running().has(action.id) || this.#confirming.has(action.id) ? { outcome: 'refused', reason: 'busy' } : null;
+      if (this.#running().has(action.id) || this.#confirming.has(action.id)) {
+        return { outcome: 'refused', reason: 'busy' };
+      }
+      return action.accepts === undefined || action.accepts(args) ? null : NOT_FOUND;
     });
   }
 
@@ -432,20 +439,25 @@ export class TmPageRegistry {
    * Asks the user to confirm a destructive action, in `TmConfirm`'s danger
    * form, which loads on the first question. The confirm button carries the
    * action's label. Without its confirmation keys, which only production
-   * reaches, the action's label and description stand in.
+   * reaches, the action's label and description stand in. The texts'
+   * arguments may follow the invocation's, and the cancel button carries
+   * the action's cancel label when it names one.
    */
-  async #confirm(action: TmPageAction): Promise<boolean> {
-    const { titleKey, messageKey, args } = action.confirm ?? {
+  async #confirm(action: TmPageAction, invoked: TmJson): Promise<boolean> {
+    const { titleKey, messageKey, args, cancelKey } = action.confirm ?? {
       titleKey: action.labelKey,
       messageKey: action.descriptionKey ?? action.labelKey,
     };
     const l10n = this.#injector.get(TmLocalization);
-    const text = (key: string): string => untracked(l10n.ɵtext(key, args && untracked(args)));
+    // A signal ignores the invocation's arguments; a function reads them.
+    const params = args && untracked(() => args(invoked));
+    const text = (key: string): string => untracked(l10n.ɵtext(key, params));
     const { TmConfirm } = await import('@tellma/core-ui/confirm');
     return this.#injector.get(TmConfirm).confirm({
       title: text(titleKey),
       message: text(messageKey),
       confirmLabel: text(action.labelKey),
+      cancelLabel: cancelKey && text(cancelKey),
       destructive: true,
     });
   }

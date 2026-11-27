@@ -174,9 +174,9 @@ describe('TmAttentionText', () => {
   describe('isolate', () => {
     it('splits a message around its isolated arguments, formatting the others in place', async () => {
       const { text } = await setUp();
-      const segments = text.isolate('tm.attention.assignment.title', { entity: 'Center', code: 'HQ-01' }, ['code']);
+      const segments = text.isolate('tm.attentionRows.assignment.title', { entity: 'Center', code: 'HQ-01' }, ['code']);
       expect(segments()).toEqual([{ text: 'Center ' }, { text: 'HQ-01', arg: 'code' }]);
-      const both = text.isolate('tm.attention.assignment.title', { entity: 'Center', code: 'HQ' }, ['entity', 'code']);
+      const both = text.isolate('tm.attentionRows.assignment.title', { entity: 'Center', code: 'HQ' }, ['entity', 'code']);
       expect(both()).toEqual([{ text: 'Center', arg: 'entity' }, { text: ' ' }, { text: 'HQ', arg: 'code' }]);
     });
   });

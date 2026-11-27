@@ -76,8 +76,12 @@ const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
 
 /** The texts the flows match, in a project's language. */
 export interface AcmeText {
-  /** The tenant home's heading. */
+  /** The tenant home's heading: its greeting, at whatever hour the flow runs. */
   readonly home: string | RegExp;
+  /** The tenant home's grid. */
+  readonly yourWork: string | RegExp;
+  /** The recently visited pages' tile. */
+  readonly recents: string | RegExp;
   /** The customers pages' heading. */
   readonly customers: string | RegExp;
   /** The tenant picker's heading. */
@@ -101,7 +105,9 @@ export interface AcmeText {
 /** The texts in each language, as the app's string packs word them; an Arabic imperative takes either gender's form. */
 export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
   en: {
-    home: 'Home',
+    home: /^Good (?:morning|afternoon|evening), \S/,
+    yourWork: 'Your work',
+    recents: 'Recently visited',
     customers: 'Customers',
     chooseTenant: 'Choose a tenant',
     sessionEnded: 'Your session ended',
@@ -113,7 +119,9 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     cancel: 'Cancel',
   },
   ar: {
-    home: 'الرئيسية',
+    home: /^(?:صباح|مساء) الخير، \S/,
+    yourWork: 'عملك',
+    recents: 'الصفحات الأخيرة',
     customers: 'العملاء',
     chooseTenant: /^(?:اختر|اختاري) شركة$/,
     sessionEnded: 'انتهت جلستك',

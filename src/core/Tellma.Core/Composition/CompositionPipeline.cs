@@ -16,6 +16,7 @@ using Tellma.Core.Caching;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Composition.Realizers;
 using Tellma.Core.Crud;
+using Tellma.Core.Dashboards;
 using Tellma.Core.Data;
 using Tellma.Core.Data.Batches;
 using Tellma.Core.Excel;
@@ -604,6 +605,7 @@ namespace Tellma.Core.Composition
                 new NotificationTypesCheck(_record),
                 new NotificationChannelsCheck(_record),
                 new ClientEventsCheck(_record),
+                new WidgetTypesCheck(_record),
                 new SecurablesCheck(_record),
                 new CacheableEntitiesCheck(),
                 new TimeZonesCheck(TimeZonesCheck.HostResolves),

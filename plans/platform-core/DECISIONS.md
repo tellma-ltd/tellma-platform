@@ -384,6 +384,57 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-412 — PC-156's integrate raises core "." to 55 and lowers the initialJs warn lines (2026-11-27)
+
+On the merged tree core "." measures 54.55 against its 54.5 ceiling: platform-core alone was at 54.50 after PC-123, and PC-156's primary additions (the page action's accepts check, the invocation's confirmation arguments with a cancel key, TmBanners.ɵshowable) add about 0.05 after a 0.01 saving. The orchestrator accepts the raise to 55.0 under D-031 (+0.5, the addition rounded up to 0.5). 55.0 equals the spec's 55 KB cap on the primary, so it is the last raise this budget can take: later items that grow "." must find savings or stop and report (D-313), and PC-167's carry says so. locale-ar "." goes from 0.55 to 0.6 because the merge gives it both the dashboards and the attention imports (0.56). Per D-403, PC-156 integrates first, so it sets the Acme and fixture initialJs warn lines to the merged measure rounded up to 0.5: 227.78 gives 228 and 227.07 gives 227.5. Both lines go down, because PC-163 is not merged yet; PC-163 re-measures at its integrate. build.fixture.spec's budgets() helper now overlays each case's levels on the fixture's own budgets rather than replacing them.
+
+### D-411 — PC-F115 held; it integrates next, ahead of the held T1 items (2026-11-27)
+
+PC-F115 found the skip-link flake's cause: tm-support-dump.spec and tm-diagnostics-panel.spec (PC-154) left a vi.spyOn on HTMLAnchorElement.prototype.click, and Vitest's browser runner with isolate:false keeps spies across files, so the skip link's click() was a no-op whenever either spec ran earlier in the same worker. The fix sets restoreMocks, unstubGlobals and unstubEnvs in the shared Vitest preset, adds behavioural canaries to core's and Acme's unit projects, and makes both specs restore their own spies. R1 confirmed the cause in Vitest 4.1.9's source and by forced order (0 blocking, 1 major, 1 minor; fix1 44cd7464 closed both), so no R2. Because the flake can turn any integration's CI red, PC-F115 is a blocking fix and integrates immediately after PC-156 lands, before PC-128, PC-F100, PC-F103 and PC-163 (D-229 puts blocking fixes first). The flaky-table row is marked root-caused when it lands.
+
+### D-410 — PC-123 lands on green with the skip-link cause open; PC-F115 is the next fix (2026-11-27)
+
+PC-123 reverted both diagnostics, fixed its own home launcher flake in the product (the open launcher holds the page's arrival focus move through ɵTmPageFocus and runs it on close before its give-back; specs 0024 §4.4 and 0027 are silent, so it is a deviation for Ahmad), and integrated as 9a077e95, which CI 45982721583 passed in full. That is done by D-154, so it lands. The skip-link failure is not explained: neither the stale-frame nor the page-focus hypothesis held, the project is zoneless, and it reproduces in about 1 of 5 local full-core runs. Its frequency on CI depends on the size-ordered file schedule, so it can recur on any integrate. PC-F115 is therefore treated as blocking: it takes the first fix slot that frees, ahead of PC-F113 and PC-F114 (D-229). Until it lands, a red CI on that test alone is handled by D-292 (merge and integrate again) and not counted against the item.
+
+### D-409 — PC-123's skip-link failure: pre-existing flake raised by a schedule shift; root-caused inside PC-123 (2026-11-27)
+
+The diagnostic run 45964781142 on 478f991b was green on both OSes. The page-title hypothesis failed: the skip handler focuses main directly and the spec's app only routes to /signed-out. The test failed once locally on 2026-11-25, before PC-123 existed, so D-407's 'PC-123 regression' reading is narrowed: the flake predates PC-123, and PC-123's chunking and file durations shift CI's per-worker file order so it now hits it often (4 of 4 integrate runs before the diagnostic). The leading hypothesis is a stale frame left in the shared document by an earlier file (isolate:false), whose dead skip link `document.querySelector` returns. Because the flake blocks PC-123's landing and every fix slot holds a held item (D-255), PC-123's implementer, who has the context, root-causes it on pc/PC-123 under D-011 (no retry, no loosened assertion). A second diagnostic CI run, also test-only and reverted, counts frames and skip links. Diagnostic runs are not landed. PC-F115 closes with PC-123's fix if that fix explains the 2026-11-25 local failure too.
+
+### D-408 — PC-123 diagnoses the skip-link failure with a temporary CI run (2026-11-27)
+
+PC-123 could not reproduce the skip-link failure locally (the whole core project with CI=true, serial and paired orders all pass) and was denied `gh api` for the run's failure screenshot. `gh api` is forbidden in this run, so the denial is not notified and no other artifact route is used. Instead PC-123 pushes a temporary ': integrate' commit that only adds TM-DIAG console lines to the shell-frame test (assertions unchanged), the orchestrator reads them from the CI log, and the diagnostic is reverted in a later commit with the fix. No history is rewritten.
+
+### D-407 — PC-123's skip-link failure is its own regression (2026-11-27)
+
+The re-integrate 3ba47f06 (CI 45959960145) failed the same shell-frame skip-link test on both client and client-windows, after e88901b2 failed it on ubuntu. platform-core's own CI at f1d25ec5 passed it, so the failure follows PC-123's tree; D-406's 'unrelated flake' reading is withdrawn. PC-123 root-causes and fixes it in its own code (the test stays as it is), then integrates again. PC-F115 stays open but on hold: after PC-123's fix it is either closed as explained by PC-123 or kept for the earlier local failure under load.
+
+### D-406 — PC-123's integrate CI red on an unrelated skip-link flake; PC-F103 held; PC-F114 and PC-F115 opened (2026-11-27)
+
+PC-123's integrate e88901b2 passed every local gate, but CI 45956793765 failed in the client job on `the shell frame > moves focus to main from the skip link, leaving the URL alone` (activeElement had no id). PC-123 touches no shell file, and the same test is on the flaky table from a local failure under load. Per D-292, the orchestrator pushes its ledger snapshot and PC-123 merges platform-core and integrates again; PC-F115 root-causes the flake (D-011: no retry or loosened assertion). PC-F103 held after fix1 (R1 0/0/3, minors only, so no R2); it integrates after PC-F100. Its twin-key behaviour (MeSave Name2/Name3 get keys of their own, against spec 0029 §2.4) is recorded as its Deviation 4 and becomes PC-F114. PC-F113, PC-F114 and PC-F115 wait for a free fix slot, in that order. For Ahmad: spec 0013 §10.1's report list names bare ReportKind_*/ShareAccess_* keys where its own enum rule gives Core_ReportKind_*/Core_ShareAccess_*.
+
+### D-405 — PC-129 landed; PC-123 released; PC-156 resumes in pc-4 (2026-11-27)
+
+PC-129 landed as f1d25ec5 after the D-292 re-integration; CI 45948538904 was green. PC-123 is the next held item, so it is released to integrate (D-087). pc-4 frees, and per D-403 PC-156 resumes there: it sets the panels ceiling to 10.5, re-runs lint:test, then holds. PC-163 takes the next T1 slot that frees. The integration order after PC-123 is PC-F99, PC-F107, PC-156 and PC-128, with fixes ahead of T1 per D-229, then PC-F100 when its fix round is done. check_deps lists only T3s as ready.
+
+### D-404 — PC-129 CI red on an unrelated C# test; PC-F113 opened (2026-11-27)
+
+PC-129's integration CI 45945997084 (424e67df) failed only build-test (windows-latest), on HubConnectTests.Neither_the_negotiate_nor_the_connect_renews_or_stamps_the_session: the negotiate answered 503 instead of 200. PC-129 changes no C#, so per D-292 it merges platform-core again under ": integrate" and gets a fresh CI run. PC-F113 is opened to root-cause the test (D-011), with a Flaky row. PC-129 also brings a new lazy entry point, @tellma/core/uploads, which moves TmUploads off /entity. That departs from spec 0029 §1, which places uploads in /entity, and goes to Ahmad.
+
+### D-403 — Ahmad raises the PC-156 and PC-163 budgets (2026-11-26)
+
+Ahmad ruled "Increase their size limits" for the two parked items. This is a spec-budget raise on his authority (D-313), applied as each item's clean-build measure rounded up to the next 0.5 (D-031 rounding):
+- PC-156: the tm-attention-panels ceiling, spec 0028 §1's 9, becomes 10.5 (measured 10.05).
+- PC-163: ./shell, spec 0027's 16 KB of eager code, becomes 19.5 (measured 19.06).
+- PC-163: Acme's initialJs warn line, spec 0024 §12's 230, and the fixture's become the merged-tree measure rounded up to the next 0.5 (about 234 and 233 today). The 260 error line stays.
+
+PC-156 also adds about 1.1 KB to initialJs (225.81 at fix2), so whichever of the two integrates second re-measures on the merged tree and sets the warn line from that measure (D-214). It does not reuse the earlier figure. Ahmad edits the spec texts (docs/ is not the run's).
+
+Both un-park:
+- PC-156 needs only its ceiling edit and the lint:test re-run that fix2 skipped, then holds. Its three implementer rounds are spent.
+- PC-163 had a blocking R1 finding, so R2 runs at xhigh (§4.4) before it holds.
+
+Neither may use a fix slot (D-229). PC-156 takes the first T1 slot that frees and PC-163 the next, when PC-129 or PC-123 lands, or when PC-128 or PC-F100 free theirs.
+
 ### D-402 — PC-F112 landed; PC-129 re-integrates before PC-123 (2026-11-26)
 
 PC-F112 landed as 70239a8a. Acme searchRoute fell from 109.79 to 94.92, which clears PC-129's blocker (D-389). PC-129 had been released and was then skipped while blocked (D-319). It is the earliest released item, so it re-integrates now: it merges platform-core, moves TmUploads off the /entity barrel and runs the full gates. PC-123 integrates after PC-129's platform-core push (D-087).

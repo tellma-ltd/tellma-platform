@@ -104,17 +104,25 @@ test.describe('automatic entries', () => {
     expect((await tmBootFacts(page)).email).toBe(cast.sandbox);
   });
 
-  test("a typed tenant that is not the user's lands on the picker with the notice in its address", async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await signInAs(page, cast.user);
+  test.describe('cold', () => {
+    // On a localhost scope the Angular worker prefetches its whole shell group before it answers
+    // any fetch, so a worker registered on the first page would hold the picker's lazy chunks the
+    // redirect waits for behind that prefetch, which a production scope runs at idle instead.
+    // This test is not about the worker (the ones above warm it up on purpose).
+    test.use({ serviceWorkers: 'block' });
 
-    await page.goto('/99');
+    test("a typed tenant that is not the user's lands on the picker with the notice in its address", async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
 
-    await expect(page).toHaveURL('/tenants?notice=tenant-not-found&from=99');
-    await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
+      await page.goto('/99');
+
+      await expect(page).toHaveURL('/tenants?notice=tenant-not-found&from=99');
+      await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
+    });
   });
 
   // The picker renders the not-found notice from its address with the tenant shell (spec 0027).
