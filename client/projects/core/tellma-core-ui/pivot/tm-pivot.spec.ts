@@ -12,7 +12,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 
 import { provideTellmaUi, type TmControlSize } from '@tellma/core-ui';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 import { TmPivotHarness } from '@tellma/core-ui-testing';
 

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgTemplateOutlet } from '@angular/common';
 import {
   booleanAttribute,
@@ -18,7 +20,7 @@ import {
   untracked,
 } from '@angular/core';
 import { outputFromObservable } from '@angular/core/rxjs-interop';
-import { X } from 'lucide';
+import X from 'lucide/dist/esm/icons/x.mjs';
 import { Observable, Subject } from 'rxjs';
 
 import { TM_UI_TRANSLATE, type TmControlSize, ɵtmControlSize } from '@tellma/core-ui';

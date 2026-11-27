@@ -19,8 +19,8 @@ export const InField = {
 
 /**
  * A leading glyph projected as the field's prefix: a `tm-icon`, where
- * `searchIcon` is the `Search` data from `lucide` (or use `name` with a
- * registered icon).
+ * `searchIcon` is the default export of the icon's own module,
+ * `lucide/dist/esm/icons/search.mjs` (or use `name` with a registered icon).
  */
 export const WithAdornments = {
   template: `

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
@@ -21,7 +23,9 @@ import {
 } from '@angular/core';
 import { Menu, MenuItem } from '@angular/aria/menu';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
-import { Check, ChevronRight, ExternalLink } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import ExternalLink from 'lucide/dist/esm/icons/external-link.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';

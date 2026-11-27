@@ -10,7 +10,8 @@
  *
  * The names below resolve through TmIconRegistry, so each must be
  * registered first, e.g. `provideTellmaIcons({ plus: Plus, 'chevron-right':
- * { node: ChevronRight, mirrorInRtl: true } })` with the data from `lucide`.
+ * { node: ChevronRight, mirrorInRtl: true } })`, each imported from the icon's
+ * own module, such as `lucide/dist/esm/icons/plus.mjs`.
  */
 
 /** A decorative icon by registry name, sized by its container (16px by default). */

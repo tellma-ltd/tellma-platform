@@ -64,7 +64,11 @@ sources with the client's Prettier settings.
    `TELLMA_E2E_WEBROOT` names an app already built instead (CI passes the published `wwwroot`); a
    relative path is taken from the folder the suite was started in.
 3. **Migrate.** The Migrator's `migrate`, which creates the catalog and the identity store and
-   provisions the two seed tenants with their development data.
+   provisions the two seed tenants with their development data. Both `dotnet run`s (this one and
+   the web host's) build with MSBuild's node reuse off (`MSBUILDDISABLENODEREUSE=1`): stopping the
+   host ends each `dotnet run`'s whole process tree, which would otherwise take with it the idle
+   worker nodes its build left for reuse, and fail any other build on the machine that was using
+   them (error MSB4166).
 4. **The web host.** `dotnet run --no-launch-profile` of `Tellma.Distro.Acme.Web` (so the SPA proxy
    is off) with `--webroot` set to the built app and `Tellma__PublicOrigin` set to the host's own
    origin, which also moves the in-process identity authority. Email goes to the **development mail

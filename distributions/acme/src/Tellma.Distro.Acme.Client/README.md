@@ -7,13 +7,14 @@ and one theme delta. Everything else, from the routes to the service worker, the
 | Path | Holds |
 |---|---|
 | `src/app.config.ts` | `appConfig`: one `provideTellma` call with the emitted metadata, the languages (`tmEnglish()`, the default, then `tmArabic()`) and the features, Acme's last |
-| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`): `acme.Customer`'s details page so far |
+| `src/app/acme.feature.ts` | `acmeFeature`, the client side of the server's `acme` feature (`AcmeFeature`): `acme.Customer`'s details page so far, and `gl.Center` under Administration in the launcher, standing in for the GL module's own client feature |
 | `src/app/customers/customer-details.ts` | The customer details layout, the body of `/{t}/customers/{id}`: the code, name, type and credit limit, labelled from the descriptors and shown as the record holds them; the host owns the record's lifecycle, modes, header and errors |
 | `src/main.ts` | The entry point: `bootstrapTellma(appConfig)`, which starts the framework's root component in `<tm-app>` |
 | `src/index.html` | `<base href="/">`, the manifest, the colour-scheme meta and `tm-boot.js` as the first script |
 | `src/styles.css` | The platform's stylesheets and Arabic's fonts, by import, then Acme's one theme delta, `--color-primary` in `@layer tm.theme` |
 | `public/` | `manifest.webmanifest`, the favicon and the three PNG icons (192, 512, maskable 512) |
 | `generated/` | Gitignored: the client metadata, string packs and loaders module the Migrator emits, and `tellma-entities.d.ts`, the typed entity model every `tsconfig` includes so rows and paths type-check by entity name |
+| `vitest-base.config.mjs` | The unit runner's configuration, which the test target names: `@tellma/core-tools`' Vitest preset, whose watchdog ends a run that stops making progress and reports what was pending |
 | `Tellma.Distro.Acme.Client.esproj` | The MSBuild project the web project references, so `dotnet publish` builds the app into its `wwwroot` |
 
 Acme ships no brand files of its own, so the build copies the platform's defaults from

@@ -234,7 +234,9 @@ export interface SelectChunksHold {
  * trigger's class names it), so the pager's size select cannot land until
  * the flow lets it. The context must block the service worker
  * (`serviceWorkers: 'block'`), which would answer the files from its own
- * cache once it claims the page.
+ * cache once it claims the page. The test must end the hold's route with
+ * `page.unrouteAll({ behavior: 'ignoreErrors' })` before it ends, since a
+ * file still being fetched then would fail the worker.
  *
  * @param page - The page.
  * @returns The hold.

@@ -17,10 +17,15 @@ import {
  * element's own children.
  *
  * This is Lucide's `IconNode` format, so an icon imported from the `lucide`
- * package (`import { HandCoins } from 'lucide'`) is a `TmIconNode` as it
- * stands. Attributes whose value is `undefined` are not drawn. The `key`
- * attribute some Lucide packages add for framework list rendering is not an
- * SVG attribute and is not drawn either.
+ * package is a `TmIconNode` as it stands. Import each icon from its own
+ * module (`import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs'`,
+ * typed by `@tellma/core-tools/lucide-icons`), never from the package's
+ * index: the index reaches every icon, so an app's first frame that imports
+ * it carries every icon its lazy chunks draw.
+ *
+ * Attributes whose value is `undefined` are not drawn. The `key` attribute
+ * some Lucide packages add for framework list rendering is not an SVG
+ * attribute and is not drawn either.
  */
 export type TmIconNode = readonly (readonly [
   tag: string,
@@ -188,7 +193,8 @@ export class TmIconRegistry {
    * Adds icons by name, replacing any earlier icon of the same name.
    *
    * @param icons - Kebab-case names mapped to icon data, e.g.
-   *   `{ 'hand-coins': HandCoins }` with `HandCoins` imported from `lucide`.
+   *   `{ 'hand-coins': HandCoins }` with `HandCoins` imported from its
+   *   `lucide` module.
    * @throws Error when a name is not kebab-case or any icon's data is
    *   refused; nothing from the call is registered then.
    */
@@ -235,7 +241,8 @@ export class TmIconRegistry {
  *
  * @example
  * ```ts
- * import { HandCoins } from 'lucide';
+ * /// <reference types="@tellma/core-tools/lucide-icons" />
+ * import HandCoins from 'lucide/dist/esm/icons/hand-coins.mjs';
  *
  * providers: [provideTellmaIcons({ 'hand-coins': HandCoins })]
  * ```

@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterRenderEffect,
   booleanAttribute,
@@ -19,12 +21,13 @@ import {
   ViewContainerRef,
 } from '@angular/core';
 import { AriaDescriber } from '@angular/cdk/a11y';
-import { Check, Copy } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import Copy from 'lucide/dist/esm/icons/copy.mjs';
 
 import { TM_UI_TRANSLATE, type TmControlSize } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { tmKeysText } from '@tellma/core-ui/kbd';
+import { tmKeysText } from '@tellma/core-ui/keys';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 import { TmTooltip, ɵTmTooltipController } from '@tellma/core-ui/tooltip';
 

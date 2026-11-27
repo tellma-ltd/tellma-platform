@@ -6,7 +6,7 @@
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TM_GRID_KEYS } from '@tellma/core-ui/grid';
-import { tmAriaKeyShortcuts, tmKeysText } from '@tellma/core-ui/kbd';
+import { tmAriaKeyShortcuts, tmKeysText } from '@tellma/core-ui/keys';
 import { ɵtmModalOpened, ɵtmRegisterBusy } from '@tellma/core-ui/overlay';
 
 import { TM_DEV_MODE } from '../app/tm-dev-mode';

@@ -3,9 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import { EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ChevronRight, Plus, X } from 'lucide';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
+import Plus from 'lucide/dist/esm/icons/plus.mjs';
+import X from 'lucide/dist/esm/icons/x.mjs';
 
 import { TmIconRegistry, provideTellmaIcons, type TmIconSource } from './tm-icon-registry';
 

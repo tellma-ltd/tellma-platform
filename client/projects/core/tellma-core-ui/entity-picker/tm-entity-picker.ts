@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   afterRenderEffect,
   booleanAttribute,
@@ -27,7 +29,9 @@ import { Combobox, ComboboxPopup, ComboboxWidget } from '@angular/aria/combobox'
 import { Listbox, Option } from '@angular/aria/listbox';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 import { transformedValue, type ParseResult, type ValidationError } from '@angular/forms/signals';
-import { Check, CircleAlert, Search } from 'lucide';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import CircleAlert from 'lucide/dist/esm/icons/circle-alert.mjs';
+import Search from 'lucide/dist/esm/icons/search.mjs';
 
 import type {
   SignalLike,

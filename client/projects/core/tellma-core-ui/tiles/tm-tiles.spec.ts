@@ -15,7 +15,7 @@ import { provideTellmaUi } from '@tellma/core-ui';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import type { TmGridRowActivation } from '@tellma/core-ui/grid';
 import { TM_BLOB_FETCHER, TmImage } from '@tellma/core-ui/image';
-import { tmIsApplePlatform } from '@tellma/core-ui/kbd';
+import { tmIsApplePlatform } from '@tellma/core-ui/keys';
 import { TmTilesTree } from '@tellma/core-ui/tiles-tree';
 import { tmEmitCss, tmTokensDefault } from '@tellma/core-ui-tokens';
 import { TmTilesHarness } from '@tellma/core-ui-testing';

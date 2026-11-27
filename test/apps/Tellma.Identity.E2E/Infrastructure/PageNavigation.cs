@@ -9,10 +9,12 @@ using System.Text.RegularExpressions;
 namespace Tellma.Identity.E2E.Infrastructure
 {
     /// <summary>
-    ///     Waits for the browser to arrive somewhere.
+    ///     Waits for the browser to arrive somewhere, and for the document it arrived at to have
+    ///     run its scripts.
     ///     <para>
-    ///         Every wait here asserts one thing — the address bar — and deliberately says nothing
-    ///         about the document's load state. <c>IPage.WaitForURLAsync</c> conflates the
+    ///         Every address wait here asserts one thing — the address bar — and deliberately says
+    ///         nothing about the document's load state; that is asked separately, of the document
+    ///         itself, by <see cref="WaitForScriptsAsync" />. <c>IPage.WaitForURLAsync</c> conflates the
     ///         two, and which of its two behaviours you get is a race: if the URL does not match
     ///         yet it waits for a matching navigation, but if it already matches it degenerates
     ///         into waiting for the <c>load</c> lifecycle event of the document that is already
@@ -23,8 +25,9 @@ namespace Tellma.Identity.E2E.Infrastructure
     ///         passes for months and then hangs for a full timeout on an unrelated change of pace.
     ///     </para>
     ///     <para>
-    ///         Nothing in this suite needs <c>load</c> anyway: what follows a wait is a locator,
-    ///         and locators wait for their own element on their own.
+    ///         Most steps need no load state at all: what follows a wait is a locator, and locators
+    ///         wait for their own element on their own. The exception is a control whose behaviour
+    ///         a script attaches, which a locator finds ready before it does anything.
     ///     </para>
     /// </summary>
     internal static class PageNavigation
@@ -90,6 +93,38 @@ namespace Tellma.Identity.E2E.Infrastructure
                 // are assertions.
                 return false;
             }
+        }
+
+        /// <summary>
+        ///     Waits until every script the current document includes has run, so a control whose
+        ///     only behaviour is a listener one of them attaches is ready to be pressed.
+        ///     <para>
+        ///         Locators cannot see this. The identity pages load their ceremony scripts at the
+        ///         end of the body, and while the parser waits on them the button above is already
+        ///         laid out, painted and actionable, so a press lands on a button with nothing
+        ///         behind it and silently does nothing. A slow script fetch on a loaded runner is
+        ///         all it takes. The document's ready state turns <c>complete</c> only once every
+        ///         script has run, whichever way it was loaded, and it belongs to the document the
+        ///         browser is showing, so it cannot be confused with a lifecycle event already
+        ///         reported for an earlier one.
+        ///     </para>
+        ///     <para>
+        ///         Call it once the browser is at the page, after a <see cref="WaitForPathAsync" />
+        ///         or <see cref="WaitForUrlAsync" /> for an address the previous page did not have;
+        ///         before then the question would be answered by the page being left.
+        ///     </para>
+        /// </summary>
+        /// <param name="page">The browser page.</param>
+        /// <param name="timeout">How long to allow, in milliseconds.</param>
+        /// <returns>A task that completes once the document's scripts have run.</returns>
+        public static async Task WaitForScriptsAsync(this IPage page, float timeout = DefaultTimeout)
+        {
+            ArgumentNullException.ThrowIfNull(page);
+
+            await page.WaitForFunctionAsync(
+                "() => document.readyState === 'complete'",
+                null,
+                new PageWaitForFunctionOptions { Timeout = timeout });
         }
 
         /// <summary>

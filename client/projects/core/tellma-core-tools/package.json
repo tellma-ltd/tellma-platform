@@ -1,7 +1,7 @@
 {
   "name": "@tellma/core-tools",
   "version": "0.1.0",
-  "description": "Node build tooling for Tellma distributions: the tellma-client command and the ESLint, stylelint and tsconfig presets.",
+  "description": "Node build tooling for Tellma distributions: the tellma-client command and the ESLint, stylelint, tsconfig and Vitest presets.",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -20,7 +20,14 @@
       "types": "./dist/stylelint/index.d.ts",
       "default": "./dist/stylelint/index.js"
     },
+    "./vitest": {
+      "types": "./dist/vitest/index.d.ts",
+      "default": "./dist/vitest/index.js"
+    },
     "./tsconfig.json": "./presets/tsconfig.json",
+    "./lucide-icons": {
+      "types": "./presets/lucide-icons.d.ts"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -40,18 +47,21 @@
     "@typescript-eslint/utils": "catalog:",
     "angular-eslint": "catalog:",
     "parse5": "catalog:",
+    "std-env": "catalog:",
     "tsx": "catalog:",
     "typescript-eslint": "catalog:"
   },
   "peerDependencies": {
     "eslint": "^10.6.0",
     "stylelint": "^17.14.0",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "vitest": "^4.1.9"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "eslint": "catalog:",
     "stylelint": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
