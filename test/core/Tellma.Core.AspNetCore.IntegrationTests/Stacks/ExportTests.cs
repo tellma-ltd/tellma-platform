@@ -17,7 +17,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
     ///     child query surfaces, each a real request through the composed host: the answer is a
     ///     workbook streamed as an attachment, and it carries the rows the request selected. A
     ///     center, a role with a permission and a user holding that role are saved first, so each
-    ///     export has a row of its own to find.
+    ///     export has a row of its own to find. Each background export start hands its export to a
+    ///     job and answers the job's id.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -58,6 +59,34 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             // --- The child query surfaces' exports, of the role's permission and of its membership ---
             AssertWorkbook(await admin.PostAsync(Tenant, "permissions/export", Export(["Resource", "Action"], byRole)), "gl.Center");
             AssertWorkbook(await admin.PostAsync(Tenant, "role-memberships/export", Export(["User.Email"], byRole)), "exported@example.com");
+        }
+
+        [Fact]
+        public async Task Every_center_user_role_and_child_surface_export_start_hands_the_export_to_a_job()
+        {
+            using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
+            int center = await CenterOperationTests.CreateAsync(admin, "EX-S", "Started center", await CenterOperationTests.RootAsync(admin));
+
+            // --- Each stack's start of an export by filter, and of an export for import by id ---
+            HashSet<int> jobs = [];
+            foreach ((string route, JsonObject body) in new[]
+            {
+                ("centers/export/start", Export(["Code"], "Code = 'EX-S'")),
+                ("centers/export-for-import/start", new JsonObject { ["ids"] = Wire.Array(center) }),
+                ("roles/export/start", Export(["Name"], "Name = 'Administrators'")),
+                ("roles/export-for-import/start", new JsonObject { ["ids"] = new JsonArray() }),
+                ("users/export/start", Export(["Email"], "Email = 'exported@example.com'")),
+                ("users/export-for-import/start", new JsonObject { ["ids"] = new JsonArray() }),
+                ("permissions/export/start", Export(["Resource"], "RoleId = 0")),
+                ("role-memberships/export/start", Export(["User.Email"], "RoleId = 0")),
+            })
+            {
+                JsonNode accepted = (await admin.PostAsync(Tenant, route, body)).Expect(HttpStatusCode.Accepted);
+
+                // An export inserts its row once its job ran, so the hand-off names no row yet.
+                Assert.True(jobs.Add(accepted["jobId"]!.GetValue<int>()), route);
+                Assert.Null(accepted["resourceId"]);
+            }
         }
 
         /// <summary>An export's body: the columns, each its own expression with no header of its own, and one filter.</summary>

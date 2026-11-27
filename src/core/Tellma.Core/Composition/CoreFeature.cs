@@ -292,14 +292,20 @@ namespace Tellma.Core.Composition
             // spec 0019 §12.1. Both are Query | Details | Delete | Enlist stacks: a row is only ever
             // written by a save its start or its job enlists, so neither registers a save securable.
             // Every member reads and deletes the rows they created; an import whose job may still run
-            // refuses a delete. The two blob kinds come from the rows' blob references.
+            // refuses a delete. The two blob kinds come from the rows' blob references. Spec 0019
+            // §12.3-§12.6: the background export and import handlers, and the notices each sends its
+            // requester once its row commits.
             _ = contribution
                 .Entity<Export, ExportService>()
                 .Model<ExportConfiguration>()
                 .Singleton<IAccessCriteriaProvider, ExportAccessCriteria>()
                 .Entity<Import, ImportService>()
                 .Model<ImportConfiguration>()
-                .Singleton<IAccessCriteriaProvider, ImportAccessCriteria>();
+                .Singleton<IAccessCriteriaProvider, ImportAccessCriteria>()
+                .JobHandler<ExportJobHandler>()
+                .JobHandler<ImportJobHandler>()
+                .NotificationType(ExcelJobs.ExportReadyDescriptor)
+                .NotificationType(ExcelJobs.ImportCompletedDescriptor);
 
             // --- Background jobs: the job and schedule tables, their machinery's tables and table types,
             // and the notices and client event a completion raises ---

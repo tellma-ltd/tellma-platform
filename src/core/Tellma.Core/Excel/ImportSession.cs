@@ -56,6 +56,15 @@ namespace Tellma.Core.Excel
         /// <summary>The cells of the workbook's columns, by sheet and letters, for an error's header.</summary>
         private readonly Dictionary<(string Sheet, string Column), string> _headers = new(SheetColumnComparer.Instance);
 
+        /// <summary>The rows at every depth of each position, computed on first use.</summary>
+        private int[]? _familySizes;
+
+        /// <summary>The furthest position each position names, computed on first use.</summary>
+        private int[]? _reach;
+
+        /// <summary>The parent rows' Excel rows ascending, computed on first use.</summary>
+        private int[]? _sortedSheetRows;
+
         /// <summary>Creates the session.</summary>
         /// <param name="shape">The facts the import resolves under.</param>
         /// <param name="parent">The parent sheet; null when the workbook binds none.</param>
@@ -255,6 +264,184 @@ namespace Tellma.Core.Excel
             }
 
             return ids;
+        }
+
+        // Spec 0019 §12.4 pass 2: a chunk holds parent rows from its first position to a boundary,
+        // with every row under them, and never crosses the save's ceilings. A boundary is safe when
+        // no row before it names a row of the workbook after it: the order already places a named
+        // new row first, so only a cycle's rows, and a row naming a stored row placed later, reach
+        // forward. The chunk ends at the last safe boundary within the requested size; when the
+        // size holds none it grows to the first safe boundary within the ceilings, so a cycle or a
+        // forward-named row is resolved with the rows naming it; only when the ceilings hold none
+        // either is it cut at the ceilings, where a named stored row is found by its lookup.
+        /// <summary>
+        ///     The last position of the chunk starting at a position: at most the requested parent
+        ///     rows, and never more parent rows or rows at every depth than one save takes.
+        /// </summary>
+        /// <param name="fromRow">The chunk's first position.</param>
+        /// <param name="chunkRows">The parent rows a chunk holds, as requested.</param>
+        /// <param name="maxParents">The parent rows one save takes: the parent ceiling.</param>
+        /// <param name="maxRows">The rows at every depth one save takes.</param>
+        /// <returns>The chunk's last position.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="fromRow" /> is not a position, or a bound is not positive.</exception>
+        public int ChunkEnd(int fromRow, int chunkRows, int maxParents, int maxRows)
+        {
+            CheckRange(fromRow, fromRow);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(chunkRows);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxParents);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxRows);
+
+            // --- The hard end: the most parent rows, and their rows at every depth, one save takes ---
+            // A single parent row always fits: the parse refused one with more rows than a save takes.
+            int last = Order.Count - 1;
+            int hard = fromRow;
+            long rows = FamilySize(fromRow);
+            while (hard < last && hard - fromRow + 1 < maxParents && rows + FamilySize(hard + 1) <= maxRows)
+            {
+                hard++;
+                rows += FamilySize(hard);
+            }
+
+            // --- The soft end, then the safe boundaries up to the hard one ---
+            int soft = Math.Min(hard, fromRow + chunkRows - 1);
+            int[] reach = Reach();
+            int furthest = -1;
+            int safeWithin = -1;
+            for (int end = fromRow; end <= hard; end++)
+            {
+                if (end > soft && safeWithin >= 0)
+                {
+                    return safeWithin;
+                }
+
+                furthest = Math.Max(furthest, reach[end]);
+                if (furthest <= end)
+                {
+                    if (end > soft)
+                    {
+                        // The requested size held no safe boundary: the first one past it.
+                        return end;
+                    }
+
+                    safeWithin = end;
+                }
+            }
+
+            return safeWithin >= 0 ? safeWithin : hard;
+        }
+
+        /// <summary>
+        ///     The workbook rows committed once a chunk commits after the rows already committed: as
+        ///     maximal runs of parent rows in ascending order, a run broken only by a parent row not
+        ///     committed, never by a blank row.
+        /// </summary>
+        /// <param name="committed">The runs committed before the chunk.</param>
+        /// <param name="fromRow">The chunk's first position.</param>
+        /// <param name="toRow">The chunk's last position.</param>
+        /// <returns>The runs.</returns>
+        public IReadOnlyList<RowRange> CommittedRanges(IReadOnlyList<RowRange> committed, int fromRow, int toRow)
+        {
+            ArgumentNullException.ThrowIfNull(committed);
+            CheckRange(fromRow, toRow);
+
+            // --- Every parent row committed: the earlier runs' rows and the chunk's ---
+            int[] sorted = SortedSheetRows();
+            HashSet<int> rows = [];
+            for (int position = fromRow; position <= toRow; position++)
+            {
+                _ = rows.Add(SheetRows[position]);
+            }
+
+            foreach (RowRange range in committed)
+            {
+                int index = LowerBound(sorted, range.From);
+                for (; index < sorted.Length && sorted[index] <= range.To; index++)
+                {
+                    _ = rows.Add(sorted[index]);
+                }
+            }
+
+            // --- The runs over the parent rows in Excel order ---
+            List<RowRange> runs = [];
+            int start = -1;
+            for (int index = 0; index <= sorted.Length; index++)
+            {
+                bool inRun = index < sorted.Length && rows.Contains(sorted[index]);
+                if (inRun && start < 0)
+                {
+                    start = index;
+                }
+                else if (!inRun && start >= 0)
+                {
+                    runs.Add(new RowRange(sorted[start], sorted[index - 1]));
+                    start = -1;
+                }
+            }
+
+            return runs;
+        }
+
+        /// <summary>The rows at every depth of the parent row at a position, the parent row included.</summary>
+        /// <param name="position">The position.</param>
+        /// <returns>The rows.</returns>
+        private int FamilySize(int position)
+        {
+            _familySizes ??= [.. Order.Select(static row => 1 + row.Descendants().Count())];
+            return _familySizes[position];
+        }
+
+        /// <summary>
+        ///     For each position, the furthest position its parent row or a row under it names in the
+        ///     workbook, the position itself when that is further.
+        /// </summary>
+        /// <returns>The reach of each position.</returns>
+        private int[] Reach()
+        {
+            if (_reach is null)
+            {
+                int[] reach = new int[Order.Count];
+                for (int position = 0; position < Order.Count; position++)
+                {
+                    int furthest = position;
+                    foreach (ImportRow row in Family(Order[position]))
+                    {
+                        foreach (ImportRow target in row.InSheetTargets?.Values ?? (IEnumerable<ImportRow>)[])
+                        {
+                            furthest = Math.Max(furthest, target.Position);
+                        }
+                    }
+
+                    reach[position] = furthest;
+                }
+
+                _reach = reach;
+            }
+
+            return _reach;
+        }
+
+        /// <summary>The parent rows' Excel rows, ascending.</summary>
+        /// <returns>The rows.</returns>
+        private int[] SortedSheetRows()
+        {
+            if (_sortedSheetRows is null)
+            {
+                int[] sorted = [.. SheetRows];
+                Array.Sort(sorted);
+                _sortedSheetRows = sorted;
+            }
+
+            return _sortedSheetRows;
+        }
+
+        /// <summary>The index of the first value at least a bound, in ascending values.</summary>
+        /// <param name="sorted">The values, ascending.</param>
+        /// <param name="bound">The bound.</param>
+        /// <returns>The index; the length when every value is below the bound.</returns>
+        private static int LowerBound(int[] sorted, int bound)
+        {
+            int index = Array.BinarySearch(sorted, bound);
+            return index >= 0 ? index : ~index;
         }
 
         /// <summary>

@@ -67,6 +67,7 @@ namespace Tellma.Core.Excel
             // --- Per scope: the request's context and the export and import runners over it ---
             services.TryAddScoped<ExcelContextFactory>();
             services.TryAddScoped<ExcelExports>();
+            services.TryAddScoped<ExcelJobStarts>();
 
             // A factory, as the store is the host's to register: a composition without one still
             // builds and validates, and the operations resolve the runner only when an inspection

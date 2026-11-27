@@ -22,10 +22,11 @@ namespace Tellma.Core.Excel
     /// </summary>
     /// <remarks>
     ///     A stack projects the display export when it serves <see cref="StackOperations.Export" />
-    ///     and the editable export when it serves <see cref="StackOperations.Import" />.
+    ///     and the editable export when it serves <see cref="StackOperations.Import" />. Each export
+    ///     and the import has a background route, which enqueues a job and answers at once.
     /// </remarks>
     /// <typeparam name="TEntity">The stack's leaf.</typeparam>
-    public sealed class ExcelOperations<TEntity>
+    public sealed class ExcelOperations<TEntity> : IEnlists<Import>, IExcelImportTarget
         where TEntity : class
     {
         /// <summary>The scope's export runner.</summary>
@@ -46,21 +47,38 @@ namespace Tellma.Core.Excel
         /// <summary>The stack's limits, whose save sizes bound a synchronous and an atomic import.</summary>
         private readonly StackLimits _limits;
 
+        /// <summary>
+        ///     The scope's start of the background routes, resolved when a route first needs it: a
+        ///     composition without the job queue still exports and imports in the request.
+        /// </summary>
+        private readonly Func<ExcelJobStarts> _starts;
+
         /// <summary>Binds the operations to the stack's service.</summary>
         /// <param name="exports">The scope's export runner.</param>
         /// <param name="imports">Resolves the scope's import runner, called only when an inspection or an import runs.</param>
         /// <param name="service">The stack's service, as the Excel operations reach it.</param>
         /// <param name="entity">The stack's entity metadata.</param>
         /// <param name="limits">The stack's limits.</param>
-        internal ExcelOperations(ExcelExports exports, Func<ExcelImports> imports, IStackExcelRows service, EntityMetadata entity, StackLimits limits)
+        /// <param name="starts">Resolves the scope's start of the background routes, called only when one runs.</param>
+        internal ExcelOperations(ExcelExports exports, Func<ExcelImports> imports, IStackExcelRows service, EntityMetadata entity, StackLimits limits, Func<ExcelJobStarts> starts)
         {
             ArgumentNullException.ThrowIfNull(entity);
             _service = service ?? throw new ArgumentNullException(nameof(service));
             _exports = exports ?? throw new ArgumentNullException(nameof(exports));
             _imports = imports ?? throw new ArgumentNullException(nameof(imports));
             _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+            _starts = starts ?? throw new ArgumentNullException(nameof(starts));
             _target = new ExportTarget(entity, service.ExcelRowSource, Child: false);
         }
+
+        /// <inheritdoc />
+        ExportTarget IExcelExportTarget.ExportTarget => _target;
+
+        /// <inheritdoc />
+        IStackExcelRows IExcelImportTarget.Service => _service;
+
+        /// <inheritdoc />
+        StackLimits IExcelImportTarget.Limits => _limits;
 
         /// <summary>
         ///     Exports the rows the grid shows as a workbook of the grid's columns: each navigation
@@ -81,6 +99,27 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
+        ///     Exports the rows the grid shows in the background: enqueues a job that writes the
+        ///     workbook under the caller's localization, keeps it as an export the caller downloads,
+        ///     and notifies the caller once it is ready.
+        /// </summary>
+        /// <param name="request">The rows, by ids or by the grid's clauses, and the columns.</param>
+        /// <param name="cancellationToken">Cancels the enqueue.</param>
+        /// <returns>The job; no export row exists until the job has a file for it.</returns>
+        /// <exception cref="BadRequestException">The request names its rows both ways or by no id, its columns are out of bounds, or it is too large for a job.</exception>
+        [ApiAction("export/start", Action = AccessActions.Read, Mutation = true, AllowWhenReadOnly = true, Idempotent = false)]
+        public Task<JobAccepted> StartExportAsync(ExportRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // A request the job could never run is refused here, before it is enqueued.
+            ExportSources.CheckColumns(request);
+            _ = ExportSources.Of(request, template: false, child: false);
+            ExcelJobStarts starts = _starts();
+            return starts.ExportAsync(new DisplayExportJobArguments(_service.Descriptor.Resource, starts.Culture, request), cancellationToken);
+        }
+
+        /// <summary>
         ///     Exports rows as a workbook the import reads back: identities, stamps, editable columns
         ///     and references in their keys, with a sheet per selected collection at every depth. An
         ///     empty id list exports the template: the headers, the validation lists and the manifest.
@@ -97,6 +136,26 @@ namespace Tellma.Core.Excel
         {
             ArgumentNullException.ThrowIfNull(request);
             return _exports.EditableAsync(_target, request, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Exports rows as a workbook the import reads back, in the background: enqueues a job that
+        ///     writes the workbook under the caller's localization, keeps it as an export the caller
+        ///     downloads, and notifies the caller once it is ready.
+        /// </summary>
+        /// <param name="request">The rows, by ids or by the grid's clauses, and the columns, keys and collections.</param>
+        /// <param name="cancellationToken">Cancels the enqueue.</param>
+        /// <returns>The job; no export row exists until the job has a file for it.</returns>
+        /// <exception cref="BadRequestException">The request names its rows both ways, or it is too large for a job.</exception>
+        [ApiAction("export-for-import/start", Action = AccessActions.Read, Mutation = true, AllowWhenReadOnly = true, Idempotent = false)]
+        public Task<JobAccepted> StartExportForImportAsync(ExportForImportRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // A request the job could never run is refused here, before it is enqueued.
+            _ = ExportSources.Of(request, template: true, child: false);
+            ExcelJobStarts starts = _starts();
+            return starts.ExportAsync(new ForImportExportJobArguments(_service.Descriptor.Resource, starts.Culture, request), cancellationToken);
         }
 
         /// <summary>
@@ -145,6 +204,35 @@ namespace Tellma.Core.Excel
             return _imports().ImportAsync<TEntity>(_service, _target.Entity, _limits, request, cancellationToken);
         }
 
+        /// <summary>
+        ///     Imports the caller's uploaded workbook in the background: keeps the request as an import
+        ///     that owns the upload, and enqueues the job that imports it in chunks, each committed with
+        ///     its checkpoint, so an interrupted import resumes where it stopped. With
+        ///     <see cref="StartImportRequest.Atomic" />, the whole file is one transaction.
+        /// </summary>
+        /// <param name="request">The upload, the mode, the row key, the overrides and whether the import is atomic.</param>
+        /// <param name="cancellationToken">Cancels the persist.</param>
+        /// <returns>The job and the import row.</returns>
+        /// <exception cref="BadRequestException">The request is malformed, names a collection the entity lacks, or is too large for a job.</exception>
+        /// <exception cref="ValidationException">The file is not the caller's own staged upload of an import file.</exception>
+        [ApiAction("import/start", Action = AccessActions.Save, Mutation = true, Idempotent = false)]
+        public Task<JobAccepted> StartImportAsync(StartImportRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+
+            // A request the job could never run is refused here, before the row is written.
+            ImportRequests.Check(_target.Entity, request);
+            return _starts().ImportAsync(this, _service.Descriptor.Resource, request, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        async Task<ImportSession> IExcelImportTarget.ParseAsync(IExcelImporter importer, Stream workbook, ImportRequest request, ExcelContext context, CancellationToken cancellationToken)
+        {
+            ArgumentNullException.ThrowIfNull(importer);
+            ExcelImportSession<TEntity> session = await importer.ParseAsync<TEntity>(workbook, _target.Entity, _limits, request, context, synchronous: false, cancellationToken).ConfigureAwait(false);
+            return session.Core;
+        }
+
         /// <summary>Creates the operations of the scope's stack over <typeparamref name="TEntity" />.</summary>
         /// <param name="services">The scope's services.</param>
         /// <returns>The operations.</returns>
@@ -158,7 +246,13 @@ namespace Tellma.Core.Excel
             EntityMetadata entity = services.GetRequiredService<IEntityMetadataProvider>().Get(typeof(TEntity));
 
             // The import runner needs the host's blob store, so it is resolved only when an inspection or an import runs.
-            return new ExcelOperations<TEntity>(services.GetRequiredService<ExcelExports>(), services.GetRequiredService<ExcelImports>, service, entity, stack.Limits);
+            return new ExcelOperations<TEntity>(
+                services.GetRequiredService<ExcelExports>(),
+                services.GetRequiredService<ExcelImports>,
+                service,
+                entity,
+                stack.Limits,
+                services.GetRequiredService<ExcelJobStarts>);
         }
     }
 }

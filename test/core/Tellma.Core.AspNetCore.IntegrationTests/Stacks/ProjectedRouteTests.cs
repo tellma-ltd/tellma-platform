@@ -49,8 +49,11 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
             "reports/share", "reports/publish", "reports/transfer",
             "centers/export", "centers/export-for-import", "users/export", "users/export-for-import", "roles/export", "roles/export-for-import",
             "permissions/export", "role-memberships/export",
+            "centers/export/start", "centers/export-for-import/start", "users/export/start", "users/export-for-import/start",
+            "roles/export/start", "roles/export-for-import/start", "permissions/export/start", "role-memberships/export/start",
             "centers/inspect-import", "users/inspect-import", "roles/inspect-import",
             "centers/import", "users/import", "roles/import",
+            "centers/import/start", "users/import/start", "roles/import/start",
             "exports/query", "exports/get", "exports/get-by-ids", "exports/delete",
             "imports/query", "imports/get", "imports/get-by-ids", "imports/delete",
         ];

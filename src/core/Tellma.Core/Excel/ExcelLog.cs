@@ -76,6 +76,27 @@ namespace Tellma.Core.Excel
             Message = "The import {ImportId} saves its chunk from row {FirstRow} again, attempt {Attempt}, after {Conflicts} rows changed since they were read.")]
         public static partial void ImportChunkRetried(ILogger logger, int? importId, int firstRow, int attempt, int conflicts);
 
+        /// <summary>A chunk of a background import committed with its checkpoint.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="importId">The import's id.</param>
+        /// <param name="nextRow">The position the next chunk starts at.</param>
+        /// <param name="rows">The parent rows the chunk committed.</param>
+        [LoggerMessage(
+            EventName = "ImportChunkCommitted",
+            Level = LogLevel.Information,
+            Message = "The import {ImportId} committed a chunk of {Rows} rows; the next chunk starts at position {NextRow}.")]
+        public static partial void ImportChunkCommitted(ILogger logger, int importId, int nextRow, int rows);
+
+        /// <summary>A background import resumed from its committed checkpoint.</summary>
+        /// <param name="logger">The logger.</param>
+        /// <param name="importId">The import's id.</param>
+        /// <param name="nextRow">The position it resumed at.</param>
+        [LoggerMessage(
+            EventName = "ImportResumed",
+            Level = LogLevel.Information,
+            Message = "The import {ImportId} resumed at position {NextRow} from its committed checkpoint.")]
+        public static partial void ImportResumed(ILogger logger, int importId, int nextRow);
+
         /// <summary>An import's shared strings outgrew their memory budget and spilled to scratch files.</summary>
         /// <param name="logger">The logger.</param>
         /// <param name="bytes">The bytes the shared strings were charged, text and overhead together.</param>

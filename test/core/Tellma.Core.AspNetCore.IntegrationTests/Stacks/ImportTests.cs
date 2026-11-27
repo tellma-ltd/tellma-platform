@@ -15,7 +15,8 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
     ///     uploaded as the caller's import file, its inspection answers the plan that maps it back,
     ///     same-source, every column mapped, and its import updates the row it came from, keeping a
     ///     user's membership of a role that has no code. An inspection or an import of an upload the
-    ///     caller does not hold is not found.
+    ///     caller does not hold is not found. Each background import start inserts the import's row
+    ///     and answers it with the job that runs it, and refuses an upload the caller does not hold.
     /// </summary>
     /// <param name="deployment">The suite's deployment.</param>
     [Trait("Category", "Integration")]
@@ -117,6 +118,30 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
 
             // --- An upload the caller does not hold ---
             _ = (await admin.PostAsync(Tenant, "centers/import", new JsonObject { ["fileId"] = int.MaxValue })).ExpectProblem(HttpStatusCode.NotFound, "not-found");
+        }
+
+        [Fact]
+        public async Task Every_center_user_and_role_import_start_inserts_its_import_row_and_hands_it_to_a_job()
+        {
+            using SpaClient admin = await deployment.SteppedUpAsync(deployment.Administrator);
+
+            // --- Each stack's empty editable export, uploaded and started as a background import ---
+            foreach (string stack in new[] { "centers", "roles", "users" })
+            {
+                ApiResponse exported = await admin.PostAsync(Tenant, $"{stack}/export-for-import", new JsonObject { ["ids"] = new JsonArray() });
+                Assert.True(exported.Status == HttpStatusCode.OK, exported.ToString());
+                int fileId = (await admin.UploadAsync(Tenant, ImportFile, exported.Body, Xlsx, $"{stack}-start.xlsx")).Expect(HttpStatusCode.Created)["id"]!.GetValue<int>();
+
+                JsonNode accepted = (await admin.PostAsync(Tenant, $"{stack}/import/start", new JsonObject { ["fileId"] = fileId })).Expect(HttpStatusCode.Accepted);
+
+                // --- The import's row, which names the job and owns the upload ---
+                int importId = accepted["resourceId"]!.GetValue<int>();
+                JsonObject row = Assert.Single(Wire.Entities((await admin.PostAsync(Tenant, "imports/get", new JsonObject { ["id"] = importId })).Expect(HttpStatusCode.OK)));
+                Assert.Equal((accepted["jobId"]!.GetValue<int>(), fileId), (row["jobId"]!.GetValue<int>(), row["fileId"]!.GetValue<int>()));
+            }
+
+            // --- An upload the caller does not hold: the row it would own is refused, and no job starts ---
+            _ = (await admin.PostAsync(Tenant, "centers/import/start", new JsonObject { ["fileId"] = int.MaxValue })).ExpectProblem(HttpStatusCode.UnprocessableEntity, "validation");
         }
     }
 }

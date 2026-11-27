@@ -82,6 +82,23 @@ namespace Tellma.Core.Crud
             return _contents.Value.ByLeaf.GetValueOrDefault(leaf);
         }
 
+        /// <summary>The leaf entity type of the stack that owns a resource: the type its service and companions close over.</summary>
+        /// <param name="resource">The stack's resource.</param>
+        /// <returns>The leaf; null when no stack owns the resource.</returns>
+        public Type? LeafOf(string resource)
+        {
+            ArgumentNullException.ThrowIfNull(resource);
+            foreach ((Type leaf, StackDescriptor stack) in _contents.Value.ByLeaf)
+            {
+                if (string.Equals(stack.Resource, resource, StringComparison.Ordinal))
+                {
+                    return leaf;
+                }
+            }
+
+            return null;
+        }
+
         /// <inheritdoc />
         public ChildQueryDescriptor? FindChildQuery(string resource)
         {

@@ -37,9 +37,12 @@ stack core.User
   action preferences/delete: entity Preferences filtered single args UserPreferenceKeysArguments; mutation, read-only-ok; result UserPreferencesResult; mcp Full, revision 0; -
   action invitation-status: api core.User:Read body IdsRequest handler UserService<User>; idempotent; result IReadOnlyList<InvitationStatus>; mcp Full, revision 0; -
   action export: api core.User:Read body ExportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api core.User:Read body ExportRequest handler ExcelOperations<User>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api core.User:Read body ExportForImportRequest handler ExcelOperations<User>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api core.User:Read body ExportForImportRequest handler ExcelOperations<User>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api core.User:Save body InspectImportRequest handler ExcelOperations<User>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api core.User:Save body ImportRequest handler ExcelOperations<User>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api core.User:Save body StartImportRequest handler ExcelOperations<User>; mutation; result JobAccepted; mcp Full, revision 0; -
 stack core.Role
   segment: roles
   entity: Tellma.Core.Abstractions.Access.Role
@@ -65,9 +68,12 @@ stack core.Role
   action activate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
   action deactivate: entity Activate built-in filtered args -; mutation, idempotent; result EntitiesResult<Role>; mcp Full, revision 0; -
   action export: api core.Role:Read body ExportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api core.Role:Read body ExportRequest handler ExcelOperations<Role>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api core.Role:Read body ExportForImportRequest handler ExcelOperations<Role>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api core.Role:Read body ExportForImportRequest handler ExcelOperations<Role>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api core.Role:Save body InspectImportRequest handler ExcelOperations<Role>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api core.Role:Save body ImportRequest handler ExcelOperations<Role>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api core.Role:Save body StartImportRequest handler ExcelOperations<Role>; mutation; result JobAccepted; mcp Full, revision 0; -
 stack core.Notification
   segment: notifications
   entity: Tellma.Core.Abstractions.Notifications.Notification
@@ -211,9 +217,12 @@ stack core.Schedule
   action take-over: entity Save filtered args -; mutation; result EntitiesResult<Schedule>; mcp Full, revision 0; Makes the caller the user each schedule's jobs run as.
   action run-now: entity Save filtered single args -; mutation; result JobAccepted; mcp Full, revision 0; Runs the schedule's job once, now.
   action export: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api core.Schedule:Read body ExportRequest handler ExcelOperations<Schedule>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api core.Schedule:Read body ExportForImportRequest handler ExcelOperations<Schedule>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api core.Schedule:Save body InspectImportRequest handler ExcelOperations<Schedule>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api core.Schedule:Save body ImportRequest handler ExcelOperations<Schedule>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api core.Schedule:Save body StartImportRequest handler ExcelOperations<Schedule>; mutation; result JobAccepted; mcp Full, revision 0; -
 stack core.Report
   segment: reports
   entity: Tellma.Core.Abstractions.Reports.Report
@@ -269,9 +278,12 @@ stack sm.SmGadget
   action prices/reprice: entity Reprice children args RepriceArguments; mutation, long; result int; mcp Full, revision 0; -
   action summary: api sm.SmGadget:Read body SummaryRequest handler GadgetService<SmGadget>; idempotent; result string; mcp Full, revision 0; -
   action export: api sm.SmGadget:Read body ExportRequest handler ExcelOperations<SmGadget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api sm.SmGadget:Read body ExportRequest handler ExcelOperations<SmGadget>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api sm.SmGadget:Read body ExportForImportRequest handler ExcelOperations<SmGadget>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api sm.SmGadget:Read body ExportForImportRequest handler ExcelOperations<SmGadget>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api sm.SmGadget:Save body InspectImportRequest handler ExcelOperations<SmGadget>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api sm.SmGadget:Save body ImportRequest handler ExcelOperations<SmGadget>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api sm.SmGadget:Save body StartImportRequest handler ExcelOperations<SmGadget>; mutation; result JobAccepted; mcp Full, revision 0; -
   action tally: api sm.SmGadget:Tally body - handler GadgetOperations<SmGadget>; -; result void; mcp Full, revision 0; -
   action count: api member-only body - handler GadgetOperations<SmGadget>; -; result int; mcp Full, revision 0; -
 stack sm.SmGizmo
@@ -297,9 +309,12 @@ stack sm.SmGizmo
   mcp: Full, revision 0
   feature: sm
   action export: api sm.SmGizmo:Read body ExportRequest handler ExcelOperations<SmGizmo>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api sm.SmGizmo:Read body ExportRequest handler ExcelOperations<SmGizmo>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api sm.SmGizmo:Read body ExportForImportRequest handler ExcelOperations<SmGizmo>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api sm.SmGizmo:Read body ExportForImportRequest handler ExcelOperations<SmGizmo>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api sm.SmGizmo:Save body InspectImportRequest handler ExcelOperations<SmGizmo>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api sm.SmGizmo:Save body ImportRequest handler ExcelOperations<SmGizmo>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api sm.SmGizmo:Save body StartImportRequest handler ExcelOperations<SmGizmo>; mutation; result JobAccepted; mcp Full, revision 0; -
 stack sm.SmSprocket
   segment: sprockets
   entity: Tellma.Core.Tests.Crud.SmSprocket
@@ -323,9 +338,12 @@ stack sm.SmSprocket
   mcp: Full, revision 0
   feature: sm
   action export: api sm.SmSprocket:Read body ExportRequest handler ExcelOperations<SmSprocket>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api sm.SmSprocket:Read body ExportRequest handler ExcelOperations<SmSprocket>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action export-for-import: api sm.SmSprocket:Read body ExportForImportRequest handler ExcelOperations<SmSprocket>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export-for-import/start: api sm.SmSprocket:Read body ExportForImportRequest handler ExcelOperations<SmSprocket>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
   action inspect-import: api sm.SmSprocket:Save body InspectImportRequest handler ExcelOperations<SmSprocket>; idempotent, long; result ImportPlan; mcp Full, revision 0; -
   action import: api sm.SmSprocket:Save body ImportRequest handler ExcelOperations<SmSprocket>; mutation, long; result ImportOutcome; mcp Full, revision 0; -
+  action import/start: api sm.SmSprocket:Save body StartImportRequest handler ExcelOperations<SmSprocket>; mutation; result JobAccepted; mcp Full, revision 0; -
 child core.RoleMembership
   segment: role-memberships
   entity: Tellma.Core.Abstractions.Access.RoleMembership
@@ -338,6 +356,7 @@ child core.RoleMembership
   limits: default
   mcp: Full
   action export: api core.RoleMembership:Read body ExportRequest handler ChildExportOperations<RoleMembership>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api core.RoleMembership:Read body ExportRequest handler ChildExportOperations<RoleMembership>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
 child core.Permission
   segment: permissions
   entity: Tellma.Core.Abstractions.Access.Permission
@@ -350,6 +369,7 @@ child core.Permission
   limits: default
   mcp: Full
   action export: api core.Permission:Read body ExportRequest handler ChildExportOperations<Permission>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api core.Permission:Read body ExportRequest handler ChildExportOperations<Permission>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
 child core.OutgoingEmailAttachment
   segment: outgoing-email-attachments
   entity: Tellma.Core.Abstractions.Email.OutgoingEmailAttachment
@@ -373,6 +393,7 @@ child sm.SmGadgetPart
   limits: default
   mcp: Full
   action export: api sm.SmGadgetPart:Read body ExportRequest handler ChildExportOperations<SmGadgetPart>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api sm.SmGadgetPart:Read body ExportRequest handler ChildExportOperations<SmGadgetPart>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
 child sm.SmGadgetPartNote
   segment: part-notes
   entity: Tellma.Core.Tests.Crud.SmGadgetPartNote
@@ -385,6 +406,7 @@ child sm.SmGadgetPartNote
   limits: default
   mcp: Full
   action export: api sm.SmGadgetPartNote:Read body ExportRequest handler ChildExportOperations<SmGadgetPartNote>; idempotent, long; result ExportOutcome; mcp Full, revision 0; -
+  action export/start: api sm.SmGadgetPartNote:Read body ExportRequest handler ChildExportOperations<SmGadgetPartNote>; mutation, read-only-ok; result JobAccepted; mcp Full, revision 0; -
 service access
   class: Tellma.Core.Access.AccessService
   feature: core
@@ -426,4 +448,12 @@ service sm-inbox
   action mark-read: api member-only body - handler InboxService; mutation; result void; mcp Full, revision 0; -
   action purge: api sm.Inbox:Purge body - handler InboxService; mutation, destructive; result int; mcp Full, revision 0; -
 enlistment Tellma.Core.Users.UserService<Tellma.Core.Abstractions.Access.User> -> core.User
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Abstractions.Access.User> -> core.Import
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Abstractions.Access.Role> -> core.Import
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Abstractions.Jobs.Schedule> -> core.Import
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Tests.Crud.SmGadget> -> core.Import
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Tests.Crud.SmGizmo> -> core.Import
+enlistment Tellma.Core.Excel.ExcelOperations<Tellma.Core.Tests.Crud.SmSprocket> -> core.Import
+enlistment Tellma.Core.Excel.ExportJobHandler -> core.Export
+enlistment Tellma.Core.Excel.ImportJobHandler -> core.Import
 enlistment Tellma.Core.Outbox.EmailOutbox -> core.OutgoingEmail

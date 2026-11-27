@@ -176,6 +176,12 @@
   <data name="Action_ExportForImport" xml:space="preserve">
     <value>تصدير للاستيراد</value>
   </data>
+  <data name="Action_ExportStart" xml:space="preserve">
+    <value>تصدير في الخلفية</value>
+  </data>
+  <data name="Action_ExportForImportStart" xml:space="preserve">
+    <value>تصدير للاستيراد في الخلفية</value>
+  </data>
   <data name="Arguments" xml:space="preserve">
     <value>المعاملات</value>
   </data>
@@ -221,6 +227,9 @@
   <data name="Action_Import" xml:space="preserve">
     <value>استيراد</value>
   </data>
+  <data name="Action_ImportStart" xml:space="preserve">
+    <value>استيراد في الخلفية</value>
+  </data>
   <data name="Mode" xml:space="preserve">
     <value>الوضع</value>
   </data>
@@ -232,6 +241,9 @@
   </data>
   <data name="IgnoreSheetStamps" xml:space="preserve">
     <value>تجاهل أوقات التعديل في الملف</value>
+  </data>
+  <data name="Atomic" xml:space="preserve">
+    <value>الكل أو لا شيء</value>
   </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
@@ -1198,6 +1210,58 @@
   </data>
   <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
     <value>{exported, select, true {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) بعد تصدير الملف. صدِّره مرة أخرى وأعد تعديلاتك.} other {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) أثناء استيراده. استورد الملف مرة أخرى.}}</value>
+  </data>
+  <!-- Background exports and imports: their failure codes, their jobs' labels and progress messages, their handlers' labels and their notices -->
+  <data name="Excel_Export_RowLimitExceeded" xml:space="preserve">
+    <value>يحتوي هذا التصدير على {actual, number} صف. الحد الأقصى الذي تتسع له الورقة {maximum, number}. ضيّق الصفوف ثم صدّر مرة أخرى.</value>
+  </data>
+  <data name="Excel_Import_TooLargeForAtomic" xml:space="preserve">
+    <value>هذا الملف أكبر من أن يُستورد دفعة واحدة: {rows, number} صف، والحد الأقصى المسموح به {maxRows, number}. استورده على أجزاء بدلًا من ذلك.</value>
+  </data>
+  <data name="Excel_Import_ResumeMismatch" xml:space="preserve">
+    <value>تغيّر الملف أو ربط أعمدته منذ بدء هذا الاستيراد، فلا يمكن متابعته من حيث توقف. ابدأ استيرادًا جديدًا.</value>
+  </data>
+  <data name="Excel_Import_Failed" xml:space="preserve">
+    <value>وجد الاستيراد أخطاء. افتحه لتطّلع عليها.</value>
+  </data>
+  <data name="Excel_Export_Label" xml:space="preserve">
+    <value>تصدير {entity}</value>
+  </data>
+  <data name="Excel_Import_Label" xml:space="preserve">
+    <value>استيراد {entity}</value>
+  </data>
+  <data name="Excel_Export_Progress" xml:space="preserve">
+    <value>كُتب {rows, plural, one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="Excel_Import_Parsing" xml:space="preserve">
+    <value>جارٍ قراءة الملف.</value>
+  </data>
+  <data name="Excel_Import_Resolving" xml:space="preserve">
+    <value>جارٍ البحث عن المراجع.</value>
+  </data>
+  <data name="Excel_Import_Validating" xml:space="preserve">
+    <value>جارٍ التحقق من الصفوف.</value>
+  </data>
+  <data name="Excel_Import_Saving" xml:space="preserve">
+    <value>جارٍ حفظ الصفوف.</value>
+  </data>
+  <data name="JobHandler_core_export" xml:space="preserve">
+    <value>التصدير إلى Excel</value>
+  </data>
+  <data name="JobHandler_core_import" xml:space="preserve">
+    <value>الاستيراد من Excel</value>
+  </data>
+  <data name="Notification_core_export_ready" xml:space="preserve">
+    <value>التصدير {fileName} جاهز: {rowCount, plural, one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="NotificationType_core_export_ready" xml:space="preserve">
+    <value>عمليات تصدير جاهزة للتنزيل</value>
+  </data>
+  <data name="Notification_core_import_completed" xml:space="preserve">
+    <value>انتهى استيراد {fileName}: {rowCount, plural, one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="NotificationType_core_import_completed" xml:space="preserve">
+    <value>عمليات استيراد انتهت</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

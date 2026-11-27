@@ -43,11 +43,15 @@ namespace Tellma.Core.Tests.Crud
             Assert.Equal((StackModel.Parts, "GadgetPart", "Notes"), (notes.OwnerResource, notes.OwnerNavigation, notes.Collection));
             Assert.Equal("part-notes", notes.ResourceSegment);
 
-            // An exportable surface carries the display export, under the child's read.
+            // An exportable surface carries the display export and its background start, under the child's read.
             Assert.True(parts.Exportable);
-            ApiActionDescriptor export = Assert.IsType<ApiActionDescriptor>(Assert.Single(parts.Actions));
-            Assert.Equal(("export", new SecurableRef(StackModel.Parts, AccessActions.Read), typeof(ChildExportOperations<SmGadgetPart>)), (export.Name, export.Securable, export.HandlerType));
-            Assert.Equal(["export"], notes.Actions.Select(static action => action.Name));
+            Assert.Equal(["export", "export/start"], parts.Actions.Select(static action => action.Name));
+            foreach (ApiActionDescriptor export in parts.Actions.Cast<ApiActionDescriptor>())
+            {
+                Assert.Equal((new SecurableRef(StackModel.Parts, AccessActions.Read), typeof(ChildExportOperations<SmGadgetPart>)), (export.Securable, export.HandlerType));
+            }
+
+            Assert.Equal(["export", "export/start"], notes.Actions.Select(static action => action.Name));
 
             // --- Every table of an aggregate belongs to its stack, compared as the database does ---
             Assert.Same(gadgets, registry.OwnerOf(new TableName("sm", "Gadgets")));
@@ -96,10 +100,10 @@ namespace Tellma.Core.Tests.Crud
             await using ServiceProvider provider = Compose(StackOperations.Query | StackOperations.Details | StackOperations.Export);
             IStackRegistry registry = provider.GetRequiredService<IStackRegistry>();
 
-            Assert.Equal(["export"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
+            Assert.Equal(["export", "export/start"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
             ChildQueryDescriptor parts = registry.FindChildQuery(StackModel.Parts)!;
             Assert.True(parts.Exportable);
-            Assert.Equal(["export"], parts.Actions.Select(static action => action.Name));
+            Assert.Equal(["export", "export/start"], parts.Actions.Select(static action => action.Name));
         }
 
         [Fact]
@@ -108,7 +112,7 @@ namespace Tellma.Core.Tests.Crud
             await using ServiceProvider provider = Compose(StackOperations.Query | StackOperations.Details | StackOperations.Save | StackOperations.Import);
             IStackRegistry registry = provider.GetRequiredService<IStackRegistry>();
 
-            Assert.Equal(["export-for-import", "inspect-import", "import"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
+            Assert.Equal(["export-for-import", "export-for-import/start", "inspect-import", "import", "import/start"], WorkbookActions(registry.Find(StackModel.Gadgets)!));
             ChildQueryDescriptor parts = registry.FindChildQuery(StackModel.Parts)!;
             Assert.False(parts.Exportable);
             Assert.Empty(parts.Actions);
@@ -146,7 +150,7 @@ namespace Tellma.Core.Tests.Crud
             StackDescriptor gadgets = registry.Find(StackModel.Gadgets)!;
 
             // --- Built-ins first, then the base class's actions, then the subclass's, then the workbook operations ---
-            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over", "export", "export-for-import", "inspect-import", "import"], gadgets.Actions.Select(static action => action.Name));
+            Assert.Equal(["activate", "deactivate", "archive", "prices/reprice", "summary", "take-over", "export", "export/start", "export-for-import", "export-for-import/start", "inspect-import", "import", "import/start"], gadgets.Actions.Select(static action => action.Name));
             EntityActionDescriptor archive = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[2]);
             EntityActionDescriptor reprice = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[3]);
             EntityActionDescriptor takeOver = Assert.IsType<EntityActionDescriptor>(gadgets.Actions[5]);

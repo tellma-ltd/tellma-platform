@@ -43,6 +43,12 @@ namespace Tellma.Core.Excel
         /// <summary>The unit of a count of chunks saved again.</summary>
         private const string SaveUnit = "{save}";
 
+        /// <summary>The unit of a count of committed chunks.</summary>
+        private const string ChunkUnit = "{chunk}";
+
+        /// <summary>The unit of a count of resumed imports.</summary>
+        private const string ImportUnit = "{import}";
+
         /// <summary>The rows each written export wrote to its parent sheet.</summary>
         private readonly Histogram<long> _rows;
 
@@ -70,6 +76,12 @@ namespace Tellma.Core.Excel
         /// <summary>The chunks saved again after rows changed since they were read.</summary>
         private readonly Counter<long> _importRetries;
 
+        /// <summary>The chunks each background import committed.</summary>
+        private readonly Histogram<long> _importChunks;
+
+        /// <summary>The background imports resumed from a checkpoint.</summary>
+        private readonly Counter<long> _importResumed;
+
         /// <summary>Creates the instruments on the platform meter.</summary>
         /// <param name="meterFactory">The host's meter factory, which owns the meter's lifetime.</param>
         public ExcelMetrics(IMeterFactory meterFactory)
@@ -87,6 +99,8 @@ namespace Tellma.Core.Excel
             _importLookups = meter.CreateHistogram<long>(ExcelTelemetryNames.ImportLookups, QueryUnit, "Reference resolution queries an import ran.");
             _importErrors = meter.CreateCounter<long>(ExcelTelemetryNames.ImportErrors, ErrorUnit, "Import errors reported, by code.");
             _importRetries = meter.CreateCounter<long>(ExcelTelemetryNames.ImportRetries, SaveUnit, "Import chunks saved again after rows changed since they were read.");
+            _importChunks = meter.CreateHistogram<long>(ExcelTelemetryNames.ImportChunks, ChunkUnit, "Chunks a background import committed in the attempt that ended it.");
+            _importResumed = meter.CreateCounter<long>(ExcelTelemetryNames.ImportResumed, ImportUnit, "Background imports resumed from a committed checkpoint.");
         }
 
         /// <summary>The shape tag of an export kind.</summary>
@@ -186,6 +200,21 @@ namespace Tellma.Core.Excel
         public void ImportRetried(string entity)
         {
             _importRetries.Add(1, new KeyValuePair<string, object?>(ExcelTelemetryNames.EntityTag, entity));
+        }
+
+        /// <summary>Records the chunks a background import committed in the attempt that ended it, a success or a failure.</summary>
+        /// <param name="entity">The imported entity's name.</param>
+        /// <param name="chunks">The chunks.</param>
+        public void ImportChunks(string entity, int chunks)
+        {
+            _importChunks.Record(chunks, new KeyValuePair<string, object?>(ExcelTelemetryNames.EntityTag, entity));
+        }
+
+        /// <summary>Records a background import resumed from a committed checkpoint.</summary>
+        /// <param name="entity">The imported entity's name.</param>
+        public void ImportResumed(string entity)
+        {
+            _importResumed.Add(1, new KeyValuePair<string, object?>(ExcelTelemetryNames.EntityTag, entity));
         }
 
         /// <summary>Records an imported workbook whose shared strings spilled to scratch files.</summary>

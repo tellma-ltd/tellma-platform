@@ -13,6 +13,7 @@ using Tellma.Core.Abstractions.Crud;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Tenancy;
 using Tellma.Core.Blobs;
 
@@ -24,15 +25,22 @@ namespace Tellma.Core.Excel
     // connection is held across file I/O. A synchronous operation leaves the upload staged.
     /// <summary>
     ///     The import runner of a scope: the request's checks, the upload's intake, the importer over
-    ///     it, and the synchronous import's one save with its lookups, hydration and stamp retries.
+    ///     it, the synchronous import's one save and a background import's chunk saves, each with its
+    ///     lookups, hydration and stamp retries.
     /// </summary>
-    internal sealed class ExcelImports
+    internal sealed partial class ExcelImports
     {
         /// <summary>The resource a missing upload is reported under.</summary>
         public const string BlobResource = "core.Blob";
 
         /// <summary>The argument that marks an unconfirmed warning, which the import can run again with confirmed.</summary>
         public const string ConfirmableArgument = "confirmable";
+
+        /// <summary>The argument of a background chunk's warning that names the sheet of the row it is about.</summary>
+        public const string SheetArgument = "sheet";
+
+        /// <summary>The argument of a background chunk's warning that names the Excel row it is about.</summary>
+        public const string RowArgument = "row";
 
         /// <summary>The bytes each read of the upload's copy moves.</summary>
         private const int CopyBufferSize = 81_920;
@@ -193,9 +201,28 @@ namespace Tellma.Core.Excel
         /// <exception cref="ImportException">The upload is above the package limit.</exception>
         public async Task<FileStream> OpenAsync(int fileId, CancellationToken cancellationToken)
         {
-            // --- The caller's own staged upload, else nothing the caller may tell apart ---
+            (FileStream copy, _) = await OpenAsync(fileId, BlobState.Staged, cancellationToken).ConfigureAwait(false);
+            return copy;
+        }
+
+        /// <summary>
+        ///     Resolves an import file in a state and copies its bytes to a scratch file, refusing a
+        ///     file above the package limit before or while it is copied.
+        /// </summary>
+        /// <param name="fileId">The file's id.</param>
+        /// <param name="state">
+        ///     The state the file must be in: staged for the caller's own upload a synchronous
+        ///     operation reads, committed for the file an import row owns.
+        /// </param>
+        /// <param name="cancellationToken">Cancels the read and the copy.</param>
+        /// <returns>The scratch file, positioned at its start and gone when it is disposed, with the file as resolved.</returns>
+        /// <exception cref="NotFoundException">The file is not one the caller may read in that state, or its bytes are gone.</exception>
+        /// <exception cref="ImportException">The file is above the package limit.</exception>
+        private async Task<(FileStream Copy, BlobDownload Download)> OpenAsync(int fileId, BlobState state, CancellationToken cancellationToken)
+        {
+            // --- A file the caller may read in the state, else nothing the caller may tell apart ---
             BlobDownload? download = await _blobs.ResolveAsync(Import.FileKind, fileId, variant: null, cancellationToken).ConfigureAwait(false);
-            if (download is not { State: BlobState.Staged })
+            if (download is null || download.State != state)
             {
                 throw Missing(fileId);
             }
@@ -217,7 +244,7 @@ namespace Tellma.Core.Excel
                 {
                     await CopyAsync(content.Content, copy, cancellationToken).ConfigureAwait(false);
                     copy.Position = 0;
-                    return copy;
+                    return (copy, download);
                 }
                 catch
                 {
@@ -257,9 +284,29 @@ namespace Tellma.Core.Excel
                 return (new ImportOutcome(0, 0, 0, 0, 0, [], session.Warnings), 0, 0);
             }
 
-            // --- The lookups in one round trip, then the stored rows the import overlays in another ---
+            // --- The lookups and the stored rows, then the save, the whole file in one transaction ---
             int last = session.Order.Count - 1;
-            IReadOnlyList<ExcelQuery> queries = session.LookupsFor(0, last);
+            ChunkSave save = new(service, entity, session, 0, last, CommittedNewIds: new Dictionary<long, long>(), OnValidating: null, OnPersist: null, ImportId: null);
+            (ImportChunkFacts facts, int lookups) = await SaveAsync(save, cancellationToken).ConfigureAwait(false);
+            RowRange committed = new(session.SheetRows.Min(), session.SheetRows.Max());
+            ImportOutcome outcome = new(facts.Inserted, facts.Updated, facts.ChildrenInserted, facts.ChildrenUpdated, facts.ChildrenDeleted, [committed], session.Warnings);
+            return (outcome, session.Order.Count, lookups);
+        }
+
+        /// <summary>
+        ///     Reads a chunk's lookups in one round trip and the stored rows it overlays in another,
+        ///     then resolves and saves it.
+        /// </summary>
+        /// <param name="save">The chunk and how it is saved.</param>
+        /// <param name="cancellationToken">Cancels the reads and the save.</param>
+        /// <returns>What the save committed, and the lookup queries run.</returns>
+        /// <exception cref="ImportException">Resolution or the save found an error.</exception>
+        /// <exception cref="ConfirmationRequiredException">A background chunk raised warnings its job carries no consent for.</exception>
+        private async Task<(ImportChunkFacts Facts, int Lookups)> SaveAsync(ChunkSave save, CancellationToken cancellationToken)
+        {
+            // --- The lookups in one round trip ---
+            (IStackExcelRows service, _, ImportSession session, int fromRow, int toRow, _, _, _, _) = save;
+            IReadOnlyList<ExcelQuery> queries = session.LookupsFor(fromRow, toRow);
             Dictionary<ExcelQuery, IReadOnlyList<IReadOnlyList<object?>>> lookupRows = [];
             if (queries.Count > 0)
             {
@@ -270,56 +317,58 @@ namespace Tellma.Core.Excel
                 }
             }
 
-            IReadOnlyList<long> ids = session.HydrationIds(0, last, lookupRows);
+            // --- The stored rows the chunk overlays in another, then the save ---
+            IReadOnlyList<long> ids = session.HydrationIds(fromRow, toRow, lookupRows);
             IReadOnlyList<object> hydrated = ids.Count == 0 ? [] : await service.HydrateAsync(ids, cancellationToken).ConfigureAwait(false);
-
-            // --- The save, the whole file in one transaction ---
-            ImportChunkFacts facts = await SaveAsync(service, entity, session, lookupRows, hydrated, cancellationToken).ConfigureAwait(false);
-            RowRange committed = new(session.SheetRows.Min(), session.SheetRows.Max());
-            ImportOutcome outcome = new(facts.Inserted, facts.Updated, facts.ChildrenInserted, facts.ChildrenUpdated, facts.ChildrenDeleted, [committed], session.Warnings);
-            return (outcome, session.Order.Count, queries.Count);
+            ImportChunkFacts facts = await SaveAsync(save, lookupRows, hydrated, cancellationToken).ConfigureAwait(false);
+            return (facts, queries.Count);
         }
 
         // Spec 0019 §11.2-§11.3: a stamp conflict on rows whose expected stamps came from hydration is
         // retried with those rows read again; any other failure of the save is mapped to the cells
-        // that produced it, and the import fails whole.
+        // that produced it, and the chunk fails whole. A synchronous import is one chunk of every row.
+        // Spec 0019 §12.4-§12.5: a background chunk's save carries its checkpoint, appended by the
+        // persist; its unconfirmed warnings leave the job waiting for its initiator, each at its row,
+        // and a lost lease, which the checkpoint's fence raises inside the save, rolls it back.
         /// <summary>
-        ///     Resolves and saves every row of a session in one transaction, reading again and saving
+        ///     Resolves and saves the rows of a chunk in one transaction, reading again and saving
         ///     again the rows that changed after they were read, within the retries allowed.
         /// </summary>
-        /// <param name="service">The stack's service.</param>
-        /// <param name="entity">The stack's entity.</param>
-        /// <param name="session">The parsed import.</param>
-        /// <param name="lookupRows">Each lookup with the rows it read.</param>
-        /// <param name="hydrated">The stored rows the import overlays.</param>
+        /// <param name="save">The chunk and how it is saved.</param>
+        /// <param name="lookupRows">Each of the chunk's lookups with the rows it read.</param>
+        /// <param name="hydrated">The stored rows the chunk overlays.</param>
         /// <param name="cancellationToken">Cancels the save.</param>
         /// <returns>What the save committed.</returns>
         /// <exception cref="ImportException">Resolution or the save found an error.</exception>
+        /// <exception cref="ConfirmationRequiredException">A background chunk raised warnings its job carries no consent for.</exception>
+        /// <exception cref="OperationCanceledException">A background chunk's job lost its lease while the chunk was saved.</exception>
         private async Task<ImportChunkFacts> SaveAsync(
-            IStackExcelRows service,
-            EntityMetadata entity,
-            ImportSession session,
+            ChunkSave save,
             IReadOnlyDictionary<ExcelQuery, IReadOnlyList<IReadOnlyList<object?>>> lookupRows,
             IReadOnlyList<object> hydrated,
             CancellationToken cancellationToken)
         {
-            SaveOptions options = new()
-            {
-                ReturnEntities = false,
-                Details = DetailsRequest.None,
-                Concurrency = ConcurrencyMode.Check,
-                Source = SaveSource.Import,
-            };
-
-            int last = session.Order.Count - 1;
+            (IStackExcelRows service, EntityMetadata entity, ImportSession session, int fromRow, int toRow, _, _, _, int? importId) = save;
             for (int attempt = 0; ; attempt++)
             {
                 // --- Resolution: a pure function of the rows read, run again on each retry ---
-                ImportChunk chunk = session.Resolve(0, last, lookupRows, hydrated, new Dictionary<long, long>());
+                ImportChunk chunk = session.Resolve(fromRow, toRow, lookupRows, hydrated, save.CommittedNewIds);
                 if (chunk.Errors.Count > 0)
                 {
                     throw session.Refusal(chunk.Errors, _options.MaxReportedErrors);
                 }
+
+                // A re-save carries the same delegate over the chunk it resolved this time.
+                save.OnValidating?.Invoke();
+                Action<IDataBatch>? onPersist = save.OnPersist is Action<IDataBatch, ImportChunk> persist ? batch => persist(batch, chunk) : null;
+                SaveOptions options = new()
+                {
+                    ReturnEntities = false,
+                    Details = DetailsRequest.None,
+                    Concurrency = ConcurrencyMode.Check,
+                    Source = SaveSource.Import,
+                    OnPersist = onPersist,
+                };
 
                 try
                 {
@@ -330,12 +379,22 @@ namespace Tellma.Core.Excel
                 {
                     // --- The rows changed since hydration: read them again and resolve over the fresh rows ---
                     _metrics.ImportRetried(entity.Name);
-                    ExcelLog.ImportChunkRetried(_logger, importId: null, session.SheetRows[0], attempt + 1, conflict.Conflicts.Count);
+                    ExcelLog.ImportChunkRetried(_logger, importId, session.SheetRows[fromRow], attempt + 1, conflict.Conflicts.Count);
                     hydrated = await RehydrateAsync(service, entity, hydrated, [.. conflict.Conflicts.Select(static row => row.Id)], cancellationToken).ConfigureAwait(false);
+                }
+                catch (ValidationException invalid) when (save.Background && invalid.Errors.Any(static error => error.Code == JobErrorCodes.LeaseLost))
+                {
+                    // The checkpoint's lease fence, which the save reports as an invariant: the chunk
+                    // rolled back with its checkpoint, and the next attempt resumes before it.
+                    throw new OperationCanceledException("The job's lease was lost while a chunk of the import was saved; the chunk rolled back with its checkpoint.", invalid);
                 }
                 catch (ValidationException invalid)
                 {
                     throw session.Refusal([.. invalid.Errors.Select(error => session.Translate(error, chunk.CoordinateMap))], _options.MaxReportedErrors);
+                }
+                catch (ConfirmationRequiredException unconfirmed) when (save.Background)
+                {
+                    throw new ConfirmationRequiredException(Pending(session, unconfirmed, RowsById(entity, chunk)));
                 }
                 catch (ConfirmationRequiredException unconfirmed)
                 {
@@ -368,11 +427,14 @@ namespace Tellma.Core.Excel
                 rows[row.Id] = row;
             }
 
-            foreach (ImportChunkRow row in chunk.Facts.Rows)
+            // The chunk's entities and its rows' facts are built side by side, so each row's entity
+            // is at its index in the chunk; its position is the session's, which a later chunk
+            // starts past zero.
+            for (int index = 0; index < chunk.Facts.Rows.Count; index++)
             {
-                if (entity.Key.Getter(chunk.Entities[row.Position]) is object id)
+                if (entity.Key.Getter(chunk.Entities[index]) is object id)
                 {
-                    _ = rows.TryAdd(Convert.ToInt64(id, CultureInfo.InvariantCulture), row);
+                    _ = rows.TryAdd(Convert.ToInt64(id, CultureInfo.InvariantCulture), chunk.Facts.Rows[index]);
                 }
             }
 
@@ -433,6 +495,46 @@ namespace Tellma.Core.Excel
             }
 
             return errors;
+        }
+
+        /// <summary>
+        ///     The warnings a background chunk waits on: one request per warning and row it names,
+        ///     its arguments adding the row's sheet and Excel row; a warning naming no row, or a row
+        ///     the chunk does not hold, as it was raised.
+        /// </summary>
+        /// <param name="session">The parsed import.</param>
+        /// <param name="unconfirmed">The warnings.</param>
+        /// <param name="rows">The chunk's parent rows by their payload ids.</param>
+        /// <returns>The requests.</returns>
+        private static List<ConfirmationRequest> Pending(ImportSession session, ConfirmationRequiredException unconfirmed, Dictionary<long, ImportChunkRow> rows)
+        {
+            List<ConfirmationRequest> requests = [];
+            foreach (ConfirmationRequest request in unconfirmed.Requests)
+            {
+                if (request.Ids.Count == 0)
+                {
+                    requests.Add(request);
+                    continue;
+                }
+
+                foreach (long id in request.Ids)
+                {
+                    if (!rows.TryGetValue(id, out ImportChunkRow? row))
+                    {
+                        requests.Add(new ConfirmationRequest(request.Key, [id], request.Arguments));
+                        continue;
+                    }
+
+                    ImportError placed = session.AtRow(row, column: null, request.Key, request.Arguments);
+                    requests.Add(new ConfirmationRequest(request.Key, [id], new Dictionary<string, object?>(request.Arguments, StringComparer.Ordinal)
+                    {
+                        [SheetArgument] = placed.Sheet,
+                        [RowArgument] = placed.Row,
+                    }));
+                }
+            }
+
+            return requests;
         }
 
         /// <summary>
@@ -555,6 +657,31 @@ namespace Tellma.Core.Excel
         private static NotFoundException Missing(int fileId)
         {
             return new NotFoundException(BlobResource, [fileId.ToString(CultureInfo.InvariantCulture)]);
+        }
+
+        /// <summary>A chunk to save, and how: the stack, the session's positions, the ids earlier chunks gave, and a background chunk's checkpoint.</summary>
+        /// <param name="Service">The stack's service.</param>
+        /// <param name="Entity">The stack's entity.</param>
+        /// <param name="Session">The parsed import.</param>
+        /// <param name="FromRow">The chunk's first position.</param>
+        /// <param name="ToRow">The chunk's last position.</param>
+        /// <param name="CommittedNewIds">The ids an earlier chunk's new rows were given, by their negative sheet identity.</param>
+        /// <param name="OnValidating">Called once the chunk resolved and before each save of it; null for none.</param>
+        /// <param name="OnPersist">A background chunk's statements on its persist batch, given the chunk as resolved; null for a synchronous import.</param>
+        /// <param name="ImportId">A background import's id; null for a synchronous import.</param>
+        private sealed record ChunkSave(
+            IStackExcelRows Service,
+            EntityMetadata Entity,
+            ImportSession Session,
+            int FromRow,
+            int ToRow,
+            IReadOnlyDictionary<long, long> CommittedNewIds,
+            Action? OnValidating,
+            Action<IDataBatch, ImportChunk>? OnPersist,
+            int? ImportId)
+        {
+            /// <summary>Whether the chunk is a background import's.</summary>
+            public bool Background => ImportId is not null;
         }
     }
 }

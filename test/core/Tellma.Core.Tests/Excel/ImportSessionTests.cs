@@ -9,6 +9,7 @@ using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Excel;
 using Tellma.Core.Abstractions.Validation;
 using Tellma.Core.Excel;
+using Tellma.Core.Tests.Excel.Corpus;
 using Tellma.Core.Tests.Localization;
 using Tellma.Testing.Entities;
 
@@ -19,7 +20,8 @@ namespace Tellma.Core.Tests.Excel
     ///     export: the uniqueness of row keys within the file, the links of child rows at every depth,
     ///     the per-owner counts, the self-reference order and its cycles, the order's fingerprint, the
     ///     binding of new rows within a chunk and across chunks, the completeness of a child sheet
-    ///     over stored children, the coordinate map, and the cap on the errors reported.
+    ///     over stored children, the coordinate map, the cap on the errors reported, and the chunks a
+    ///     background import saves its rows in.
     /// </summary>
     /// <param name="composition">The fixture model with its labels, composed once for the class.</param>
     public sealed class ImportSessionTests(FixtureLabelsComposition composition) : IClassFixture<FixtureLabelsComposition>, IDisposable
@@ -329,6 +331,101 @@ namespace Tellma.Core.Tests.Excel
             Assert.Equal(1, session.RowCount);
         }
 
+        [Fact]
+        public async Task A_child_row_naming_a_new_parent_row_places_the_named_row_first_and_keeps_its_id_for_a_later_chunk()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            byte[] workbook = NodesWithLinks([(-1, "A"), (-2, "B")], [(-1, -2)]);
+
+            ExcelImportSession<Node> session = await _kit.ParseAsync<Node>(workbook, scope.Context);
+
+            // --- B is named by A's link, so B saves first; A's chunk binds it by its committed id ---
+            Assert.Equal([3, 2], session.SheetRows);
+            Assert.Equal([-2L], session.ReferencedFrom(1));
+            Assert.Equal(0, session.Core.ChunkEnd(0, chunkRows: 1, maxParents: 10, maxRows: 100));
+            ExcelChunk<Node> first = session.Resolve(0, 0, NoLookups, [], NoCommitted);
+            first.Entities[0].Id = 700;
+            Assert.Equal(new Dictionary<long, long> { [-2] = 700 }, session.LaterReferencedIds(0, 0, first));
+            ExcelChunk<Node> second = session.Resolve(1, 1, NoLookups, [], new Dictionary<long, long> { [-2] = 700 });
+            Assert.Empty(second.Errors);
+            Assert.Equal(700, Assert.Single(second.Entities[0].Links!).OtherNodeId);
+        }
+
+        [Fact]
+        public async Task A_cycle_through_child_rows_is_refused_at_each_child_cell_that_closes_it()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en");
+            byte[] workbook = NodesWithLinks([(-1, "A"), (-2, "B"), (-3, "C")], [(-1, -2), (-2, -1), (-3, -1)]);
+
+            ImportException refused = await Assert.ThrowsAsync<ImportException>(() => _kit.ParseAsync<Node>(workbook, scope.Context));
+
+            // C names A from outside the cycle, so only the two links on it are refused.
+            Assert.Equal([("Links", 2, "B"), ("Links", 3, "B")], refused.Errors.Select(static error => (error.Sheet!, error.Row!.Value, error.Column!)));
+            Assert.All(refused.Errors, static error => Assert.Equal((ExcelErrorCodes.ImportParentCycle, "OtherNode.Id"), (error.Code, error.Arguments["path"])));
+            Assert.Equal([2L, 3L], (long[])refused.Errors[0].Arguments["rows"]!);
+        }
+
+        [Fact]
+        public async Task A_chunk_ends_within_its_size_at_a_boundary_no_row_reaches_past_and_grows_to_one_only_within_the_ceilings()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] workbook = await NodesAsync(scope, Node(code: "A", parent: "B"), Node(code: "B", parent: "A"), Node(code: "C"), Node(code: "D"));
+            ImportRequest upsert = new() { FileId = 1, Mode = ImportMode.Upsert, RowKey = "Code" };
+
+            // An upsert cannot tell whether A and B are new, so the cycle between them is left for
+            // resolution, and a chunk boundary between them would leave it unchecked.
+            ImportSession session = (await _kit.ParseAsync<Node>(workbook, scope.Context, upsert)).Core;
+
+            // The rows on the cycle are placed after the others, A at position 2 naming B at 3.
+            Assert.Equal([4, 5, 2, 3], session.SheetRows);
+            Assert.Equal(0, session.ChunkEnd(0, chunkRows: 1, maxParents: 10, maxRows: 100));
+            Assert.Equal(1, session.ChunkEnd(0, chunkRows: 3, maxParents: 10, maxRows: 100));
+            Assert.Equal(3, session.ChunkEnd(0, chunkRows: 10, maxParents: 10, maxRows: 100));
+            Assert.Equal(3, session.ChunkEnd(2, chunkRows: 1, maxParents: 10, maxRows: 100));
+
+            // --- The ceilings hold no safe boundary: the chunk is cut at them ---
+            Assert.Equal(2, session.ChunkEnd(2, chunkRows: 1, maxParents: 1, maxRows: 100));
+            Assert.Equal(2, session.ChunkEnd(2, chunkRows: 10, maxParents: 10, maxRows: 1));
+        }
+
+        [Fact]
+        public async Task A_chunk_counts_every_row_under_its_parent_rows_against_the_rows_one_save_takes()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] workbook = await WidgetsAsync(
+                scope,
+                [Widget(-1, "W-1"), Widget(-2, "W-2"), Widget(-3, "W-3")],
+                [Part(-1, -11, 1), Part(-1, -12, 2), Part(-3, -31, 1)],
+                [Note(-11, "first"), Note(-31, "second")]);
+
+            ImportSession session = (await _kit.ParseAsync<Widget>(workbook, scope.Context)).Core;
+
+            // W-1 holds four rows at every depth, W-2 one, and W-3 three.
+            Assert.Equal(0, session.ChunkEnd(0, chunkRows: 10, maxParents: 10, maxRows: 4));
+            Assert.Equal(1, session.ChunkEnd(0, chunkRows: 10, maxParents: 10, maxRows: 7));
+            Assert.Equal(2, session.ChunkEnd(0, chunkRows: 10, maxParents: 10, maxRows: 8));
+            Assert.Equal(1, session.ChunkEnd(0, chunkRows: 10, maxParents: 2, maxRows: 100));
+            Assert.Equal(2, session.ChunkEnd(1, chunkRows: 2, maxParents: 10, maxRows: 4));
+        }
+
+        [Fact]
+        public async Task The_committed_runs_join_each_chunks_rows_in_excel_order_and_a_row_not_yet_committed_breaks_them()
+        {
+            using ExportScope scope = new(composition.Services, "en", "en", "ar");
+            byte[] workbook = await NodesAsync(scope, Node(code: "D", parent: "C"), Node(code: "E"), Node(code: "C"), Node(code: "F"));
+
+            ImportSession session = (await _kit.ParseAsync<Node>(workbook, scope.Context)).Core;
+
+            // The order places C (row 4) before D (row 2), which names it.
+            Assert.Equal([3, 4, 2, 5], session.SheetRows);
+            IReadOnlyList<RowRange> first = session.CommittedRanges([], 0, 1);
+            Assert.Equal([new RowRange(3, 4)], first);
+            IReadOnlyList<RowRange> second = session.CommittedRanges(first, 2, 2);
+            Assert.Equal([new RowRange(2, 4)], second);
+            Assert.Equal([new RowRange(2, 5)], session.CommittedRanges(second, 3, 3));
+            Assert.Equal([new RowRange(2, 2), new RowRange(5, 5)], session.CommittedRanges([new RowRange(5, 5)], 2, 2));
+        }
+
         /// <inheritdoc />
         public void Dispose()
         {
@@ -432,6 +529,23 @@ namespace Tellma.Core.Tests.Excel
             byte[] template = await _kit.ExportAsync<Node>(scope.Context, rows: 0);
             ImportPlan plan = await _kit.InspectAsync<Node>(template, scope.Context);
             return WorkbookEdits.WithRows(template, plan, (Nodes, rows));
+        }
+
+        /// <summary>A workbook of new nodes with their links, by sheet identity.</summary>
+        /// <param name="nodes">Each node's identity and code.</param>
+        /// <param name="links">Each link's node identity and the identity of the node it points at.</param>
+        /// <returns>The workbook.</returns>
+        private static byte[] NodesWithLinks((long Id, string Code)[] nodes, (long Node, long Other)[] links)
+        {
+            RawSheet nodeSheet = new("Nodes", [
+                [RawCell.Text("Id"), RawCell.Text("Code"), RawCell.Text("Name")],
+                .. nodes.Select(static node => (IReadOnlyList<RawCell?>)[RawCell.Number(node.Id), RawCell.Text(node.Code), RawCell.Text($"Node {node.Code}")]),
+            ]);
+            RawSheet linkSheet = new("Links", [
+                [RawCell.Text("Node.Id"), RawCell.Text("OtherNode.Id")],
+                .. links.Select(static link => (IReadOnlyList<RawCell?>)[RawCell.Number(link.Node), RawCell.Number(link.Other)]),
+            ]);
+            return new SyntheticWorkbook(Producer.Excel, nodeSheet, linkSheet).Build();
         }
 
         /// <summary>A widget template with its rows on each sheet.</summary>

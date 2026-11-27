@@ -20,9 +20,12 @@ POST /{tenantId}/api/web/users/preferences/set | preferences/set | core.User | e
 POST /{tenantId}/api/web/users/preferences/delete | preferences/delete | core.User | entity | IdRequest<UserPreferenceKeysArguments> | UserPreferencesResult | core.User:Preferences | mutation, read-only | fWq3snKoJqby
 POST /{tenantId}/api/web/users/invitation-status | invitation-status | core.User | api | IdsRequest | IReadOnlyList<InvitationStatus> | core.User:Read | idempotent | jS2fYFZnaXBe
 POST /{tenantId}/api/web/users/export | export | core.User | api | ExportRequest | ExportOutcome | core.User:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/users/export/start | export/start | core.User | api | ExportRequest | JobAccepted | core.User:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/users/export-for-import | export-for-import | core.User | api | ExportForImportRequest | ExportOutcome | core.User:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/users/export-for-import/start | export-for-import/start | core.User | api | ExportForImportRequest | JobAccepted | core.User:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/users/inspect-import | inspect-import | core.User | api | InspectImportRequest | ImportPlan | core.User:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/users/import | import | core.User | api | ImportRequest | ImportOutcome | core.User:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/users/import/start | import/start | core.User | api | StartImportRequest | JobAccepted | core.User:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/roles/query | query | core.Role | - | QueryRequest | RowPage | core.Role:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/roles/get | get | core.Role | - | GetRequest | EntitiesResult<Role> | core.Role:Read | idempotent | UrE0C_S3Q0wA
 POST /{tenantId}/api/web/roles/get-by-ids | get-by-ids | core.Role | - | GetByIdsRequest | EntitiesResult<Role> | core.Role:Read | idempotent | _R-z6oPzKA_H
@@ -31,9 +34,12 @@ POST /{tenantId}/api/web/roles/delete | delete | core.Role | - | IdsRequest | Af
 POST /{tenantId}/api/web/roles/activate | activate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
 POST /{tenantId}/api/web/roles/deactivate | deactivate | core.Role | entity | EntityActionRequest | EntitiesResult<Role> | core.Role:Activate | mutation, idempotent | hSb5PbA2pzpR
 POST /{tenantId}/api/web/roles/export | export | core.Role | api | ExportRequest | ExportOutcome | core.Role:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/roles/export/start | export/start | core.Role | api | ExportRequest | JobAccepted | core.Role:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/roles/export-for-import | export-for-import | core.Role | api | ExportForImportRequest | ExportOutcome | core.Role:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/roles/export-for-import/start | export-for-import/start | core.Role | api | ExportForImportRequest | JobAccepted | core.Role:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/roles/inspect-import | inspect-import | core.Role | api | InspectImportRequest | ImportPlan | core.Role:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/roles/import | import | core.Role | api | ImportRequest | ImportOutcome | core.Role:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/roles/import/start | import/start | core.Role | api | StartImportRequest | JobAccepted | core.Role:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/notifications/query | query | core.Notification | - | QueryRequest | RowPage | core.Notification:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/notifications/get | get | core.Notification | - | GetRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | X-lsgUqE_iPC
 POST /{tenantId}/api/web/notifications/get-by-ids | get-by-ids | core.Notification | - | GetByIdsRequest | EntitiesResult<Notification> | core.Notification:Read | idempotent | W3AaofMQvkDC
@@ -68,9 +74,12 @@ POST /{tenantId}/api/web/schedules/deactivate | deactivate | core.Schedule | ent
 POST /{tenantId}/api/web/schedules/take-over | take-over | core.Schedule | entity | EntityActionRequest | EntitiesResult<Schedule> | core.Schedule:Save | mutation | RL2-78MQ-xmq
 POST /{tenantId}/api/web/schedules/run-now | run-now | core.Schedule | entity | IdRequest | JobAccepted | core.Schedule:Save | mutation | WKivSNmxCXQw
 POST /{tenantId}/api/web/schedules/export | export | core.Schedule | api | ExportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/schedules/export/start | export/start | core.Schedule | api | ExportRequest | JobAccepted | core.Schedule:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/schedules/export-for-import | export-for-import | core.Schedule | api | ExportForImportRequest | ExportOutcome | core.Schedule:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/schedules/export-for-import/start | export-for-import/start | core.Schedule | api | ExportForImportRequest | JobAccepted | core.Schedule:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/schedules/inspect-import | inspect-import | core.Schedule | api | InspectImportRequest | ImportPlan | core.Schedule:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/schedules/import | import | core.Schedule | api | ImportRequest | ImportOutcome | core.Schedule:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/schedules/import/start | import/start | core.Schedule | api | StartImportRequest | JobAccepted | core.Schedule:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/reports/query | query | core.Report | - | QueryRequest | RowPage | core.Report:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/reports/get | get | core.Report | - | GetRequest | EntitiesResult<Report> | core.Report:Read | idempotent | yUeb6aXiKiUT
 POST /{tenantId}/api/web/reports/get-by-ids | get-by-ids | core.Report | - | GetByIdsRequest | EntitiesResult<Report> | core.Report:Read | idempotent | TqNhUYS1mnI9
@@ -93,9 +102,12 @@ POST /{tenantId}/api/web/gadgets/archive | archive | sm.SmGadget | entity | Enti
 POST /{tenantId}/api/web/gadgets/prices/reprice | prices/reprice | sm.SmGadget | entity | IdsRequest<RepriceArguments> | int | sm.SmGadget:Reprice | mutation, long | 1rYAv84VOo-e
 POST /{tenantId}/api/web/gadgets/summary | summary | sm.SmGadget | api | SummaryRequest | string | sm.SmGadget:Read | idempotent | arxurgN3zpH_
 POST /{tenantId}/api/web/gadgets/export | export | sm.SmGadget | api | ExportRequest | ExportOutcome | sm.SmGadget:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/gadgets/export/start | export/start | sm.SmGadget | api | ExportRequest | JobAccepted | sm.SmGadget:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/gadgets/export-for-import | export-for-import | sm.SmGadget | api | ExportForImportRequest | ExportOutcome | sm.SmGadget:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/gadgets/export-for-import/start | export-for-import/start | sm.SmGadget | api | ExportForImportRequest | JobAccepted | sm.SmGadget:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/gadgets/inspect-import | inspect-import | sm.SmGadget | api | InspectImportRequest | ImportPlan | sm.SmGadget:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/gadgets/import | import | sm.SmGadget | api | ImportRequest | ImportOutcome | sm.SmGadget:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/gadgets/import/start | import/start | sm.SmGadget | api | StartImportRequest | JobAccepted | sm.SmGadget:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/gadgets/tally | tally | sm.SmGadget | api | - | void | sm.SmGadget:Tally | - | lYZxNIK2Qbw7
 POST /{tenantId}/api/web/gadgets/count | count | sm.SmGadget | api | - | int | member-only | - | O-8g6frL8YBY
 POST /{tenantId}/api/web/gizmos/query | query | sm.SmGizmo | - | QueryRequest | RowPage | sm.SmGizmo:Read | idempotent | PqV1-faRenCx
@@ -105,9 +117,12 @@ POST /{tenantId}/api/web/gizmos/save | save | sm.SmGizmo | - | SaveRequest<SmGiz
 POST /{tenantId}/api/web/gizmos/delete | delete | sm.SmGizmo | - | IdsRequest | AffectedResult | sm.SmGizmo:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/gizmos/delete-by-query | delete-by-query | sm.SmGizmo | - | DeleteByQueryRequest | AffectedResult | sm.SmGizmo:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/gizmos/export | export | sm.SmGizmo | api | ExportRequest | ExportOutcome | sm.SmGizmo:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/gizmos/export/start | export/start | sm.SmGizmo | api | ExportRequest | JobAccepted | sm.SmGizmo:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/gizmos/export-for-import | export-for-import | sm.SmGizmo | api | ExportForImportRequest | ExportOutcome | sm.SmGizmo:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/gizmos/export-for-import/start | export-for-import/start | sm.SmGizmo | api | ExportForImportRequest | JobAccepted | sm.SmGizmo:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/gizmos/inspect-import | inspect-import | sm.SmGizmo | api | InspectImportRequest | ImportPlan | sm.SmGizmo:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/gizmos/import | import | sm.SmGizmo | api | ImportRequest | ImportOutcome | sm.SmGizmo:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/gizmos/import/start | import/start | sm.SmGizmo | api | StartImportRequest | JobAccepted | sm.SmGizmo:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/sprockets/query | query | sm.SmSprocket | - | QueryRequest | RowPage | sm.SmSprocket:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/sprockets/get | get | sm.SmSprocket | - | GetRequest | EntitiesResult<SmSprocket> | sm.SmSprocket:Read | idempotent | hRoBpoNz5Uwy
 POST /{tenantId}/api/web/sprockets/get-by-ids | get-by-ids | sm.SmSprocket | - | GetByIdsRequest | EntitiesResult<SmSprocket> | sm.SmSprocket:Read | idempotent | vLo3ySb9xKyK
@@ -115,18 +130,25 @@ POST /{tenantId}/api/web/sprockets/save | save | sm.SmSprocket | - | SaveRequest
 POST /{tenantId}/api/web/sprockets/delete | delete | sm.SmSprocket | - | IdsRequest | AffectedResult | sm.SmSprocket:Delete | mutation | lisU15N3Oj5S
 POST /{tenantId}/api/web/sprockets/delete-by-query | delete-by-query | sm.SmSprocket | - | DeleteByQueryRequest | AffectedResult | sm.SmSprocket:Delete | mutation | qslFj3HofcDO
 POST /{tenantId}/api/web/sprockets/export | export | sm.SmSprocket | api | ExportRequest | ExportOutcome | sm.SmSprocket:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/sprockets/export/start | export/start | sm.SmSprocket | api | ExportRequest | JobAccepted | sm.SmSprocket:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/sprockets/export-for-import | export-for-import | sm.SmSprocket | api | ExportForImportRequest | ExportOutcome | sm.SmSprocket:Read | long, idempotent | EaMkiCeHi04-
+POST /{tenantId}/api/web/sprockets/export-for-import/start | export-for-import/start | sm.SmSprocket | api | ExportForImportRequest | JobAccepted | sm.SmSprocket:Read | mutation, read-only | CnQ-c0hfIBS7
 POST /{tenantId}/api/web/sprockets/inspect-import | inspect-import | sm.SmSprocket | api | InspectImportRequest | ImportPlan | sm.SmSprocket:Save | long, idempotent | CROEU7gfsOlj
 POST /{tenantId}/api/web/sprockets/import | import | sm.SmSprocket | api | ImportRequest | ImportOutcome | sm.SmSprocket:Save | mutation, long | yhjc1_H5L8Ze
+POST /{tenantId}/api/web/sprockets/import/start | import/start | sm.SmSprocket | api | StartImportRequest | JobAccepted | sm.SmSprocket:Save | mutation | Pp5CYvApzFCj
 POST /{tenantId}/api/web/role-memberships/query | query | core.RoleMembership | - | QueryRequest | RowPage | core.RoleMembership:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/role-memberships/export | export | core.RoleMembership | api | ExportRequest | ExportOutcome | core.RoleMembership:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/role-memberships/export/start | export/start | core.RoleMembership | api | ExportRequest | JobAccepted | core.RoleMembership:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/permissions/query | query | core.Permission | - | QueryRequest | RowPage | core.Permission:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/permissions/export | export | core.Permission | api | ExportRequest | ExportOutcome | core.Permission:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/permissions/export/start | export/start | core.Permission | api | ExportRequest | JobAccepted | core.Permission:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/outgoing-email-attachments/query | query | core.OutgoingEmailAttachment | - | QueryRequest | RowPage | core.OutgoingEmailAttachment:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadget-parts/query | query | sm.SmGadgetPart | - | QueryRequest | RowPage | sm.SmGadgetPart:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadget-parts/export | export | sm.SmGadgetPart | api | ExportRequest | ExportOutcome | sm.SmGadgetPart:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/gadget-parts/export/start | export/start | sm.SmGadgetPart | api | ExportRequest | JobAccepted | sm.SmGadgetPart:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/part-notes/query | query | sm.SmGadgetPartNote | - | QueryRequest | RowPage | sm.SmGadgetPartNote:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/part-notes/export | export | sm.SmGadgetPartNote | api | ExportRequest | ExportOutcome | sm.SmGadgetPartNote:Read | long, idempotent | Fy5vEZu1-Mqy
+POST /{tenantId}/api/web/part-notes/export/start | export/start | sm.SmGadgetPartNote | api | ExportRequest | JobAccepted | sm.SmGadgetPartNote:Read | mutation, read-only | kc_m_3azZi7D
 POST /{tenantId}/api/web/access/check | check | - | api | AccessCheckRequest | IReadOnlyList<AccessDecision> | member-only | idempotent | BY0Dt98gYpu2
 POST /{tenantId}/api/web/access/holders | holders | - | api | AccessHoldersRequest | AccessHolders | member-only | idempotent | 2outbY8RcBPf
 POST /{tenantId}/api/web/settings/client | client | - | api | - | ValueTuple<byte[], string> | member-only | idempotent | JjXeFFL8XHtK

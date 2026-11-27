@@ -16,10 +16,12 @@ using Tellma.Core.Queryex;
 namespace Tellma.Core.Excel
 {
     /// <summary>
-    ///     Runs the synchronous exports of a stack or a child query surface: maps the request to its
-    ///     source, plans the workbook, writes it to a scratch file opened only once the first page
-    ///     passes the cap, and answers the rewound file. A refusal at the cap names the background
-    ///     route that runs the same request. Scoped.
+    ///     Runs the exports of a stack or a child query surface: maps the request to its source, plans
+    ///     the workbook, writes it to a scratch file opened only once the first page passes the cap,
+    ///     and answers the rewound file. A synchronous export runs under the request's context and the
+    ///     synchronous cap, and its refusal at the cap names the background route that runs the same
+    ///     request; a background export runs under its job's context and the background cap, and
+    ///     reports its progress after each page. Scoped.
     /// </summary>
     internal sealed class ExcelExports
     {
@@ -84,7 +86,24 @@ namespace Tellma.Core.Excel
         /// <exception cref="BadRequestException">The request maps to no source, or its columns are out of bounds.</exception>
         /// <exception cref="InvalidQueryException">A column's expression does not compile.</exception>
         /// <exception cref="LimitExceededException">The rows exceed the synchronous cap.</exception>
-        public async Task<ExportOutcome> DisplayAsync(ExportTarget target, ExportRequest request, CancellationToken cancellationToken)
+        public Task<ExportOutcome> DisplayAsync(ExportTarget target, ExportRequest request, CancellationToken cancellationToken)
+        {
+            return DisplayAsync(target, request, background: null, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Exports the display shape, synchronously under the request's context or in the
+        ///     background under a job's.
+        /// </summary>
+        /// <param name="target">What is exported.</param>
+        /// <param name="request">The request.</param>
+        /// <param name="background">The background run's context and progress; null for a synchronous export.</param>
+        /// <param name="cancellationToken">Stops the export between pages.</param>
+        /// <returns>The workbook over its scratch file, rewound.</returns>
+        /// <exception cref="BadRequestException">The request maps to no source, or its columns are out of bounds.</exception>
+        /// <exception cref="InvalidQueryException">A column's expression does not compile.</exception>
+        /// <exception cref="LimitExceededException">The rows exceed the cap of the run.</exception>
+        public async Task<ExportOutcome> DisplayAsync(ExportTarget target, ExportRequest request, ExportRun? background, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(target);
             ArgumentNullException.ThrowIfNull(request);
@@ -94,13 +113,13 @@ namespace Tellma.Core.Excel
             ExportSource source = ExportSources.Of(request, template: false, target.Child);
 
             // --- The plan: the columns expanded into the select terms they read ---
-            ExcelContext context = _contexts.Create();
+            ExcelContext context = background?.Context ?? _contexts.Create();
             EntityMetadata entity = target.Entity;
             var shape = (MultilingualShape)Math.Clamp(context.TenantLanguages.Count, 1, 3);
             var columns = DisplayColumns.Expand(entity, request.Columns, context, _engine, _schemas.GetSchema(shape), _displayNames);
 
             // A by-query export counts on its first page; ids are capped by their own limit.
-            int cap = _options.MaxSynchronousExportRows;
+            int cap = Cap(background);
             ExcelQuery query = new(
                 entity.Name,
                 columns.SelectPaths,
@@ -112,7 +131,8 @@ namespace Tellma.Core.Excel
                 Dependents: null);
             ExcelWorkbookPlan plan = _exporter.PlanDisplay(entity, columns.Specs, query, context);
 
-            return await WriteAsync(plan, new FoldingRowSource(target.Rows(source), columns), context, cap, DisplayRemedy, cancellationToken).ConfigureAwait(false);
+            IExcelRowSource rows = Reporting(new FoldingRowSource(target.Rows(source), columns), plan, source, background);
+            return await WriteAsync(plan, rows, context, cap, background is null ? DisplayRemedy : null, cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -125,7 +145,23 @@ namespace Tellma.Core.Excel
         /// <returns>The workbook over its scratch file, rewound.</returns>
         /// <exception cref="BadRequestException">The request maps to no source, or names a column, key or collection the entity lacks.</exception>
         /// <exception cref="LimitExceededException">The parent rows exceed the synchronous cap, or a child sheet's rows its own.</exception>
-        public async Task<ExportOutcome> EditableAsync(ExportTarget target, ExportForImportRequest request, CancellationToken cancellationToken)
+        public Task<ExportOutcome> EditableAsync(ExportTarget target, ExportForImportRequest request, CancellationToken cancellationToken)
+        {
+            return EditableAsync(target, request, background: null, cancellationToken);
+        }
+
+        /// <summary>
+        ///     Exports the editable shape, synchronously under the request's context or in the
+        ///     background under a job's.
+        /// </summary>
+        /// <param name="target">What is exported: a stack.</param>
+        /// <param name="request">The request.</param>
+        /// <param name="background">The background run's context and progress; null for a synchronous export.</param>
+        /// <param name="cancellationToken">Stops the export between pages.</param>
+        /// <returns>The workbook over its scratch file, rewound.</returns>
+        /// <exception cref="BadRequestException">The request maps to no source, or names a column, key or collection the entity lacks.</exception>
+        /// <exception cref="LimitExceededException">The parent rows exceed the cap of the run, or a child sheet's rows its own.</exception>
+        public async Task<ExportOutcome> EditableAsync(ExportTarget target, ExportForImportRequest request, ExportRun? background, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(target);
             ArgumentNullException.ThrowIfNull(request);
@@ -135,10 +171,32 @@ namespace Tellma.Core.Excel
             }
 
             ExportSource source = ExportSources.Of(request, template: true, child: false);
-            ExcelContext context = _contexts.Create();
-            int cap = _options.MaxSynchronousExportRows;
+            ExcelContext context = background?.Context ?? _contexts.Create();
+            int cap = Cap(background);
             ExcelWorkbookPlan plan = _exporter.PlanEditable(target.Entity, request, cap, context);
-            return await WriteAsync(plan, target.Rows(source), context, cap, EditableRemedy, cancellationToken).ConfigureAwait(false);
+            IExcelRowSource rows = Reporting(target.Rows(source), plan, source, background);
+            return await WriteAsync(plan, rows, context, cap, background is null ? EditableRemedy : null, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>The parent sheet's cap of a run: the synchronous cap in a request, the export cap in the background.</summary>
+        /// <param name="background">The background run; null for a synchronous export.</param>
+        /// <returns>The cap.</returns>
+        private int Cap(ExportRun? background)
+        {
+            return background is null ? _options.MaxSynchronousExportRows : Math.Min(_options.MaxExportRows, ExcelOptions.MaxWorksheetDataRows);
+        }
+
+        /// <summary>A background run's row source, which reports after each page of the parent sheet; a synchronous export's own.</summary>
+        /// <param name="rows">The export's row source.</param>
+        /// <param name="plan">The plan, whose first sheet is the parent sheet.</param>
+        /// <param name="source">The export's source, whose ids are the total of a by-ids export.</param>
+        /// <param name="background">The background run; null for a synchronous export.</param>
+        /// <returns>The row source.</returns>
+        private static IExcelRowSource Reporting(IExcelRowSource rows, ExcelWorkbookPlan plan, ExportSource source, ExportRun? background)
+        {
+            return background is null
+                ? rows
+                : new ProgressRowSource(rows, plan.Sheets[0].Query, source is ExportSource.ByIds byIds ? byIds.Ids.Count : null, background.Progress);
         }
 
         /// <summary>
@@ -148,12 +206,12 @@ namespace Tellma.Core.Excel
         /// <param name="plan">The plan.</param>
         /// <param name="rows">The row source the plan's queries run through.</param>
         /// <param name="context">The request's context.</param>
-        /// <param name="cap">The synchronous cap the parent sheet's query was planned with.</param>
-        /// <param name="remedy">The background route that runs the same request.</param>
+        /// <param name="cap">The cap the parent sheet's query was planned with.</param>
+        /// <param name="remedy">The background route that runs the same request; null for a background export, which has none.</param>
         /// <param name="cancellationToken">Stops the write between pages.</param>
         /// <returns>The workbook.</returns>
-        /// <exception cref="LimitExceededException">A sheet's rows exceed its cap; the parent sheet's refusal names the remedy.</exception>
-        private async Task<ExportOutcome> WriteAsync(ExcelWorkbookPlan plan, IExcelRowSource rows, ExcelContext context, int cap, string remedy, CancellationToken cancellationToken)
+        /// <exception cref="LimitExceededException">A sheet's rows exceed its cap; a synchronous parent sheet's refusal names the remedy.</exception>
+        private async Task<ExportOutcome> WriteAsync(ExcelWorkbookPlan plan, IExcelRowSource rows, ExcelContext context, int cap, string? remedy, CancellationToken cancellationToken)
         {
             long started = Stopwatch.GetTimestamp();
             FileStream? file = null;
@@ -164,7 +222,7 @@ namespace Tellma.Core.Excel
                 workbook.Position = 0;
 
                 TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
-                _metrics.Exported(plan.Entity.Name, plan.Shape, background: false, written, elapsed.TotalSeconds);
+                _metrics.Exported(plan.Entity.Name, plan.Shape, background: remedy is null, written, elapsed.TotalSeconds);
                 ExcelLog.ExportCompleted(_logger, plan.Entity.Name, written, (long)elapsed.TotalMilliseconds);
 
                 // The outcome owns the file from here; the caller disposes it once it is sent.
@@ -180,7 +238,7 @@ namespace Tellma.Core.Excel
                 // The parent sheet's synchronous cap is below the background one, so the same
                 // request runs in the background; a child sheet's cap is the same on both routes.
                 int background = Math.Min(_options.MaxExportRows, ExcelOptions.MaxWorksheetDataRows);
-                if (exceeded.Remedy is null && exceeded.Maximum == cap && cap < background)
+                if (remedy is not null && exceeded.Remedy is null && exceeded.Maximum == cap && cap < background)
                 {
                     throw new LimitExceededException(exceeded.Limit, exceeded.Actual, exceeded.Maximum, remedy);
                 }
@@ -193,6 +251,11 @@ namespace Tellma.Core.Excel
             }
         }
     }
+
+    /// <summary>A background export's run: the job's context, and where it reports the rows written after each page of the parent sheet.</summary>
+    /// <param name="Context">The context built from the job's culture.</param>
+    /// <param name="Progress">Receives the rows written so far and the total, null when none is known.</param>
+    internal sealed record ExportRun(ExcelContext Context, Action<int, int?> Progress);
 
     /// <summary>What an export reads: the entity, the row source of a source, and whether it is a child query surface.</summary>
     /// <param name="Entity">The exported entity: the stack's, or the child surface's.</param>

@@ -176,6 +176,12 @@
   <data name="Action_ExportForImport" xml:space="preserve">
     <value>Export for import</value>
   </data>
+  <data name="Action_ExportStart" xml:space="preserve">
+    <value>Export in the background</value>
+  </data>
+  <data name="Action_ExportForImportStart" xml:space="preserve">
+    <value>Export for import in the background</value>
+  </data>
   <data name="Arguments" xml:space="preserve">
     <value>Arguments</value>
   </data>
@@ -221,6 +227,9 @@
   <data name="Action_Import" xml:space="preserve">
     <value>Import</value>
   </data>
+  <data name="Action_ImportStart" xml:space="preserve">
+    <value>Import in the background</value>
+  </data>
   <data name="Mode" xml:space="preserve">
     <value>Mode</value>
   </data>
@@ -232,6 +241,9 @@
   </data>
   <data name="IgnoreSheetStamps" xml:space="preserve">
     <value>Ignore the file’s modification times</value>
+  </data>
+  <data name="Atomic" xml:space="preserve">
+    <value>All or nothing</value>
   </data>
   <!-- Entities: the create label and the display name of a record without one -->
   <data name="Entity_New" xml:space="preserve">
@@ -1198,6 +1210,58 @@
   </data>
   <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
     <value>{exported, select, true {Someone changed this record ({modifiedBy}, {modifiedAt}) after the file was exported. Export it again and redo your changes.} other {Someone changed this record ({modifiedBy}, {modifiedAt}) while it was being imported. Import the file again.}}</value>
+  </data>
+  <!-- Background exports and imports: their failure codes, their jobs' labels and progress messages, their handlers' labels and their notices -->
+  <data name="Excel_Export_RowLimitExceeded" xml:space="preserve">
+    <value>This export has {actual, number} rows. The most a sheet may hold is {maximum, number}. Narrow the rows and export again.</value>
+  </data>
+  <data name="Excel_Import_TooLargeForAtomic" xml:space="preserve">
+    <value>This file is too large to import all at once: {rows, number} rows, where the most allowed is {maxRows, number}. Import it in parts instead.</value>
+  </data>
+  <data name="Excel_Import_ResumeMismatch" xml:space="preserve">
+    <value>The file or its mapping changed since this import started, so it can’t continue where it stopped. Start a new import.</value>
+  </data>
+  <data name="Excel_Import_Failed" xml:space="preserve">
+    <value>The import found errors. Open it to see them.</value>
+  </data>
+  <data name="Excel_Export_Label" xml:space="preserve">
+    <value>Exporting {entity}</value>
+  </data>
+  <data name="Excel_Import_Label" xml:space="preserve">
+    <value>Importing {entity}</value>
+  </data>
+  <data name="Excel_Export_Progress" xml:space="preserve">
+    <value>{rows, plural, one {# row} other {# rows}} written.</value>
+  </data>
+  <data name="Excel_Import_Parsing" xml:space="preserve">
+    <value>Reading the file.</value>
+  </data>
+  <data name="Excel_Import_Resolving" xml:space="preserve">
+    <value>Looking up the references.</value>
+  </data>
+  <data name="Excel_Import_Validating" xml:space="preserve">
+    <value>Checking the rows.</value>
+  </data>
+  <data name="Excel_Import_Saving" xml:space="preserve">
+    <value>Saving the rows.</value>
+  </data>
+  <data name="JobHandler_core_export" xml:space="preserve">
+    <value>Exporting to Excel</value>
+  </data>
+  <data name="JobHandler_core_import" xml:space="preserve">
+    <value>Importing from Excel</value>
+  </data>
+  <data name="Notification_core_export_ready" xml:space="preserve">
+    <value>Your export {fileName} is ready: {rowCount, plural, one {# row} other {# rows}}.</value>
+  </data>
+  <data name="NotificationType_core_export_ready" xml:space="preserve">
+    <value>Exports ready to download</value>
+  </data>
+  <data name="Notification_core_import_completed" xml:space="preserve">
+    <value>Your import of {fileName} finished: {rowCount, plural, one {# row} other {# rows}}.</value>
+  </data>
+  <data name="NotificationType_core_import_completed" xml:space="preserve">
+    <value>Imports that finished</value>
   </data>
   <!-- Queryex diagnostics, with the arguments the engine gives each -->
   <data name="Queryex_QX1001" xml:space="preserve">

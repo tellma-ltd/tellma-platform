@@ -2971,6 +2971,31 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
   `ImportConcurrencyRetries` times. The answer is the inserted and updated counts at every depth,
   the rows' range and the warnings; the import counts its rows, lookups, durations, refusals and
   retries, and logs each completion and refusal.
+- **Background exports and imports.** `export/start` and `export-for-import/start` (under the
+  stack's `Read`, allowed in a `ReadOnly` tenant, and `export/start` on every exportable child
+  surface) and `import/start` (under the stack's `Save`) check the request as their synchronous
+  twins do, then hand it to a job with the caller's culture, calendar, zone and language
+  (`ExcelJobStarts`); a request that would not fit a job's arguments is a `BadRequestException`. An
+  export's start enqueues `core.export` and answers its job alone; an import's start inserts its
+  `core.Imports` row, which owns the upload, and the row's persist enqueues `core.import`, so the
+  answer names both. `ExportJobHandler` checks the run-as user's `Read` again, writes the workbook
+  through the same planner and writer with the job's progress, stages it as an `export-file` blob and
+  inserts the `core.Exports` row that commits it, then notifies the requester
+  (`core.export.ready`); a denial, the row cap (`MaxExportRows`), a refused blob or a query's
+  arithmetic failure fails the job with its code. `ImportJobHandler` commits in steps: it parses the
+  committed upload whole, then saves it chunk by chunk, each chunk at most `ImportChunkRows` parent
+  rows (grown only to the next boundary no row's references cross, within the save's ceilings) and
+  committed with its checkpoint (`ImportCheckpointState`: the next position, the order's hash, the
+  counts, the committed row ranges and the ids later chunks bind new rows' sheet identities to) in
+  the same transaction. A retried attempt resumes after the last committed chunk and refuses a file
+  whose order no longer hashes as the checkpoint's (`Import.ResumeMismatch`); a requested cancel lets
+  the chunk in flight commit, then records a stopped outcome; a lost lease or a host stop rolls the
+  chunk back. A chunk's warnings leave the job waiting for its initiator at the rows' cells, and a
+  chunk's errors stop the import, recording at most `MaxReportedErrors` errors with the ranges
+  already committed on the row. `atomic` saves the whole file as one chunk, refused above
+  `MaxAtomicImportRows` (`Import.TooLargeForAtomic`). The outcome is recorded on the `core.Imports`
+  row and the requester notified (`core.import.completed`); the chunks and resumptions are counted
+  and logged (`ImportChunkCommitted`, `ImportResumed`).
 - **The records.** `core.Exports` and `core.Imports` record each workbook operation, each row its
   creator's alone (`ExportAccessCriteria`, `ImportAccessCriteria`), with its file a blob of the
   `export-file` or `import-file` kind and its job a `core.Jobs` row. Both stacks serve query, details

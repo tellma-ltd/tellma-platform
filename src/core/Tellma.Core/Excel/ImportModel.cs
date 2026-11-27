@@ -81,9 +81,10 @@ namespace Tellma.Core.Excel
     ///     A cycle of self-references among parent rows whose newness the parse cannot tell, refused
     ///     at resolution only when every row on it is new.
     /// </summary>
-    /// <param name="Rows">The rows on the cycle, in Excel order.</param>
-    /// <param name="Columns">For each row, the column naming another row of the cycle.</param>
-    internal sealed record ImportCycle(IReadOnlyList<ImportRow> Rows, IReadOnlyList<ImportColumn> Columns);
+    /// <param name="Rows">The parent rows on the cycle, in Excel order.</param>
+    /// <param name="Columns">For each parent row, the column naming another row of the cycle.</param>
+    /// <param name="Referrers">For each parent row, the row whose cell of that column names it: the parent row itself, or a row under it.</param>
+    internal sealed record ImportCycle(IReadOnlyList<ImportRow> Rows, IReadOnlyList<ImportColumn> Columns, IReadOnlyList<ImportRow> Referrers);
 
     /// <summary>One data row of a parsed sheet: its Excel row, its decoded values, and its links.</summary>
     /// <param name="sheet">The row's sheet.</param>

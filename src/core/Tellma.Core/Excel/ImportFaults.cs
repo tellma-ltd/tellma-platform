@@ -91,6 +91,32 @@ namespace Tellma.Core.Excel
             });
         }
 
+        /// <summary>An atomic background import above a ceiling of its one transaction.</summary>
+        /// <param name="rows">The rows the file holds against the ceiling crossed: its rows at every depth, or its parent rows against the parent ceiling.</param>
+        /// <param name="maxRows">The ceiling crossed.</param>
+        /// <returns>The exception.</returns>
+        public static ImportException TooLargeForAtomic(long rows, long maxRows)
+        {
+            return One(ExcelErrorCodes.ImportTooLargeForAtomic, sheet: null, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["rows"] = rows,
+                ["maxRows"] = maxRows,
+            });
+        }
+
+        /// <summary>A resumed background import whose file or mapping no longer orders its rows as its checkpoint did.</summary>
+        /// <param name="expected">The checkpoint's order hash.</param>
+        /// <param name="actual">The order hash the resumed parse computed.</param>
+        /// <returns>The exception.</returns>
+        public static ImportException ResumeMismatch(string expected, string actual)
+        {
+            return One(ExcelErrorCodes.ImportResumeMismatch, sheet: null, new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["expected"] = expected,
+                ["actual"] = actual,
+            });
+        }
+
         /// <summary>A package or part that is not a readable workbook.</summary>
         /// <param name="reason">Why: one of this class's reason constants.</param>
         /// <param name="sheet">The sheet to blame; null for the package.</param>

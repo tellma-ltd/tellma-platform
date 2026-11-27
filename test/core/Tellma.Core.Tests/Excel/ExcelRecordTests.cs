@@ -8,6 +8,7 @@ using System.Text.Json;
 using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Excel;
+using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Excel;
 using Tellma.Core.Queryex;
 using Tellma.Core.Tests.Localization;
@@ -131,6 +132,70 @@ namespace Tellma.Core.Tests.Excel
             _ = Assert.Throws<ArgumentOutOfRangeException>(() => state with { ChildrenDeleted = -1 });
             _ = Assert.Throws<ArgumentNullException>(() => state with { OrderHash = null! });
             _ = Assert.Throws<ArgumentException>(() => state with { CommittedRowRanges = [null!] });
+        }
+
+        [Fact]
+        public void A_display_export_job_stores_its_kind_first_and_reads_back_as_the_display_case()
+        {
+            ExcelJobCulture culture = new("ar-SA", "UQ", "Asia/Riyadh", "ar");
+            DisplayExportJobArguments arguments = new("fixture.Widget", culture, new ExportRequest
+            {
+                Columns = [new ExportColumn("Code", Header: "Code"), new ExportColumn("Name", Header: null)],
+                Filters = ["Code startsw 'A'"],
+                OrderBy = "Code desc",
+            });
+
+            string json = ExcelJobs.Stored(arguments).GetRawText();
+            ExportJobArguments back = JobJson.ReadArguments<ExportJobArguments>(json);
+
+            // The discriminator leads, so a tolerant reader binds the case before its members.
+            Assert.StartsWith("""{"kind":"Display",""", json, StringComparison.Ordinal);
+            DisplayExportJobArguments display = Assert.IsType<DisplayExportJobArguments>(back);
+            Assert.Equal((ExportKind.Display, "fixture.Widget", culture), (display.Kind, display.Resource, display.Culture));
+            Assert.Equal(["Code", "Name"], display.Request.Columns.Select(static column => column.Expression));
+            Assert.Equal(["Code startsw 'A'"], display.Request.Filters);
+            Assert.Equal("Code desc", display.Request.OrderBy);
+        }
+
+        [Fact]
+        public void A_for_import_export_job_reads_back_as_the_for_import_case_with_its_ids_keys_and_collections()
+        {
+            ExcelJobCulture culture = new("en-GB", "GC", "Europe/London", "en");
+            ForImportExportJobArguments arguments = new("fixture.Widget", culture, new ExportForImportRequest
+            {
+                Ids = [3, 9_007_199_254_740_993],
+                Columns = ["Code", "Name"],
+                ReferenceKeys = new Dictionary<string, string>(StringComparer.Ordinal) { ["Category"] = "Code" },
+                Children = [new ExportCollection("Parts", Columns: null, ReferenceKeys: null, Children: null)],
+            });
+
+            string json = ExcelJobs.Stored(arguments).GetRawText();
+            ExportJobArguments back = JobJson.ReadArguments<ExportJobArguments>(json);
+
+            Assert.StartsWith("""{"kind":"ForImport",""", json, StringComparison.Ordinal);
+            ForImportExportJobArguments editable = Assert.IsType<ForImportExportJobArguments>(back);
+            Assert.Equal((ExportKind.ForImport, "fixture.Widget", culture), (editable.Kind, editable.Resource, editable.Culture));
+            Assert.Equal([3, 9_007_199_254_740_993], editable.Request.Ids);
+            Assert.Equal("Code", editable.Request.ReferenceKeys["Category"]);
+            Assert.Equal("Parts", Assert.Single(editable.Request.Children!).Collection);
+        }
+
+        [Fact]
+        public void An_import_job_reads_back_its_request_with_the_atomic_flag_and_its_culture()
+        {
+            ImportJobArguments arguments = new("fixture.Widget", new ExcelJobCulture("en", "GC", "UTC", "en"), new StartImportRequest
+            {
+                FileId = 41,
+                Mode = ImportMode.Update,
+                RowKey = "Code",
+                Atomic = true,
+            });
+
+            string json = JsonSerializer.Serialize(arguments, TellmaJson.Options);
+            ImportJobArguments back = JobJson.ReadArguments<ImportJobArguments>(json);
+
+            Assert.Equal(("fixture.Widget", arguments.Culture), (back.Resource, back.Culture));
+            Assert.Equal((41, ImportMode.Update, "Code", true), (back.Request.FileId, back.Request.Mode, back.Request.RowKey, back.Request.Atomic));
         }
     }
 }

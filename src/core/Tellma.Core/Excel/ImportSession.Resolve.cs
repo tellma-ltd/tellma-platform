@@ -450,8 +450,9 @@ namespace Tellma.Core.Excel
             /// <param name="cycles">The session's deferred cycles.</param>
             public void RefuseCycles(IReadOnlyList<ImportCycle> cycles)
             {
-                // A cycle split by a chunk boundary is checked in no chunk; the order places every
-                // cycle's rows after the rest, together, so a chunking that keeps them in one chunk sees it.
+                // A cycle split by a chunk boundary is checked in no chunk. The chunking ends a chunk
+                // only where no row names a row after it, so it keeps a cycle whole unless the save's
+                // ceilings cannot hold it; a split cycle of new rows then fails on its forward reference.
                 foreach (ImportCycle cycle in cycles)
                 {
                     if (cycle.Rows.Any(row => row.Position < fromRow || row.Position > toRow) || cycle.Rows.Any(row => !_identities[row.Position].IsNew))
@@ -462,7 +463,7 @@ namespace Tellma.Core.Excel
                     long[] cycleRows = [.. cycle.Rows.Select(static row => (long)row.Row)];
                     for (int i = 0; i < cycle.Rows.Count; i++)
                     {
-                        Raise(cycle.Rows[i], cycle.Columns[i], ExcelErrorCodes.ImportParentCycle, new()
+                        Raise(cycle.Referrers[i], cycle.Columns[i], ExcelErrorCodes.ImportParentCycle, new()
                         {
                             ["rows"] = cycleRows,
                             ["path"] = cycle.Columns[i].Path.Text,

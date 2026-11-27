@@ -75,8 +75,8 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
             // The audit admits a key nothing derives; this is its converse for Acme's own families.
             // The audit members, the create labels and the platform's own actions fall back to
             // Core's shared labels, and a reference's navigation to its foreign key's label.
-            // The platform's workbook actions, which it attaches to every stack that exports or
-            // imports, fall back to Core's labels as well, and so do their request's fields and the
+            // The platform's workbook actions and their background starts, which it attaches to
+            // every stack that exports or imports, fall back to Core's labels as well, and so do their request's fields and the
             // values of the import's mode.
             string[] workbookFields =
             [
@@ -84,13 +84,15 @@ namespace Tellma.Distro.Acme.Web.Tests.Localization
                 .. typeof(ExportForImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
                 .. typeof(InspectImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
                 .. typeof(ImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
+                .. typeof(StartImportRequest).GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(static property => property.Name),
             ];
+            string[] workbookActions = ["Export", "ExportStart", "ExportForImport", "ExportForImportStart", "InspectImport", "Import", "ImportStart"];
             string[] shared =
             [
                 "_CreatedAt", "_CreatedBy", "_CreatedById", "_ModifiedAt", "_ModifiedBy", "_ModifiedById", "_Id", "_New",
                 "_Action_Read", "_Action_Save", "_Action_Delete", "_Action_Activate", "_Action_Deactivate",
-                "_Action_Export", "_Action_ExportForImport", "_Action_InspectImport", "_Action_Import",
-                .. workbookFields.Distinct(StringComparer.Ordinal).SelectMany(static field => new[] { $"_Action_Export_{field}", $"_Action_ExportForImport_{field}", $"_Action_InspectImport_{field}", $"_Action_Import_{field}", $"_{field}" }),
+                .. workbookActions.Select(static action => $"_Action_{action}"),
+                .. workbookFields.Distinct(StringComparer.Ordinal).SelectMany(field => workbookActions.Select(action => $"_Action_{action}_{field}").Append($"_{field}")),
                 .. Enum.GetNames<ImportMode>().Select(static mode => $"_ImportMode_{mode}"),
             ];
             // Acme's keys outside its own prefixes: the members it adds to GL's center, and its setting

@@ -758,9 +758,10 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
-        ///     The parent rows in the order their self-references need: a row naming a new row of the
-        ///     sheet after it, ready rows taken in ascending Excel row. Rows on a cycle are refused;
-        ///     the rows no order reaches follow in Excel order.
+        ///     The parent rows in the order their references to the stack's entity need: a row naming a
+        ///     new row of the parent sheet, itself or through a row under it, comes after it, ready rows
+        ///     taken in ascending Excel row. Rows on a cycle are refused; the rows no order reaches
+        ///     follow in Excel order.
         /// </summary>
         /// <param name="parent">The parent sheet; null for none.</param>
         /// <param name="mode">The import's mode.</param>
@@ -776,8 +777,13 @@ namespace Tellma.Core.Excel
                 indexOf[rows[i]] = i;
             }
 
-            // --- The edges: from each new row a self-reference names, to the row naming it ---
-            List<(int Target, ImportColumn Column)>[] needs = new List<(int, ImportColumn)>[count];
+            // --- The edges: from each new row a reference names, to the parent row whose family names it ---
+            // Spec 0019 §9.6 orders the parent sheet's self-references. A child row's reference to the
+            // stack's entity is ordered too, from the named row to the child's parent row, so a chunked
+            // import commits the named row no later than the chunk holding the child: a later chunk
+            // could not bind it, neither through the committed ids nor by lookup. A child naming its
+            // own parent row saves with it and adds no edge.
+            var needs = new List<OrderEdge>[count];
             var dependents = new List<int>[count];
             int[] pending = new int[count];
             for (int i = 0; i < count; i++)
@@ -788,12 +794,18 @@ namespace Tellma.Core.Excel
 
             for (int i = 0; i < count; i++)
             {
-                foreach ((int slot, ImportRow target) in rows[i].InSheetTargets ?? [])
+                HashSet<int> named = [];
+                foreach (ImportRow referrer in Family(rows[i]))
                 {
-                    if (PotentiallyNew(target, mode, rowKey))
+                    foreach ((int slot, ImportRow target) in referrer.InSheetTargets ?? [])
                     {
                         int t = indexOf[target];
-                        needs[i].Add((t, parent!.Columns[slot]));
+                        if ((t == i && !ReferenceEquals(referrer, rows[i])) || !PotentiallyNew(target, mode, rowKey) || !named.Add(t))
+                        {
+                            continue;
+                        }
+
+                        needs[i].Add(new OrderEdge(t, referrer.Sheet.Columns[slot], referrer));
                         dependents[t].Add(i);
                         pending[i]++;
                     }
@@ -830,7 +842,7 @@ namespace Tellma.Core.Excel
             // which rows are new before its lookups, so its cycles wait for resolution.
             if (order.Count < count)
             {
-                RefuseCycles(parent!, rows, needs, placed, deferred: mode == ImportMode.Upsert && rowKey != ImportPaths.Id);
+                RefuseCycles(rows, needs, placed, deferred: mode == ImportMode.Upsert && rowKey != ImportPaths.Id);
                 order.AddRange(rows.Where((_, i) => !placed[i]));
             }
 
@@ -863,16 +875,15 @@ namespace Tellma.Core.Excel
         }
 
         /// <summary>
-        ///     Refuses each row on a cycle of self-references among the rows no order reached: every
-        ///     strongly connected group of more than one row, or a row naming itself, at the column
+        ///     Refuses each row on a cycle of references among the rows no order reached: every
+        ///     strongly connected group of more than one row, or a row naming itself, at the cell
         ///     naming another row of its cycle. A deferred cycle is kept for resolution instead.
         /// </summary>
-        /// <param name="parent">The parent sheet.</param>
         /// <param name="rows">The parent rows, in Excel order.</param>
-        /// <param name="needs">Each row's edges: the rows it names that may be new, and the column naming each.</param>
+        /// <param name="needs">Each row's edges: the rows its family names that may be new, with the cell naming each.</param>
         /// <param name="placed">Whether each row was placed.</param>
         /// <param name="deferred">Whether the rows' newness is unknown until resolution, which then refuses the cycle.</param>
-        private void RefuseCycles(ImportSheet parent, List<ImportRow> rows, List<(int Target, ImportColumn Column)>[] needs, bool[] placed, bool deferred)
+        private void RefuseCycles(List<ImportRow> rows, List<OrderEdge>[] needs, bool[] placed, bool deferred)
         {
             foreach (List<int> group in StronglyConnected(needs, placed))
             {
@@ -883,20 +894,20 @@ namespace Tellma.Core.Excel
                 }
 
                 int[] ordered = [.. group.OrderBy(index => rows[index].Row)];
-                ImportColumn[] columns = [.. ordered.Select(index => needs[index].First(need => members.Contains(need.Target)).Column)];
+                OrderEdge[] edges = [.. ordered.Select(index => needs[index].First(need => members.Contains(need.Target)))];
                 if (deferred)
                 {
-                    _cycles.Add(new ImportCycle([.. ordered.Select(index => rows[index])], columns));
+                    _cycles.Add(new ImportCycle([.. ordered.Select(index => rows[index])], [.. edges.Select(static edge => edge.Column)], [.. edges.Select(static edge => edge.Referrer)]));
                     continue;
                 }
 
                 long[] cycleRows = [.. ordered.Select(index => (long)rows[index].Row)];
-                for (int i = 0; i < ordered.Length; i++)
+                foreach (OrderEdge edge in edges)
                 {
-                    Raise(parent.Name, rows[ordered[i]].Row, columns[i], ExcelErrorCodes.ImportParentCycle, new()
+                    Raise(edge.Referrer.Sheet.Name, edge.Referrer.Row, edge.Column, ExcelErrorCodes.ImportParentCycle, new()
                     {
                         ["rows"] = cycleRows,
-                        ["path"] = columns[i].Path.Text,
+                        ["path"] = edge.Column.Path.Text,
                     });
                 }
             }
@@ -906,7 +917,7 @@ namespace Tellma.Core.Excel
         /// <param name="needs">Each row's edges.</param>
         /// <param name="placed">Whether each row was placed; placed rows are no part of a group.</param>
         /// <returns>The groups, each a list of row indexes.</returns>
-        private static List<List<int>> StronglyConnected(List<(int Target, ImportColumn Column)>[] needs, bool[] placed)
+        private static List<List<int>> StronglyConnected(List<OrderEdge>[] needs, bool[] placed)
         {
             int count = needs.Length;
             int[] index = new int[count];
@@ -1037,5 +1048,23 @@ namespace Tellma.Core.Excel
                 _errors.Add(new ImportError(sheet, row, column, header, property, code, new Dictionary<string, object?>(arguments, StringComparer.Ordinal)));
             }
         }
+
+        /// <summary>A parent row and every row under it, depth first.</summary>
+        /// <param name="row">The parent row.</param>
+        /// <returns>The rows.</returns>
+        private static IEnumerable<ImportRow> Family(ImportRow row)
+        {
+            yield return row;
+            foreach (ImportRow descendant in row.Descendants())
+            {
+                yield return descendant;
+            }
+        }
+
+        /// <summary>An edge of the order: the parent row a reference names, the column naming it, and the row whose cell it is.</summary>
+        /// <param name="Target">The index of the parent row named.</param>
+        /// <param name="Column">The reference column.</param>
+        /// <param name="Referrer">The row whose cell names it: the parent row, or a row under it.</param>
+        private readonly record struct OrderEdge(int Target, ImportColumn Column, ImportRow Referrer);
     }
 }

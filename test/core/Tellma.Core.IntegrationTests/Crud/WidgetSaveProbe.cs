@@ -33,6 +33,12 @@ namespace Tellma.Core.IntegrationTests.Crud
             return arm;
         }
 
+        /// <summary>Disarms the probe for every widget.</summary>
+        public void Clear()
+        {
+            _arms.Clear();
+        }
+
         /// <summary>The arm of the first widget of a payload a test armed.</summary>
         /// <param name="widgets">The payload.</param>
         /// <returns>The arm; null when the payload holds no armed widget.</returns>
