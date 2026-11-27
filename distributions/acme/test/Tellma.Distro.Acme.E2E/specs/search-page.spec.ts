@@ -6,7 +6,7 @@
 import { signInAs } from '@tellma/core-testing/e2e';
 import type { Locator, Page } from '@playwright/test';
 
-import { expect, test } from '../support/acme';
+import { expect, holdSelectChunks, test } from '../support/acme';
 
 // The search page over the sample customers (spec 0030 §3, §7, §14): it
 // lists the real rows the server reads, a header click orders them and a
@@ -66,5 +66,39 @@ test.describe('search page', () => {
     await page.goBack();
     await expect(page).toHaveURL('/1/customers?order=Code:desc');
     await expect.poll(() => firstCode(page)).toBe('C-060');
+  });
+
+  test.describe('with the worker blocked', () => {
+    // The worker claims the page once it activates and answers the lazy files
+    // from its own cache, past the page's routes: the hold needs it blocked.
+    test.use({ serviceWorkers: 'block' });
+
+    // The pager's page-size select loads on demand: a click on its stand-in
+    // before it lands opens it when it lands, and the size it picks pages.
+    test('a click on the page size before its select loads opens it when it loads', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      const select = await holdSelectChunks(page);
+      await page.goto('/1/customers');
+      await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+      await expect(rows(page).first()).toBeVisible();
+
+      const standIn = page.locator('tm-pager .tm-pager__proxy');
+      await standIn.click();
+      await expect(standIn).toBeFocused();
+      await expect(page.locator('tm-pager tm-select')).toHaveCount(0);
+
+      await select.release();
+      await expect(standIn).toHaveCount(0);
+      const trigger = page.locator('tm-pager tm-select [role="combobox"]');
+      await expect(trigger).toBeFocused();
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      await page.getByRole('option').first().click();
+      await expect(page).toHaveURL('/1/customers?size=20');
+      await expect.poll(() => rows(page).count()).toBeLessThanOrEqual(20);
+    });
   });
 });
