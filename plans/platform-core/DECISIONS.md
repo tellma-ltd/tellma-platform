@@ -384,6 +384,28 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-396 — PC-156 R2 rulings; park on spec 0028 §1 (2026-11-26)
+
+R2 found 1 blocking, 1 major and 9 minor issues. R2-1 (blocking) is the panels chunk: 10.37 against spec 0028 §1's 9. Spec budgets are not the orchestrator's to raise (D-313). The neutral trims (shared skeleton, owner lookup moved into the calls chunk, deduped strings and CSS, the icon-gate artifact) go to fix2. Moving the page contexts to an on-open chunk changes behaviour, so it is not taken. The ceiling stays 9, and PC-156 parks after fix2 on its measured figure. Ahmad was notified with three options: a 10.5 cap, a 10.0 cap if every trim lands, or on-open page contexts at 9.
+
+Everything else goes to fix2, the third and last implementer round:
+- R2-2: the silent busy refusal; invoke no longer waits on the server.
+- R2-3: "Keep running" is restored through a cancel label on the action's confirm, and the TmPageAction.confirm widening is recorded in ARCHITECTURE.md.
+- R2-4: confirm.args is guarded; an unknown job id is refused.
+- R2-5: the calls chunk is warmed at idle.
+- R2-6: TmOutcomeToasts returns a synchronous handle again, and a chunk failure goes to telemetry.
+- R2-7 to R2-11: the minors, including root-causing the flaky Review test (D-011).
+
+While PC-156 is parked, its pc-1 worktree keeps its branch. The next free T1 slot goes to PC-128 (D-394).
+
+### D-395 — PC-123 R2 rulings (2026-11-26)
+
+R2 found 0 blocking, 0 major and 2 minor issues. Both minors (R2-1, the home-hatch preload test; R2-2, the discriminating display-zone test and the midnight re-render test) go to fix2. A minor fix2 needs no R3; PC-123 then holds.
+
+warm-launch:82 under the lazy-delay harness is a harness artifact. Plain runs put it at 152-296 ms against 1 s, and the harness adds the same two 300 ms waits whether or not modules are already loaded. No preload is added, because a modulepreload would cost about 11 KB of initialJs for every family. warm-launch is not removed from the harnessed set now. A harnessed warm-launch miss is not a checkpoint finding unless the plain run also misses.
+
+PC-167 carries two items: settle TmDashboardTile's public inputs, and find room on "." (0 B left), either by equal savings or by a D-031 raise of at most 55.0.
+
 ### D-394 (2026-11-26): Ahmad's ruling on PC-128: option (c), raise the ./search cap to fit
 
 Ahmad answered D-384 in chat: "Go with option C, increase the cap to fit". Spec 0030 §1's route-chunk figure is revised for the search page, so the search field and type-to-search stay as specified and ./search's ceiling is sized to what it weighs. That is his authorization for the raise D-313 and D-373 withheld from the orchestrator.
