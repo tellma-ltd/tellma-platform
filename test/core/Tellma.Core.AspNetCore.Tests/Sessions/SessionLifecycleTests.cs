@@ -88,7 +88,11 @@ namespace Tellma.Core.AspNetCore.Tests.Sessions
             await using TellmaTestHost host = await TellmaTestHost.StartAsync();
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromDays(30));
             DateTimeOffset before = host.Rows.ExpiresAt(session.Key)!.Value;
-            host.Time.Advance(TimeSpan.FromDays(4));
+
+            // The negotiate is a tenant request, and four days is far past the tenant snapshot's
+            // staleness bound: the move waits for the snapshot to be confirmed again, so the request
+            // reaches its endpoint rather than meeting the snapshot stale.
+            await host.AdvanceAsync(TimeSpan.FromDays(4));
 
             using HttpRequestMessage request = kind switch
             {

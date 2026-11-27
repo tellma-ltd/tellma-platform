@@ -269,6 +269,50 @@ namespace Tellma.Testing.WebHost
             return new TellmaTestHost(app, catalog, time);
         }
 
+        /// <summary>
+        ///     Moves the clock on, then has the tenant registry confirm its snapshot at the new reading,
+        ///     as the refresh loop does within one interval on a real clock. A test that moves the clock
+        ///     past the snapshot's staleness bound and then sends a tenant request expecting it served
+        ///     moves it with this method: after a bare move, the request races the refresh the move
+        ///     fires and, when it wins, meets a snapshot beyond its bound and is answered
+        ///     <c>503 catalog-unavailable</c>.
+        /// </summary>
+        /// <param name="by">How far to move the clock.</param>
+        /// <returns>A task that completes once the snapshot was confirmed at the new reading.</returns>
+        /// <exception cref="TimeoutException">The refresh did not end within the test's patience.</exception>
+        public async Task AdvanceAsync(TimeSpan by)
+        {
+            Time.Advance(by);
+            await ConfirmTenantsAsync();
+        }
+
+        /// <summary>
+        ///     Moves the clock to an instant once the timers armed after a mark wait for it, as
+        ///     <see cref="TestClock.AdvanceToAsync" /> does, then has the tenant registry confirm its
+        ///     snapshot at the new reading, as <see cref="AdvanceAsync" /> does.
+        /// </summary>
+        /// <param name="mark">The mark, from <see cref="TestClock.Mark" /> or an earlier move.</param>
+        /// <param name="due">The instant, after the clock's reading.</param>
+        /// <param name="count">How many such timers to wait for.</param>
+        /// <returns>A mark taken just before the move, for the timers the work it releases arms next.</returns>
+        /// <exception cref="TimeoutException">The timers were not armed, or the refresh did not end, within the test's patience.</exception>
+        public async Task<long> AdvanceToAsync(long mark, DateTimeOffset due, int count = 1)
+        {
+            long moved = await Time.AdvanceToAsync(mark, due, count);
+            await ConfirmTenantsAsync();
+            return moved;
+        }
+
+        /// <summary>Has the tenant registry confirm its snapshot at the clock's current reading.</summary>
+        /// <returns>A task that completes once it did.</returns>
+        private async Task ConfirmTenantsAsync()
+        {
+            // The move fires the refresh loop's tick, but the loop refreshes on the thread pool, so its
+            // refresh can land after the test's next request. A forced refresh starts only after any
+            // refresh already running, so the snapshot it publishes is confirmed at the new reading.
+            await Patience.WaitAsync(Services.GetRequiredService<ITenantRegistry>().RefreshAsync(force: true));
+        }
+
         /// <summary>A session cookie for a signed-in user, its ticket stored as a sign-in stores it.</summary>
         /// <param name="subject">The user's subject.</param>
         /// <param name="acr">The authentication context class the session reached.</param>
