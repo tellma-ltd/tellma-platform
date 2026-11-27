@@ -384,6 +384,34 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-414 — Ahmad: bundle headroom up to 25% over the spec's number, flagged as a deviation (2026-11-27)
+
+Ahmad, in chat: "some bundle headroom is acceptable up to 25% of the stated number in the spec, but flag it as a deviation." This replaces D-313's stop when a budget reaches the spec's stated number. Raises within the new ceiling no longer park waiting for Ahmad.
+- The ceiling is 1.25 × the number the spec states for that budget. For example, core "." with the spec's 55 KB cap may now go up to 68.75 KB.
+- Each raise is still sized by D-031: first take honest savings in the code the checkpoint touches, add a budgetNotes entry, raise by at most what the checkpoint adds rounded up to 0.5 KB, and have the reviewer check the measurement.
+- A raise that only absorbs accidental growth is still never allowed.
+- Any budget that ends above the spec's number is a deviation. It is listed in the checkpoint's deviations for Ahmad, with the spec section, the stated number, the new figure and the bytes' cause.
+- While the ceiling holds, the D-031 third-raise re-split rule is suspended: re-splits cost tokens and wall time, and Ahmad's ruling sets the bound instead.
+- Above 1.25 ×, the item stops and reports, as before.
+- PC-167's carry "'.' has no raise left" is superseded: it may raise under this rule.
+
+### D-413 — Ahmad: non-blocking fixes wait behind T1/T2; token share by fixes measured (2026-11-27)
+
+Ahmad asked whether fixes take a growing share of the token budget, and ruled: "hold non-blocking fixes behind T1/T2." The weekly limit runs out before Tuesday's reset, so tokens, not wall time, are the constraint.
+- Measured from the subagent and orchestrator transcripts (relative cost: input 1, cache write 1.25, cache read 0.1, output 5), the share of spend going to PC-F items, per 48 h window ending at the given time:
+  - 2026-11-21 17:00: 11%
+  - 2026-11-23 17:00: 16%
+  - 2026-11-25 17:00: 19%
+  - 2026-11-27 17:00: 32%
+- In the last window, about 17 points of the 32 were CI flake and CI-infrastructure fixes (PC-F95, F96, F99, F105–F107, F109–F111, F113, F115), about 9 points were first-frame budget fixes (F91, F92, F102, F112), and about 6 points were genuine gaps found in review (F88, F89, F94, F100, F103, F114).
+- Ruling:
+  - A fix item starts, takes a slot, or integrates ahead of T1/T2 only if it is blocking. Blocking means it keeps CI red for other items or blocks a T1/T2 item's spec'd work.
+  - Every other fix row is recorded as "todo (non-blocking, D-413)" and waits until no T1/T2 item is ready to start or integrate.
+  - The fix slots stay free for blocking fixes. The D-140 T3 fill may still use an idle fix slot, because T3 is checkpoint work, not fix overhead.
+  - This is stricter than D-229, which ranked non-blocking fixes after T1/T2 but still let them fill fix slots in parallel.
+- Already-built fix items keep their work, but non-blocking ones queue behind T1/T2 integrations. PC-F100 (held), PC-F103 (held) and PC-F114 (fix1) are non-blocking, so PC-163 integrates before them. PC-F100 keeps pc-2 under D-255 while it waits. If more T1 work becomes ready and no T1 slot is free, PC-F100 yields pc-2.
+- Reviewers raise a finding as a new fix row only when it is outside the checkpoint's own scope. In-scope findings stay in that checkpoint's fix rounds.
+
 ### D-412 — PC-156's integrate raises core "." to 55 and lowers the initialJs warn lines (2026-11-27)
 
 On the merged tree core "." measures 54.55 against its 54.5 ceiling: platform-core alone was at 54.50 after PC-123, and PC-156's primary additions (the page action's accepts check, the invocation's confirmation arguments with a cancel key, TmBanners.ɵshowable) add about 0.05 after a 0.01 saving. The orchestrator accepts the raise to 55.0 under D-031 (+0.5, the addition rounded up to 0.5). 55.0 equals the spec's 55 KB cap on the primary, so it is the last raise this budget can take: later items that grow "." must find savings or stop and report (D-313), and PC-167's carry says so. locale-ar "." goes from 0.55 to 0.6 because the merge gives it both the dashboards and the attention imports (0.56). Per D-403, PC-156 integrates first, so it sets the Acme and fixture initialJs warn lines to the merged measure rounded up to 0.5: 227.78 gives 228 and 227.07 gives 227.5. Both lines go down, because PC-163 is not merged yet; PC-163 re-measures at its integrate. build.fixture.spec's budgets() helper now overlays each case's levels on the fixture's own budgets rather than replacing them.
