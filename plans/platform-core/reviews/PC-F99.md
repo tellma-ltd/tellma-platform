@@ -86,3 +86,132 @@ None from a spec. The tm-error-state conversion goes beyond the three files the 
   changes, not fixes. Judge whether they belong here.
 - The before runs did not reproduce the cited failure, so the evidence for the fix is the rule
   (a wait across a chunk load waits on state with the 4 s deadline), not a red-to-green run.
+
+## Review 1
+
+Scope: commit b5b403e1 only. Read: the LEDGER row (CHECKPOINTS.md has no PC-F99 entry), D-011, D-303
+and D-398, CONTRIBUTING.md's rule for waits across a chunk load, PLAN.md §6-§7, the diff and the
+changed specs, `tmSettleUntil`/`tmWaitUntil`, and the product paths each wait crosses
+(`TmDisplayNames.resolve`/`#read`, the pickers binding's `displayWith` and search, `TmErrorState.act`,
+the `/tenants` route and `tmShellRoute`).
+
+What I checked and found sound:
+
+- The named conditions. Each one is the state the old assertion reads, and none passes early. The
+  three `label(...)() !== null` / `displayWith(9) !== null` conditions turn true only when `#hold`
+  stores the row (or marks it missing, in which case the exact assertion that follows fails with
+  `#9`, not with a timeout). `#hold` runs only after `#read` has awaited both `TmEntities.load()` and
+  the entity model's `import()`, so the plan already comes from the descriptor. `tmWaitUntil`'s step
+  ticks after each task, so the view has rendered the label by the time the condition is checked, and
+  the `whenStable()` / `settle()` that follows is extra margin. `router.url` changes only when the
+  router commits the final URL (after `loadComponent` and the guards), and a guard redirect cancels
+  and starts a new navigation rather than committing a URL in between, so `url !== before` cannot
+  pass on an intermediate URL. `signIns().length > 0` followed by the exact `toEqual` is equivalent to
+  the old wait.
+- `binding.displayWith(9)` as a condition calls `resolve` while the label is null. `#reading` blocks
+  a second ask while the read is in flight, and the old loop asked in the same way, so it adds no
+  retry. No timeout was raised: the waits move from `vi.waitFor`'s 1 s to the shared 4 s deadline
+  that CONTRIBUTING.md prescribes (D-011 holds).
+- Item (5): the search-read conversion (`answer !== undefined`) is acceptable. The extra
+  `tmSettle()` at the start of `tmSettleUntil` runs before the paste resolver is created and the app
+  is reset, so it changes nothing the test asserts.
+- The tm-error-state scope extension is the same class: on a first entry, `/tenants` loads through
+  `tmShellRoute`'s `import('@tellma/core/shell')`.
+- No `vi.waitFor` remains under entity/, entity-editing/ or src/entity/. The fixed `tmSettle()` waits
+  left in the asserting paths pass under the harness, which a fixed wait across a delayed import
+  would not.
+- Grounding (item 4): the cited failure is real and recurring. It appears in three earlier delay-harness
+  logs: PC-F80 (null), PC-F87 ("Timed out in waitFor") and PC-F97 (null). It did not reproduce for me
+  either, so the fix rests on the rule, as the notes say. That is sound, since the old wait had a 1 s
+  budget across a chunk load.
+
+My runs, under the postTask lazy-delay harness (53 sites in 35 files, injected and then reverted;
+`git status` was clean afterwards):
+
+- The four specs at b5b403e1^ (the old waits), with a 20-thread CPU burner running: 3/3 runs at
+  94/94.
+- The entity suites (20 files) at b5b403e1^, with a 40-thread burner: 639/639.
+- The entity suites at b5b403e1, with a 40-thread burner: 638/639. The one failure is tm-error-state's
+  unchanged `setUp` wait, "the search page lands", which did not hold within 4000 ms on the file's
+  first, cold entry. That line predates this commit and is the starvation class (D-294). It is not a
+  regression from this change, so it is not a finding here.
+- CI on pc/PC-F99 was skipped (run 45931269101), as expected before integration.
+
+### Findings
+
+**R1-1 (minor): the `frame()` cleanup waits still count turns across the display-name read's chunk.**
+
+- Where:
+  - `client/projects/core/tellma-core/entity-editing/src/tm-entity-field.spec.ts:146-155`, used at
+    :218.
+  - `client/projects/core/tellma-core/entity-editing/src/tm-value-editor.spec.ts:171-181`, used at
+    :397 and :408, and possibly :419 (I did not trace whether the read-only input there asks for its
+    name).
+- What they do: both helpers say they wait for "the reads it starts", which "must not outlive the
+  test". Each is one `requestAnimationFrame` plus `tmSettle()` (five tasks) plus `whenStable()`.
+- Why that is a fixed count across a chunk: in each of those tests the user may query the target,
+  and the id is queued before it is known. This holds for centerId 1 at :218. At :397 and :408 the field's
+  `displayWith` queues the id through `resolve` on first render, before `remember` runs, and `#flush`
+  does not check the queue again. So the read flushed on that frame awaits `import('./tm-entity-model')` before it sends its
+  query, and five turns do not bound that.
+- Failure scenario: under the harness (300 ms per import) or under load, the read is still pending
+  when the test ends, which is exactly what the helper says it prevents. It is harmless today only
+  because the read's later `injector.get(TmApi)` on the destroyed app throws into `#read`'s `catch`.
+  If that guard changes, a stale read reaches into the next test. The uses at :269 and :322 do not
+  cross the chunk, because a user who may not query returns before the import.
+- Neither file's notes list these as left. tm-entity-field.spec is one of the three files this item
+  names.
+- Suggested fix: at each call site that crosses the chunk, wait on the read's state with
+  `tmSettleUntil` and a named condition, for example `rig.names.label('gl.Center', 1)() !== null`, or
+  the route's call count in `rig.api.calls()` together with the label. The alternative is to drop the
+  "must not outlive the test" claim and say why a late read is harmless. Either way, record the
+  choice in the notes.
+
+### Responses
+
+R1-1: fixed in fix1 (the commit titled "PC-F99: fix1 (R1-1)"). The finding holds, including :419.
+
+- A probe confirmed it. A temporary spec edit, reverted, logged the fake server's calls right after
+  each `frame()` and again 1.5 s later.
+  - With no harness, every crossing read had already been sent before `frame()`:
+    - centers `Id in (1)` at tm-entity-field :218;
+    - currencies `Id in (3)` at tm-value-editor :397 and :408;
+    - users `Id in (42)` at :419. The read-only input's `TmFormats.text` asks for the name on
+      first render, before `remember`.
+  - Under the postTask harness, none of the four had been sent when `frame()` returned. Each was
+    sent within the next 1.5 s. tm-entity-field :269 and :322 sent nothing in either mode, as the
+    review says.
+- The fix:
+  - A new shared helper in `client/projects/core/tellma-core/src/entity/tm-entity.testing.util.ts`,
+    `tmDisplayNameRead(rig, route, id)`. It waits with `tmSettleUntil` for the read's own query
+    (the route, with an `Id in (<id>)` filter leaf), named "the display-name read of <id> on
+    <route> is sent". It then runs one `tmSettle()`. Once the query is recorded, the fake answers
+    on a microtask, and the rest of the read loads no chunk, so a fixed settle bounds it. CONTRIBUTING
+    allows that.
+  - It replaces `frame()` at all four crossing sites.
+  - The condition is the query, not the label. The label is no help at these sites:
+    - at :218, the 'Nowhere' search has already remembered row 1;
+    - at :397, :408 and :419, the spec remembers the row itself;
+    - the :408 and :419 reads have no responder, so they are refused and never set a label.
+- tm-value-editor.spec no longer uses `frame()`, so the helper is gone.
+  - tm-entity-field.spec keeps `frame()` for :269 and :322, whose user may not query: their read
+    ends at the permission check, before the entity model's chunk.
+  - Its TSDoc now says it is only for that case.
+- Runs: the entity suites (20 files, 639 tests, which include both changed specs), each 3 times:
+  - under the postTask harness: 3/3 at 639/639. The harness was reverted (53 sites), and
+    `git status` then showed only this change.
+  - plain: 5 runs. tm-entity-field.spec, tm-value-editor.spec and every other entity spec passed
+    in all 5. In 4 of the 5, one test failed: tm-error-state's first test, at its unchanged
+    `setUp` wait ("the search page lands", did not hold within 4 s). That is the line this review
+    saw fail under the burner. It is not from fix1. With fix1 stashed, at b5b403e1, the same set
+    failed it in 3 of 4 runs.
+    - The file passes alone (6/6).
+    - In the set, its first test is the first entry into `@tellma/core/search`. That entry pays the
+      chunk's cold load while the other 19 files load in parallel. The failure screenshot shows the
+      page landing after the deadline.
+    - PC-F99 changed only the file's later test, not `setUp`, and my earlier plain runs at b5b403e1
+      passed 2/2. So this is pre-existing and depends on load. I reported it to the orchestrator
+      rather than widening this fix.
+  - eslint is clean on the three changed files. lint:test passed. tsc tellma-core spec shows
+    only the existing TS6059 notices.
+- The screenshot those failures write is gitignored, and I deleted it.

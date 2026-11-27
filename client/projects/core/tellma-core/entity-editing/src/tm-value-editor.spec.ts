@@ -34,7 +34,7 @@ import {
 } from '@tellma/core-ui-testing';
 
 import { tmSettle } from '../../src/routes/tm-app.testing.util';
-import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
+import { tmDisplayNameRead, tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
 import { TmUploads } from './tm-uploads';
 import { TmValueEditor } from './tm-value-editor';
 
@@ -165,18 +165,6 @@ async function paste(fixture: ComponentFixture<TmEditorHost>, name: string, text
   input.value = text;
   input.dispatchEvent(new Event('input', { bubbles: true }));
   input.blur();
-  await fixture.whenStable();
-}
-
-/**
- * Waits for the next frame and the reads it starts: a display name read
- * for an unknown row flushes on a frame, which must not outlive the test.
- *
- * @param fixture - The host's fixture.
- */
-async function frame(fixture: ComponentFixture<TmEditorHost>): Promise<void> {
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  await tmSettle();
   await fixture.whenStable();
 }
 
@@ -394,7 +382,8 @@ describe('tm-value-editor', () => {
       await currency.pick('USD');
       expect(host.model()['currency']).toBe(4);
       expect(await (await formField(loader, 'currency')).getLabelText()).toBe('currency');
-      await frame(fixture);
+      // The first render asked for the row's name before it was remembered; that read must not outlive the test.
+      await tmDisplayNameRead(rig, 'currencies/query', 3);
     });
 
     it('chooses a list of related rows in the entity list field', async () => {
@@ -405,7 +394,8 @@ describe('tm-value-editor', () => {
       await fixture.whenStable();
       const currencies = await inField(loader, 'currencies', TmEntityMultiFieldHarness);
       expect(await currencies.getChipLabels()).toEqual(['SAR']);
-      await frame(fixture);
+      // The first render asked for the row's name before it was remembered; that read must not outlive the test.
+      await tmDisplayNameRead(rig, 'currencies/query', 3);
     });
 
     it('shows a related row read-only where the user may not write it', async () => {
@@ -416,7 +406,8 @@ describe('tm-value-editor', () => {
       await fixture.whenStable();
       const user = await inField(loader, 'createdBy', TmInputHarness);
       expect(await user.isReadonly()).toBe(true);
-      await frame(fixture);
+      // The first render asked for the row's name before it was remembered; that read must not outlive the test.
+      await tmDisplayNameRead(rig, 'users/query', 42);
     });
 
     it('keeps a related row’s key property read-only, by its ungrouped id', async () => {
