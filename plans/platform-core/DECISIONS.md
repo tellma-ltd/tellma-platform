@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-403 — Ahmad raises the PC-156 and PC-163 budgets (2026-11-26)
+
+Ahmad ruled "Increase their size limits" for the two parked items. This is a spec-budget raise on his authority (D-313), applied as each item's clean-build measure rounded up to the next 0.5 (D-031 rounding):
+- PC-156: the tm-attention-panels ceiling, spec 0028 §1's 9, becomes 10.5 (measured 10.05).
+- PC-163: ./shell, spec 0027's 16 KB of eager code, becomes 19.5 (measured 19.06).
+- PC-163: Acme's initialJs warn line, spec 0024 §12's 230, and the fixture's become the merged-tree measure rounded up to the next 0.5 (about 234 and 233 today). The 260 error line stays.
+
+PC-156 also adds about 1.1 KB to initialJs (225.81 at fix2), so whichever of the two integrates second re-measures on the merged tree and sets the warn line from that measure (D-214). It does not reuse the earlier figure. Ahmad edits the spec texts (docs/ is not the run's).
+
+Both un-park:
+- PC-156 needs only its ceiling edit and the lint:test re-run that fix2 skipped, then holds. Its three implementer rounds are spent.
+- PC-163 had a blocking R1 finding, so R2 runs at xhigh (§4.4) before it holds.
+
+Neither may use a fix slot (D-229). PC-156 takes the first T1 slot that frees and PC-163 the next, when PC-129 or PC-123 lands, or when PC-128 or PC-F100 free theirs.
+
 ### D-402 — PC-F112 landed; PC-129 re-integrates before PC-123 (2026-11-26)
 
 PC-F112 landed as 70239a8a. Acme searchRoute fell from 109.79 to 94.92, which clears PC-129's blocker (D-389). PC-129 had been released and was then skipped while blocked (D-319). It is the earliest released item, so it re-integrates now: it merges platform-core, moves TmUploads off the /entity barrel and runs the full gates. PC-123 integrates after PC-129's platform-core push (D-087).
