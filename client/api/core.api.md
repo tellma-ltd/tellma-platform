@@ -595,6 +595,22 @@ export type TmCustomFilterDeclaration = ({
 };
 
 // @public
+export interface TmDashboardWidgetModel {
+    readonly description?: TmTextSlots;
+    readonly descriptionKey?: string;
+    readonly h: number;
+    readonly key: string;
+    readonly refreshMinutes?: number | null;
+    readonly settings?: TmJson;
+    readonly title?: TmTextSlots;
+    readonly titleKey?: string;
+    readonly type: string;
+    readonly w: number;
+    readonly x: number;
+    readonly y: number;
+}
+
+// @public
 export type TmDataType = 'binary' | 'bool' | 'date' | 'datetime' | 'decimal' | 'enum' | 'float' | 'guid' | 'instant' | 'integer' | 'json' | 'string' | 'time';
 
 // @public
@@ -869,7 +885,9 @@ export interface TmEntityDeclarationInput<N extends string = string> {
     readonly synonymsKey?: string;
     readonly tabs?: readonly TmTabDeclaration[];
     readonly tile?: TmTileDeclaration<N>;
-    readonly validate?: (path: SchemaPathTree<TmEntityType<N>>) => void;
+    readonly validate?: () => Promise<TmEntityRules<TmEntityType<N>> | {
+        readonly default: TmEntityRules<TmEntityType<N>>;
+    }>;
     readonly visibleWhen?: (context: TmNavContext) => boolean;
 }
 
@@ -927,6 +945,9 @@ export interface TmEntityMetadata extends TmEntitySummary {
 
 // @public
 export type TmEntityOperation = 'delete' | 'details' | 'export' | 'import' | 'query' | 'save';
+
+// @public
+export type TmEntityRules<T> = (path: SchemaPathTree<T>) => void;
 
 // @public
 export interface TmEntityShapes {
@@ -2395,6 +2416,9 @@ export interface TmTenantUrls {
     search(entity: string, query?: TmSearchQuery): string;
     target(resource: string, id: TmId): string | null;
 }
+
+// @public
+export type TmTextSlots = readonly [string | null, string | null, string | null];
 
 // @public
 export type TmTileDeclaration<N extends string> = {

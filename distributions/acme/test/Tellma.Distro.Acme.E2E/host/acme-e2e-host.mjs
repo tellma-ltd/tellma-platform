@@ -93,6 +93,12 @@ try {
 
   // --- The deployment: the catalog, the identity store and the seeded tenants ---
   const settings = {
+    // `dotnet run` builds first, and MSBuild keeps the worker nodes of that build alive for any
+    // later build of the same user and SDK to reuse, as children of the `dotnet run` process.
+    // Stopping the host ends that process's whole tree (stopTree on Windows, and Playwright's own
+    // stop of the host), which would also end the nodes another build on the machine is using
+    // then (error MSB4166). Without node reuse, each build's nodes exit with it.
+    MSBUILDDISABLENODEREUSE: '1',
     ASPNETCORE_ENVIRONMENT: 'Development',
     DOTNET_ENVIRONMENT: 'Development',
     Tellma__PublicOrigin: origin,

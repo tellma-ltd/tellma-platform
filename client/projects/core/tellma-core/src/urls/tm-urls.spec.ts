@@ -4,11 +4,23 @@
 // LICENSE file in the root directory of this source tree.
 
 import { Location } from '@angular/common';
+import type { Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 
 import { TM_DEV_MODE } from '../app/tm-dev-mode';
+import { tmFeature } from '../declarations/tm-feature';
 import type { TmDecimal } from '../json/tm-json';
-import { tmAppRig, tmLoadTestPage, tmNavigate, tmSettle, tmSettleUntil, type TmAppRig } from '../routes/tm-app.testing.util';
+import {
+  tmAppRig,
+  tmLoadTestPage,
+  tmNavigate,
+  tmRouteTestFeature,
+  tmSettle,
+  tmSettleUntil,
+  TmTestPage,
+  type TmAppRig,
+} from '../routes/tm-app.testing.util';
+import { TM_ROUTE_HOSTS } from '../routes/tm-route-hosts';
 import { TM_ROUTE_CASES } from '../routes/tm-route-cases.testing.util';
 import { tmParseListPayload } from './tm-search-query';
 
@@ -201,6 +213,50 @@ describe('TmUrls', () => {
       expect(tmLoadTestPage).toHaveBeenCalledTimes(1);
       expect(events).toEqual([]);
       subscription.unsubscribe();
+    });
+
+    // --- The tenant home: its host's chunk, and the app's home hatch when a feature declares one ---
+    describe('of the tenant home', () => {
+      /** The idle callbacks the spec runs. */
+      let idle: (() => void)[];
+
+      beforeEach(() => {
+        idle = [];
+        vi.spyOn(window, 'requestIdleCallback').mockImplementation((callback) => {
+          idle.push(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+          return idle.length;
+        });
+      });
+
+      it("loads the home host's chunk and the app's home hatch, once each", async () => {
+        const hatch = vi.fn((): Promise<Type<unknown>> => Promise.resolve(TmTestPage));
+        TestBed.resetTestingModule();
+        rig = await tmAppRig({ features: [tmRouteTestFeature(), tmFeature({ key: 'shop', home: hatch })] });
+        await tmNavigate('/17/centers');
+        const host = vi.spyOn(TM_ROUTE_HOSTS, 'home');
+
+        rig.urls.preload('/17');
+        rig.urls.preload('/17');
+        expect(hatch).not.toHaveBeenCalled();
+        idle.splice(0).forEach((run) => run());
+        await tmSettle();
+        expect(hatch).toHaveBeenCalledTimes(1);
+        expect(host).toHaveBeenCalledTimes(1);
+      });
+
+      it("loads only the home host's chunk when no feature declares a hatch", async () => {
+        // The centers' search page loads its declared results component as it starts.
+        await tmSettleUntil(() => document.querySelector('tm-search-host') !== null, 'the search page starts');
+        await tmSettle();
+        const host = vi.spyOn(TM_ROUTE_HOSTS, 'home');
+        tmLoadTestPage.mockClear();
+
+        rig.urls.preload('/17');
+        expect(() => idle.splice(0).forEach((run) => run())).not.toThrow();
+        await tmSettle();
+        expect(host).toHaveBeenCalledTimes(1);
+        expect(tmLoadTestPage).not.toHaveBeenCalled();
+      });
     });
   });
 });

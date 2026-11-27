@@ -70,7 +70,13 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // off along the read/edit line as the component library splits its grid
   // from its grid editing: a read-only page never reaches it, and a page
   // or a dialog that edits loads it.
-  './entity-editing': { load: 'lazy', imports: ['./entity'] },
+  './entity-editing': { load: 'lazy', imports: ['./entity', './uploads'] },
+  // Spec 0029 §12.1's form uploads, which spec 0029 §1 places in /entity:
+  // the details page's record provides them in every mode and the edit
+  // side's value editor lists its uploads in them, so they are an entry
+  // point of their own, as the drafts are, and the search page, which
+  // imports /entity, never carries them.
+  './uploads': { load: 'lazy', imports: [] },
   // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
   // /entity; a column header's popover opens it, so the search page loads
   // it then, and /entity's own measure never carries it. Its navigation
@@ -90,7 +96,7 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // pages and the report studio. The home page, in `/dashboards`, lists the
   // recent pages.
   './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
-  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts', './uploads'] },
   './admin': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
   './attention-pages': { load: 'lazy', imports: [] },
   './reports': { load: 'lazy', imports: ['./memory', './expression-editor'] },

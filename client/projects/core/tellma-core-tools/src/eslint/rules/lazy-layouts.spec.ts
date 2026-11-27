@@ -38,6 +38,11 @@ describe('tm/lazy-layouts', () => {
           });`,
         },
         { code: "tmWidget('acme.cash-position', { component: () => import('./cash-position'), settingsEditor: () => import('./settings') });" },
+        // The platform's own declarations cast the specifier and the import, so the package build follows neither.
+        {
+          code: "tmWidget('core.recents', { component: () => (import('@tellma/core/dashboards' as string) as Promise<M>).then((m) => m.Recents) });",
+        },
+        { code: "tmWidget('core.recents', { component: () => import('@tellma/core/dashboards' as string) as Promise<M> });" },
         // Outside a declaration call the members mean nothing to the rule.
         { code: 'const route = { component: StaticPage };' },
         { code: 'register({ component: StaticPage });' },
@@ -73,6 +78,14 @@ describe('tm/lazy-layouts', () => {
         },
         {
           code: "tmPage('x', { component: () => import(path), titleKey: 'X' });",
+          errors: [{ messageId: 'notLazy' }],
+        },
+        {
+          code: "tmPage('x', { component: () => import(path as string), titleKey: 'X' });",
+          errors: [{ messageId: 'notLazy' }],
+        },
+        {
+          code: "tmPage('x', { component: () => (load() as Promise<M>).then((m) => m.X), titleKey: 'X' });",
           errors: [{ messageId: 'notLazy' }],
         },
         {

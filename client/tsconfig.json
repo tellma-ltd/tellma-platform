@@ -22,6 +22,7 @@
       "@tellma/locale-ar/platform-strings": ["./projects/locale/tellma-locale-ar/platform-strings/public-api.ts"],
       "@tellma/locale-ar/attention-strings": ["./projects/locale/tellma-locale-ar/attention-strings/public-api.ts"],
       "@tellma/locale-ar/details-strings": ["./projects/locale/tellma-locale-ar/details-strings/public-api.ts"],
+      "@tellma/locale-ar/dashboards-strings": ["./projects/locale/tellma-locale-ar/dashboards-strings/public-api.ts"],
       "@tellma/locale-ar/queryex-strings": ["./projects/locale/tellma-locale-ar/queryex-strings/public-api.ts"],
       "@tellma/locale-ar/shell-strings": ["./projects/locale/tellma-locale-ar/shell-strings/public-api.ts"],
       "@tellma/locale-ar/support-strings": ["./projects/locale/tellma-locale-ar/support-strings/public-api.ts"],

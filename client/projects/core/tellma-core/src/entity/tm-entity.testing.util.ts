@@ -26,7 +26,7 @@ import { tmFeature } from '../declarations/tm-feature';
 import { tmEnglish } from '../l10n/tm-english';
 import { TmLocalization } from '../l10n/tm-localization';
 import type { TmEntitiesChunk } from '../metadata/tm-client-metadata';
-import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle } from '../routes/tm-app.testing.util';
+import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle, tmSettleUntil } from '../routes/tm-app.testing.util';
 import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
@@ -295,4 +295,25 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
       await tmSettle();
     },
   };
+}
+
+/**
+ * Waits for the display-name read of one row to reach the rig's server,
+ * then for its answer to land, so the read does not outlive the test. The
+ * read flushes on a frame and loads the entity model's chunk before it
+ * queries, which no number of turns bounds; once it has queried, the fake
+ * server answers on a microtask and the rest lands within a fixed settle.
+ *
+ * @param rig - The rig.
+ * @param route - The target's query route, such as `centers/query`.
+ * @param id - The row's id.
+ * @throws Error naming the read when it has not been sent by the wait's deadline.
+ */
+export async function tmDisplayNameRead(rig: TmEntityRig, route: string, id: number): Promise<void> {
+  const filter = `Id in (${id})`;
+  // A display-name read asks for its ids alone, in one filter leaf.
+  const sent = (): boolean =>
+    rig.api.calls().some((call) => call.route === route && ((call.body as { readonly filters?: readonly string[] } | undefined)?.filters ?? []).includes(filter));
+  await tmSettleUntil(sent, `the display-name read of ${id} on ${route} is sent`);
+  await tmSettle();
 }

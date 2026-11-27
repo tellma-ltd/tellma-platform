@@ -457,7 +457,7 @@ export class TmPageRegistry {
       title: text(titleKey),
       message: text(messageKey),
       confirmLabel: text(action.labelKey),
-      ...(cancelKey === undefined ? {} : { cancelLabel: text(cancelKey) }),
+      cancelLabel: cancelKey && text(cancelKey),
       destructive: true,
     });
   }

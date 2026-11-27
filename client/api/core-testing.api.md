@@ -15,6 +15,7 @@ import { Injector } from '@angular/core';
 import { ModifierKeys } from '@angular/cdk/testing';
 import { Observable } from 'rxjs';
 import { Provider } from '@angular/core';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TestElement } from '@angular/cdk/testing';
 import { TestKey } from '@angular/cdk/testing';
@@ -242,6 +243,22 @@ export type TmFakeApiResponder = (call: TmFakeApiCall) => unknown;
 export function tmFakeAssignmentsSummary(members?: Partial<TmAssignmentsSummary>): TmAssignmentsSummary;
 
 // @public
+export class TmFakeClientCache implements TmClientCacheSurface {
+    add(area: TmClientCacheArea, ...names: string[]): void;
+    clearAll(options?: TmClientCacheClearOptions): Promise<void>;
+    clearResult: Promise<void>;
+    names(area: TmClientCacheArea): readonly string[];
+    readonly sweeps: Signal<readonly TmFakeClientCacheSweep[]>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeClientCache, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeClientCache>;
+}
+
+// @public
+export interface TmFakeClientCacheSweep {
+    readonly deleted: Readonly<Record<TmClientCacheArea, readonly string[]>>;
+}
+
+// @public
 export interface TmFakeDetails<T> extends TmDetailsContext<T> {
     readonly busy: WritableSignal<boolean>;
     readonly calls: Signal<readonly TmFakeDetailsCall[]>;
@@ -265,6 +282,7 @@ export interface TmFakeDetailsOptions<T> {
     readonly id?: TmId | null;
     readonly mode?: TmDetailsMode;
     readonly record?: TmDetailsRecord<T>;
+    readonly rules?: TmEntityRules<T>;
 }
 
 // @public
@@ -363,6 +381,41 @@ export class TmFakeTelemetry extends TmTelemetry {
     static ɵfac: i0.ɵɵFactoryDeclaration<TmFakeTelemetry, never>;
     static ɵprov: i0.ɵɵInjectableDeclaration<TmFakeTelemetry>;
 }
+
+// @public
+export interface TmFieldGeometry {
+    readonly boxHeight: number;
+    readonly boxTop: number;
+    readonly boxWidth: number;
+    readonly cellHeight: number;
+    readonly labelHeight: number;
+}
+
+// @public
+export class TmFieldHarness extends ComponentHarness {
+    blur(): Promise<void>;
+    getErrors(): Promise<string[]>;
+    getFormField(): Promise<TmFormFieldHarness | null>;
+    getGeometry(): Promise<TmFieldGeometry>;
+    getHint(): Promise<string | null>;
+    getLabel(): Promise<string>;
+    getMode(): Promise<TmFieldMode>;
+    getPath(): Promise<string>;
+    getValueText(): Promise<string | null>;
+    static hostSelector: string;
+    isLocked(): Promise<boolean>;
+    isWide(): Promise<boolean>;
+    static with(options?: TmFieldHarnessFilters): HarnessPredicate<TmFieldHarness>;
+}
+
+// @public
+export interface TmFieldHarnessFilters extends BaseHarnessFilters {
+    readonly label?: string | RegExp;
+    readonly path?: string;
+}
+
+// @public
+export type TmFieldMode = 'edit' | 'loading' | 'view';
 
 // @public
 export class TmLauncherGroupHarness extends ComponentHarness {

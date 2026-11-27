@@ -18,6 +18,7 @@ export const TM_LOCALE_AR_STRINGS: {
         readonly maxDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا لا يتجاوز {maxDate}";
         readonly parse: "{gender, select, female {أدخلي} other {أدخل}} رقما صالحا، مثل {example}";
         readonly numberPrecision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}}";
+        readonly precision: "{gender, select, female {أدخلي} other {أدخل}} رقما لا يتجاوز {maxDigits, plural, one {خانة واحدة} two {خانتين} few {# خانات} many {# خانة} other {# خانة}} قبل الفاصلة العشرية";
         readonly parseDate: "{gender, select, female {أدخلي} other {أدخل}} تاريخا مثل {example}";
         readonly parseTime: "{gender, select, female {أدخلي} other {أدخل}} وقتا مثل {example}";
         readonly dateRangeOrder: "يجب أن يكون تاريخ النهاية في تاريخ البداية أو بعده";

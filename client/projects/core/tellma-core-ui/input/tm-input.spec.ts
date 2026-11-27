@@ -541,4 +541,33 @@ describe('tmInput + tm-form-field (Signal Forms, §3.1/§3.2/§5)', () => {
       expect((registered[0] as { text(): string | null }).text()).toBe('');
     });
   });
+
+  describe('a message two rules report', () => {
+    @Component({
+      imports: [TmInput, TmFormField, FormField],
+      template: `
+        <tm-form-field label="Code">
+          <input tmInput [formField]="f.code" />
+        </tm-form-field>
+      `,
+    })
+    class Host {
+      readonly model = signal({ code: '' });
+      // The platform's rule and a form's own rule, both required.
+      readonly f = form(this.model, (p) => {
+        required(p.code);
+        required(p.code, { when: () => true });
+      });
+    }
+
+    it('shows it once', async () => {
+      const { fixture, input, field } = await setup(Host);
+
+      await input.focus();
+      await input.blur();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.f.code().errors()).toHaveLength(2);
+      expect(await field.getErrorTexts()).toEqual(['This field is required']);
+    });
+  });
 });

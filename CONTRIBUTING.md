@@ -25,7 +25,10 @@ vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
 error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
 such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
-storage.
+storage. The testing providers keep the client's storage in memory, `TmClientCache` included, so a
+session's clean-up waits on no storage there and leaves the shared test page's stores alone; a
+spec that provides the real `TmClientCache` waits on its sweep as above, and removes what it
+created.
 
 ### Tags
 
@@ -97,6 +100,39 @@ gates run on Linux and Windows too; the client e2e suite runs on Linux.
 dotnet build Tellma.slnx
 ```
 
+CI runs that build through `eng/dotnet-build/build-with-evidence.sh`, which stops a build still
+running after 12 minutes (a normal one takes 3 to 4) and keeps its binary log, a time-stamped text
+log and the compiler's and MSBuild nodes' own diagnostics. When the build fails, the job uploads
+them as the `build-evidence-<OS>` artifact, and a stopped build's step log lists what the stop
+ended and the projects and compilations it was still waiting on. The script runs locally too
+(`eng/dotnet-build/README.md`):
+
+```bash
+bash eng/dotnet-build/build-with-evidence.sh --timeout 30m --evidence artifacts/build-evidence -- Tellma.slnx
+```
+
+A machine that runs several builds at once (one per worktree, say) can see a build fail with error
+MSB4166, "Child node exited prematurely", and no failure report. MSBuild keeps a build's worker
+nodes alive for the next build of the same user and SDK to reuse, as children of the process that
+started them, so a tool that ends a process tree (Playwright stopping a web server, `taskkill /T`,
+an agent stopping a background command) can end nodes that another build is using at that moment.
+The cheaper remedy is a node handshake salt per worktree. MSBuild connects only to nodes started
+with the same `MSBUILDNODEHANDSHAKESALT`, so setting it to a value of the worktree's own, in the
+shell every build there starts from, keeps reuse within the worktree and keeps other worktrees'
+builds off its nodes:
+
+```bash
+export MSBUILDNODEHANDSHAKESALT="$(git rev-parse --show-toplevel)"
+```
+
+The first build after setting it starts its own nodes and later ones reuse them; on a 20-core
+development machine neither was measurably slower than a build without the salt. Each worktree
+then keeps its own idle nodes. Two builds in the same worktree still share nodes, so stopping one
+there can still end the other's. `-nodeReuse:false` on a build, or `MSBUILDDISABLENODEREUSE=1` in
+its environment, keeps that one build to nodes of its own at the cost of starting them on every
+build: a full Release rebuild of the solution took 40 to 80% longer on the same machine. The Acme
+e2e host builds that way, so that stopping it leaves no reusable nodes in the tree it ends.
+
 ```bash
 dotnet format Tellma.slnx --verify-no-changes
 ```
@@ -154,7 +190,10 @@ pnpm install --frozen-lockfile
 
 Change a dependency only through the `catalog` in `pnpm-workspace.yaml` (a package names it with
 the specifier `catalog:`), then run `pnpm install` at the root and commit the regenerated
-`pnpm-lock.yaml`; never edit the lockfile by hand. The root `package.json` scripts forward to
+`pnpm-lock.yaml`; never edit the lockfile by hand. The one entry outside the catalog is the `sass`
+override in the same file, which keeps a single sass (and so a single Vite and Vitest) in the
+graph: when `@angular/build` changes, set it to the sass version `@angular/build` pins, since
+`pnpm run lint:test` fails until the two match. The root `package.json` scripts forward to
 `client/`, so each gate below works from either folder. Run `pnpm run assets:generate` first after
 switching branches: the tokens CSS and `@tellma/core`'s boot script template are generated, not
 committed (`pnpm run tokens:build-css` writes the tokens CSS alone).

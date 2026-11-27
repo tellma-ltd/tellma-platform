@@ -49,7 +49,24 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      - run: dotnet build Tellma.slnx -c Release --no-restore
+      # The build takes 3 to 4 minutes on either OS. On windows-latest it once stalled until the
+      # job's limit cancelled it, leaving no log. The script stops a build still running after 12
+      # minutes, reports in the step log what it was doing, and keeps its binary log, text log and
+      # compiler and node diagnostics (eng/dotnet-build/README.md); the step's own limit is only a
+      # backstop above the script's limit and grace. The next step uploads them when the build
+      # fails.
+      - name: Build
+        id: build
+        shell: bash
+        timeout-minutes: 14
+        run: bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+      - name: Upload the build evidence
+        if: always() && (steps.build.outcome == 'failure' || steps.build.outcome == 'cancelled')
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: ${{ runner.temp }}/build-evidence
+          if-no-files-found: ignore
       # The platform analyzers load on this OS in a project that reaches the contract only through
       # project references: the probe holds one violation of each rule, so its build must fail
       # with exactly the six errors and no other. It is not in the solution, whose build stays clean.
@@ -258,7 +275,16 @@ jobs:
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      - run: pnpm run test
+      # The unit suites take about 3 minutes. Each run's watchdog (vitest-base.config.mjs) ends a run
+      # with no progress for 5 minutes and writes what was pending; this limit is the backstop for a
+      # hang outside it, such as a build, well under the job's. The debug lines time the dependency
+      # optimizer and each session's page (about 210 lines over all the runs), so a hang in the
+      # browser server's start, which the watchdog sees only as a server not ready, names its phase.
+      - name: Unit suites
+        timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
+        run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
@@ -304,7 +330,12 @@ jobs:
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      - run: pnpm run test
+      # The watchdog, the debug lines and the limit as in the client job.
+      - name: Unit suites
+        timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
+        run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
@@ -372,8 +403,16 @@ jobs:
           if grep -Eo '"(Tellma\.Identity\.Migrations|[A-Za-z0-9.]+\.Design)/' "$publish/Tellma.Distro.Acme.Web.deps.json"; then
             echo "The web host's dependency manifest lists a migrations or design-time package"; exit 1
           fi
-      # The build above wrote generated/, which the app's configuration imports.
-      - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+      # The build above wrote generated/, which the app's configuration imports. The step takes under a
+      # minute. Its watchdog (the app's vitest-base.config.mjs) ends a run with no progress for 5
+      # minutes and writes what was pending, and the debug lines below time the browser's start, each
+      # session's page and the dependency optimizer, so a hang names the phase it stopped in. The limit
+      # is the backstop for a hang outside the watchdog, such as the build, well under the job's.
+      - name: Acme unit tests
+        timeout-minutes: 10
+        env:
+          DEBUG: vitest:browser*,vite:deps
+        run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
       # The browser suite on the Acme e2e host (spec 0024 §13), on Linux: a SQL Server container,
       # the Migrator's migrate, and the web host in Development over the app the publish above
       # built, so no second client build runs. Chromium is the one installed above (one catalog

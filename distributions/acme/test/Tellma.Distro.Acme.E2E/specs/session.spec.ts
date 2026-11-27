@@ -51,30 +51,6 @@ test.describe('session', () => {
     expect(record?.lastTenantId ?? null).toBeNull();
   });
 
-  test('a changed user reaches a tab that never came into view', async ({
-    page,
-    context,
-    text,
-    cast,
-  }) => {
-    await signInAs(page, cast.user);
-    await page.goto('/1');
-    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
-    const [hidden] = await openTabs(context, 1, '/1');
-
-    // Another user signs in on the device; only the first tab comes into view.
-    await signInAs(page, cast.other);
-    await expect(async () => {
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      expect((await tmBootFacts(page)).email).toBe(cast.other);
-    }).toPass({ timeout: 30_000 });
-
-    // The other tab learns of the new user from the first, and restarts as that user.
-    await expect
-      .poll(async () => (await tmBootFacts(hidden!)).email, { timeout: 30_000 })
-      .toBe(cast.other);
-  });
-
   test("the user's other tabs reload when the session starts again", async ({
     page,
     context,
@@ -126,20 +102,53 @@ test.describe('session', () => {
     expect(keys.filter((key) => key.startsWith(`tm.draft:${sub}:`))).toEqual([]);
   });
 
-  test('a tab whose session ended re-checks when it comes into view', async ({
-    page,
-    text,
-    cast,
-  }) => {
-    await signInAs(page, cast.user);
-    await page.goto('/1');
-    await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
-    await tmExpireSession(page.context());
+  test.describe('cold', () => {
+    // On a localhost scope the Angular worker prefetches its whole shell group before it answers
+    // any fetch, so a worker registered on the first page would hold the next lazy chunk these
+    // tests wait for (the session flows', a restarted tab's) behind that prefetch, which a
+    // production scope runs at idle instead. Neither test is about the worker (the ones above
+    // warm it up on purpose).
+    test.use({ serviceWorkers: 'block' });
 
-    await comeIntoViewUntil(page, sessionEndedDialog(page));
+    test('a changed user reaches a tab that never came into view', async ({
+      page,
+      context,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      await page.goto('/1');
+      await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
+      const [hidden] = await openTabs(context, 1, '/1');
 
-    await expect(sessionEndedDialog(page)).toHaveAccessibleName(text.sessionEnded);
-    await expect(sessionEndedDialog(page)).toContainText(text.sessionEndedMessage);
+      // Another user signs in on the device; only the first tab comes into view.
+      await signInAs(page, cast.other);
+      await expect(async () => {
+        await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+        expect((await tmBootFacts(page)).email).toBe(cast.other);
+      }).toPass({ timeout: 30_000 });
+
+      // The other tab learns of the new user from the first, and restarts as that user.
+      await expect
+        .poll(async () => (await tmBootFacts(hidden!)).email, { timeout: 30_000 })
+        .toBe(cast.other);
+    });
+
+    test('a tab whose session ended re-checks when it comes into view', async ({
+      page,
+      text,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+      await page.goto('/1');
+      await expect(page.getByRole('heading', { level: 1, name: text.home })).toBeVisible();
+      await tmExpireSession(page.context());
+
+      await comeIntoViewUntil(page, sessionEndedDialog(page));
+
+      await expect(sessionEndedDialog(page)).toHaveAccessibleName(text.sessionEnded);
+      await expect(sessionEndedDialog(page)).toContainText(text.sessionEndedMessage);
+    });
   });
 
   // --- Pending: signed out elsewhere needs the hub's sign-out message (spec 0025) ---

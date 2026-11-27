@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Dashboards;
 using Tellma.Core.Jobs;
 
 namespace Tellma.Core.Composition.Realizers
@@ -33,6 +34,7 @@ namespace Tellma.Core.Composition.Realizers
                 .Add(new NotificationTypeContributionRealizer())
                 .Add(new NotificationChannelContributionRealizer())
                 .Add(new ClientEventContributionRealizer())
+                .Add(new WidgetTypeContributionRealizer())
                 .Add(new BlobKindContributionRealizer())
                 .Add(new SecurablesContributionRealizer())
                 .Add(new StackContributionRealizer())

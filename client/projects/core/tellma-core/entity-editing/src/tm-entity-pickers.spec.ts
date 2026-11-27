@@ -414,10 +414,9 @@ describe('TmEntityPickers', () => {
       rig.api.respond('customers/query', serve([{ id: 9, code: '1109', name: 'Bank' }]));
       const binding = pickers().binding('acme.Customer');
       expect(binding.displayWith(9)).toBeNull();
-      await vi.waitFor(async () => {
-        await tmSettle();
-        expect(binding.displayWith(9)).toBe('1109 - Bank');
-      });
+      // The read flushes on a frame and its code is in the entity model's chunk, which each read loads first.
+      await tmSettleUntil(() => binding.displayWith(9) !== null, 'the chosen customer is named');
+      expect(binding.displayWith(9)).toBe('1109 - Bank');
     });
   });
 
@@ -723,7 +722,8 @@ describe('TmEntityPickers', () => {
       let answer: (() => void) | undefined;
       rig.api.respond('customers/query', (call: TmFakeApiCall) => new Promise((resolve) => (answer = () => resolve(serve(customers(1))(call)))));
       const searching = pickers().binding('acme.Customer').search('a', new AbortController().signal);
-      await vi.waitFor(() => expect(answer).toBeDefined());
+      // A search before the Entities chunk waits for it, so the spec waits on the read reaching the server.
+      await tmSettleUntil(() => answer !== undefined, "the search's read is sent");
       const pasting = pickers().ɵpasteResolver('acme.Customer', signal(null))(['1001 - Customer 1'], { locale: 'en', signal: new AbortController().signal });
       TestBed.resetTestingModule();
       answer!();
