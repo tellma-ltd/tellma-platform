@@ -34,7 +34,8 @@ export const TM_CORE_PACKAGE = '@tellma/core';
  *   wiring between its entry points and may import the primary;
  *   `/search-normalize` is the text folding the launcher and the lazy pages
  *   match with, and `/error-paths` the walk of the server's error paths
- *   onto a form; neither imports any.
+ *   onto a form; neither imports any. `/attention-rows` is what the
+ *   attention surfaces render inside their rows, and imports the primary.
  * - A lazy entry point may import every eager and shared one, plus the lazy
  *   ones it lists. No eager entry point imports a lazy one.
  */
@@ -53,6 +54,13 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // dialog and the details page's save land errors by them, so they load
   // with whichever imports them first, not with `/entity`'s first frame.
   './error-paths': { load: 'shared', imports: [] },
+  // What spec 0028's attention surfaces render inside their rows: the server
+  // text (TmAttentionText, which spec 0028 §1 places in /attention) and the
+  // assignment list. The bell's and the tray's panels, the arrival toasts
+  // and the attention pages load it, never the first frame; the size gate's
+  // staticGraphExcludes keeps `/attention` and `/shell` from reaching it
+  // statically.
+  './attention-rows': { load: 'shared', imports: ['.'] },
   './realtime': { load: 'lazy', imports: [] },
   // The support dump reads the page contexts' snapshots.
   './support': { load: 'lazy', imports: ['./page-snapshot'] },
@@ -62,7 +70,13 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // off along the read/edit line as the component library splits its grid
   // from its grid editing: a read-only page never reaches it, and a page
   // or a dialog that edits loads it.
-  './entity-editing': { load: 'lazy', imports: ['./entity'] },
+  './entity-editing': { load: 'lazy', imports: ['./entity', './uploads'] },
+  // Spec 0029 §12.1's form uploads, which spec 0029 §1 places in /entity:
+  // the details page's record provides them in every mode and the edit
+  // side's value editor lists its uploads in them, so they are an entry
+  // point of their own, as the drafts are, and the search page, which
+  // imports /entity, never carries them.
+  './uploads': { load: 'lazy', imports: [] },
   // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
   // /entity; a column header's popover opens it, so the search page loads
   // it then, and /entity's own measure never carries it. Its navigation
@@ -82,7 +96,7 @@ export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = 
   // pages and the report studio. The home page, in `/dashboards`, lists the
   // recent pages.
   './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
-  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts', './uploads'] },
   './admin': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
   './attention-pages': { load: 'lazy', imports: [] },
   './reports': { load: 'lazy', imports: ['./memory', './expression-editor'] },

@@ -1,8 +1,10 @@
 /**
  * Public API Surface of @tellma/core/details — an entity record's details
  * page: the routed host that reads, views, edits and creates the record,
- * the source page over any other source, and the context a layout reads
- * with `injectTmDetails()`. It loads with the first details route.
+ * the source page over any other source, the context a layout reads with
+ * `injectTmDetails()`, the layout kit a layout is written in, and the
+ * validation schema every record's form gets. It loads with the first
+ * details route; the edit controls load on the first edit.
  *
  * @packageDocumentation
  */
@@ -28,6 +30,24 @@ export {
   type TmRelated,
 } from './src/tm-details-context';
 
+// --- The layout kit ---
+export { TmDetailsKit } from './src/tm-details-kit';
+export { TmDetailsCard, TmDetailsCardSection } from './src/tm-details-card';
+export { TmField, type TmFieldEditContext, TmFieldEdit, TmFieldView, type TmFieldViewContext } from './src/tm-field';
+export { TmFieldGroup } from './src/tm-field-group';
+export { TmDetailsTab, TmDetailsTabContent, TmDetailsTabs } from './src/tm-details-tabs';
+export { TmDetailsAside, ɵTmDetailsAsideContent } from './src/tm-details-aside';
+export { TmDetailsAudit } from './src/tm-details-audit';
+export { TmDetailsExtra, type TmDetailsExtraContext, TmDetailsTitleExtra } from './src/tm-details-extra';
+
+// --- Validation ---
+export {
+  tmDetailsPlatformSchema,
+  type TmDetailsSchemaOptions,
+  type TmDetailsServerError,
+  ɵtmDetailsNodeAt,
+} from './src/tm-details-schema';
+
 // --- Sources ---
 export {
   type TmDetailsAbilities,
@@ -39,5 +59,9 @@ export {
 } from './src/tm-details-source';
 
 // --- Internal: the record's state and the model rules, for the testing package ---
-export { type TmDetailsHostView as ɵTmDetailsHostView, TmDetailsRecordState as ɵTmDetailsRecordState } from './src/tm-details-record';
-export { tmDetailsCreateModel as ɵtmDetailsCreateModel } from './src/tm-details-model';
+export {
+  TM_DETAILS_RECORD as ɵTM_DETAILS_RECORD,
+  type TmDetailsHostView as ɵTmDetailsHostView,
+  TmDetailsRecordState as ɵTmDetailsRecordState,
+} from './src/tm-details-record';
+export { tmDetailsComplete as ɵtmDetailsComplete, tmDetailsCreateModel as ɵtmDetailsCreateModel } from './src/tm-details-model';

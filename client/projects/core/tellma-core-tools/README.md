@@ -1,7 +1,7 @@
 # @tellma/core-tools
 
 Node build tooling for Tellma distributions: the `tellma-client` command and the ESLint,
-stylelint and TypeScript presets a distribution's client project extends. It is a Node ESM
+stylelint, TypeScript and Vitest presets a distribution's client project extends. It is a Node ESM
 package, built with `tsc -b` into `dist/`, and nothing in it ships to the browser.
 
 | Export | Holds |
@@ -11,6 +11,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `@tellma/core-tools/eslint` | The ESLint preset (default export), `tmEslintConfig(options)` to configure it, and the `tm` plugin (`tmEslintPlugin`) |
 | `@tellma/core-tools/stylelint` | The stylelint preset (default export) and the `tm/allowed-breakpoints` plugin |
 | `@tellma/core-tools/tsconfig.json` | The TypeScript preset: strict type checking and strict templates |
+| `@tellma/core-tools/vitest` | The Vitest preset (default export) for the Angular unit-test builder, `tmVitestConfig(options)` to configure it, and its watchdog reporter, `TmVitestWatchdog` (below) |
 | `@tellma/core-tools/lucide-icons` | Types only: the declaration of Lucide's per-icon modules (`lucide/dist/esm/icons/<name>.mjs`), which the `lucide` package does not type (below) |
 
 ## The ESLint rules
@@ -20,7 +21,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `tm/core-import-boundary` | Inside `@tellma/core`, a static import that leaves the entry-point graph or crosses entry points by a relative path (but for a spec's path to another entry point's `*.testing.util` rig); everywhere, an import below an entry point, and `@tellma/core/private` outside platform packages |
 | `tm/no-raw-http` | `fetch`, `XMLHttpRequest` and Angular's `HttpClient`: every request goes through `TmApi` |
 | `tm/no-web-storage` | `localStorage`, `sessionStorage`, `indexedDB` and `caches`: the platform's client store keeps data per user |
-| `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
+| `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')` with a literal specifier, which may be cast (`(import('@tellma/core/x' as string) as Promise<M>)`, as the platform loads its own entry points); an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
 | `tm/literal-declaration-keys` | A declaration key that is not a string literal |
 | `tm/no-decimal-operators` | `+`, `+=`, `<`, `<=`, `>` and `>=` on a `TmDecimal` (type-aware) |
 | `tm/telemetry-names` | A literal name passed to `TmTelemetry`'s `event` or `timing` that is not `<scope>.<area>.<event>` in at most 64 characters, or a `tm.` name outside the platform's areas; a literal page action id (in an object literal with `id`, `labelKey` and `invoke`, or passed to `TmPageActions.invoke`) that is not two to five lowercase parts. With type information the receivers are known by type, else by name |
@@ -42,6 +43,80 @@ export { default } from '@tellma/core-tools/stylelint';
 ```json
 // tsconfig.json
 { "extends": "@tellma/core-tools/tsconfig.json" }
+```
+
+## The Vitest preset
+
+A distribution's unit tests run through Angular's unit-test builder, which reads the preset as its
+runner configuration: the project's `vitest-base.config.mjs` re-exports it, and the test target in
+`angular.json` names that file.
+
+```js
+// vitest-base.config.mjs
+export { default } from '@tellma/core-tools/vitest';
+```
+
+```json
+"test": { "builder": "@angular/build:unit-test", "options": { "runnerConfig": "vitest-base.config.mjs" } }
+```
+
+The preset names the reporters Vitest picks itself when none is named, since naming any would
+drop them: the agent reporter under a coding agent (as `std-env`, Vitest's own detection, finds
+one), else the default reporter, then on GitHub Actions the annotations reporter. After them comes
+`TmVitestWatchdog`. The unit-test builder's own `reporters` option, or `ng test --reporters`,
+replaces that whole list, the watchdog included.
+
+Before each test the preset restores every spy made with `vi.spyOn` and every global and
+environment variable stubbed with `vi.stubGlobal` or `vi.stubEnv` (Vitest's `restoreMocks`,
+`unstubGlobals` and `unstubEnvs`). The builder runs a browser project's files one after another in
+one page per worker (`isolate: false`), and Vitest's browser tester, unlike its Node runner,
+restores nothing between files: a spy one file left on a prototype, such as a mocked
+`HTMLAnchorElement.prototype.click`, would stay in force for the files that follow it in the same
+page, and which files those are depends on how the run splits them between its workers. A spy or
+stub that several tests share must therefore be made in `beforeEach`, not in `beforeAll` or at the
+top of the file. The restore runs before the next test, not at the end of a file: a spy a file's
+last test leaves behind is still live while the next file in the page is imported and runs its
+`beforeAll` hooks. A spec therefore still restores a spy it makes on state the page shares, such as
+a prototype or `URL`, at the end of the test that made it (`onTestFinished(() => spy.mockRestore())`
+or a `finally`). `src/tm-unit-runner.spec.ts` in `@tellma/core`, and its copy in the reference
+distribution's client, fail if the restore stops reaching their project.
+
+Vitest's own limits fail a test or a hook that runs too long, inside the browser, and a browser
+session that does not connect within a minute. Nothing bounds the other phases of a browser-mode
+run: the browser server's start, the import of a test file into the tester frame, the clean-up
+between files, or the close once the run is over. A run stuck in one of them prints nothing, and a
+CI step cancelled at its limit leaves no trace of what it waited for.
+
+The watchdog counts progress instead: a test file queued, collected, started or finished, a test
+or a hook starting or finishing, the browser server becoming ready. After 5 minutes without any
+(`stallMs`), or once the run is over, 2 minutes in which Vitest has not finished closing
+(`exitMs`; not in watch mode, which keeps Vitest open on purpose), it writes a report to standard
+error and ends the process with exit code 1. Once Vitest has closed, the watchdog disarms: the
+process may go on to other work, as `ng test` over several projects builds and runs each in turn,
+so a process that lingers after a clean close is left to the CI step's own limit. It stays off while the inspector is on (the builder's `--debug`),
+since a debugger paused at a breakpoint makes no progress either. The report lists:
+
+- the latest events with their times, and every test file, test and hook that started and has not
+  finished, with how long it has waited, as the workers and pages reported them: a page sends its
+  test events in batches, so when one of its frames does not answer, the report says the page may
+  be running a test it could not report;
+- for each browser project, how many sessions connected to the server, whether the browser is
+  launching, launched or gone, and each session's page: its URL, each frame's `document.readyState`
+  or that the frame did not answer within 5 seconds (its main thread is blocked), the requests it
+  made that have not finished, and its latest errors and failed requests;
+- the browser server's dependency optimizer: whether its scan still runs, and the dependencies it
+  is still bundling;
+- the kinds of Node handles keeping the process alive.
+
+So a request the page still waits for points at the server, a frame that does not answer at the
+page's own code, and a frame that answers with nothing open at a promise that never settles. The
+page details come from Vitest's Playwright provider; another provider is reported by name only.
+
+```js
+// vitest-base.config.mjs: a two-minute stall limit
+import { tmVitestConfig } from '@tellma/core-tools/vitest';
+
+export default tmVitestConfig({ watchdog: { stallMs: 120_000 } });
 ```
 
 ## Icons, one module each
@@ -177,4 +252,5 @@ it Vitest's `describe` and `it` so that each valid and invalid case runs as a te
 `fixtures/source-maps.ts` writes source maps from plain runs of generated code, so the budget
 specs state which source each byte came from.
 The platform's own client workspace dogfoods every preset: its ESLint and stylelint configs
-register this package's rules, and its `tsconfig.json` extends the TypeScript preset.
+register this package's rules, its `tsconfig.json` extends the TypeScript preset, and every unit
+test target names its `vitest-base.config.mjs`, which re-exports the Vitest preset.

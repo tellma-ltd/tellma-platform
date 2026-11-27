@@ -130,18 +130,6 @@ export class TmLazyPickerPage {
 }
 
 // @public
-export class TmUploads {
-    constructor();
-    cancel(path: string): void;
-    readonly running: Signal<ReadonlySet<string>>;
-    stage(path: string, blob: TmBlobDescriptor | null): void;
-    staged(path: string): TmBlobDescriptor | undefined;
-    start(path: string, upload: (signal: AbortSignal) => Promise<TmBlobDescriptor>): Promise<TmBlobDescriptor>;
-    static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmUploads, never>;
-    static ɵprov: _angular_core.ɵɵInjectableDeclaration<TmUploads>;
-}
-
-// @public
 export class TmValueEditor {
     constructor();
     protected readonly accept: _angular_core.Signal<string>;

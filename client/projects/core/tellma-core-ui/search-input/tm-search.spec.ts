@@ -118,6 +118,26 @@ describe('TmSearch timing', () => {
     expect(queries()).toEqual([]);
   });
 
+  it('treats an external write as already searched and ends the burst it replaces', () => {
+    const { fixture, host, input, queries, type } = setup();
+    type('a');
+    type('b');
+    // The consumer restores its own query inside the window: the burst's
+    // trailing edge never emits the replaced "ab".
+    host.value.set('jed');
+    fixture.detectChanges();
+    expect(input.value).toBe('jed');
+    vi.advanceTimersByTime(100);
+    expect(queries()).toEqual(['a']);
+    // Enter on the written text emits nothing; an edit back to the text the
+    // directive emitted before the write emits it again.
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(queries()).toEqual(['a']);
+    input.value = 'a';
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+    expect(queries()).toEqual(['a', 'a']);
+  });
+
   it('emits at once on Enter and closes the burst', () => {
     const { input, queries, type } = setup();
     type('a');

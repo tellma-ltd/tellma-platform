@@ -25,7 +25,10 @@ vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
 error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
 such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
-storage.
+storage. The testing providers keep the client's storage in memory, `TmClientCache` included, so a
+session's clean-up waits on no storage there and leaves the shared test page's stores alone; a
+spec that provides the real `TmClientCache` waits on its sweep as above, and removes what it
+created.
 
 ### Tags
 
@@ -187,7 +190,10 @@ pnpm install --frozen-lockfile
 
 Change a dependency only through the `catalog` in `pnpm-workspace.yaml` (a package names it with
 the specifier `catalog:`), then run `pnpm install` at the root and commit the regenerated
-`pnpm-lock.yaml`; never edit the lockfile by hand. The root `package.json` scripts forward to
+`pnpm-lock.yaml`; never edit the lockfile by hand. The one entry outside the catalog is the `sass`
+override in the same file, which keeps a single sass (and so a single Vite and Vitest) in the
+graph: when `@angular/build` changes, set it to the sass version `@angular/build` pins, since
+`pnpm run lint:test` fails until the two match. The root `package.json` scripts forward to
 `client/`, so each gate below works from either folder. Run `pnpm run assets:generate` first after
 switching branches: the tokens CSS and `@tellma/core`'s boot script template are generated, not
 committed (`pnpm run tokens:build-css` writes the tokens CSS alone).

@@ -19,8 +19,13 @@ import { TmIcon } from '@tellma/core-ui/icon';
 /** The tone of a {@link TmBannerBar}. */
 export type TmBannerTone = 'info' | 'warning' | 'error';
 
-/** The default glyph of each tone, drawn through tm-icon. */
-const TONE_GLYPHS = { info: Info, warning: TriangleAlert, error: CircleX } as const;
+/**
+ * The banner's glyphs: the default one of each tone, and the dismiss cross,
+ * drawn through tm-icon. Internal: an app's first frame holds them with the
+ * banner, so a later surface that draws the same severities, such as the
+ * bell's panel, takes them from here rather than its own copy.
+ */
+export const ɵTM_BANNER_GLYPHS = { info: Info, warning: TriangleAlert, error: CircleX, dismiss: X } as const;
 
 /**
  * One app-wide message in a 32px row: "A new version is available",
@@ -136,10 +141,10 @@ export class TmBannerBar {
   protected readonly nextGlyph = { node: ChevronRight, mirrorInRtl: true };
 
   /** The dismiss glyph. */
-  protected readonly dismissGlyph = X;
+  protected readonly dismissGlyph = ɵTM_BANNER_GLYPHS.dismiss;
 
   /** The tone's default glyph. */
-  protected readonly glyph = computed(() => TONE_GLYPHS[this.tone()]);
+  protected readonly glyph = computed(() => ɵTM_BANNER_GLYPHS[this.tone()]);
 
   /** The hidden tone prefix ("Warning:"), shared with tm-alert. */
   protected readonly tonePrefix = computed(() => this.translate(`alert.${this.tone()}`)());

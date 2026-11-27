@@ -37,6 +37,7 @@ import {
   tmNavigate,
   tmSettle,
   tmSettleUntil,
+  TmTestPage,
   type TmAppRig,
 } from '../../../src/routes/tm-app.testing.util';
 import { TM_LAUNCHER_LOAD, TmLauncher, type TmLauncherChunk } from './tm-launcher';
@@ -597,6 +598,32 @@ describe('the launcher', () => {
           await harness.close();
           expect(launcher().state()).toBe('closed');
           expect(document.activeElement).toBe(button);
+        });
+
+        it('keeps focus in its input as a page renders while it is open, and gives it back as it closes', async () => {
+          await start({ width, arabic });
+          let render!: () => void;
+          tmLoadTestPage.mockImplementationOnce(() => new Promise((resolve) => (render = () => resolve(TmTestPage))));
+          await rig.router.navigateByUrl('/17/centers/5/map');
+          await tmSettle();
+          const harness = await fromMenu();
+          expect(document.activeElement).toBe(input());
+
+          // The page renders while the launcher is open: its focus move waits.
+          render();
+          await tmSettleUntil(
+            () => document.querySelector('tm-page-skeleton') === null && document.querySelector('main [tmPageTitle]') !== null,
+            'the page renders',
+          );
+          await settled();
+          expect(document.activeElement).toBe(input());
+          await harness.close();
+          await settled();
+          expect(document.activeElement).toBe(menu());
+
+          // The next path change moves focus to its page's title.
+          await rig.router.navigateByUrl('/17/credit-review');
+          await tmSettleUntil(() => document.activeElement?.hasAttribute('tmPageTitle') === true, "focus moves to the page's title");
         });
 
         it('gives focus back to the Menu button after Escape', async () => {

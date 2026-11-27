@@ -8,6 +8,7 @@ import {
   type TmApiError,
   TmEntities,
   type TmEntityDescriptor,
+  type TmEntityRules,
   type TmId,
   type TmJsonObject,
   type TmPageAction,
@@ -20,10 +21,12 @@ import {
   type TmDetailsSource,
   type TmDetailsStatus,
   ɵTM_DETAILS_CONTEXT,
+  ɵTM_DETAILS_RECORD,
   ɵtmDetailsCreateModel,
   type ɵTmDetailsHostView,
   ɵTmDetailsRecordState,
 } from '@tellma/core/details';
+import { TmUploads } from '@tellma/core/uploads';
 
 // A details context for a layout's unit test (spec 0031 §1): the real
 // record state, with its form, dirty rule, refusals and registrations, over
@@ -47,6 +50,12 @@ export interface TmFakeDetailsOptions<T> {
   readonly id?: TmId | null;
   /** The abilities, all `true` by default. */
   readonly can?: Partial<Readonly<Record<'edit' | 'create' | 'delete' | 'activate', boolean>>>;
+  /**
+   * The declaration's rules, as its `validate` loader resolves them: the
+   * form applies them after the platform's. The fake builds the form at
+   * once, so it never loads them itself.
+   */
+  readonly rules?: TmEntityRules<T>;
 }
 
 /**
@@ -62,7 +71,7 @@ export interface TmFakeDetails<T> extends TmDetailsContext<T> {
   readonly busy: WritableSignal<boolean>;
   /** The commands the layout called, oldest first. */
   readonly calls: Signal<readonly TmFakeDetailsCall[]>;
-  /** The providers that give a component under test this context through `injectTmDetails()`. */
+  /** The providers that give a component under test this context through `injectTmDetails()`, and the layout kit its record. */
   readonly providers: Provider[];
   /**
    * Takes a read's record as the server copy, as a read landing does, and turns `ready`.
@@ -233,6 +242,7 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
     descriptor,
     host,
     parent: injector,
+    rules: options.rules,
   });
   host.record = record;
   if (created) {
@@ -283,6 +293,11 @@ export function tmFakeDetails<T = TmJsonObject>(options: TmFakeDetailsOptions<T>
       host.status.set('ready');
     },
   };
-  fake.providers.push({ provide: ɵTM_DETAILS_CONTEXT, useValue: fake });
+  // The layout kit reads the record itself, and its edit controls the record's uploads.
+  fake.providers.push(
+    { provide: ɵTM_DETAILS_CONTEXT, useValue: fake },
+    { provide: ɵTM_DETAILS_RECORD, useValue: record },
+    { provide: TmUploads, useValue: record.uploads },
+  );
   return fake;
 }

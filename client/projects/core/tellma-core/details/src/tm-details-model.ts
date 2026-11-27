@@ -19,7 +19,7 @@ const CLIENT_WRITTEN: ReadonlySet<string> = new Set(['editable', 'write-once']);
 /**
  * A new record's values: every child collection empty, every non-nullable
  * flag the client writes `false`, and the declaration's `defaults` merged
- * over them.
+ * over them; every other property the client writes `null`.
  *
  * @param descriptor - The entity's descriptor.
  * @returns A fresh object.
@@ -36,7 +36,102 @@ export function tmDetailsCreateModel(descriptor: TmEntityDescriptor): TmJsonObje
     }
   }
   const defaults = descriptor.declaration['defaults'] as (() => TmJsonObject) | undefined;
-  return { ...model, ...defaults?.() };
+  return tmDetailsComplete({ ...model, ...defaults?.() }, descriptor, () => undefined);
+}
+
+/**
+ * A record with every property the client writes present, `null` where the
+ * record omits it, recursively in the rows of its loaded child collections.
+ * The wire omits null members, and a Signal Forms tree has no field, so no
+ * validation, for a member the model lacks: the working copy carries every
+ * writable property so each one has its field.
+ * A child row's key to its parent stays absent, since the server writes it
+ * and refuses a `null` for it.
+ * A collection the record lacks stays absent, since a save never sends one
+ * it did not load. An object that lacks nothing is returned as it is, so a
+ * complete record keeps its identity.
+ *
+ * @param record - The record, wire-shaped.
+ * @param descriptor - Its entity's descriptor.
+ * @param childDescriptor - The descriptor of a child collection's entity, by name; `undefined` leaves the collection's rows as they are.
+ * @param parentKey - The property, by name, that keys a child row to its parent; omitted on the record itself.
+ * @returns The record, or a completed copy of it.
+ */
+export function tmDetailsComplete(
+  record: TmJsonObject,
+  descriptor: TmEntityDescriptor,
+  childDescriptor: (entity: string) => TmEntityDescriptor | undefined,
+  parentKey?: string,
+): TmJsonObject {
+  // The members to write over the record; empty while it lacks nothing.
+  const writes: Record<string, TmJson> = {};
+  let lacks = false;
+
+  // --- Every property the client writes that the record omits, as null ---
+  // Not the parent key, which the server writes.
+  for (const property of descriptor.properties) {
+    if (CLIENT_WRITTEN.has(property.ownership) && property.name !== parentKey && record[property.json] === undefined) {
+      writes[property.json] = null;
+      lacks = true;
+    }
+  }
+
+  // --- Each loaded collection's rows, completed by their own entity ---
+  for (const child of descriptor.children) {
+    const rows = record[child.json];
+    const target = Array.isArray(rows) && rows.length > 0 ? childDescriptor(child.entity) : undefined;
+    if (!Array.isArray(rows) || target === undefined) {
+      continue;
+    }
+    let changed = false;
+    const completed = rows.map((row) => {
+      if (row === null || typeof row !== 'object' || Array.isArray(row)) {
+        return row;
+      }
+      const next = tmDetailsComplete(row, target, childDescriptor, child.parentKey);
+      changed ||= next !== row;
+      return next;
+    });
+    if (changed) {
+      writes[child.json] = completed;
+      lacks = true;
+    }
+  }
+  return lacks ? { ...record, ...writes } : record;
+}
+
+/**
+ * A record as a save sends it: without a `null` on a member that is not
+ * nullable but that the server fills when it is omitted, recursively in
+ * the rows of its child collections, since the server refuses that `null`.
+ * An object that holds none is returned as it is.
+ *
+ * @param record - The working copy, wire-shaped.
+ * @param descriptor - Its entity's descriptor.
+ * @param childDescriptor - The descriptor of a child collection's entity, by name.
+ * @returns The record, or a copy without those members.
+ */
+export function tmDetailsSaveBody(
+  record: TmJsonObject,
+  descriptor: TmEntityDescriptor,
+  childDescriptor: (entity: string) => TmEntityDescriptor | undefined,
+): TmJsonObject {
+  // --- The record's own defaulted members left empty ---
+  const empty = descriptor.properties.filter((property) => property.defaulted === true && !property.nullable && record[property.json] === null);
+  let body = empty.length === 0 ? record : Object.fromEntries(Object.entries(record).filter(([json]) => !empty.some((property) => property.json === json)));
+  // --- Each child collection's rows, by their own entity ---
+  for (const child of descriptor.children) {
+    const rows = body[child.json];
+    const target = Array.isArray(rows) ? childDescriptor(child.entity) : undefined;
+    if (!Array.isArray(rows) || target === undefined) {
+      continue;
+    }
+    const sent = rows.map((row) => (row !== null && typeof row === 'object' && !Array.isArray(row) ? tmDetailsSaveBody(row, target, childDescriptor) : row));
+    if (sent.some((row, index) => row !== rows[index])) {
+      body = { ...body, [child.json]: sent };
+    }
+  }
+  return body;
 }
 
 /**

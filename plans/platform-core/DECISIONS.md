@@ -384,6 +384,203 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-414 — Ahmad: bundle headroom up to 25% over the spec's number, flagged as a deviation (2026-11-27)
+
+Ahmad, in chat: "some bundle headroom is acceptable up to 25% of the stated number in the spec, but flag it as a deviation." This replaces D-313's stop when a budget reaches the spec's stated number. Raises within the new ceiling no longer park waiting for Ahmad.
+- The ceiling is 1.25 × the number the spec states for that budget. For example, core "." with the spec's 55 KB cap may now go up to 68.75 KB.
+- Each raise is still sized by D-031: first take honest savings in the code the checkpoint touches, add a budgetNotes entry, raise by at most what the checkpoint adds rounded up to 0.5 KB, and have the reviewer check the measurement.
+- A raise that only absorbs accidental growth is still never allowed.
+- Any budget that ends above the spec's number is a deviation. It is listed in the checkpoint's deviations for Ahmad, with the spec section, the stated number, the new figure and the bytes' cause.
+- While the ceiling holds, the D-031 third-raise re-split rule is suspended: re-splits cost tokens and wall time, and Ahmad's ruling sets the bound instead.
+- Above 1.25 ×, the item stops and reports, as before.
+- PC-167's carry "'.' has no raise left" is superseded: it may raise under this rule.
+
+### D-413 — Ahmad: non-blocking fixes wait behind T1/T2; token share by fixes measured (2026-11-27)
+
+Ahmad asked whether fixes take a growing share of the token budget, and ruled: "hold non-blocking fixes behind T1/T2." The weekly limit runs out before Tuesday's reset, so tokens, not wall time, are the constraint.
+- Measured from the subagent and orchestrator transcripts (relative cost: input 1, cache write 1.25, cache read 0.1, output 5), the share of spend going to PC-F items, per 48 h window ending at the given time:
+  - 2026-11-21 17:00: 11%
+  - 2026-11-23 17:00: 16%
+  - 2026-11-25 17:00: 19%
+  - 2026-11-27 17:00: 32%
+- In the last window, about 17 points of the 32 were CI flake and CI-infrastructure fixes (PC-F95, F96, F99, F105–F107, F109–F111, F113, F115), about 9 points were first-frame budget fixes (F91, F92, F102, F112), and about 6 points were genuine gaps found in review (F88, F89, F94, F100, F103, F114).
+- Ruling:
+  - A fix item starts, takes a slot, or integrates ahead of T1/T2 only if it is blocking. Blocking means it keeps CI red for other items or blocks a T1/T2 item's spec'd work.
+  - Every other fix row is recorded as "todo (non-blocking, D-413)" and waits until no T1/T2 item is ready to start or integrate.
+  - The fix slots stay free for blocking fixes. The D-140 T3 fill may still use an idle fix slot, because T3 is checkpoint work, not fix overhead.
+  - This is stricter than D-229, which ranked non-blocking fixes after T1/T2 but still let them fill fix slots in parallel.
+- Already-built fix items keep their work, but non-blocking ones queue behind T1/T2 integrations. PC-F100 (held), PC-F103 (held) and PC-F114 (fix1) are non-blocking, so PC-163 integrates before them. PC-F100 keeps pc-2 under D-255 while it waits. If more T1 work becomes ready and no T1 slot is free, PC-F100 yields pc-2.
+- Reviewers raise a finding as a new fix row only when it is outside the checkpoint's own scope. In-scope findings stay in that checkpoint's fix rounds.
+
+### D-412 — PC-156's integrate raises core "." to 55 and lowers the initialJs warn lines (2026-11-27)
+
+On the merged tree core "." measures 54.55 against its 54.5 ceiling: platform-core alone was at 54.50 after PC-123, and PC-156's primary additions (the page action's accepts check, the invocation's confirmation arguments with a cancel key, TmBanners.ɵshowable) add about 0.05 after a 0.01 saving. The orchestrator accepts the raise to 55.0 under D-031 (+0.5, the addition rounded up to 0.5). 55.0 equals the spec's 55 KB cap on the primary, so it is the last raise this budget can take: later items that grow "." must find savings or stop and report (D-313), and PC-167's carry says so. locale-ar "." goes from 0.55 to 0.6 because the merge gives it both the dashboards and the attention imports (0.56). Per D-403, PC-156 integrates first, so it sets the Acme and fixture initialJs warn lines to the merged measure rounded up to 0.5: 227.78 gives 228 and 227.07 gives 227.5. Both lines go down, because PC-163 is not merged yet; PC-163 re-measures at its integrate. build.fixture.spec's budgets() helper now overlays each case's levels on the fixture's own budgets rather than replacing them.
+
+### D-411 — PC-F115 held; it integrates next, ahead of the held T1 items (2026-11-27)
+
+PC-F115 found the skip-link flake's cause: tm-support-dump.spec and tm-diagnostics-panel.spec (PC-154) left a vi.spyOn on HTMLAnchorElement.prototype.click, and Vitest's browser runner with isolate:false keeps spies across files, so the skip link's click() was a no-op whenever either spec ran earlier in the same worker. The fix sets restoreMocks, unstubGlobals and unstubEnvs in the shared Vitest preset, adds behavioural canaries to core's and Acme's unit projects, and makes both specs restore their own spies. R1 confirmed the cause in Vitest 4.1.9's source and by forced order (0 blocking, 1 major, 1 minor; fix1 44cd7464 closed both), so no R2. Because the flake can turn any integration's CI red, PC-F115 is a blocking fix and integrates immediately after PC-156 lands, before PC-128, PC-F100, PC-F103 and PC-163 (D-229 puts blocking fixes first). The flaky-table row is marked root-caused when it lands.
+
+### D-410 — PC-123 lands on green with the skip-link cause open; PC-F115 is the next fix (2026-11-27)
+
+PC-123 reverted both diagnostics, fixed its own home launcher flake in the product (the open launcher holds the page's arrival focus move through ɵTmPageFocus and runs it on close before its give-back; specs 0024 §4.4 and 0027 are silent, so it is a deviation for Ahmad), and integrated as 9a077e95, which CI 45982721583 passed in full. That is done by D-154, so it lands. The skip-link failure is not explained: neither the stale-frame nor the page-focus hypothesis held, the project is zoneless, and it reproduces in about 1 of 5 local full-core runs. Its frequency on CI depends on the size-ordered file schedule, so it can recur on any integrate. PC-F115 is therefore treated as blocking: it takes the first fix slot that frees, ahead of PC-F113 and PC-F114 (D-229). Until it lands, a red CI on that test alone is handled by D-292 (merge and integrate again) and not counted against the item.
+
+### D-409 — PC-123's skip-link failure: pre-existing flake raised by a schedule shift; root-caused inside PC-123 (2026-11-27)
+
+The diagnostic run 45964781142 on 478f991b was green on both OSes. The page-title hypothesis failed: the skip handler focuses main directly and the spec's app only routes to /signed-out. The test failed once locally on 2026-11-25, before PC-123 existed, so D-407's 'PC-123 regression' reading is narrowed: the flake predates PC-123, and PC-123's chunking and file durations shift CI's per-worker file order so it now hits it often (4 of 4 integrate runs before the diagnostic). The leading hypothesis is a stale frame left in the shared document by an earlier file (isolate:false), whose dead skip link `document.querySelector` returns. Because the flake blocks PC-123's landing and every fix slot holds a held item (D-255), PC-123's implementer, who has the context, root-causes it on pc/PC-123 under D-011 (no retry, no loosened assertion). A second diagnostic CI run, also test-only and reverted, counts frames and skip links. Diagnostic runs are not landed. PC-F115 closes with PC-123's fix if that fix explains the 2026-11-25 local failure too.
+
+### D-408 — PC-123 diagnoses the skip-link failure with a temporary CI run (2026-11-27)
+
+PC-123 could not reproduce the skip-link failure locally (the whole core project with CI=true, serial and paired orders all pass) and was denied `gh api` for the run's failure screenshot. `gh api` is forbidden in this run, so the denial is not notified and no other artifact route is used. Instead PC-123 pushes a temporary ': integrate' commit that only adds TM-DIAG console lines to the shell-frame test (assertions unchanged), the orchestrator reads them from the CI log, and the diagnostic is reverted in a later commit with the fix. No history is rewritten.
+
+### D-407 — PC-123's skip-link failure is its own regression (2026-11-27)
+
+The re-integrate 3ba47f06 (CI 45959960145) failed the same shell-frame skip-link test on both client and client-windows, after e88901b2 failed it on ubuntu. platform-core's own CI at f1d25ec5 passed it, so the failure follows PC-123's tree; D-406's 'unrelated flake' reading is withdrawn. PC-123 root-causes and fixes it in its own code (the test stays as it is), then integrates again. PC-F115 stays open but on hold: after PC-123's fix it is either closed as explained by PC-123 or kept for the earlier local failure under load.
+
+### D-406 — PC-123's integrate CI red on an unrelated skip-link flake; PC-F103 held; PC-F114 and PC-F115 opened (2026-11-27)
+
+PC-123's integrate e88901b2 passed every local gate, but CI 45956793765 failed in the client job on `the shell frame > moves focus to main from the skip link, leaving the URL alone` (activeElement had no id). PC-123 touches no shell file, and the same test is on the flaky table from a local failure under load. Per D-292, the orchestrator pushes its ledger snapshot and PC-123 merges platform-core and integrates again; PC-F115 root-causes the flake (D-011: no retry or loosened assertion). PC-F103 held after fix1 (R1 0/0/3, minors only, so no R2); it integrates after PC-F100. Its twin-key behaviour (MeSave Name2/Name3 get keys of their own, against spec 0029 §2.4) is recorded as its Deviation 4 and becomes PC-F114. PC-F113, PC-F114 and PC-F115 wait for a free fix slot, in that order. For Ahmad: spec 0013 §10.1's report list names bare ReportKind_*/ShareAccess_* keys where its own enum rule gives Core_ReportKind_*/Core_ShareAccess_*.
+
+### D-405 — PC-129 landed; PC-123 released; PC-156 resumes in pc-4 (2026-11-27)
+
+PC-129 landed as f1d25ec5 after the D-292 re-integration; CI 45948538904 was green. PC-123 is the next held item, so it is released to integrate (D-087). pc-4 frees, and per D-403 PC-156 resumes there: it sets the panels ceiling to 10.5, re-runs lint:test, then holds. PC-163 takes the next T1 slot that frees. The integration order after PC-123 is PC-F99, PC-F107, PC-156 and PC-128, with fixes ahead of T1 per D-229, then PC-F100 when its fix round is done. check_deps lists only T3s as ready.
+
+### D-404 — PC-129 CI red on an unrelated C# test; PC-F113 opened (2026-11-27)
+
+PC-129's integration CI 45945997084 (424e67df) failed only build-test (windows-latest), on HubConnectTests.Neither_the_negotiate_nor_the_connect_renews_or_stamps_the_session: the negotiate answered 503 instead of 200. PC-129 changes no C#, so per D-292 it merges platform-core again under ": integrate" and gets a fresh CI run. PC-F113 is opened to root-cause the test (D-011), with a Flaky row. PC-129 also brings a new lazy entry point, @tellma/core/uploads, which moves TmUploads off /entity. That departs from spec 0029 §1, which places uploads in /entity, and goes to Ahmad.
+
+### D-403 — Ahmad raises the PC-156 and PC-163 budgets (2026-11-26)
+
+Ahmad ruled "Increase their size limits" for the two parked items. This is a spec-budget raise on his authority (D-313), applied as each item's clean-build measure rounded up to the next 0.5 (D-031 rounding):
+- PC-156: the tm-attention-panels ceiling, spec 0028 §1's 9, becomes 10.5 (measured 10.05).
+- PC-163: ./shell, spec 0027's 16 KB of eager code, becomes 19.5 (measured 19.06).
+- PC-163: Acme's initialJs warn line, spec 0024 §12's 230, and the fixture's become the merged-tree measure rounded up to the next 0.5 (about 234 and 233 today). The 260 error line stays.
+
+PC-156 also adds about 1.1 KB to initialJs (225.81 at fix2), so whichever of the two integrates second re-measures on the merged tree and sets the warn line from that measure (D-214). It does not reuse the earlier figure. Ahmad edits the spec texts (docs/ is not the run's).
+
+Both un-park:
+- PC-156 needs only its ceiling edit and the lint:test re-run that fix2 skipped, then holds. Its three implementer rounds are spent.
+- PC-163 had a blocking R1 finding, so R2 runs at xhigh (§4.4) before it holds.
+
+Neither may use a fix slot (D-229). PC-156 takes the first T1 slot that frees and PC-163 the next, when PC-129 or PC-123 lands, or when PC-128 or PC-F100 free theirs.
+
+### D-402 — PC-F112 landed; PC-129 re-integrates before PC-123 (2026-11-26)
+
+PC-F112 landed as 70239a8a. Acme searchRoute fell from 109.79 to 94.92, which clears PC-129's blocker (D-389). PC-129 had been released and was then skipped while blocked (D-319). It is the earliest released item, so it re-integrates now: it merges platform-core, moves TmUploads off the /entity barrel and runs the full gates. PC-123 integrates after PC-129's platform-core push (D-087).
+
+PC-128 merges platform-core to pick up the pager change. pc-f is free. PC-F103 starts there once a heavy-agent place frees; five are running now (D-028): PC-128, PC-129, PC-F99, PC-F107 and PC-F100.
+
+### D-401 — PC-163 parked; PC-F100 fills pc-2 (2026-11-26)
+
+PC-163's fix1 (04f063e2) landed all six neutral trims and fixed R1-2 to R1-5. ./shell measures 19.06 against spec 0027's 16. Its ceiling is 19.5, the package's own figure. Acme initialJs is 233.66 (fixture 232.90) against spec 0024's 230 warn line. PC-163 parks with pc/PC-163 kept, and Ahmad was sent the final figures.
+
+check_deps lists no ready T1 or T2 item, only T3s. D-229 puts non-blocking fixes before T3, so PC-F100 (the route skeleton on first tenant entry, ready since PC-118 landed) starts in pc-2. pc/PC-163 also touches ./shell, but it is not on platform-core, and PC-F100 does not build on it.
+
+### D-400 — PC-156 parked; PC-128 resumes in pc-1 (2026-11-26)
+
+PC-156's fix2 (14caf229) addressed R2-1 to R2-11. The panels chunk measures 10.05 against spec 0028 §1's 9. The trims alone reached 10.00; keeping /attention (5.99 of 6) and tm-attention-calls (1.49 of 1.5) under their ceilings cost 0.05. So the 10.0 option no longer fits, and Ahmad was sent an update: a 10.5 cap, or on-open page contexts at 9.
+
+PC-156 parks with pc/PC-156 kept. When it resumes, lint:test is re-run, because fix2 did not re-run it after its last edits.
+
+pc-1 frees, and per D-394 PC-128 resumes there on pc/PC-128 (94b802aa). It folds ./search-view into ./search and sets ./search's ceiling to its measure rounded up to the next 0.5. It merges platform-core once PC-F112 lands. Platform-core's side wins the pager overlap, except that PC-128 keeps its tm-select-base preventDefault. A fresh R1 follows.
+
+### D-399 — PC-163 R1 rulings; park on spec 0027 and spec 0024 budgets (2026-11-26)
+
+R1 found 1 blocking, 1 major and 3 minor issues. R1-1, the blocking one: ./shell measures 19.48 against spec 0027's 16 KB, and Acme initialJs 234.05 (fixture 233.29) against spec 0024 §12's 230 warn line. Neither can be reached without bending spec 0027:
+- option (a) bends §8.4;
+- the press, reveal and toast part of option (b) cannot move under §8.5 and §14;
+- option (c) breaks §14, §7.5 and §8.7.
+
+fix1 takes the neutral trims (about 0.45 KB) and R1-2 to R1-5. Its ./shell ceiling is set to the clean-build measure rounded up to the next 0.5, because this ceiling is the package's own, not the spec's. The 230 warn line is left untouched. PC-163 then parks. Ahmad was notified with three options: raise both, accept (a) plus the roving keys from (b) for about 18.0/232.5, or accept (c).
+
+The pin e2e is not in this checkpoint. It needs a dedicated seeded principal per project, which is carried to the shell e2e work. New public API went to Ahmad for review: @tellma/locale-ar/pins-strings, TmMenuLink.current and TmReorderList.itemKind.
+
+### D-398 — PC-F111 landed; PC-F112 released; PC-F99 and PC-F107 start (2026-11-26)
+
+PC-F111 landed as f598b284. Its first integration went stale when PC-F110 landed lockfile changes. It re-integrated, and the re-integration found and fixed a lint:test race: lucide-icon-paths walked the fake-emit fixtures/run-* copies, which PC-F110's specs create and delete.
+
+Per D-229, the blocking fix PC-F112 integrates next, then PC-123. pc-f2 and pc-f3 serve fixes (D-035). PC-F99 starts in pc-f2, since PC-126 has landed. PC-F107 starts in pc-f3. That makes five heavy agents (D-028): PC-156 fix2, PC-163 R1, PC-F112 integrate, PC-F99 and PC-F107.
+
+### D-397 — PC-163 blocked on spec budgets; R1 first (2026-11-26)
+
+PC-163's implementer reports blocked. ./shell measures 19.48 KB against spec 0027's 16 KB for eager code. Acme initialJs is 234.07 (fixture 233.16), over spec 0024 §12's 230 warn line, so build.fixture.spec fails. The orchestrator raises neither (D-313), and this would also be ./shell's third raise (D-373).
+
+§8.1 allows resume, re-spawn, split or park. R1 runs first, at high effort, with the budget as its first task: itemize the growth by module, find trims that keep spec behaviour, and judge the implementer's options (a), (b) and (c) against spec 0027. If R1 shows 16 and 230 are both unreachable without bending the spec, PC-163 parks for Ahmad's ruling with the smallest honest figures. Otherwise fix1 applies the trims.
+
+### D-396 — PC-156 R2 rulings; park on spec 0028 §1 (2026-11-26)
+
+R2 found 1 blocking, 1 major and 9 minor issues. R2-1 (blocking) is the panels chunk: 10.37 against spec 0028 §1's 9. Spec budgets are not the orchestrator's to raise (D-313). The neutral trims (shared skeleton, owner lookup moved into the calls chunk, deduped strings and CSS, the icon-gate artifact) go to fix2. Moving the page contexts to an on-open chunk changes behaviour, so it is not taken. The ceiling stays 9, and PC-156 parks after fix2 on its measured figure. Ahmad was notified with three options: a 10.5 cap, a 10.0 cap if every trim lands, or on-open page contexts at 9.
+
+Everything else goes to fix2, the third and last implementer round:
+- R2-2: the silent busy refusal; invoke no longer waits on the server.
+- R2-3: "Keep running" is restored through a cancel label on the action's confirm, and the TmPageAction.confirm widening is recorded in ARCHITECTURE.md.
+- R2-4: confirm.args is guarded; an unknown job id is refused.
+- R2-5: the calls chunk is warmed at idle.
+- R2-6: TmOutcomeToasts returns a synchronous handle again, and a chunk failure goes to telemetry.
+- R2-7 to R2-11: the minors, including root-causing the flaky Review test (D-011).
+
+While PC-156 is parked, its pc-1 worktree keeps its branch. The next free T1 slot goes to PC-128 (D-394).
+
+### D-395 — PC-123 R2 rulings (2026-11-26)
+
+R2 found 0 blocking, 0 major and 2 minor issues. Both minors (R2-1, the home-hatch preload test; R2-2, the discriminating display-zone test and the midnight re-render test) go to fix2. A minor fix2 needs no R3; PC-123 then holds.
+
+warm-launch:82 under the lazy-delay harness is a harness artifact. Plain runs put it at 152-296 ms against 1 s, and the harness adds the same two 300 ms waits whether or not modules are already loaded. No preload is added, because a modulepreload would cost about 11 KB of initialJs for every family. warm-launch is not removed from the harnessed set now. A harnessed warm-launch miss is not a checkpoint finding unless the plain run also misses.
+
+PC-167 carries two items: settle TmDashboardTile's public inputs, and find room on "." (0 B left), either by equal savings or by a D-031 raise of at most 55.0.
+
+### D-394 (2026-11-26): Ahmad's ruling on PC-128: option (c), raise the ./search cap to fit
+
+Ahmad answered D-384 in chat: "Go with option C, increase the cap to fit". Spec 0030 §1's route-chunk figure is revised for the search page, so the search field and type-to-search stay as specified and ./search's ceiling is sized to what it weighs. That is his authorization for the raise D-313 and D-373 withheld from the orchestrator.
+
+The orchestrator does not edit docs/. Bringing spec 0030 §1's figure in line is Ahmad's edit, and the run's measured figure is reported to him once PC-128 lands.
+
+How PC-128 resumes. With the cap no longer the constraint, the eager sibling @tellma/core/search-view has no purpose; it only split one eager weight across two lines (R2-2). So:
+- ./search-view is folded back into ./search, and its entry point, budget line and API report are retired.
+- ./search's ceiling is set to its clean-build measure rounded up to the next 0.5 (about 23.5 to 24 by fix1's 23.51).
+- ARCHITECTURE.md drops the "eager sibling, pending a budget ruling" text.
+- Nothing else changes.
+
+PC-128 has spent its three implementer rounds (§4.4), so this change gets a fresh R1 before it integrates (D-384). PC-128 is T1, so it takes the next T1 slot that frees (pc-1, pc-3 or pc-2). It cannot take a fix slot (D-229), and the heavy-agent limit holds (D-028).
+
+### D-393 (2026-11-26): PC-F110 landed on Ahmad's approval
+
+Ahmad answered the D-392 notice in chat with "Push approved". The agent's retry was denied again, because the approval reached it only as the orchestrator's relay, and an agent's permission check never sees chat. The orchestrator therefore ran that one approved push itself, after checking two things:
+- it was a fast-forward from origin/platform-core 21b33fc4;
+- the merge on top of the green commit 05580e04 added only plans/ files.
+
+PC-F110 landed at df33a1f9, and pc/PC-F110 was pushed to the same sha. This is the D-264/D-284 pattern: the user approved the specific push, so it is not laundering. The approval covered that push only; any later landing push denied the same way needs its own notice and approval. pc-f3 is freed, and its next fix, PC-F107, waits for a heavy-agent place (D-028).
+
+### D-392 (2026-11-26): PC-F110's land push denied; Ahmad notified; PC-F111 released
+
+PC-F110's land push (git push origin HEAD:platform-core from pc-f3) was denied by the auto-mode classifier as a "Destructive or Unwanted Action", after green CI 45908069784 on 05580e04. It is an ordinary fast-forward push of the kind every landing makes, not a force push, and it is not a command this run forbids. So it is a §9 permission block, and Ahmad was notified at once by push notification and email.
+
+The orchestrator does not run the push itself, which would launder the agent's denial. PC-F110 keeps pc-f3 and waits for Ahmad's approval; that approval covers this one push (D-264, D-284).
+
+A blocked item is skipped, not waited on (D-319), so PC-F111 is released to integrate. Its integration push goes to pc/PC-F111. If its own land push is denied the same way, it waits beside PC-F110.
+
+### D-391 (2026-11-26): PC-128 fix2 done and parked; PC-163 in pc-2
+
+PC-128's fix2 (94b802aa) fixes R2-1 and R2-3 to R2-7, each pinned by a mutation that fails its test. R2-2 stays open in the review, parked on the ./search budget question (D-384). Fix2 also fixes a race in the pager e2e helper holdSelectChunks ("Response has been disposed" on a cancelled request), which PC-F112 brings over with the pager change.
+
+PC-128 is parked with its work on pc/PC-128, not held, so pc-2 is freed (D-384). No T1 item is ready, so pc-2 takes PC-163, the only ready T2, with its three carries (D-229). The heavy-agent count stays within five: PC-F112, PC-F110's integration, PC-123's fix1, PC-156's fix1 and PC-163.
+
+### D-390 (2026-11-26): PC-156 R1 rulings
+
+PC-156's R1 found 1/4/6.
+
+R1-1 is blocking. The implementer raised spec 0028 §1's budgets itself (/attention 6 to 6.5, the panels 9 to 10.5), which D-313 forbids. Both go back to the spec's figures, and fix1 applies every trim the review measured. /attention must reach 6. If the panels chunk cannot reach 9 without losing spec behaviour (the review estimates 9.6 to 9.8), PC-156 is parked on that one budget, as PC-128 was (D-384), and nothing is raised.
+
+R1-2 moves TmProgressRing to its own @tellma/core-ui/progress-ring entry point, so core-ui/progress (about 2 KB gzip) leaves every first frame. That is most of Acme initialJs's growth from 224.70 to 226.85.
+
+R1-9 is a spec contradiction ruled here under Rule 2. Job stop follows spec 0026 §9.5, the spec that owns jobs, in both the panel and the attention.stop-job page action, with the kind-specific confirmation text.
+
+R1-3 to R1-8, R1-10 and R1-11 are fixed as the review describes. Because R1-1 is blocking, R2 runs at xhigh after fix1 (§4.4).
+
+Questions for Ahmad, non-blocking:
+- The new @tellma/core/attention-rows entry point (5.86) moves TmAttentionText and TmAssignmentList out of §1's 6 KB /attention line, so the members §1 budgets at 6 KB weigh 12.14 in total. Should §1 list /attention-rows with its own figure?
+- The moved string key, one TmAttentionButton in place of two classes, and the bell-only hold.
+- The 0028 §6.2/§13 stop-confirmation wording against 0026 §9.5.
+
 ### D-389 (2026-11-26): PC-129 blocked on spec 0024's 110 KB search route; PC-F112 lands PC-128's pager saving
 
 D-388's placement fix cannot reach 110. PC-129's details kit renders /entity's TmValue and aria tabs in view mode. The modules both lazy routes reach statically (the /entity view side, aria's shared pieces, the l10n-input parsers) must therefore leave the search host's chunk. That splitting costs about 1.5 KB of gzip, and moving TmUploads off the /entity barrel saves only 0.26, which leaves about 111.3.

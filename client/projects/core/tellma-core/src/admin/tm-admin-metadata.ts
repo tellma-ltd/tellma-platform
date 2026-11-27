@@ -115,4 +115,6 @@ export interface TmJobHandlerMetadata {
   readonly labelFallback?: string;
   /** The record the handler's job produces. */
   readonly result?: TmJobResultMetadata;
+  /** Whether a job saves its work in steps, so that a job stopped partway leaves the steps it finished saved. */
+  readonly commitsInSteps: boolean;
 }

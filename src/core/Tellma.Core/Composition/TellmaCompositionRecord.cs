@@ -97,6 +97,9 @@ namespace Tellma.Core.Composition
         /// <summary>The client event names the features contributed, in realisation order.</summary>
         public List<ContributedClientEvent> ClientEvents { get; } = [];
 
+        /// <summary>The dashboard widget types the features contributed, in realisation order.</summary>
+        public List<ContributedWidgetType> WidgetTypes { get; } = [];
+
         /// <summary>
         ///     The blob-kind transforms: the features', in realisation order, then the host's, in call
         ///     order. Each kind's policy is the result of applying its transforms in this order.
@@ -207,6 +210,12 @@ namespace Tellma.Core.Composition
     /// <param name="Name">The event's name as contributed.</param>
     /// <param name="Owner">The feature that contributed it.</param>
     internal sealed record ContributedClientEvent(string Name, ITellmaFeature Owner);
+
+    /// <summary>A dashboard widget type a feature contributed.</summary>
+    /// <param name="Key">The type's key as contributed.</param>
+    /// <param name="SettingsType">The class its settings bind to; null when it has none.</param>
+    /// <param name="Owner">The feature that contributed it.</param>
+    internal sealed record ContributedWidgetType(string Key, Type? SettingsType, ITellmaFeature Owner);
 
     /// <summary>A background job handler a feature registered, as its attribute and interface declare it.</summary>
     /// <param name="HandlerType">The handler class.</param>

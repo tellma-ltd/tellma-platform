@@ -23,7 +23,6 @@ function imperative(male: string, female: string): string {
  * same way: "ليست لديك صلاحية لذلك", "حاول مرة أخرى".
  */
 export const TM_STRINGS_AR: TmStringTree = {
-  home: { title: 'الرئيسية' },
   admin: {
     settings: { title: 'الإعدادات' },
     me: { title: 'إعداداتي' },
@@ -135,7 +134,6 @@ export const TM_STRINGS_AR: TmStringTree = {
     },
     tray: { label: 'مهامي', open: '{count} مفتوحة', new: '{count} جديدة' },
     separator: '، ',
-    assignment: { title: '{entity} {code}' },
     toasts: {
       more: 'المزيد ({count, number}) · فتح الإشعارات',
       failed: `تعذّر تحديث إشعاراتك. ${imperative('حاول', 'حاولي')} مرة أخرى.`,

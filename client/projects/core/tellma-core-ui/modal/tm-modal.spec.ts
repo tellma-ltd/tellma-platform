@@ -526,6 +526,27 @@ describe('TmModal', () => {
     expect(document.activeElement).toBe(opener);
   });
 
+  it('returns focus to the element it is given rather than the opener', async () => {
+    const { fixture, modal } = await setup();
+    const opener = fixture.nativeElement.querySelector('.opener') as HTMLButtonElement;
+    const button = document.createElement('button');
+    document.body.append(button);
+    try {
+      opener.focus();
+      const ref = modal.open(ContentProbe, { title: 'Focus', returnFocus: button });
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0)); // focus trap settles
+      expect(container().contains(document.activeElement)).toBe(true);
+
+      ref.close();
+      await fixture.whenStable();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(button);
+    } finally {
+      button.remove();
+    }
+  });
+
   it('drives the shell through TmModalHarness', async () => {
     const { fixture, modal } = await setup();
     const ref = modal.open(ContentProbe, { title: 'Harnessed', data: 'you' });

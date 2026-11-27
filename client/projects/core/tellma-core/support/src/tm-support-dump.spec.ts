@@ -319,7 +319,7 @@ describe('the diagnostic file', () => {
     const injector = await setUp();
     const dump = await tmBuildSupportDump(snapshotNow(), { includeData: false, injector });
     const clicks: { readonly name: string; readonly href: string; readonly attached: boolean }[] = [];
-    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       clicks.push({ name: this.download, href: this.href, attached: this.isConnected });
     });
     const revoke = vi.spyOn(URL, 'revokeObjectURL');
@@ -333,6 +333,9 @@ describe('the diagnostic file', () => {
       expect(revoke).toHaveBeenCalledWith(clicks[0]!.href);
     } finally {
       vi.useRealTimers();
+      // The prototype and URL are the page's, which later files share: restore them with this test.
+      click.mockRestore();
+      revoke.mockRestore();
     }
     expect(TestBed.inject(TmFakeTelemetry).recent().filter((item) => item.name === 'tm.support.dump-downloaded')).toEqual([
       expect.objectContaining({ props: { pageData: false } }),

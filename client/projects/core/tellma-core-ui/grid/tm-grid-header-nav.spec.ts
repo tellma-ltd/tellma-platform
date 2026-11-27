@@ -916,7 +916,7 @@ describe('tm-grid row-end column', () => {
     expect(dispatchClipboard(scroller, 'cut').getData('text/plain')).toBe('');
   });
 
-  it('never takes a paste', async () => {
+  it('leaves every paste of a grid that cannot be edited to the page', async () => {
     const { fixture, scroller } = await setup();
     const paste = (): ClipboardEvent => {
       const data = new DataTransfer();
@@ -929,10 +929,11 @@ describe('tm-grid row-end column', () => {
       scroller.dispatchEvent(event);
       return event;
     };
+    // A data cell of a grid with no field takes nothing, so the paste stays unhandled.
     await activate(fixture, scroller, 0, 2);
-    expect(paste().defaultPrevented).toBe(true);
+    expect(paste().defaultPrevented).toBe(false);
 
-    // On the row-end cell the paste is left to the page.
+    // Nor does the row-end cell.
     await key(fixture, 'End');
     expect(paste().defaultPrevented).toBe(false);
   });

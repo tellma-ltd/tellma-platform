@@ -5,7 +5,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -24,11 +24,19 @@ const indexText = readFileSync(join(lucideDir, 'dist', 'esm', 'lucide.mjs'), 'ut
 /** The icon modules the index re-exports, by file name without extension. */
 const indexed = new Set([...indexText.matchAll(/from '\.\/icons\/([^']+)\.mjs';/g)].map((match) => match[1]));
 
-/** Every TypeScript source file under a folder, skipping installed and built output. */
+/**
+ * Every TypeScript source file under a folder, skipping installed and built
+ * output and the core-tools fixture copies (`fixtures/run-*`, gitignored).
+ * Other specs create and delete those copies while this one walks the tree,
+ * so a file listed here could be gone by the time it is read.
+ */
 function sources(folder: string): string[] {
   const files: string[] = [];
   for (const name of readdirSync(folder)) {
     if (name === 'node_modules' || name === 'dist') {
+      continue;
+    }
+    if (basename(folder) === 'fixtures' && name.startsWith('run-')) {
       continue;
     }
     const path = join(folder, name);

@@ -49,18 +49,21 @@ describe("a details record's state", () => {
       const record = details();
       record.edit();
 
-      expect(record.model()).toBe(CUSTOMER);
+      expect(record.model()).toBe(record.entity());
+      expect(record.model()).toEqual(expect.objectContaining({ id: 5, code: 'C-005', name: 'Al Noor Trading' }));
       expect(record.dirty()).toBe(false);
     });
 
     it("turns dirty on the form's write, which copies the objects on its path and leaves the base alone", () => {
       const record = details();
       record.edit();
+      const server = record.entity()!;
       record.form.name().value.set('Al Noor');
 
       expect(record.dirty()).toBe(true);
-      expect(record.model()).not.toBe(CUSTOMER);
-      expect(record.model().contacts).toBe(CUSTOMER.contacts);
+      expect(record.model()).not.toBe(server);
+      expect(record.model().contacts).toBe(server.contacts);
+      expect(server.name).toBe('Al Noor Trading');
       expect(CUSTOMER.name).toBe('Al Noor Trading');
     });
 
@@ -82,7 +85,7 @@ describe("a details record's state", () => {
       record.update((model) => ({ ...model, code: 'C-006' }));
       expect(record.dirty()).toBe(true);
       await record.cancel();
-      expect([record.mode(), record.dirty(), record.model()]).toEqual(['view', false, CUSTOMER]);
+      expect([record.mode(), record.dirty(), record.model()]).toEqual(['view', false, expect.objectContaining({ id: 5, code: 'C-005', name: 'Al Noor Trading' })]);
     });
 
     it('is never dirty in view mode', () => {
@@ -105,8 +108,9 @@ describe("a details record's state", () => {
       tmFakeDetails<TmTestCustomer>({ entity: 'acme.Customer', mode: 'edit', record: { entity: CUSTOMER } }),
     );
 
-    expect([record.mode(), record.status(), record.entity(), record.model(), record.dirty()]).toEqual(['edit', 'ready', CUSTOMER, CUSTOMER, false]);
-    expect(record.model()).toBe(CUSTOMER);
+    expect([record.mode(), record.status(), record.dirty()]).toEqual(['edit', 'ready', false]);
+    expect(record.entity()).toEqual(expect.objectContaining({ id: 5, code: 'C-005', name: 'Al Noor Trading' }));
+    expect(record.model()).toBe(record.entity());
     record.form.name().value.set('Al Noor');
     expect(record.dirty()).toBe(true);
   });
@@ -115,7 +119,7 @@ describe("a details record's state", () => {
     const record = TestBed.runInInjectionContext(() => tmFakeDetails<TmTestCustomer>({ entity: 'acme.Customer', mode: 'create' }));
 
     expect([record.mode(), record.id(), record.status(), record.dirty()]).toEqual(['create', null, 'ready', false]);
-    expect(record.model()).toEqual({ contacts: [] });
+    expect(record.model()).toEqual(expect.objectContaining({ contacts: [], code: null, name: null }));
     record.update((model) => ({ ...model, name: 'New' }));
     expect(record.dirty()).toBe(true);
   });

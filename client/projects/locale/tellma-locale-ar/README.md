@@ -37,14 +37,21 @@ providers: [provideTellmaUi(), provideTellmaLocaleAr()]
   `@tellma/locale-ar/pins-strings` entry point, the details page's part,
   its header's buttons and badges, status lines and discard question, in
   `details-strings/strings-details-ar.ts`, the
-  `@tellma/locale-ar/details-strings` entry point, the Queryex tools' part,
+  `@tellma/locale-ar/details-strings` entry point, the home page's and
+  dashboards' part, the home page's title, greeting and grid label and the
+  dashboard grid's tile states and built-in widgets, in
+  `dashboards-strings/strings-dashboards-ar.ts`, the
+  `@tellma/locale-ar/dashboards-strings` entry point, the Queryex tools' part,
   the expression editor's and the path picker's strings, in
   `queryex-strings/strings-queryex-ar.ts`, the
-  `@tellma/locale-ar/queryex-strings` entry point, and the support tools'
+  `@tellma/locale-ar/queryex-strings` entry point, the support tools'
   part, the support dialog's and the Diagnostics panel's strings, in
   `support-strings/strings-support-ar.ts`, the
-  `@tellma/locale-ar/support-strings` entry point), which `tmArabic()` merges
-  and hands the platform. `tmArabic()` loads the seven entry points at once on
+  `@tellma/locale-ar/support-strings` entry point, and the attention part,
+  the bell's and the tray's panels and the assignment rows, in
+  `attention-strings/strings-attention-ar.ts`, the
+  `@tellma/locale-ar/attention-strings` entry point), which `tmArabic()` merges
+  and hands the platform. `tmArabic()` loads the nine entry points at once on
   the first switch to Arabic, so an app's other languages never download
   them, and an app on the component library alone never downloads the
   platform's tables.
@@ -78,7 +85,7 @@ Copy this package's structure:
    if the language needs a non-Latin face; skip fonts entirely for
    Latin-script locales.
 3. `platform-strings/strings-tm-xx.ts` — translate every key of the platform's English
-   `tm` table (`tmEnglish()` in `@tellma/core`); `shell-strings/strings-shell-xx.ts` —
+   `tm` table (`tmEnglish()` in `@tellma/core`) but `home.title`; `shell-strings/strings-shell-xx.ts` —
    the `shell`, `tenantless`, `tenantShell`, `shellOverlays`, `shellHistory`, `aboutDialog` and
    `shortcutsDialog` scopes the shell frame, the tenantless pages and the tenant
    shell register in English; `pins-strings/strings-pins-xx.ts` — the `pins`,
@@ -86,15 +93,19 @@ Copy this package's structure:
    menus and popover, the pin commands and the Manage pins dialog register in
    English;
    `details-strings/strings-details-xx.ts` — the `details`
-   scope the details page registers in English; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
+   scope the details page registers in English; `dashboards-strings/strings-dashboards-xx.ts` — the
+   `home` and `dashboard` scopes the home page and the dashboard grid register in English,
+   with the home page's `title` from the `tm` table; `queryex-strings/strings-queryex-xx.ts` — the `queryex`
    and `pathPicker` scopes the expression editor and the path picker register in
    English; `support-strings/strings-support-xx.ts` — the `supportHost` and
    `support` scopes the support dialog and the Diagnostics panel register in
-   English.
+   English; `attention-strings/strings-attention-xx.ts` — the `attentionPanels`
+   and `attentionRows` scopes the bell's and the tray's panels and the
+   attention rows register in English.
 4. `provide-tellma-locale-xx.ts` — register the strings; `tm-xx.ts` — the
    language definition `tmXx()`, with its direction and its tables, loaded
    together with `import()` from the `platform-strings`, `shell-strings`,
-   `pins-strings`, `details-strings`, `queryex-strings`, `support-strings` and `strings` entry points;
+   `pins-strings`, `details-strings`, `dashboards-strings`, `queryex-strings`, `support-strings`, `attention-strings` and `strings` entry points;
    `styles.css` — import the pack's fonts.
 5. If the script's leading differs from Latin, add the language to the token
    preset's `leadingByLang`; if it needs a new face, add the family to the
