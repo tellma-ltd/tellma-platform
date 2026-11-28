@@ -6,10 +6,11 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { Location } from '@angular/common';
 import type { SpyLocation } from '@angular/common/testing';
-import { computed, signal, type Provider, type WritableSignal } from '@angular/core';
+import { Component, computed, signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestKey } from '@angular/cdk/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { NavigationStart, Router } from '@angular/router';
 import {
   TmApiError,
@@ -27,6 +28,7 @@ import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
 
 import { tmEntityDocs, tmEntityRig, type TmEntityRig, type TmEntityRigOptions } from '../../src/entity/tm-entity.testing.util';
 import { tmSettle, tmSettleUntil, tmWaitUntil } from '../../src/routes/tm-app.testing.util';
+import { TmSearchCell } from './tm-search-cell';
 import { ɵTM_SEARCH_ERROR_VIEWS } from './tm-search-state';
 import { ɵTM_SEARCH_FILTERS_STRINGS_EN } from './tm-search-filters-strings';
 import { ɵTM_SEARCH_STRINGS_EN } from './tm-search-strings';
@@ -104,6 +106,22 @@ const DECLARED = {
   filters: TM_TEST_CUSTOMERS.filters,
   tabs: TM_TEST_CUSTOMERS.tabs,
 } as unknown as Partial<TmEntityDeclarationInput<'acme.Customer'>>;
+
+/** A declared tile body: it prints the id and the code of the row it was handed. */
+@Component({ selector: 'tm-test-tile', template: `<span data-tm-test-tile>{{ value() }}:{{ row().get('Code') }}</span>` })
+class TmTestTile extends TmSearchCell<number> {}
+
+/** Three customers for the tiles: a thumbnail, an image without one, and none; the second is inactive and retail. */
+function pictured(): readonly TmCustomerRow[] {
+  return customers(3).map((row, index) => ({
+    ...row,
+    IsActive: index !== 1,
+    CustomerType: index === 1 ? 'Retail' : 'wholesale-trade',
+    ImageId: index === 2 ? null : 500 + index,
+    'Image.Variants': index === 0 ? 'thumb' : '',
+    'CreatedBy.IsActive': index === 0,
+  }));
+}
 
 /** The breakpoints from the narrowest up. */
 const WIDTHS: readonly TmBreakpoint[] = ['xs', 'sm', 'md', 'lg', 'xl', 'xxl'];
@@ -1691,6 +1709,132 @@ describe('TmSearchHost', () => {
     });
   });
 
+  describe('the tiles', () => {
+    /** Waits until the tiles' chunk has loaded and the tiles show. */
+    async function tilesShow(): Promise<void> {
+      await tmSettleUntil(() => host()?.querySelector('tm-tiles .tm-tiles__item[data-index]') != null, 'the tiles show');
+    }
+
+    /**
+     * The rendered tile at an index among the rows.
+     *
+     * @param index - The index.
+     * @returns Its element.
+     */
+    function tileAt(index: number): HTMLElement {
+      return host()!.querySelector<HTMLElement>(`.tm-tiles__item[data-index="${index}"]`)!;
+    }
+
+    /**
+     * The tone of a tile's badge.
+     *
+     * @param index - The tile's index.
+     * @returns The tone, or `null` when it shows no badge.
+     */
+    function badgeTone(index: number): string | null {
+      return tileAt(index).querySelector('tm-badge')?.getAttribute('data-tone') ?? null;
+    }
+
+    /**
+     * The source each tile's image is handed, by the tile's index.
+     *
+     * @param rig - The rig, whose fixture renders the page.
+     * @returns The sources; `null` for a tile with no image.
+     */
+    function imageSources(rig: TmEntityRig): (string | null)[] {
+      return [0, 1, 2].map((index) => {
+        const image = rig.router.fixture.debugElement.query(By.css(`.tm-tiles__item[data-index="${index}"] tm-image`));
+        return image === null ? null : (image.componentInstance as { src(): string | null }).src();
+      });
+    }
+
+    it("map the declared parts: the thumbnail, the title linking to the row's target, the subtitle and the Active badge", async () => {
+      const { page, rig } = await open('/17/customers', { width: 'xs', customer: DECLARED, rows: pictured() });
+      await tilesShow();
+      const tiles = (await page.getTiles())!;
+      const [first, second] = await tiles.getTiles();
+      expect(await first!.getTitle()).toBe('Customer 1');
+      expect(await first!.getHref()).toMatch(/\/17\/customers\/1$/);
+      expect(await first!.getCornerText('bottomStart')).toBe('C-001');
+      expect(await first!.getCornerText('bottomEnd')).toBe('Active');
+      expect(await second!.getCornerText('bottomEnd')).toBe('Inactive');
+      expect([badgeTone(0), badgeTone(1)]).toEqual(['success', 'neutral']);
+      // The thumbnail only where the policy has one and the row lists it; no image for a row with none.
+      const urls = TestBed.inject(TmUrls);
+      const sources = imageSources(rig);
+      expect(sources[0]).toBe(urls.blob('customer-image', 500, { variant: 'thumb' }));
+      expect(sources[1]).toBe(urls.blob('customer-image', 501));
+      expect(sources[2] ?? null).toBeNull();
+    });
+
+    it("show a number at the top end as numeric text, an enum's label as a neutral badge and another bool's label while true", async () => {
+      const declared = { ...DECLARED, tile: { title: 'Name', topEnd: 'CreditLimit', badge: 'CustomerType' } };
+      const { page } = await open('/17/customers', { width: 'xs', customer: declared as typeof DECLARED, rows: pictured() });
+      await tilesShow();
+      const [first, second] = await (await page.getTiles())!.getTiles();
+      expect(tileAt(0).querySelector('.tm-tiles__corner--top-end')!.classList).toContain('tm-tiles__corner--numeric');
+      expect((await first!.getCornerText('topEnd'))!.replace(/\D/g, '')).toMatch(/^1000/);
+      expect(await second!.getCornerText('bottomEnd')).toBe('Retail');
+      expect(badgeTone(1)).toBe('neutral');
+    });
+
+    it("show another bool's label as its badge while it is true, and no badge while it is false", async () => {
+      const declared = { ...DECLARED, tile: { title: 'Name', badge: 'CreatedBy.IsActive' } };
+      const { page } = await open('/17/customers', { width: 'xs', customer: declared as typeof DECLARED, rows: pictured() });
+      await tilesShow();
+      const [first, second] = await (await page.getTiles())!.getTiles();
+      expect(await first!.getCornerText('bottomEnd')).not.toBe('Active');
+      expect(await first!.getCornerText('bottomEnd')).toMatch(/\S/);
+      expect(badgeTone(0)).toBe('neutral');
+      expect(await second!.hasCornerBadge('bottomEnd')).toBe(false);
+    });
+
+    it('take the default parts with no tile declared: the image, the display name in its parts and the Active badge', async () => {
+      const { page, rig } = await open('/17/customers', { width: 'xs', rows: pictured() });
+      await tilesShow();
+      const [first] = await (await page.getTiles())!.getTiles();
+      expect(await first!.getTitle()).toMatch(/C-001.*Customer 1/);
+      expect(await first!.getCornerText('bottomStart')).toBeNull();
+      expect(await first!.getCornerText('bottomEnd')).toBe('Active');
+      expect(imageSources(rig)[0]).toBe(TestBed.inject(TmUrls).blob('customer-image', 500, { variant: 'thumb' }));
+    });
+
+    it("draw a declared component's body, handed the row's id and the row", async () => {
+      const declared = { ...DECLARED, tile: { component: () => Promise.resolve(TmTestTile) } };
+      const { page } = await open('/17/customers', { width: 'xs', customer: declared as typeof DECLARED });
+      await tmSettleUntil(() => host()?.querySelector('[data-tm-test-tile]') != null, 'the tile component loads');
+      expect([...host()!.querySelectorAll('[data-tm-test-tile]')].map((body) => body.textContent)).toEqual(['1:C-001', '2:C-002', '3:C-003']);
+      expect(await (await page.getTiles())!.getTiles()).toHaveLength(3);
+    });
+
+    it('take back the offset an undo anchor remembered once its rows land', async () => {
+      await open('/17/customers', { width: 'xs', customer: DECLARED, respond: searched(customers(60)) });
+      await tilesShow();
+      // The page takes a fixed height, so the tiles scroll their rows.
+      host()!.style.blockSize = '400px';
+      await tmSettle();
+      const scroller = (): HTMLElement => host()!.querySelector<HTMLElement>('.tm-tiles__scroller')!;
+      scroller().scrollTop = 300;
+      scroller().dispatchEvent(new Event('scroll'));
+      await tmSettle();
+      const offset = scroller().scrollTop;
+      expect(offset).toBeGreaterThan(0);
+
+      field().focus();
+      typeKey('C');
+      await tmSettleUntil(() => address() === '/17/customers?q=C', 'the result for "C" lands');
+      await resettle();
+      scroller().scrollTop = 0;
+      scroller().dispatchEvent(new Event('scroll'));
+      await tmSettle();
+
+      document.execCommand('undo');
+      await tmSettleUntil(() => address() === '/17/customers', 'the undo restores the query');
+      await resettle();
+      await tmSettleUntil(() => scroller().scrollTop === offset, 'the tiles take back their offset');
+    });
+  });
+
   describe('the tabs', () => {
     it('show as a segmented control from lg: a leaf tab filters the read and a named tab names its filter', async () => {
       const { api, page, rig } = await open('/17/customers', { customer: DECLARED });
@@ -1860,6 +2004,75 @@ describe('TmSearchHost', () => {
       await page.clickStateAction('Edit filter');
       await tmSettleUntil(() => document.activeElement?.closest('tm-expression-editor') != null, 'the editor takes focus');
       expect(await page.getFilters()).not.toBeNull();
+    });
+
+    it("lists the column filters as chips, and edits one in place, with Back to the sections", async () => {
+      const { page } = await open('/17/customers');
+      const filter = await page.openColumnFilter('Code');
+      await (await filter.getTextInput())!.setValue('C-00');
+      await filter.apply();
+      await resettle();
+      const filters = await page.openFilters();
+      expect(await filters.getAppliedLabels()).toEqual([expect.stringContaining('C-00')]);
+      const chip = (await (await filters.getApplied())!.getChips())[0]!;
+      await chip.activate();
+      expect(await filters.getColumnFilter()).not.toBeNull();
+      await filters.back();
+      expect(await filters.getColumnFilter()).toBeNull();
+      expect(await filters.getAppliedLabels()).toEqual([expect.stringContaining('C-00')]);
+    });
+
+    it('adds a column filter from Add column filter, staged until Apply', async () => {
+      const { api, page } = await open('/17/customers');
+      const before = reads(api).length;
+      const filters = await page.openFilters();
+      expect(await filters.getAddableColumns()).toEqual(['Code', 'Name', 'Currency']);
+      const added = await filters.addColumnFilter('Name');
+      await (await added.getTextInput())!.setValue('Cust');
+      await added.apply();
+      expect(await filters.getColumnFilter()).toBeNull();
+      expect(await filters.getAppliedLabels()).toEqual([expect.stringContaining('Cust')]);
+      expect(reads(api)).toHaveLength(before);
+      await filters.apply();
+      await resettle();
+      expect(address()).toMatch(/^\/17\/customers\?f\.Name=/);
+      expect(reads(api)).toHaveLength(before + 1);
+    });
+
+    it('stages the defaults on Clear all, the first tab below sm included', async () => {
+      const { api, page } = await open('/17/customers?tab=open&inactive=1&x.mine=1', { width: 'xs', customer: DECLARED });
+      expect(reads(api).at(-1)!['includeInactive']).toBe(true);
+      const filters = await page.openFilters();
+      await filters.clearAll();
+      expect(await (await filters.getActiveOnly())!.isChecked()).toBe(true);
+      expect(await (await filters.getCustomSwitch('mine'))!.isChecked()).toBe(false);
+      expect(await (await filters.getTabs())!.getCheckedLabel()).toBe('All');
+      await filters.apply();
+      await resettle();
+      expect(address()).toBe('/17/customers');
+      expect(reads(api).at(-1)!['filters']).toBeUndefined();
+    });
+
+    it('opens once on a double click that comes before its code lands', async () => {
+      await open('/17/customers');
+      const button = host()!.querySelector<HTMLButtonElement>('[data-tm-filters]')!;
+      button.click();
+      button.click();
+      await tmSettleUntil(() => document.querySelector('tm-search-filters-form') !== null, 'the popup opens');
+      await tmSettle();
+      expect(document.querySelector('tm-search-filters-form')).not.toBeNull();
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+    });
+
+    it('applies on Mod+Enter in the filter expression', async () => {
+      const { api, page } = await open('/17/customers');
+      const filters = await page.openFilters();
+      const editor = (await filters.getEditor())!;
+      await editor.setValue('CreditLimit > 0');
+      await editor.press(TestKey.ENTER, { control: true });
+      await tmSettleUntil(() => document.querySelector('tm-search-filters-form') === null, 'the popup applies and closes');
+      await resettle();
+      expect(reads(api).at(-1)!['filters']).toEqual(['CreditLimit > 0']);
     });
 
     it('opens as an end drawer below sm', async () => {

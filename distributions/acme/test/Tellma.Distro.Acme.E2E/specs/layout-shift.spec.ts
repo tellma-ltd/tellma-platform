@@ -6,7 +6,7 @@
 import { type Page, type Route } from '@playwright/test';
 import { holdNetwork, signInAs, warmUp } from '@tellma/core-testing/e2e';
 
-import { expect, holdSelectChunks, test } from '../support/acme';
+import { expect, holdSegmentedChunks, holdSelectChunks, test } from '../support/acme';
 
 // Stable layout (spec 0024 §14): the skeleton a cold entry holds has the
 // page's final geometry, so the page replaces it with no layout shift.
@@ -240,6 +240,56 @@ test.describe('layout shift', () => {
         describeShifts(shifts),
       ).toEqual([]);
     });
+
+    // The search page's view toggle loads once the first rows land; until it
+    // does, a stand-in of its geometry holds its place at the toolbar's end,
+    // so the swap moves nothing: with its labels hidden, and from xl with them.
+    for (const [name, width] of [
+      ['icons only', 1100],
+      ['labelled', 1600],
+    ] as const) {
+      test(`the view toggle replaces its stand-in with zero shift (${name})`, async ({
+        page,
+        text,
+        cast,
+      }) => {
+        await page.setViewportSize({ width, height: 800 });
+        await signInAs(page, cast.user);
+        await recordShifts(page);
+        const segmented = await holdSegmentedChunks(page);
+
+        await page.goto('/1/customers');
+        await expect(page.getByRole('heading', { level: 1, name: text.customers })).toBeVisible();
+        const standIn = page.locator('.tm-search-view-standin');
+        const refresh = page.locator('tm-page-header [data-tm-refresh]');
+        // The page settles first: its rows, the pager's status and the fonts.
+        await expect(
+          page.getByRole('grid').locator('[role="rowgroup"] [role="row"]').first(),
+        ).toBeVisible();
+        await expect(page.locator('tm-pager .tm-pager__fraction')).toBeVisible();
+        await page.evaluate(() => document.fonts.ready);
+        await expect(standIn).toBeVisible();
+        await expect(page.locator('tm-segmented[data-tm-view]')).toHaveCount(0);
+        const before = [await standIn.boundingBox(), await refresh.boundingBox()];
+        const earlier = (await settledShifts(page)).length;
+
+        await segmented.release();
+        await expect(standIn).toHaveCount(0);
+        const toggle = page.locator('tm-segmented[data-tm-view]');
+        await expect(toggle).toBeVisible();
+        // From xl the toggle shows its labels, as its stand-in did.
+        await expect(toggle.locator('.tm-segmented__label').first()).toBeVisible({
+          visible: width >= 1600,
+        });
+        expect([await toggle.boundingBox(), await refresh.boundingBox()]).toEqual(before);
+        // Only the swap is judged: the shifts reported after the release.
+        const shifts = (await settledShifts(page)).slice(earlier);
+        expect(
+          shifts.map((shift) => shift.value),
+          describeShifts(shifts),
+        ).toEqual([]);
+      });
+    }
   });
 
   // An error state inside the content box needs a page whose read fails (specs 0030, 0031).

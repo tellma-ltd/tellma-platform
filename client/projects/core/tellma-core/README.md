@@ -38,8 +38,9 @@ The other entry points of the framework arrive with the features they hold, each
 its name. The package also ships plain assets: `boot/tm-boot.template.js`, the boot script's
 template, `styles.css`, the app's global stylesheet, which a distribution's `src/styles.css`
 imports first (the tokens, the Latin fonts, the directive stylesheets, `styles/tm-frame.css`, the
-shell frame's root variables and grid, and `styles/tm-boot-page.css`, the boot page's styles), and the default brand files
-`brand/{wordmark,mark}-on-{dark,light}.svg`.
+shell frame's root variables and grid, `styles/tm-search.css`, the search page's view-toggle
+stand-in, which the page draws before the toggle's code loads, and `styles/tm-boot-page.css`, the
+boot page's styles), and the default brand files `brand/{wordmark,mark}-on-{dark,light}.svg`.
 
 The platform's icon names live in `src/icons/platform-icons.ts`, which `provideTellma` registers
 before each feature's `icons`: a platform surface that draws a new name adds it there. A lazy

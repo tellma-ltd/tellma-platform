@@ -81,7 +81,7 @@ import {
 } from '@tellma/core';
 import { TmFormats, TmValue, tmGridColumnFor, type TmGridColumnConfig } from '@tellma/core/entity';
 import { tmPageStateKey } from '@tellma/core/memory';
-import { TmBreakpoints } from '@tellma/core-ui';
+import { TmBreakpoints, ɵtmControlSize } from '@tellma/core-ui';
 import { TmButton } from '@tellma/core-ui/button';
 import type { TmRowId } from '@tellma/core-ui/contracts';
 import { TmCounter } from '@tellma/core-ui/counter';
@@ -536,7 +536,15 @@ async function componentOf(load: TmLazyComponent): Promise<Type<unknown>> {
               <tm-segment value="tiles" icon="layout-grid" [label]="text.viewTiles()" />
             </tm-segmented>
           } @placeholder {
-            <span class="tm-search-host__segmented-placeholder tm-search-host__segmented-placeholder--view"></span>
+            <!-- The toggle's stand-in in its exact geometry, from the global styles: the track, two segments that
+                 draw an icon's box each, and their labels under the toggle's own container rule; so the swap moves
+                 nothing. -->
+            <span class="tm-search-view-standin" [attr.data-size]="viewSize()" aria-hidden="true">
+              <span>
+                <span>{{ text.viewGrid() }}</span>
+                <span>{{ text.viewTiles() }}</span>
+              </span>
+            </span>
           }
         </span>
       }
@@ -1228,6 +1236,9 @@ export class TmSearchHost implements OnInit {
     return !this.#breakpoints.atLeast('sm')() ? 'popup' : !this.#breakpoints.atLeast('lg')() ? 'menu' : 'segmented';
   });
 
+  /** The view toggle's size, by the controls' own rule, which its stand-in takes. */
+  protected readonly viewSize = ɵtmControlSize(signal(undefined));
+
   /** The Filters button. */
   private readonly filtersButton = viewChild.required<ElementRef<HTMLButtonElement>>('filtersButton');
 
@@ -1237,8 +1248,8 @@ export class TmSearchHost implements OnInit {
   /** The filter panels, once their chunk has loaded. */
   readonly #panels = signal<ɵTmSearchFilterPanelsApi | null>(null);
 
-  /** The filter panels' chunk as it loads; `null` until the first click of a filter button. */
-  #panelsLoad: Promise<ɵTmSearchFilterPanelsApi | null> | null = null;
+  /** What the filter button pressed last does once the panels' chunk lands; `null` while no chunk is loading. */
+  #pendingPress: ((panels: ɵTmSearchFilterPanelsApi) => void) | null = null;
 
   /** Whether the Filters popup is open. */
   protected readonly filtersOpen = computed(() => this.#panels()?.filtersOpen() ?? false);
@@ -1868,7 +1879,7 @@ export class TmSearchHost implements OnInit {
    * @param focusEditor - Whether the filter expression's editor takes focus as it opens.
    */
   protected openFilters(button: HTMLElement, focusEditor: boolean): void {
-    void this.#loadPanels().then((panels) => panels?.toggleFilters(button, focusEditor));
+    this.#withPanels((panels) => panels.toggleFilters(button, focusEditor));
   }
 
   /** Opens the Filters popup with the filter expression's editor focused: the invalid filter's and the calculation's Edit filter. */
@@ -1887,7 +1898,7 @@ export class TmSearchHost implements OnInit {
   protected openColumnFilter(key: string, event: MouseEvent): void {
     const anchor = event.currentTarget;
     if (anchor instanceof HTMLElement) {
-      void this.#loadPanels().then((panels) => panels?.toggleColumn(anchor, key));
+      this.#withPanels((panels) => panels.toggleColumn(anchor, key));
     }
   }
 
@@ -1939,35 +1950,52 @@ export class TmSearchHost implements OnInit {
   }
 
   /**
-   * Loads the filter panels' chunk on the first click of a filter button
-   * and attaches the panels; a failed load is reported and tried again on
-   * the next click.
+   * Answers a filter button's press with the panels: at once when they are
+   * attached, else once their chunk lands, which the first press loads.
+   * While it loads, only the last press is answered, so a double click
+   * opens its panel once rather than opening and closing it. A failed load
+   * or attach is reported and tried again on the next press; a page left
+   * while the chunk loads attaches nothing.
    *
-   * @returns The panels; `null` when their chunk failed to load.
+   * @param run - What the press does with the panels.
    */
-  #loadPanels(): Promise<ɵTmSearchFilterPanelsApi | null> {
-    if (this.#panelsLoad !== null) {
-      return this.#panelsLoad;
+  #withPanels(run: (panels: ɵTmSearchFilterPanelsApi) => void): void {
+    const attached = this.#panels();
+    if (attached !== null) {
+      run(attached);
+      return;
+    }
+    // A press is pending exactly while the chunk loads, so a later press only replaces it.
+    const loading = this.#pendingPress !== null;
+    this.#pendingPress = run;
+    if (loading) {
+      return;
     }
     // The app is not stable while the chunk loads, so a test or a server render waits for the panels.
     const loaded = this.#pendingTasks.add();
-    const load = (this.#panelsLoad = import('./tm-search-filters').then(
-      (chunk: TmSearchFiltersChunk) => {
+    void import('./tm-search-filters')
+      .then((chunk: TmSearchFiltersChunk) => {
+        if (this.#destroyRef.destroyed) {
+          return;
+        }
         const ref = this.panelsSlot().createComponent(chunk.ɵTmSearchFilterPanels);
-        ref.setInput('page', this.#filtersPage);
-        // The panels' queries resolve before the first toggle reaches them.
-        ref.changeDetectorRef.detectChanges();
+        try {
+          ref.setInput('page', this.#filtersPage);
+          // The panels' queries resolve before the first toggle reaches them.
+          ref.changeDetectorRef.detectChanges();
+        } catch (error) {
+          ref.destroy();
+          throw error;
+        }
         this.#panels.set(ref.instance);
-        return ref.instance;
-      },
-      (error: unknown) => {
-        this.#panelsLoad = null;
-        this.#telemetry.error(error, { area: 'tm.search' });
-        return null;
-      },
-    ));
-    void load.finally(loaded);
-    return load;
+        this.#pendingPress?.(ref.instance);
+      })
+      // A failed import or attach leaves no panels, so the next press loads the chunk again.
+      .catch((error: unknown) => this.#telemetry.error(error, { area: 'tm.search' }))
+      .finally(() => {
+        this.#pendingPress = null;
+        loaded();
+      });
   }
 
   /**

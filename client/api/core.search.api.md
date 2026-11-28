@@ -15,16 +15,21 @@ import { ErrorHandler } from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
+import { LogicFn } from '@angular/forms/signals';
 import * as lucide from 'lucide';
 import { Observable } from 'rxjs';
 import { OnInit } from '@angular/core';
+import { PathKind } from '@angular/forms/signals';
 import { Provider } from '@angular/core';
 import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPath } from '@angular/forms/signals';
+import { SchemaPathRules } from '@angular/forms/signals';
 import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
 import { TemplateRef } from '@angular/core';
 import { TitleStrategy } from '@angular/router';
 import { Type } from '@angular/core';
+import { ValidationError } from '@angular/forms/signals';
 import { WritableSignal } from '@angular/core';
 
 // @public
@@ -168,6 +173,7 @@ export class TmSearchHost implements OnInit {
     protected readonly total: Signal<number | null>;
     protected typed(text: string): void;
     protected readonly view: Signal<TmSearchView>;
+    protected readonly viewSize: Signal<_tellma_core_ui.TmControlSize>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmSearchHost, "tm-search-host", never, { "entity": { "alias": "entity"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmSearchHost, never>;
 }

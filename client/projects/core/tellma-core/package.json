@@ -40,6 +40,9 @@
     },
     "./styles/tm-frame.css": {
       "default": "./styles/tm-frame.css"
+    },
+    "./styles/tm-search.css": {
+      "default": "./styles/tm-search.css"
     }
   },
   "tellma": {

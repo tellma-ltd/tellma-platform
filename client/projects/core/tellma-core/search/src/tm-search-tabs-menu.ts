@@ -3,22 +3,11 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  input,
-  output,
-  viewChild,
-  type ElementRef,
-  type InputSignal,
-  type OutputEmitterRef,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, type InputSignal, type OutputEmitterRef } from '@angular/core';
 import ChevronDown from 'lucide/dist/esm/icons/chevron-down.mjs';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmIcon } from '@tellma/core-ui/icon';
-import { TmMenu, type TmMenuEntry } from '@tellma/core-ui/menu';
+import { TmMenu, TmMenuTrigger, type TmMenuEntry } from '@tellma/core-ui/menu';
 
 import type { TmSearchTabView } from './tm-search-filters-host';
 
@@ -33,21 +22,12 @@ import type { TmSearchTabView } from './tm-search-filters-host';
  */
 @Component({
   selector: 'tm-search-tabs-menu',
-  imports: [TmButton, TmIcon, TmMenu],
+  imports: [TmButton, TmIcon, TmMenu, TmMenuTrigger],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <!-- The button: ArrowDown and ArrowUp open the menu on its first and last row, as a menu button's do. -->
-    <button
-      #button
-      tmButton
-      type="button"
-      variant="ghost"
-      data-tm-tabs
-      aria-haspopup="menu"
-      [attr.aria-expanded]="open() ? 'true' : 'false'"
-      (click)="toggle(button, 'first')"
-      (keydown)="key($event, button)"
-    >
+    <!-- The button opens the menu as a menu button does: a click, Enter, Space, or ArrowDown on its first row and
+         ArrowUp on its last; it names the menu while it is open. -->
+    <button tmButton type="button" variant="ghost" data-tm-tabs [tmMenuTriggerFor]="menu">
       <!-- Every label in one cell, the current one visible, so the button is as wide as the widest. -->
       <span class="tm-search-tabs-menu__labels">
         @for (tab of tabs(); track tab.key) {
@@ -96,12 +76,6 @@ export class ɵTmSearchTabsMenu {
   /** The chevron the button ends with. */
   protected readonly chevron = ChevronDown;
 
-  /** The menu. */
-  private readonly menu = viewChild.required(TmMenu);
-
-  /** The button that opens the menu. */
-  private readonly button = viewChild.required<ElementRef<HTMLButtonElement>>('button');
-
   /** The menu's items: one radio group of the tabs, the shown one checked. */
   protected readonly items = computed<readonly TmMenuEntry[]>(() => {
     const shown = this.tabKey();
@@ -112,44 +86,4 @@ export class ɵTmSearchTabsMenu {
       },
     ];
   });
-
-  /** Whether the menu is open at its button. */
-  protected readonly open = computed(() => this.menu().isOpen() && this.menu().ɵisOpenFor(this.button().nativeElement));
-
-  /** Makes the menu know its button, so a press on it never counts as an outside press. */
-  constructor() {
-    effect((onCleanup) => onCleanup(this.menu().ɵregisterTrigger(this.button().nativeElement)));
-  }
-
-  /**
-   * Opens or closes the menu from its button.
-   *
-   * @param button - The button.
-   * @param focus - The row that takes focus as the menu opens.
-   */
-  protected toggle(button: HTMLButtonElement, focus: 'first' | 'last'): void {
-    const menu = this.menu();
-    if (menu.ɵisOpenFor(button)) {
-      menu.close();
-    } else {
-      menu.open(button, { restoreFocus: button, initialFocus: focus });
-    }
-  }
-
-  /**
-   * ArrowDown opens the menu on its first row and ArrowUp on its last.
-   *
-   * @param event - The key.
-   * @param button - The button.
-   */
-  protected key(event: KeyboardEvent, button: HTMLButtonElement): void {
-    if ((event.key !== 'ArrowDown' && event.key !== 'ArrowUp') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
-      return;
-    }
-    // The arrow would otherwise scroll the page behind the menu.
-    event.preventDefault();
-    if (!this.open()) {
-      this.toggle(button, event.key === 'ArrowDown' ? 'first' : 'last');
-    }
-  }
 }

@@ -231,25 +231,29 @@ export async function comeIntoViewUntil(page: Page, shown: Locator): Promise<voi
   }).toPass({ timeout: 30_000 });
 }
 
-/** A hold on the script files that carry the select component. */
-export interface SelectChunksHold {
+/** A hold on the script files that carry one component. */
+export interface ChunksHold {
   /** Answers the held files and every later one. */
   release(): Promise<void>;
 }
 
+/** A hold on the script files that carry the select component. */
+export type SelectChunksHold = ChunksHold;
+
 /**
- * Holds every script file of the page that carries the select component (its
- * trigger's class names it), so the pager's size select cannot land until
- * the flow lets it. The context must block the service worker
+ * Holds every script file of the page whose text carries a marker (a class
+ * name only that component's template writes), so the component cannot
+ * land until the flow lets it. The context must block the service worker
  * (`serviceWorkers: 'block'`), which would answer the files from its own
  * cache once it claims the page. The test must end the hold's route with
  * `page.unrouteAll({ behavior: 'ignoreErrors' })` before it ends, since a
  * file still being fetched then would fail the worker.
  *
  * @param page - The page.
+ * @param marker - The text that marks a held file.
  * @returns The hold.
  */
-export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
+export async function holdChunks(page: Page, marker: string): Promise<ChunksHold> {
   const held: (() => Promise<void>)[] = [];
   let holding = true;
   await page.route('**/*.js', async (route) => {
@@ -257,7 +261,7 @@ export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
       const response = await route.fetch();
       const body = await response.text();
       const answer = () => route.fulfill({ response, body });
-      if (holding && body.includes('tm-select__trigger')) {
+      if (holding && body.includes(marker)) {
         held.push(answer);
       } else {
         await answer();
@@ -277,6 +281,30 @@ export async function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
       await Promise.all(held.splice(0).map((answer) => answer()));
     },
   };
+}
+
+/**
+ * Holds every script file of the page that carries the select component (its
+ * trigger's class names it), so the pager's size select cannot land until
+ * the flow lets it, under {@link holdChunks}' terms.
+ *
+ * @param page - The page.
+ * @returns The hold.
+ */
+export function holdSelectChunks(page: Page): Promise<SelectChunksHold> {
+  return holdChunks(page, 'tm-select__trigger');
+}
+
+/**
+ * Holds every script file of the page that carries the segmented control
+ * (its track's class names it), so the search page's view toggle cannot
+ * land until the flow lets it, under {@link holdChunks}' terms.
+ *
+ * @param page - The page.
+ * @returns The hold.
+ */
+export function holdSegmentedChunks(page: Page): Promise<ChunksHold> {
+  return holdChunks(page, 'tm-segmented__track');
 }
 
 /** What the document looked like when its first frame was about to paint. */

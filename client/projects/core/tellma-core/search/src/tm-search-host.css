@@ -142,12 +142,10 @@
   align-items: center;
 }
 
-/* The stand-in keeps the control's height, and the view toggle's two icon segments' width. */
+/* The tabs' stand-in keeps the control's height; the view toggle's is the
+   global styles' `tm-search-view-standin`. */
 .tm-search-host__segmented-placeholder {
   display: inline-block;
   block-size: var(--field-height);
 }
 
-.tm-search-host__segmented-placeholder--view {
-  inline-size: calc(var(--field-height) * 2);
-}

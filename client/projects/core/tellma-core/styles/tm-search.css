@@ -1,0 +1,83 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The search page's view-toggle stand-in, which holds the toggle's place at
+   the toolbar's end until the segmented control's code lands. It takes the
+   control's geometry from the same tokens and rules: the host box, the
+   track with its border and inset, and two segments, each an icon's box and
+   a label that folds under the same container rule as the toggle's, at the
+   size the page resolves for the toggle (`data-size`). The
+   rules are global, not the search page's own, so the route's code does not
+   carry them. Any change to tm-segmented's geometry must be made here too. */
+
+@layer tm.base {
+  /* The size ladder, as tm-segmented points it: the default, then sm and lg. */
+  .tm-search-view-standin {
+    --tm-search-standin-height: var(--field-height);
+    --tm-search-standin-font-size: var(--field-font-size);
+    --tm-search-standin-padding-x: var(--field-padding-x);
+
+    display: inline-block;
+    vertical-align: middle;
+    font-family: var(--font-ui);
+  }
+
+  .tm-search-view-standin[data-size='sm'] {
+    --tm-search-standin-height: var(--field-height-sm);
+    --tm-search-standin-font-size: var(--field-font-size-sm);
+    --tm-search-standin-padding-x: var(--field-padding-xsm);
+  }
+
+  .tm-search-view-standin[data-size='lg'] {
+    --tm-search-standin-height: var(--field-height-lg);
+    --tm-search-standin-font-size: var(--field-font-size-lg);
+    --tm-search-standin-padding-x: var(--field-padding-xlg);
+  }
+
+  /* The track: the sunken box, so the stand-in reads as the empty control. */
+  .tm-search-view-standin > span {
+    display: inline-flex;
+    gap: var(--segmented-inset);
+    block-size: var(--tm-search-standin-height);
+    box-sizing: border-box;
+    padding: var(--segmented-inset);
+    border: var(--border-width) solid var(--border-subtle);
+    border-radius: var(--field-radius);
+    background: var(--surface-sunken);
+  }
+
+  /* A segment, its label's text unpainted. */
+  .tm-search-view-standin > span > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--segmented-icon-gap);
+    padding-inline: var(--tm-search-standin-padding-x);
+    border: var(--border-width) solid transparent;
+    font-size: var(--tm-search-standin-font-size);
+    font-weight: var(--weight-medium);
+    line-height: var(--leading-tight);
+    white-space: nowrap;
+    color: transparent;
+  }
+
+  /* The icon's box, whose bottom edge is the segment's baseline, as the icon's is. */
+  .tm-search-view-standin > span > span::before {
+    content: '';
+    flex: none;
+    inline-size: var(--segmented-icon-size);
+    block-size: var(--segmented-icon-size);
+  }
+
+  /* The labels show from xl, as the toggle's `labels="xl"` does: below it a
+     label's text takes no width, and the gap before it goes with it. */
+  @container (width < 1200px) {
+    .tm-search-view-standin > span > span {
+      gap: 0;
+      font-size: 0;
+    }
+  }
+}
