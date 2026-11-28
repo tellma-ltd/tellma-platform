@@ -12,6 +12,7 @@ import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { Router } from '@angular/router';
 import type { RouterTestingHarness } from '@angular/router/testing';
 import { TmApiError, type TmBlobDescriptor, type TmJsonObject, TmUrls } from '@tellma/core';
+import { TmDrafts } from '@tellma/core/drafts';
 import { TmPageState, tmPageStateKey } from '@tellma/core/memory';
 import { TmDetailsPageHarness, type TmDetailsSummaryHarness, type TmFakeApiCall, TmFieldHarness } from '@tellma/core-testing';
 
@@ -28,12 +29,15 @@ import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-recor
 // edit's write with its stamp, a clean Save, a create replacing its URL
 // (and landing on a declared URL) with the saved copy and no read, the
 // error summary over a 422 and over the client's own errors (an unvisited
-// tab rendering for them), the concurrency dialog's choices and copy, the
-// deletion dialog, the error presenter's calls, a conflict and a warning in
-// one Save, the busy overlay's start, a failed upload, Cancel clearing the
-// summary, and the leave guard.
+// tab rendering for them, ten items listed, the half-band cap, Tab past its
+// end, Fixed), a 422's blob-rejected items, the concurrency dialog's choices,
+// copy and telemetry, a cancelled warning, the deletion dialog, the error
+// presenter's calls, a conflict and a warning in one Save, the busy
+// overlay's start and its one run over an upload wait, a failed upload, the
+// next Save clearing what the last one found, Cancel clearing the summary,
+// Back and Forward to a saved create's page, and the leave guard.
 
-/** A kit layout: four fields in a card; a tab holding Rank, then the contacts' tab, which is not visited. */
+/** A kit layout: five fields in a card; a tab holding Rank, then the contacts' tab, which is not visited. */
 @Component({
   selector: 'tm-test-save-layout',
   imports: [TmDetailsKit],
@@ -43,6 +47,7 @@ import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-recor
       <tm-field path="Name" />
       <tm-field path="CustomerType" />
       <tm-field path="CreditLimit" />
+      <tm-field path="Image" />
     </tm-details-card>
     <tm-details-tabs>
       <tm-details-tab id="general" labelKey="Name">
@@ -298,6 +303,18 @@ describe('the details save flow', () => {
     return harness;
   }
 
+  /** The record's draft key. */
+  function draftKey(): string {
+    return layout().record.source.draftKey()!;
+  }
+
+  /** Starts an upload of the customer's image that fails, and waits for its failure. */
+  async function failUpload(): Promise<void> {
+    await layout()
+      .record.uploads.start('imageId', () => Promise.reject(new TmApiError({ kind: 'server', status: 500 })))
+      .catch(() => undefined);
+  }
+
   /** The error summary, once a failed Save has opened it. */
   async function summary(): Promise<TmDetailsSummaryHarness> {
     await tmSettleUntil(() => document.querySelector('tm-details-summary') !== null, 'the summary opens');
@@ -341,7 +358,7 @@ describe('the details save flow', () => {
    */
   function label(entity: string, name: string): string {
     const descriptor = rig.entities.get(entity);
-    return (descriptor.property(name)?.label ?? descriptor.child(name)!.label)();
+    return (descriptor.property(name)?.label ?? descriptor.navigation(name)?.label ?? descriptor.child(name)!.label)();
   }
 
   beforeEach(() => {
@@ -417,6 +434,47 @@ describe('the details save flow', () => {
     expect(telemetry('tm.details.save')).toEqual([{ mode: 'create', outcome: 'ok', errors: '0' }]);
   });
 
+  it("moves focus to the title, saying nothing, on a Back and a Forward to a saved create's page", async () => {
+    await start();
+    const location = TestBed.inject(Location);
+    await router.navigateByUrl('/17');
+    await router.navigateByUrl('/17/customers/new');
+    await tmSettleUntil(() => document.querySelector('[data-tm-field="Code"] tm-form-field') !== null, 'the controls load');
+    const fields = form();
+    fields['code']!().value.set('C-009');
+    fields['name']!().value.set('Customer 9');
+    fields['customerType']!().value.set('Retail');
+    fields['creditLimit']!().value.set('0');
+    rig.api.respond('customers/save', () => customer(9));
+    await (await page()).click('save');
+    await tmSettleUntil(() => location.path() === '/17/customers/9' && live() === 'Saved', 'the new record opens');
+    await TestBed.inject(Router).navigateByUrl('/17');
+    await tmSettle();
+    // The router hears the history's steps, as a browser's Back and Forward.
+    TestBed.inject(Router).setUpLocationChangeListener();
+
+    /**
+     * Steps through the history to the saved record's page.
+     *
+     * @param move - The history step.
+     */
+    const arrive = async (move: () => void): Promise<void> => {
+      move();
+      await tmSettleUntil(() => location.path() === '/17/customers/9' && TmTestSaveLayout.latest?.details.status() === 'ready', 'the saved record opens');
+      await tmSettleUntil(() => document.activeElement?.matches('.tm-details__title') === true, "the page's title takes focus");
+    };
+
+    // --- Back to the record's entry: the title takes focus, and the page says nothing of the save ---
+    await arrive(() => location.back());
+    expect(live()).toBe('');
+
+    // --- Back again, then Forward to it: the same ---
+    location.back();
+    await tmSettleUntil(() => location.path() === '/17', 'the page before opens');
+    await arrive(() => location.forward());
+    expect(live()).toBe('');
+  });
+
   it('lands a create on the URL its declaration names, with the saved copy and no read', async () => {
     await start({ details: { page: tmLoadTestPage, createdUrl: (entity, urls) => `${urls.details('acme.Customer', entity['id'] as number)}?from=new` } });
     await router.navigateByUrl('/17/customers/new');
@@ -485,6 +543,73 @@ describe('the details save flow', () => {
     expect(await code.getErrors()).toEqual([]);
   });
 
+  it("shows a 422's blob-rejected items on the image field, with their summary item", async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    rig.api.respond('customers/save', () => {
+      throw new TmApiError({
+        kind: 'validation',
+        status: 422,
+        code: 'blob-rejected',
+        problem: {
+          code: 'blob-rejected',
+          status: 422,
+          instance: 'trace-5',
+          title: 'The file was refused',
+          errors: [{ path: 'entities[0].imageId', code: 'Blob.NotAttachable', message: 'This file expired. Choose it again.' }],
+        },
+      });
+    });
+
+    await harness.click('save');
+    const errors = await summary();
+
+    expect(await errors.getItemTexts()).toEqual([`${label('acme.Customer', 'Image')}: This file expired. Choose it again.`]);
+    expect(await (await errors.getItems())[0]!.isLink()).toBe(true);
+    const image = await TestbedHarnessEnvironment.loader(router.fixture).getHarness(TmFieldHarness.with({ path: 'ImageId' }));
+    expect(await image.getErrors()).toEqual(['This file expired. Choose it again.']);
+    expect([await harness.getMode(), telemetry('tm.details.save')]).toEqual(['edit', [{ mode: 'edit', outcome: 'validation', errors: '1-3' }]]);
+  });
+
+  it('lists ten problems and counts the rest, caps the list at half the band, and collapses it on Tab past its last item', async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    rig.api.respond('customers/save', () => {
+      throw invalid(...Array.from({ length: 12 }, (_, index) => ({ path: 'entities[0].code', code: `Test_Code${index}`, message: `Problem ${index + 1}` })));
+    });
+
+    await harness.click('save');
+    const errors = await summary();
+
+    // --- Ten items, then the count of the rest ---
+    expect(await errors.getHeading()).toBe('Fix 12 problems to save');
+    expect(await errors.getItemTexts()).toHaveLength(10);
+    expect(await errors.getMore()).toBe('and 2 more');
+
+    // --- The list takes at most half the band's height ---
+    const band = document.querySelector<HTMLElement>('.tm-details__body')!;
+    const list = document.querySelector<HTMLElement>('.tm-details-summary__list')!;
+    const cap = Math.floor(band.clientHeight / 2);
+    expect(list.style.maxBlockSize).toBe(`${cap}px`);
+    expect(list.getBoundingClientRect().height).toBeLessThanOrEqual(cap);
+
+    // --- Tab from an item before the last keeps the list; Tab past the last collapses it ---
+    const links = [...document.querySelectorAll<HTMLButtonElement>('.tm-details-summary__link')];
+    expect(links).toHaveLength(10);
+    const tab = (from: HTMLButtonElement): void => {
+      from.focus();
+      from.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+    };
+    tab(links[0]!);
+    await tmSettle();
+    expect(await errors.isExpanded()).toBe(true);
+    tab(links.at(-1)!);
+    await tmSettle();
+    expect(await errors.isExpanded()).toBe(false);
+  });
+
   it('goes to a field and to a child cell from their items, collapsing the list', async () => {
     await start();
     const harness = await editCustomer();
@@ -529,6 +654,12 @@ describe('the details save flow', () => {
     ]);
     expect(document.querySelectorAll('.tm-details-tabs__dot--on')).toHaveLength(1);
     expect(telemetry('tm.details.save')).toEqual([{ mode: 'edit', outcome: 'client-invalid', errors: '1-3' }]);
+
+    // --- Filling the name marks its item Fixed, the contact's staying ---
+    const items = await errors.getItems();
+    form()['name']!().value.set('Named');
+    await tmSettle();
+    expect(await Promise.all(items.map((item) => item.isFixed()))).toEqual([true, false]);
   });
 
   it('closes the list on Escape, focusing its toggle', async () => {
@@ -582,6 +713,46 @@ describe('the details save flow', () => {
     await uploads.start('imageId', () => Promise.resolve(blob));
     await tmSettle();
     expect(await item!.isFixed()).toBe(true);
+  });
+
+  it("clears a failed upload's summary on the next Save, which returns the clean edit to view mode", async () => {
+    await start();
+    const harness = await editCustomer();
+    await failUpload();
+    await harness.click('save');
+    await summary();
+
+    // --- The file removed, Save ends the clean edit with no summary left, nor in the next edit ---
+    layout().record.uploads.cancel('imageId');
+    await harness.click('save');
+    await tmSettleUntil(() => layout().details.mode() === 'view', 'the edit ends');
+    expect([writes(), await harness.getErrorSummary()]).toEqual([[], null]);
+    await harness.click('edit');
+    await tmSettle();
+    expect(await harness.getErrorSummary()).toBeNull();
+  });
+
+  it("clears a 422's server errors on the next Save, which a failed upload refuses, listing the file alone", async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    rig.api.respond('customers/save', () => {
+      throw invalid({ path: 'entities[0].code', code: 'Test_CodeTaken', message: 'This code is taken' });
+    });
+    await harness.click('save');
+    await summary();
+    expect(layout().record.errors()).toHaveLength(1);
+
+    await failUpload();
+    await harness.click('save');
+    await tmSettleUntil(() => document.querySelector('tm-details-summary')?.textContent?.includes("didn't upload") === true, 'the file is listed');
+
+    const errors = (await harness.getErrorSummary())!;
+    expect(await errors.getItemTexts()).toEqual([expect.stringMatching(/: The file didn't upload\. Try it again or remove it\.$/)]);
+    expect(layout().record.errors()).toEqual([]);
+    const code = await TestbedHarnessEnvironment.loader(router.fixture).getHarness(TmFieldHarness.with({ path: 'Code' }));
+    expect(await code.getErrors()).toEqual([]);
+    expect(writes()).toHaveLength(1);
   });
 
   // --- The concurrency dialog ---
@@ -651,6 +822,59 @@ describe('the details save flow', () => {
 
     expect([writes().length, layout().details.mode(), layout().details.model()['name']]).toEqual([1, 'edit', 'Renamed']);
     expect(telemetry('tm.details.conflict')).toEqual([{ choice: 'dismiss', self: true }]);
+  });
+
+  it('records a conflict of the current user with no time as the dialog words it, naming no one', async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    rig.api.respond('customers/save', () => {
+      throw conflict({ modifiedById: 42, modifiedByName: 'Farah' });
+    });
+
+    await harness.click('save');
+    await tmSettleUntil(() => modals().length === 1, 'the concurrency dialog opens');
+    expect(top().textContent).toContain('Reload to take the saved version, or overwrite it with yours.');
+    await escape();
+
+    expect(telemetry('tm.details.conflict')).toEqual([{ choice: 'dismiss', self: false }]);
+  });
+
+  it('records the Save once the page has gone while the concurrency dialog was open', async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    rig.api.respond('customers/save', () => {
+      throw conflict();
+    });
+
+    await harness.click('save');
+    await tmSettleUntil(() => modals().length === 1, 'the concurrency dialog opens');
+    router.fixture.destroy();
+    await escape();
+    await tmSettle();
+
+    expect(telemetry('tm.details.save')).toEqual([{ mode: 'edit', outcome: 'conflict', errors: '0' }]);
+  });
+
+  it('keeps the edit and its draft, sending nothing more, when the warning is cancelled', async () => {
+    await start();
+    const harness = await editCustomer();
+    form()['name']!().value.set('Renamed');
+    TestBed.inject(TmDrafts).save(draftKey(), { name: 'Renamed' });
+    rig.api.respond('customers/save', () => {
+      throw warning('Acme.CreditAboveThreshold');
+    });
+
+    await harness.click('save');
+    await tmSettleUntil(() => modals().length === 1 && top().textContent!.includes('Confirm to continue'), 'the warning opens');
+    await choose('Cancel');
+    await tmSettleUntil(() => modals().length === 0, 'the warning closes');
+
+    expect(writes()).toHaveLength(1);
+    expect([await harness.getMode(), layout().details.model()['name']]).toEqual(['edit', 'Renamed']);
+    expect(TestBed.inject(TmDrafts).load(draftKey())).toEqual({ name: 'Renamed' });
+    expect(telemetry('tm.details.save')).toEqual([{ mode: 'edit', outcome: 'declined', errors: '0' }]);
   });
 
   it('resends Override with the keys confirmed so far once a conflict follows a warning', async () => {
@@ -818,14 +1042,57 @@ describe('the details save flow', () => {
     expect(await harness.getMode()).toBe('view');
   });
 
+  it('keeps one overlay over the upload wait and the write: the page stays inert and the scrim on between them', async () => {
+    await start();
+    await editCustomer();
+    form()['name']!().value.set('Renamed');
+    let staged!: (blob: TmBlobDescriptor) => void;
+    void layout().record.uploads.start('imageId', () => new Promise<TmBlobDescriptor>((resolve) => (staged = resolve)));
+    const answers: ((value: unknown) => void)[] = [];
+    rig.api.respond('customers/save', () => new Promise((resolve) => answers.push(resolve)));
+    const said = (): string => document.querySelector('.tm-busy-overlay')?.textContent?.trim() ?? '';
+
+    await manualChangeDetection(async () => {
+      // --- The wait: the page blocked, the scrim after its delay, "Finishing uploads…" ---
+      document.querySelector<HTMLButtonElement>('.tm-details__save')!.click();
+      await tmSettleUntil(() => blocked(), 'the upload wait blocks the page');
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      TestBed.tick();
+      expect([scrim(), said()]).toEqual([true, 'Finishing uploads…']);
+
+      // --- The upload lands: until the write is sent, no element leaves inert and the scrim never drops ---
+      const changes: MutationRecord[] = [];
+      const watch = new MutationObserver((records) => changes.push(...records));
+      watch.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['inert', 'class'], attributeOldValue: true });
+      staged({ id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor);
+      await tmSettleUntil(() => answers.length === 1, 'the write is sent');
+      TestBed.tick();
+      changes.push(...watch.takeRecords());
+      watch.disconnect();
+      expect(changes.filter((change) => change.attributeName === 'inert' && change.oldValue !== null)).toEqual([]);
+      const overlay = document.querySelector('.tm-busy-overlay');
+      expect(changes.filter((change) => change.target === overlay && !(change.oldValue ?? '').includes('tm-busy-overlay--scrim'))).toEqual([]);
+      expect([blocked(), scrim(), said()]).toEqual([true, true, 'Saving…']);
+
+      answers[0]!(customer(5, 'Renamed'));
+      await tmSettleUntil(() => layout().details.mode() === 'view', 'the save lands');
+    });
+    // The page is back to view mode with no run left. Nothing here waits on the app's stability: the
+    // image field's upload check keeps a pending task past an upload that spanned a render.
+    expect([layout().details.mode(), blocked(), scrim()]).toEqual(['view', false, false]);
+  });
+
   // --- The leave guard ---
 
-  it('asks before leaving with unsaved changes: Stay keeps the page, Discard changes leaves', async () => {
+  it('asks before leaving with unsaved changes: Stay keeps the page and the draft, Discard changes leaves and clears it', async () => {
     await start();
     await editCustomer();
     form()['name']!().value.set('Renamed');
     const appRouter = TestBed.inject(Router);
     const location = TestBed.inject(Location);
+    const drafts = TestBed.inject(TmDrafts);
+    const key = draftKey();
+    drafts.save(key, { name: 'Renamed' });
 
     // --- Stay, the focused choice: the navigation is refused, and the edit stays ---
     let leaving = appRouter.navigateByUrl('/17');
@@ -837,6 +1104,7 @@ describe('the details save flow', () => {
     await choose('Stay');
     expect(await leaving).toBe(false);
     expect([location.path(), layout().details.mode(), layout().details.model()['name']]).toEqual(['/17/customers/5', 'edit', 'Renamed']);
+    expect(drafts.load(key)).toEqual({ name: 'Renamed' });
 
     // --- Discard changes: the navigation goes on ---
     leaving = appRouter.navigateByUrl('/17');
@@ -844,6 +1112,7 @@ describe('the details save flow', () => {
     await choose('Discard changes');
     expect(await leaving).toBe(true);
     expect(location.path()).toBe('/17');
+    expect(drafts.load(key)).toBeUndefined();
     expect(telemetry('tm.details.leave-guard')).toEqual([{ choice: 'stay' }, { choice: 'discard' }]);
   });
 

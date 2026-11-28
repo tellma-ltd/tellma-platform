@@ -98,6 +98,6 @@ export class TmChildFiles {
   /** Holds the rows' errors on the enclosing card or tab. */
   constructor() {
     // --- The rows' file and caption errors show on the card and tab, whether or not the body has rendered ---
-    ɵtmHoldCollectionErrors(computed(() => this.#record.descriptor.child(this.collection())?.json), () => this.collection());
+    ɵtmHoldCollectionErrors(computed(() => this.#record.descriptor.child(this.collection())?.json), () => this.collection(), false);
   }
 }

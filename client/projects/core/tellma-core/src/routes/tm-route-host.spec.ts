@@ -3,6 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+import { Location } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { By, Title } from '@angular/platform-browser';
@@ -320,6 +321,46 @@ describe('the route host', () => {
       await rig.router.navigateByUrl('/17/settings/general');
       await tmSettle();
       expect((document.activeElement as HTMLElement | null)?.hasAttribute('tmPageTitle')).toBe(true);
+    } finally {
+      control.remove();
+    }
+  });
+
+  it('moves focus to the title on a Back and a Forward to the entry of a navigation that placed focus itself', async () => {
+    rig = await tmAppRig();
+    await tmNavigate('/17/settings/general');
+    await tmSettle();
+    const location = TestBed.inject(Location);
+    // The router hears the history's steps, as a browser's Back and Forward.
+    rig.router.setUpLocationChangeListener();
+    // A stand-in for a control on the page being left.
+    const control = document.body.appendChild(document.createElement('button'));
+    /**
+     * Goes Back or Forward from the control, and says whether focus reached the new page's title.
+     *
+     * @param move - The history step.
+     * @param path - The path it lands on.
+     * @returns Whether the title took focus.
+     */
+    const step = async (move: () => void, path: string): Promise<boolean> => {
+      control.focus();
+      move();
+      await tmSettleUntil(() => location.path() === path, `the history step to ${path}`);
+      await tmSettleUntil(() => document.activeElement?.hasAttribute('tmPageTitle') === true, `the title at ${path} takes focus`).catch(() => undefined);
+      return (document.activeElement as HTMLElement | null)?.hasAttribute('tmPageTitle') === true;
+    };
+    try {
+      // --- The entry: an app's navigation that places focus itself, its state kept in the history ---
+      await rig.router.navigateByUrl('/17/credit-review', { state: { tmPageFocus: false } });
+      await tmSettle();
+      expect(location.getState()).toEqual(expect.objectContaining({ tmPageFocus: false }));
+      await rig.router.navigateByUrl('/17/centers');
+      await tmSettleUntil(() => document.activeElement?.hasAttribute('tmPageTitle') === true, 'the centers page takes focus');
+
+      // --- Back to that entry, and Forward to it again: each moves focus to the title ---
+      expect(await step(() => location.back(), '/17/credit-review')).toBe(true);
+      expect(await step(() => location.back(), '/17/settings/general')).toBe(true);
+      expect(await step(() => location.forward(), '/17/credit-review')).toBe(true);
     } finally {
       control.remove();
     }

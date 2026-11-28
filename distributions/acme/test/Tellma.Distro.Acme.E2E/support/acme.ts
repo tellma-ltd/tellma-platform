@@ -25,6 +25,8 @@ export const ACME_PRINCIPALS = {
   sales: 'sales@localhost',
   /** A center reader in every development tenant. */
   centers: 'centers@localhost',
+  /** A customer editor in every development tenant, who reads and saves customers. */
+  editor: 'editor@localhost',
   /** A tester of the sandbox (2) alone, with no live tenant. */
   sandbox: 'sandbox@localhost',
 } as const;
@@ -33,14 +35,18 @@ export const ACME_PRINCIPALS = {
 export const ACME_TENANTS = { live: 1, sandbox: 2 } as const;
 
 /**
- * The principals whose accounts read Arabic, the Arabic project's user and
- * other user: the run's global setup sets their language, since the
- * development seed creates every account in English. The English project's
- * casts never sign them in; the flows that choose their own language (the
- * responsive checks, the right-to-left boot) sign in as the sales
- * representative and set the language they assert in the boot record.
+ * The principals whose accounts read Arabic, the Arabic project's user,
+ * other user and editor: the run's global setup sets their language, since
+ * the development seed creates every account in English. The English
+ * project's casts never sign them in; the flows that choose their own
+ * language (the responsive checks, the right-to-left boot) sign in as the
+ * sales representative and set the language they assert in the boot record.
  */
-export const ACME_ARABIC_READERS = [ACME_PRINCIPALS.sales, ACME_PRINCIPALS.centers] as const;
+export const ACME_ARABIC_READERS = [
+  ACME_PRINCIPALS.sales,
+  ACME_PRINCIPALS.centers,
+  ACME_PRINCIPALS.editor,
+] as const;
 
 /** A language the suite's projects run in. */
 export type AcmeLanguage = 'en' | 'ar';
@@ -53,24 +59,29 @@ export interface AcmeCast {
   readonly other: string;
   /** The sandbox tester, a member of the sandbox (2) alone. Its account reads English in every project. */
   readonly sandbox: string;
+  /** A user who reads and saves customers, whose account reads the project's language. */
+  readonly editor: string;
 }
 
 /**
- * Each project's cast. The Arabic project's user and other user are the
- * accounts that read Arabic. The English project's other user is the sandbox
- * tester, the one other account that keeps English; the sandbox tester reads
- * English in both projects, since the seed holds one.
+ * Each project's cast. The Arabic project's user, other user and editor are
+ * the accounts that read Arabic. The English project's other user is the
+ * sandbox tester, the one other account that keeps English, and its editor
+ * is the administrator; the sandbox tester reads English in both projects,
+ * since the seed holds one.
  */
 const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
   en: {
     user: ACME_PRINCIPALS.admin,
     other: ACME_PRINCIPALS.sandbox,
     sandbox: ACME_PRINCIPALS.sandbox,
+    editor: ACME_PRINCIPALS.admin,
   },
   ar: {
     user: ACME_ARABIC_READERS[0],
     other: ACME_ARABIC_READERS[1],
     sandbox: ACME_PRINCIPALS.sandbox,
+    editor: ACME_ARABIC_READERS[2],
   },
 };
 
@@ -104,6 +115,16 @@ export interface AcmeText {
   readonly save: string;
   /** A details page's Cancel button. */
   readonly cancel: string;
+  /** What a details page says once a Save lands. */
+  readonly saved: string;
+  /** The concurrency dialog's title. */
+  readonly conflictTitle: string;
+  /** The start of the concurrency dialog's message when the current user saved the newer version. */
+  readonly conflictSelf: string;
+  /** The concurrency dialog's button that reloads the user's own saved version. */
+  readonly reloadSaved: string;
+  /** The concurrency dialog's Overwrite button. */
+  readonly overwrite: string;
 }
 
 /** The texts in each language, as the app's string packs word them; an Arabic imperative takes either gender's form. */
@@ -123,6 +144,11 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     edit: 'Edit',
     save: 'Save',
     cancel: 'Cancel',
+    saved: 'Saved',
+    conflictTitle: 'This record changed while you were editing',
+    conflictSelf: 'You saved this record in another tab or window',
+    reloadSaved: 'Reload saved version',
+    overwrite: 'Overwrite',
   },
   ar: {
     home: /^(?:صباح|مساء) الخير، \S/,
@@ -139,6 +165,11 @@ export const ACME_TEXT: Readonly<Record<AcmeLanguage, AcmeText>> = {
     edit: 'تعديل',
     save: 'حفظ',
     cancel: 'إلغاء',
+    saved: 'تم الحفظ',
+    conflictTitle: 'تغيّر هذا السجل أثناء تعديلك',
+    conflictSelf: 'حفظتَ هذا السجل في علامة تبويب أو نافذة أخرى',
+    reloadSaved: 'تحميل النسخة المحفوظة',
+    overwrite: 'استبدال',
   },
 };
 

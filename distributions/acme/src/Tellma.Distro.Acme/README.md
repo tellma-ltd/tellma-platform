@@ -33,10 +33,11 @@ In Development only, `migrate` writes into each seed tenant, through the stacks 
 - Acme's center tree, four of whose centers end inactive;
 - two currencies, and 60 customers of all three types in both currencies, 10 of them with a drawn
   picture (`SamplePortraits`), some with contacts and four inactive;
-- the roles `Sales` and `CenterReaders` (a read of the sales centers alone);
+- the roles `Sales`, `CenterReaders` (a read of the sales centers alone) and `CustomerEditors`
+  (the customers' read and save, with the currencies' read);
 - the end-to-end principals: `sales@localhost` (`Sales`), `centers@localhost` (`CenterReaders`),
-  in tenant 2 only `sandbox@localhost` (`Sales`), and the service account "Acme Integration"
-  (`Sales`, no credentials until a test issues them);
+  `editor@localhost` (`CustomerEditors`), in tenant 2 only `sandbox@localhost` (`Sales`), and the
+  service account "Acme Integration" (`Sales`, no credentials until a test issues them);
 - 20 sales invoices over the invoiced sales centers, the six oldest closed.
 
 Provisioning runs in the migrator, where no identity server is reachable, so the individuals are not

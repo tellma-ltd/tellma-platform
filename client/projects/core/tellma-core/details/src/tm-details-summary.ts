@@ -175,6 +175,8 @@ export class TmDetailsSummaryState {
       position: absolute;
       inset-block-start: 100%;
       inset-inline: 0;
+      /* The cap on its height includes its padding. */
+      box-sizing: border-box;
       margin: 0;
       padding: var(--space-1) 0;
       overflow: auto;

@@ -20,6 +20,8 @@ import { tmSettle, tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { ɵTmChildFilesBody, ɵtmChildFilesEditorLoader } from './tm-child-files-body';
 import { TmDetailsKit } from './tm-details-kit';
 import { TM_DETAILS_RECORD, type TmDetailsRecordState } from './tm-details-record';
+import { type TmDetailsSaveHost, ɵtmDetailsSave } from './tm-details-save';
+import type { TmDetailsSummaryState } from './tm-details-summary';
 import {
   TM_SALES_INVOICE,
   TM_SALES_INVOICE_LABELS,
@@ -35,7 +37,7 @@ import {
 // failed upload on their row with a retry for the latter, removal that
 // aborts an upload and moves the later ones up, and inline captions. While
 // the record loads the placeholder stays, and the rows' errors reach the
-// card.
+// card; a failed save's summary item for a row focuses that row's caption.
 
 /** Renders a layout in a details record's injector, as the page's frame does. */
 @Component({
@@ -445,6 +447,42 @@ describe("the details page's child files", () => {
     caption.dispatchEvent(new Event('input'));
     await tmSettle();
     expect(attachments(rendered)[0]).toMatchObject({ caption: 'Countersigned' });
+  });
+
+  it("focuses a row's caption from a failed save's summary item, waiting for no grid", async () => {
+    const rendered = await render();
+    await edit(rendered);
+    const { record } = rendered;
+    // The first row's file did not upload, which holds the Save before any check.
+    await record.uploads.start('attachments.0.fileId', () => Promise.reject(new TmApiError({ kind: 'server', status: 500 }))).catch(() => undefined);
+    await tmSettle();
+
+    // --- The save, through a host that keeps the summary it opens ---
+    const shown: { summary?: TmDetailsSummaryState } = {};
+    const host: TmDetailsSaveHost<TmJsonObject> = {
+      injector: TestBed.inject(Injector),
+      routed: false,
+      cloning: false,
+      summary: { set: (view) => (shown.summary = view?.inputs['summary'] as TmDetailsSummaryState | undefined) },
+      destroyed: () => false,
+      current: () => record,
+      announce: () => undefined,
+      focusEdit: () => undefined,
+      clearDraft: () => undefined,
+      remember: () => undefined,
+      present: () => undefined,
+      navigate: () => Promise.resolve(true),
+      leaveClean: () => undefined,
+      save: () => Promise.resolve(false),
+    };
+    expect(await ɵtmDetailsSave(host, record)).toBe(false);
+
+    // --- The row's item: activating it focuses that row's caption ---
+    const [item] = shown.summary!.items;
+    expect(item!.text).toMatch(/· row 1 · .*: The file didn't upload\. Try it again or remove it\.$/);
+    item!.activate!();
+    const caption = element(rendered).querySelector('[data-tm-row="0"] .tm-child-files-editor__caption');
+    await tmSettleUntil(() => document.activeElement === caption, "the row's caption takes focus");
   });
 
   it("names a file member that is not a blob in development, at its body's first render", () => {

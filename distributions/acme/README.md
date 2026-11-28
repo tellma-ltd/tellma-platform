@@ -38,8 +38,8 @@ dotnet run --project distributions/acme/src/Tellma.Distro.Acme.Web
    sandbox, tenant 2, "Acme Sandbox", with `admin@localhost` as their administrator.
    Each also takes Acme's development data: GL's centers as Acme's 40-node tree, currencies,
    customers, the `Sales` role and 20 sales invoices, and the end-to-end principals
-   `sales@localhost` and `centers@localhost` (with `sandbox@localhost` in tenant 2 alone), who
-   sign in with an email code like the administrator.
+   `sales@localhost`, `centers@localhost` and `editor@localhost` (with `sandbox@localhost` in
+   tenant 2 alone), who sign in with an email code like the administrator.
 2. The web host serves `/api/distribution-info`, `/health/live`, `/health/ready` and the BFF
    (`/bff/login`, `/bff/user`, `/bff/logout`), with the identity engine in process under `/id`. Its
    launch profile turns on the SPA proxy, which starts the client's dev server (`pnpm start` in

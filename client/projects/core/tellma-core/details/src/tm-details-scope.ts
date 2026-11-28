@@ -108,10 +108,11 @@ export function ɵtmCollectionShowsError(child: Signal<string | undefined>): Sig
  *
  * @param child - The collection's json name, such as `lines`; `undefined` for a collection the entity lacks.
  * @param name - The collection's name, such as `Lines`.
+ * @param grid - Whether a grid renders its rows.
  */
-export function ɵtmHoldCollectionErrors(child: Signal<string | undefined>, name: () => string): void {
+export function ɵtmHoldCollectionErrors(child: Signal<string | undefined>, name: () => string, grid: boolean): void {
   const scope = inject(TM_DETAILS_SCOPE, { optional: true });
   const destroyRef = inject(DestroyRef);
   scope?.hold(ɵtmCollectionShowsError(child), destroyRef);
-  injectTmDetailsRecord().registerPlace({ name, scope, element: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement }, destroyRef);
+  injectTmDetailsRecord().registerPlace({ name, scope, element: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement, grid }, destroyRef);
 }

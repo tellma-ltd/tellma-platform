@@ -15,7 +15,6 @@ import {
   TmEntities,
   type TmId,
   type TmJsonObject,
-  TmLaunchCache,
   type TmLazyComponent,
   TmLocalization,
   type TmProblemError,
@@ -164,6 +163,9 @@ class TmDetailsSaveRun<T> {
   /** The entity's descriptor. */
   readonly #descriptor: TmEntityDescriptor;
 
+  /** Ends the overlay run that spans the upload wait; does nothing while none is held. */
+  #release: () => void = () => undefined;
+
   /**
    * Starts a Save.
    *
@@ -187,8 +189,24 @@ class TmDetailsSaveRun<T> {
    * @returns `true` once saved, or once a clean edit is back in view mode.
    */
   async run(): Promise<boolean> {
+    try {
+      return await this.#steps();
+    } finally {
+      // Whatever way the Save ends, the overlay run that spans its upload wait ends with it.
+      this.#release();
+    }
+  }
+
+  /**
+   * The Save's steps, from the upload check to the write's outcome.
+   *
+   * @returns `true` once saved, or once a clean edit is back in view mode.
+   */
+  async #steps(): Promise<boolean> {
     const record = this.#record;
     const uploads = record.uploads;
+    // Spec 0031 §8.5: every server error, and the summary, clear on the next Save, whichever way it ends.
+    this.#clear();
     // --- A file whose upload failed holds the write: the edit stays, and the summary points at the file ---
     if (untracked(uploads.failed).size > 0) {
       return this.#uploadFailed();
@@ -202,8 +220,12 @@ class TmDetailsSaveRun<T> {
 
     // --- Step 2: the uploads finish first, so the body carries their staged ids ---
     if (running) {
+      // One overlay run spans the wait, the client's checks and the write's start, so the page stays
+      // inert and the scrim stays on between them; its label moves on to the write's once the wait ends.
+      const label = signal(this.#text('finishing'));
+      this.#hold(label);
       const failures = untracked(uploads.failures);
-      const settled = await this.#overlay.run(this.#uploadsSettled(), { label: this.#text('finishing') });
+      const settled = await this.#uploadsSettled();
       // Cancel refuses while Save waits, but a record whose mode changed meanwhile has nothing of this Save to write.
       if (!settled || untracked(record.mode) !== this.#mode) {
         return false;
@@ -214,13 +236,14 @@ class TmDetailsSaveRun<T> {
       }
       // An upload that landed with nothing else changed leaves nothing to write.
       if (this.#mode === 'edit' && !untracked(record.dirty)) {
+        this.#release();
         this.#host.leaveClean(record);
         return true;
       }
+      label.set(this.#text('saving'));
     }
 
     // --- Step 3: the client's checks; any error opens the summary and nothing is sent ---
-    this.#clear();
     const source = record.source;
     const problems = source.validate?.(untracked(record.model)) ?? [];
     const placed = this.#place(problems.map((problem) => ({ ...problem, message: '' }) as TmProblemError));
@@ -228,6 +251,8 @@ class TmDetailsSaveRun<T> {
     await submit(record.form as FieldTree<unknown>, { action: () => ((valid = true), Promise.resolve(undefined)) });
     if (!valid) {
       const found = [...placed, ...this.#clientProblems()];
+      // The summary opens on a live page: the run that spanned the upload wait ends first.
+      this.#release();
       await this.#open(found);
       return this.#done('client-invalid', found.length);
     }
@@ -269,7 +294,10 @@ class TmDetailsSaveRun<T> {
     view?.addEventListener('beforeunload', unload);
     let saved: TmDetailsRecord<T> | null;
     try {
-      saved = await this.#overlay.run(send, { label: this.#text('saving'), immediate });
+      const blocked = this.#overlay.run(send, { label: this.#text('saving'), immediate });
+      // The write's own run has begun, so the run that spanned the upload wait ends with no gap.
+      this.#release();
+      saved = await blocked;
     } catch (error) {
       if (!(error instanceof TmApiError)) {
         throw error;
@@ -330,14 +358,10 @@ class TmDetailsSaveRun<T> {
   async #conflict(error: TmApiError, body: T, keys: readonly string[]): Promise<boolean> {
     const details = error.problem?.['errorDetails'] as { readonly conflicts?: readonly TmConflictInfo[] } | undefined;
     const info = details?.conflicts?.[0] ?? null;
+    // The dialog records the choice, and whether its copy named the current user.
     const choice = await this.#injector.get(TmDetailsDialogs).conflict(info);
-    const me = this.#injector.get(TmLaunchCache).docs.me()?.user.id;
-    this.#injector.get(TmTelemetry).event('tm.details.conflict', {
-      choice: choice ?? 'dismiss',
-      self: info?.modifiedById !== undefined && info.modifiedById === me,
-    });
     if (!this.#live()) {
-      return false;
+      return this.#done('conflict');
     }
     if (choice === 'overwrite') {
       // The dialog that triggered the write has closed: the scrim shows at once.
@@ -479,6 +503,7 @@ class TmDetailsSaveRun<T> {
    */
   async #uploadFailed(): Promise<boolean> {
     const record = this.#record;
+    this.#release();
     this.#host.announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
     const message = this.#text('uploadFailed');
     const found = [...untracked(record.uploads.failed)].map((path) => {
@@ -647,7 +672,12 @@ class TmDetailsSaveRun<T> {
         columnLabel === undefined
           ? text('row', { collection: label, row: row + 1, message })
           : text('cell', { collection: label, row: row + 1, column: untracked(columnLabel), message });
-      const go = place === null || !problem.resolved ? null : () => void this.#reveal(place, collection.json, row, typeof column === 'string' ? column : undefined);
+      const go =
+        place === null || !problem.resolved
+          ? null
+          : place.grid
+            ? () => void this.#reveal(place, collection.json, row, typeof column === 'string' ? column : undefined)
+            : () => void this.#focusRow(place, row);
       return { text: words, fixed, activate: go };
     }
     // --- A field: a button that focuses it while a layout renders it, else plain text ---
@@ -711,6 +741,21 @@ class TmDetailsSaveRun<T> {
     if (grid !== undefined && target?.id !== undefined) {
       grid.reveal(target.id, column === undefined ? {} : { column });
     }
+  }
+
+  /**
+   * Goes to a row of a collection no grid renders, such as a record's
+   * files: shows the collection, then focuses the row's own control (its
+   * caption, else its first button), or the collection's first control
+   * while its rows have not rendered. Nothing waits for a registration.
+   *
+   * @param place - Where the collection renders.
+   * @param row - The row's index in the working copy.
+   */
+  async #focusRow(place: TmDetailsCollectionPlace, row: number): Promise<void> {
+    await this.#show(place);
+    const item = place.element.querySelector(`[data-tm-row="${row}"]`) ?? place.element;
+    (item.querySelector<HTMLElement>('input') ?? item.querySelector<HTMLElement>('button'))?.focus();
   }
 
   /**
@@ -780,6 +825,21 @@ class TmDetailsSaveRun<T> {
    */
   #rendered(): Promise<void> {
     return new Promise((resolve) => afterNextRender(() => resolve(), { injector: this.#record.injector }));
+  }
+
+  /**
+   * Holds the page under one overlay run until the Save releases it.
+   *
+   * @param label - The run's label, read live.
+   */
+  #hold(label: Signal<string>): void {
+    let end!: () => void;
+    const held = new Promise<void>((resolve) => (end = resolve));
+    this.#release = () => {
+      this.#release = () => undefined;
+      end();
+    };
+    void this.#overlay.run(held, { label });
   }
 
   /** Clears the recorded errors and the summary: the next Save, Cancel and success start clean. */

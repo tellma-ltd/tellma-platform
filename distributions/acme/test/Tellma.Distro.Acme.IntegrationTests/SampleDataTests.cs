@@ -58,7 +58,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
         private const string Census = """
             SELECT (SELECT COUNT(*) FROM [gl].[Centers]) + (SELECT COUNT(*) FROM [acme].[Currencies])
                 + (SELECT COUNT(*) FROM [acme].[Customers]) + (SELECT COUNT(*) FROM [acme].[CustomerContacts])
-                + (SELECT COUNT(*) FROM [core].[Roles] WHERE [Code] IN (N'Sales', N'CenterReaders'))
+                + (SELECT COUNT(*) FROM [core].[Roles] WHERE [Code] IN (N'Sales', N'CenterReaders', N'CustomerEditors'))
                 + (SELECT COUNT(*) FROM [core].[Users] WHERE [Id] > 1 AND ([Email] IS NULL OR [Email] <> N'admin@localhost'))
                 + (SELECT COUNT(*) FROM [acme].[SalesInvoices]) + (SELECT COUNT(*) FROM [acme].[SalesInvoiceLines]);
             """;
@@ -84,7 +84,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 bool live = tenant == Live;
 
                 // --- The step completed at its version, after GL's ---
-                Assert.Equal(1, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{AcmeSampleDataStep.StepName}';"));
+                Assert.Equal(2, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{AcmeSampleDataStep.StepName}';"));
 
                 // --- The centers: Acme's tree in place of GL's default, four of them inactive ---
                 Assert.Equal(AcmeSampleCenters.Count, await ScalarAsync<int>(db, "SELECT COUNT(*) FROM [gl].[Centers];"));
@@ -110,9 +110,15 @@ namespace Tellma.Distro.Acme.IntegrationTests
                     WHERE R.[Code] = N'CenterReaders' AND P.[Resource] = 'gl.Center' AND P.[Action] = 'Read';
                     """));
                 Assert.Equal(7, await ScalarAsync<int>(db, "SELECT COUNT(*) FROM [core].[Permissions] AS P JOIN [core].[Roles] AS R ON R.[Id] = P.[RoleId] WHERE R.[Code] = N'Sales';"));
+                Assert.Equal(
+                    ["acme.Currency|Read", "acme.Customer|Read", "acme.Customer|Save"],
+                    await ColumnAsync(db, $"""
+                        SELECT CONCAT(P.[Resource], '|', P.[Action]) FROM [core].[Permissions] AS P JOIN [core].[Roles] AS R ON R.[Id] = P.[RoleId]
+                        WHERE R.[Code] = N'{AcmeSampleData.CustomerEditorsRoleCode}' AND P.[Filter] IS NULL ORDER BY P.[Resource], P.[Action];
+                        """));
 
                 // --- The individuals: bound to their seeded subjects, invited, each in its role; the sandbox's own in tenant 2 alone ---
-                List<AcmeDevelopmentPrincipal> individuals = [AcmeDevelopmentPrincipals.SalesMember, AcmeDevelopmentPrincipals.CenterReader];
+                List<AcmeDevelopmentPrincipal> individuals = [AcmeDevelopmentPrincipals.SalesMember, AcmeDevelopmentPrincipals.CenterReader, AcmeDevelopmentPrincipals.CustomerEditor];
                 if (tenant == Sandbox)
                 {
                     individuals.Add(AcmeDevelopmentPrincipals.SandboxOnly);
@@ -135,7 +141,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
                     Assert.Equal(1, await ScalarAsync<int>(db, $"""
                         SELECT COUNT(*) FROM [core].[RoleMemberships] AS M JOIN [core].[Users] AS U ON U.[Id] = M.[UserId] JOIN [core].[Roles] AS R ON R.[Id] = M.[RoleId]
-                        WHERE U.[Email] = N'{principal.Email}' AND R.[Code] = N'{(principal == AcmeDevelopmentPrincipals.CenterReader ? AcmeSampleData.CenterReadersRoleCode : AcmeSampleData.SalesRoleCode)}';
+                        WHERE U.[Email] = N'{principal.Email}' AND R.[Code] = N'{RoleOf(principal)}';
                         """));
                 }
 
@@ -214,7 +220,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
             string db = acme.TenantConnectionString(1000);
             Assert.Equal(
-                ["gl.sample-centers|1", $"{AcmeSampleDataStep.StepName}|1"],
+                ["gl.sample-centers|1", $"{AcmeSampleDataStep.StepName}|2"],
                 await ColumnAsync(db, "SELECT CONCAT([Step], '|', [Version]) FROM [dbo].[__TellmaProvisioning] WHERE [Step] LIKE '%sample%' ORDER BY [Step] DESC;"));
             Assert.Equal(0, await ScalarAsync<int>(db, Census));
         }
@@ -406,6 +412,16 @@ namespace Tellma.Distro.Acme.IntegrationTests
         }
 
         // --- Helpers ---
+
+        /// <summary>The code of the one role the sample data gives a development individual.</summary>
+        /// <param name="principal">The individual.</param>
+        /// <returns>The role's code.</returns>
+        private static string RoleOf(AcmeDevelopmentPrincipal principal)
+        {
+            return principal == AcmeDevelopmentPrincipals.CenterReader ? AcmeSampleData.CenterReadersRoleCode
+                : principal == AcmeDevelopmentPrincipals.CustomerEditor ? AcmeSampleData.CustomerEditorsRoleCode
+                : AcmeSampleData.SalesRoleCode;
+        }
 
         /// <summary>The serial numbers of an invoice read's related documents, in the extra's order.</summary>
         /// <param name="result">The read.</param>

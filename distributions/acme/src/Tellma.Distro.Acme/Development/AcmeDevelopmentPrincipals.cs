@@ -38,8 +38,15 @@ namespace Tellma.Distro.Acme.Development
         public static readonly AcmeDevelopmentPrincipal SandboxOnly = new(
             "sandbox@localhost", "00000000-0000-0000-0000-000000000004", "Sandbox Tester", "مختبر البيئة التجريبية");
 
+        /// <summary>
+        ///     A user whose one role reads and saves the customers, in every development tenant: the
+        ///     Arabic project's editor, whose account the end-to-end setup sets to read Arabic.
+        /// </summary>
+        public static readonly AcmeDevelopmentPrincipal CustomerEditor = new(
+            "editor@localhost", "00000000-0000-0000-0000-000000000005", "Customer Editor", "محرر العملاء");
+
         /// <summary>The individuals, in the order the development identity server seeds them.</summary>
-        public static IReadOnlyList<AcmeDevelopmentPrincipal> Individuals { get; } = [SalesMember, CenterReader, SandboxOnly];
+        public static IReadOnlyList<AcmeDevelopmentPrincipal> Individuals { get; } = [SalesMember, CenterReader, SandboxOnly, CustomerEditor];
     }
 
     /// <summary>An individual of Acme's development tenants, bound to the subject the development identity server seeds for its address.</summary>

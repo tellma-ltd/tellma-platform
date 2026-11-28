@@ -6,7 +6,7 @@
 import type { Injector } from '@angular/core';
 import { TmL10n } from '@tellma/core-ui';
 import { TmConfirm } from '@tellma/core-ui/confirm';
-import { TM_NOW, TmLaunchCache, TmLocalization, type TmStringTree } from '@tellma/core';
+import { TM_NOW, TmLaunchCache, TmLocalization, type TmStringTree, TmTelemetry } from '@tellma/core';
 
 import type { TmConflictInfo } from './tm-details-dialogs';
 
@@ -14,7 +14,8 @@ import type { TmConflictInfo } from './tm-details-dialogs';
 // on first use: each is a `TmConfirm` alert dialog focused on its primary
 // choice, so Escape answers the safe way. The concurrency dialog's copy
 // names who saved the newer version: another user by name, the current
-// user in another tab or window, or no one known.
+// user in another tab or window, or no one known; its choice is recorded
+// with whether the copy named the current user.
 
 /** The dialogs' English strings, merged under `tm.detailsDialogs` on first use; a language pack carries the same tree. */
 export const TM_DETAILS_DIALOGS_STRINGS_EN = {
@@ -73,7 +74,7 @@ export async function ɵtmConflictDialog(injector: Injector, conflict: TmConflic
     : other
       ? [text('conflict.other', { name: conflict.modifiedByName!, time }), 'reloadTheirs']
       : [text('conflict.unknown'), 'reload'];
-  return injector.get(TmConfirm).ask<'reload' | 'overwrite'>({
+  const choice = await injector.get(TmConfirm).ask<'reload' | 'overwrite'>({
     title: text('conflict.title'),
     message,
     choices: [
@@ -82,6 +83,9 @@ export async function ɵtmConflictDialog(injector: Injector, conflict: TmConflic
     ],
     initialFocus: 'reload',
   });
+  // --- The choice, with whether the copy said the current user saved the newer version ---
+  injector.get(TmTelemetry).event('tm.details.conflict', { choice: choice ?? 'dismiss', self });
+  return choice;
 }
 
 /**

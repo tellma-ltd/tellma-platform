@@ -143,7 +143,7 @@ interface TmRowView {
         <ul class="tm-child-files-editor__list">
           @for (item of files().items(); track item.id) {
             @let row = view(item);
-            <li class="tm-child-files-editor__item" [attr.aria-busy]="row.uploading ? 'true' : null">
+            <li class="tm-child-files-editor__item" [attr.data-tm-row]="$index" [attr.aria-busy]="row.uploading ? 'true' : null">
               <tm-chip [label]="row.label" [href]="item.href" removable (remove)="remove(item)" (click)="files().open($event, item)">
                 <tm-icon class="tm-child-files-editor__icon" size="sm" [svg]="item.icon" />
                 {{ row.name }}

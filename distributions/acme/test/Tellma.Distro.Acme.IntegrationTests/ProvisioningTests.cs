@@ -90,10 +90,10 @@ namespace Tellma.Distro.Acme.IntegrationTests
                     Assert.Equal(1, await ScalarAsync<int>(db, $"SELECT COUNT(*) FROM [sys].[table_types] WHERE [is_user_defined] = 1 AND [name] LIKE N'{type}[_]________';"));
                 }
 
-                // --- The steps that provisioned the tenant, the sample data's among them, at version 1 ---
-                foreach (string step in (string[])["core.bootstrap-administrator", "gl.sample-centers", AcmeSampleDataStep.StepName])
+                // --- The steps that provisioned the tenant at their versions, the sample data's among them ---
+                foreach ((string step, int version) in (ValueTuple<string, int>[])[("core.bootstrap-administrator", 1), ("gl.sample-centers", 1), (AcmeSampleDataStep.StepName, 2)])
                 {
-                    Assert.Equal(1, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{step}';"));
+                    Assert.Equal(version, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{step}';"));
                 }
 
                 // --- Ids come from sequences, concurrency from audit stamps, and nothing fires behind a write ---

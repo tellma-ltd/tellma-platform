@@ -13,7 +13,8 @@ import { expect, test } from '../support/acme';
 // view mode with focus on Edit; and two contexts editing the same customer
 // meet the concurrency check, where Overwrite writes the second edit over
 // the first. Each flow edits a customer of its own, so the flows run in
-// parallel and again on a database a previous run kept.
+// parallel and again on a database a previous run kept. Each project signs
+// in as its editor, who reads and saves customers in its language.
 
 /** A customer as the tenant's query returns it: the id and the credit limit. */
 interface AcmeCustomerLimit {
@@ -109,18 +110,12 @@ async function editLimit(
 }
 
 test.describe('details save', () => {
-  test.beforeEach(({ lang }) => {
-    // The Arabic project's user, the sales representative, only reads customers (spec 0018 §6.3's
-    // `Sales` grants): its Edit is disabled, as the cold deep link's flow checks.
-    test.skip(lang === 'ar', "The Arabic project's user only reads customers.");
-  });
-
   test('saves an edit, showing the saved record in view mode with focus on Edit', async ({
     page,
     text,
     cast,
   }) => {
-    const client = await openTenant(page, cast.user);
+    const client = await openTenant(page, cast.editor);
     const { id } = await customerByCode(page, client, 'C-011');
     const limit = freshLimit();
 
@@ -133,7 +128,7 @@ test.describe('details save', () => {
 
     const edit = page.getByRole('button', { name: text.edit, exact: true });
     await expect(edit).toBeFocused();
-    await expect(page.locator('.tm-details__live')).toHaveText('Saved');
+    await expect(page.locator('.tm-details__live')).toHaveText(text.saved);
     expect((await customerByCode(page, client, 'C-011')).creditLimit).toBe(limit);
   });
 
@@ -143,10 +138,10 @@ test.describe('details save', () => {
     cast,
     newContext,
   }) => {
-    const client = await openTenant(page, cast.user);
+    const client = await openTenant(page, cast.editor);
     const { id } = await customerByCode(page, client, 'C-012');
     const other = await (await newContext()).newPage();
-    await openTenant(other, cast.user);
+    await openTenant(other, cast.editor);
     const first = freshLimit();
     const second = freshLimit(1_000);
 
@@ -159,16 +154,16 @@ test.describe('details save', () => {
     // --- This context's Save meets the newer version: the dialog asks, its Reload focused ---
     await page.getByRole('button', { name: text.save, exact: true }).click();
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('This record changed while you were editing');
+    await expect(dialog).toContainText(text.conflictTitle);
     // The same user saved it in the other context, which the dialog says.
-    await expect(dialog).toContainText('You saved this record in another tab or window');
-    await expect(dialog.getByRole('button', { name: 'Reload saved version' })).toBeFocused();
+    await expect(dialog).toContainText(text.conflictSelf);
+    await expect(dialog.getByRole('button', { name: text.reloadSaved })).toBeFocused();
 
     // --- Overwrite writes this context's edit over the other's ---
     const overwrite = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith('/customers/save'),
     );
-    await dialog.getByRole('button', { name: 'Overwrite' }).click();
+    await dialog.getByRole('button', { name: text.overwrite }).click();
     expect((await overwrite).status()).toBe(200);
     await expect(page.getByRole('button', { name: text.edit, exact: true })).toBeFocused();
     expect((await customerByCode(page, client, 'C-012')).creditLimit).toBe(second);

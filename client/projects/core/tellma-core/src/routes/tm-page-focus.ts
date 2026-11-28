@@ -15,9 +15,11 @@ import type { TmRouteDataInternal } from './tm-routes';
 // focus stays on the tab list, as spec 0032 §7.1 says. A route host holds
 // the move until its page has rendered, and a family's host that loads its
 // own page, such as the home's hatch, holds it on until that page renders;
-// any other route settles it after the navigation's render. A navigation
-// whose state carries `tmPageFocus: false` moves no focus: its page places
-// focus itself, as a saved record's page focuses Edit (spec 0031 §8.3).
+// any other route settles it after the navigation's render. An app's own
+// navigation whose state carries `tmPageFocus: false` moves no focus: its
+// page places focus itself, as a saved record's page focuses Edit (spec 0031
+// §8.3). The router restores that state on Back and Forward, which are no
+// longer that navigation, so those move focus as any path change does.
 
 /** The path of a router URL, without its query and fragment. */
 function pathOf(url: string): string {
@@ -72,7 +74,8 @@ export class TmPageFocus {
       }
       const path = pathOf(event.urlAfterRedirects);
       const route = deepest(this.#router.routerState.snapshot.root);
-      const own = this.#router.lastSuccessfulNavigation()?.extras.state?.['tmPageFocus'] === false;
+      const navigation = this.#router.lastSuccessfulNavigation();
+      const own = navigation?.trigger === 'imperative' && navigation.extras.state?.['tmPageFocus'] === false;
       this.#pending = !own && (this.#pending || (this.#path !== null && path !== this.#path && !inPlace(this.#route!, route)));
       this.#path = path;
       this.#route = route;

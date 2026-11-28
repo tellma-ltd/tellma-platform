@@ -1111,4 +1111,38 @@ describe('the details host', () => {
     expect(latest()!.details.mode()).toBe('view');
     expect(TestBed.inject(Router).url).toBe('/17/customers/5');
   });
+
+  it('refuses a Back while the write runs, keeping the history where it was, and goes Back once it lands', async () => {
+    await start();
+    await TestBed.inject(Router).navigateByUrl('/17');
+    const page = await openCustomer(5);
+    await page.click('edit');
+    latest()!.details.update((model) => ({ ...model, name: 'Renamed' }));
+    let answer!: (result: TmJsonObject) => void;
+    rig.api.respond('customers/save', () => new Promise<TmJsonObject>((resolve) => (answer = resolve)));
+    // The test's location keeps its entries and its position in them.
+    const location = TestBed.inject(Location) as unknown as Location & { readonly _history: readonly unknown[]; readonly _historyIndex: number };
+    const history = (): readonly number[] => [location._historyIndex, location._history.length];
+    // The router hears the history's steps, as a browser's Back.
+    TestBed.inject(Router).setUpLocationChangeListener();
+
+    await manualChangeDetection(async () => {
+      const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
+      await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
+      const before = history();
+
+      // --- Back while the write runs: refused, the URL, the position and the entries as they were ---
+      location.back();
+      await tmSettleUntil(() => location.path() === '/17/customers/5', 'the refused Back puts the URL back');
+      await tmSettle();
+      expect(history()).toEqual(before);
+
+      answer(saved(5, 'Renamed'));
+      expect(await invoked).toEqual({ outcome: 'done' });
+    });
+
+    // --- Once it lands, Back reaches the entry before the record's ---
+    location.back();
+    await tmSettleUntil(() => location.path() === '/17', 'Back leaves the record');
+  });
 });

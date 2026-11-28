@@ -31,10 +31,10 @@ namespace Tellma.Distro.Acme.Development
     // identity server is reachable (spec 0018 §6.1's development half, extended to them).
     /// <summary>
     ///     <c>acme.sample-data</c>: writes Acme's sample rows into a development tenant (the
-    ///     currencies, the customers with some pictures and contacts, the <c>Sales</c> and center
-    ///     readers' roles, the end-to-end principals and the sales invoices), then closes the oldest
-    ///     invoices and deactivates some customers and centers. Outside Development it records its
-    ///     completion and writes nothing.
+    ///     currencies, the customers with some pictures and contacts, the <c>Sales</c>, center
+    ///     readers' and customer editors' roles, the end-to-end principals and the sales
+    ///     invoices), then closes the oldest invoices and deactivates some customers and centers.
+    ///     Outside Development it records its completion and writes nothing.
     /// </summary>
     /// <remarks>
     ///     <para>
@@ -94,8 +94,10 @@ namespace Tellma.Distro.Acme.Development
         /// <inheritdoc />
         public int Order => StepOrder;
 
+        // Version 2 adds the customer editors' role and its editor; a tenant provisioned at 1 gains
+        // them on its next migrate, and every row it holds stays as it is.
         /// <inheritdoc />
-        public int Version => 1;
+        public int Version => 2;
 
         /// <inheritdoc />
         public async Task RunAsync(TenantProvisioningContext context)
@@ -330,16 +332,17 @@ namespace Tellma.Distro.Acme.Development
             return (ids, rows.Count);
         }
 
-        /// <summary>Inserts the roles the tenant lacks: <c>Sales</c>, and the center readers'.</summary>
+        /// <summary>Inserts the roles the tenant lacks: <c>Sales</c>, the center readers' and the customer editors'.</summary>
         /// <param name="services">The scope's services.</param>
         /// <param name="languages">The tenant's content languages.</param>
         /// <returns>The id of each role by code, and how many were inserted.</returns>
         private static async Task<(IReadOnlyDictionary<string, int> Ids, int Inserted)> RolesAsync(IServiceProvider services, IReadOnlyList<LanguageInfo> languages)
         {
             EntityService<Role, int> service = services.GetRequiredService<EntityService<Role, int>>();
-            Dictionary<string, int> ids = await FindAsync(service, nameof(Role.Code), [AcmeSampleData.SalesRoleCode, AcmeSampleData.CenterReadersRoleCode]).ConfigureAwait(false);
+            Dictionary<string, int> ids = await FindAsync(
+                service, nameof(Role.Code), [AcmeSampleData.SalesRoleCode, AcmeSampleData.CenterReadersRoleCode, AcmeSampleData.CustomerEditorsRoleCode]).ConfigureAwait(false);
 
-            // --- The grants: the sales pages for Sales, and a filtered read of the centers for the readers ---
+            // --- The grants: the sales pages for Sales, a filtered read of the centers for the readers, and the customers for their editors ---
             static Permission Grant(string resource, string action, string? filter = null)
             {
                 return new Permission { Resource = resource, Action = action, Filter = filter };
@@ -381,6 +384,24 @@ namespace Tellma.Distro.Acme.Development
                 });
             }
 
+            if (!ids.ContainsKey(AcmeSampleData.CustomerEditorsRoleCode))
+            {
+                (string name, string? name2, string? name3) = Names("Customer Editors", "محررو العملاء", languages);
+                rows.Add(new Role
+                {
+                    Code = AcmeSampleData.CustomerEditorsRoleCode,
+                    Name = name,
+                    Name2 = name2,
+                    Name3 = name3,
+                    Permissions =
+                    [
+                        Grant(CurrencyResource, AccessActions.Read),
+                        Grant(CustomerResource, AccessActions.Read),
+                        Grant(CustomerResource, AccessActions.Save),
+                    ],
+                });
+            }
+
             if (rows.Count > 0)
             {
                 int[] saved = Saved(await service.SaveAsync(rows, Inserts).ConfigureAwait(false));
@@ -408,12 +429,14 @@ namespace Tellma.Distro.Acme.Development
             EntityService<User, int> service = services.GetRequiredService<EntityService<User, int>>();
             int sales = roles[AcmeSampleData.SalesRoleCode];
             int readers = roles[AcmeSampleData.CenterReadersRoleCode];
+            int editors = roles[AcmeSampleData.CustomerEditorsRoleCode];
 
             // --- The tenant's individuals, each with its one role ---
             List<(AcmeDevelopmentPrincipal Principal, int RoleId)> individuals =
             [
                 (AcmeDevelopmentPrincipals.SalesMember, sales),
                 (AcmeDevelopmentPrincipals.CenterReader, readers),
+                (AcmeDevelopmentPrincipals.CustomerEditor, editors),
             ];
             if (tenantId == AcmeDevelopmentPrincipals.SandboxTenantId)
             {

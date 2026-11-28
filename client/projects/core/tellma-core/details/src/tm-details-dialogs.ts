@@ -43,7 +43,9 @@ export class TmDetailsDialogs {
   /**
    * Asks what to do about a save that met a newer version: reload the saved
    * one, or overwrite it. The copy names who saved it and when: another
-   * user, the current user in another tab or window, or no one known.
+   * user, the current user in another tab or window, or no one known. The
+   * choice is recorded as `tm.details.conflict`, with whether the copy named
+   * the current user.
    *
    * @param conflict - Who saved the newer version, and when; `null` when unknown.
    * @returns `reload`, `overwrite`, or `null` when the dialog was dismissed.

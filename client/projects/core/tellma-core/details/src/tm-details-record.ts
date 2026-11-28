@@ -124,6 +124,8 @@ export interface TmDetailsCollectionPlace {
   readonly scope: { reveal(): void } | null;
   /** The element that renders it. */
   readonly element: HTMLElement;
+  /** Whether a grid renders its rows, which registers to reveal one; otherwise each row's own controls take focus. */
+  readonly grid: boolean;
 }
 
 /** The view state a record's page remembers: what the user opened, collapsed and scrolled. */

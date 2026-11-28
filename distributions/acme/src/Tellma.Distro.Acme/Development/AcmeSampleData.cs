@@ -26,6 +26,9 @@ namespace Tellma.Distro.Acme.Development
         /// <summary>The code of the role whose one grant is a filtered read of the centers.</summary>
         public const string CenterReadersRoleCode = "CenterReaders";
 
+        /// <summary>The code of the role that reads and saves the customers, with the currencies their form reads.</summary>
+        public const string CustomerEditorsRoleCode = "CustomerEditors";
+
         /// <summary>The center readers' filter on <c>gl.Center</c>: the sales centers alone.</summary>
         public const string CenterReadersFilter = "CenterType = 'Sale'";
 
