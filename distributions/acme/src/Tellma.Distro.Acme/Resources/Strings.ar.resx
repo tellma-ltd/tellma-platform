@@ -95,6 +95,25 @@
   <data name="Acme_Customer_Action_SetCreditLimit_CreditLimit" xml:space="preserve">
     <value>حد الائتمان الجديد</value>
   </data>
+  <!-- The launcher: the sections, the synonyms the launcher matches but never shows, and the credit-review page -->
+  <data name="Acme_Customer_Plural_Synonyms" xml:space="preserve">
+    <value>زبائن، مشترين، مدينون</value>
+  </data>
+  <data name="Acme_Nav_Sales" xml:space="preserve">
+    <value>المبيعات</value>
+  </data>
+  <data name="Acme_Nav_Financials" xml:space="preserve">
+    <value>المالية</value>
+  </data>
+  <data name="Acme_CreditReview" xml:space="preserve">
+    <value>مراجعة الائتمان</value>
+  </data>
+  <data name="Acme_CreditReview_Synonyms" xml:space="preserve">
+    <value>حدود الائتمان، التعرض الائتماني</value>
+  </data>
+  <data name="Acme_CreditReview_Threshold" xml:space="preserve">
+    <value>النسبة من حد الائتمان</value>
+  </data>
   <!-- Sales invoices, their lines and their attachments -->
   <data name="Acme_SalesInvoice" xml:space="preserve">
     <value>فاتورة المبيعات</value>

@@ -84,7 +84,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 bool live = tenant == Live;
 
                 // --- The step completed at its version, after GL's ---
-                Assert.Equal(1, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{AcmeSampleDataStep.StepName}';"));
+                Assert.Equal(AcmeSampleDataStep.StepVersion, await ScalarAsync<int>(db, $"SELECT [Version] FROM [dbo].[__TellmaProvisioning] WHERE [Step] = N'{AcmeSampleDataStep.StepName}';"));
 
                 // --- The centers: Acme's tree in place of GL's default, four of them inactive ---
                 Assert.Equal(AcmeSampleCenters.Count, await ScalarAsync<int>(db, "SELECT COUNT(*) FROM [gl].[Centers];"));
@@ -112,7 +112,13 @@ namespace Tellma.Distro.Acme.IntegrationTests
                 Assert.Equal(7, await ScalarAsync<int>(db, "SELECT COUNT(*) FROM [core].[Permissions] AS P JOIN [core].[Roles] AS R ON R.[Id] = P.[RoleId] WHERE R.[Code] = N'Sales';"));
 
                 // --- The individuals: bound to their seeded subjects, invited, each in its role; the sandbox's own in tenant 2 alone ---
-                List<AcmeDevelopmentPrincipal> individuals = [AcmeDevelopmentPrincipals.SalesMember, AcmeDevelopmentPrincipals.CenterReader];
+                List<AcmeDevelopmentPrincipal> individuals =
+                [
+                    AcmeDevelopmentPrincipals.SalesMember,
+                    AcmeDevelopmentPrincipals.CenterReader,
+                    AcmeDevelopmentPrincipals.PinsEnglish,
+                    AcmeDevelopmentPrincipals.PinsArabic,
+                ];
                 if (tenant == Sandbox)
                 {
                     individuals.Add(AcmeDevelopmentPrincipals.SandboxOnly);
@@ -214,7 +220,7 @@ namespace Tellma.Distro.Acme.IntegrationTests
 
             string db = acme.TenantConnectionString(1000);
             Assert.Equal(
-                ["gl.sample-centers|1", $"{AcmeSampleDataStep.StepName}|1"],
+                ["gl.sample-centers|1", $"{AcmeSampleDataStep.StepName}|{AcmeSampleDataStep.StepVersion}"],
                 await ColumnAsync(db, "SELECT CONCAT([Step], '|', [Version]) FROM [dbo].[__TellmaProvisioning] WHERE [Step] LIKE '%sample%' ORDER BY [Step] DESC;"));
             Assert.Equal(0, await ScalarAsync<int>(db, Census));
         }

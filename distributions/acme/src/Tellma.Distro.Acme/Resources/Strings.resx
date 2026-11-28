@@ -95,6 +95,25 @@
   <data name="Acme_Customer_Action_SetCreditLimit_CreditLimit" xml:space="preserve">
     <value>New credit limit</value>
   </data>
+  <!-- The launcher: the sections, the synonyms the launcher matches but never shows, and the credit-review page -->
+  <data name="Acme_Customer_Plural_Synonyms" xml:space="preserve">
+    <value>Clients, Buyers, Debtors</value>
+  </data>
+  <data name="Acme_Nav_Sales" xml:space="preserve">
+    <value>Sales</value>
+  </data>
+  <data name="Acme_Nav_Financials" xml:space="preserve">
+    <value>Financials</value>
+  </data>
+  <data name="Acme_CreditReview" xml:space="preserve">
+    <value>Credit review</value>
+  </data>
+  <data name="Acme_CreditReview_Synonyms" xml:space="preserve">
+    <value>Credit limits, Exposure</value>
+  </data>
+  <data name="Acme_CreditReview_Threshold" xml:space="preserve">
+    <value>Share of the credit limit</value>
+  </data>
   <!-- Sales invoices, their lines and their attachments -->
   <data name="Acme_SalesInvoice" xml:space="preserve">
     <value>Sales invoice</value>

@@ -386,7 +386,7 @@ let nextPanel = 0;
     .tm-launcher__group--band .tm-launcher__heading,
     .tm-launcher__group--pages .tm-launcher__heading,
     .tm-launcher__group--bucket .tm-launcher__heading {
-      color: var(--text-muted);
+      color: var(--text-secondary);
     }
 
     /* An option: an icon, the label, a muted description, and a pinned glyph. */
@@ -429,7 +429,7 @@ let nextPanel = 0;
 
     .tm-launcher__description {
       flex: none;
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-size: var(--text-xs);
     }
 
@@ -451,7 +451,7 @@ let nextPanel = 0;
     .tm-launcher__empty {
       margin: 0;
       padding: var(--space-1) var(--space-2);
-      color: var(--text-muted);
+      color: var(--text-secondary);
     }
 
     .tm-launcher__footer {
@@ -459,7 +459,7 @@ let nextPanel = 0;
       margin: 0;
       padding: var(--space-2) var(--space-4);
       border-block-start: var(--border-width) solid var(--divider);
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-size: var(--text-xs);
     }
 

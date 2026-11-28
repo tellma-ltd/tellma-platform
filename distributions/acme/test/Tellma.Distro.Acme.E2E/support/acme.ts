@@ -27,20 +27,28 @@ export const ACME_PRINCIPALS = {
   centers: 'centers@localhost',
   /** A tester of the sandbox (2) alone, with no live tenant. */
   sandbox: 'sandbox@localhost',
+  /** A sales representative in every development tenant whose pins only the English pin flows write. */
+  pinsEn: 'pins-en@localhost',
+  /** A sales representative in every development tenant whose pins only the Arabic pin flows write. */
+  pinsAr: 'pins-ar@localhost',
 } as const;
 
 /** The seeded tenants. */
 export const ACME_TENANTS = { live: 1, sandbox: 2 } as const;
 
 /**
- * The principals whose accounts read Arabic, the Arabic project's user and
- * other user: the run's global setup sets their language, since the
+ * The principals whose accounts read Arabic, the Arabic project's user, other
+ * user and pin keeper: the run's global setup sets their language, since the
  * development seed creates every account in English. The English project's
  * casts never sign them in; the flows that choose their own language (the
  * responsive checks, the right-to-left boot) sign in as the sales
  * representative and set the language they assert in the boot record.
  */
-export const ACME_ARABIC_READERS = [ACME_PRINCIPALS.sales, ACME_PRINCIPALS.centers] as const;
+export const ACME_ARABIC_READERS = [
+  ACME_PRINCIPALS.sales,
+  ACME_PRINCIPALS.centers,
+  ACME_PRINCIPALS.pinsAr,
+] as const;
 
 /** A language the suite's projects run in. */
 export type AcmeLanguage = 'en' | 'ar';
@@ -53,6 +61,12 @@ export interface AcmeCast {
   readonly other: string;
   /** The sandbox tester, a member of the sandbox (2) alone. Its account reads English in every project. */
   readonly sandbox: string;
+  /**
+   * The pin keeper, a sales representative of tenants 1 and 2 whose account reads the project's
+   * language: the one principal whose pins a flow writes, so the flows that write them run serially
+   * and no other flow sees its bar change.
+   */
+  readonly pins: string;
 }
 
 /**
@@ -66,11 +80,13 @@ const CASTS: Readonly<Record<AcmeLanguage, AcmeCast>> = {
     user: ACME_PRINCIPALS.admin,
     other: ACME_PRINCIPALS.sandbox,
     sandbox: ACME_PRINCIPALS.sandbox,
+    pins: ACME_PRINCIPALS.pinsEn,
   },
   ar: {
     user: ACME_ARABIC_READERS[0],
     other: ACME_ARABIC_READERS[1],
     sandbox: ACME_PRINCIPALS.sandbox,
+    pins: ACME_PRINCIPALS.pinsAr,
   },
 };
 

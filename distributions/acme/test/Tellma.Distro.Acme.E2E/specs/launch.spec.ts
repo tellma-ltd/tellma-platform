@@ -22,8 +22,10 @@ import {
   sessionEndedDialog,
   test,
 } from '../support/acme';
+import { SHELL_TEXT } from '../support/shell';
 
-// The launch flows (spec 0024 §13): where a cold launch lands, deep links and
+// The launch flows (spec 0024 §13, spec 0027 §13): where a cold launch
+// lands, the picker's grouping and its Connect, deep links and
 // their fragments across a sign-in, the warm launch, the theme before the
 // first paint, the boot page, and the signed-out page with no request.
 
@@ -50,9 +52,10 @@ test.describe('launch', () => {
       expect((await tmBootFacts(page)).cold).toBe(true);
     });
 
-    test('a cold launch of a user with two live tenants lands on the picker', async ({
+    test('a cold launch of a user with two live tenants lands on the picker, and Connect enters one', async ({
       page,
       text,
+      lang,
       cast,
     }) => {
       await signInAs(page, cast.user);
@@ -79,9 +82,55 @@ test.describe('launch', () => {
       await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Acme', exact: true })).toBeVisible();
       await expect(page.getByRole('link', { name: 'Acme Sandbox' })).toBeVisible();
+
+      // Connect enters the tenant, its shell named by it.
+      await page
+        .getByRole('link', { name: SHELL_TEXT[lang].connectTo('Acme'), exact: true })
+        .click();
+      await expect(page).toHaveURL('/1');
+      await expect(page.locator('tm-app-bar .tm-app-bar__tenant')).toHaveText('Acme');
       // The picker revalidates the memberships after its first render, so a request can still be
       // in the handler here; it finishes before the context closes, or its response is disposed.
       await page.context().unrouteAll({ behavior: 'wait' });
+    });
+
+    test('the picker groups the sandbox under its live tenant, and Connect enters it with its marker', async ({
+      page,
+      text,
+      lang,
+      cast,
+    }) => {
+      await signInAs(page, cast.user);
+
+      await page.goto('/tenants');
+
+      await expect(page.getByRole('heading', { level: 1, name: text.chooseTenant })).toBeVisible();
+      const sandbox = page.getByRole('link', {
+        name: SHELL_TEXT[lang].connectTo('Acme Sandbox'),
+        exact: true,
+      });
+      // The sandbox's row follows its live tenant's, its name indented in the reading direction.
+      const rows = page.locator('.tm-tenant-picker__row');
+      await expect(rows).toHaveCount(2);
+      await expect(rows.nth(1)).toHaveClass(/tm-tenant-picker__row--nested/);
+      const names = page.locator('.tm-tenant-picker__name');
+      await expect(names).toHaveText(['Acme', 'Acme Sandbox']);
+      const [liveName, sandboxName] = [
+        (await names.nth(0).boundingBox())!,
+        (await names.nth(1).boundingBox())!,
+      ];
+      const rtl = (await page.evaluate(() => document.documentElement.dir)) === 'rtl';
+      if (rtl) {
+        expect(sandboxName.x + sandboxName.width).toBeLessThan(liveName.x + liveName.width);
+      } else {
+        expect(sandboxName.x).toBeGreaterThan(liveName.x);
+      }
+
+      await sandbox.click();
+      await expect(page).toHaveURL('/2');
+      await expect(
+        page.locator('tm-app-bar .tm-app-bar__marker[data-tm-marker="sandbox"]'),
+      ).toBeVisible();
     });
 
     test('a cold launch of a user with no live tenant lands on the picker', async ({

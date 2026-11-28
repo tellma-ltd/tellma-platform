@@ -107,7 +107,19 @@ the development host on `ACME_WEB` or with another worktree.
   the other user, both of whose accounts the global setup sets to Arabic (the seed creates every
   account in English). Both casts share the sandbox tester, whose account reads English.
 - The principals are `ACME_PRINCIPALS`: the administrator (tenants 1 and 2), the sales
-  representative and the center reader (every tenant), and the sandbox tester (tenant 2 alone).
+  representative and the center reader (every tenant), the sandbox tester (tenant 2 alone), and
+  two pin keepers, sales representatives of every tenant, one per project (`cast.pins`). The pin
+  keepers are the only principals whose stored pins a flow writes: `pins.spec.ts` signs in as the
+  project's keeper, runs serially, and clears both pin preferences before each test. Every other
+  flow that needs pins serves them in the sync's answer (`servePins`) and holds the writes
+  (`holdPreferenceWrites`), so the shared principals' stored preferences never change. A held
+  write stays pending, and the page sends it again as it closes, so such a flow ends with
+  `closeHeld`, which closes the page before it drops the routes.
+- `support/shell.ts` holds the shell's texts in both languages (`SHELL_TEXT`), its parts, the calls
+  that set the pin keeper's state through the context's own session, the frame probe
+  (`watchFrame`, `shownFrame`), the wait for the launcher's prefetched panel (`launcherLanded`)
+  and the box reader (`boxes`); `support/layout.ts` records layout
+  shifts.
 - Wait on observable state (a heading, the boot result, the store, a held request), never on the
   clock. `warmUp` waits for the service worker's shell cache and the stored launch documents.
 - A flow that moves the browser's time zone does it per tab, with the DevTools protocol's
@@ -123,3 +135,16 @@ the development host on `ACME_WEB` or with another worktree.
 - A flow whose surface a later spec ships is a `test.fixme`, with a comment naming that spec. A
   known gap in a shipped surface is a `test.fail()` with a comment, so its fix shows.
 - Format with `run format`; CI runs `typecheck`, `lint` and `test` on both of its legs.
+
+## Manual checks per release
+
+The shell's behaviour that no automated browser here can drive is checked by hand once per release,
+on the release candidate:
+
+- Back and forward in an iOS home-screen app (Safari's Add to Home Screen), from a pinned page to
+  the tenant home and back.
+- `Mod+K` opens the launcher, not the browser's own binding, in Chrome, Edge, Firefox and Safari.
+- Every reserved shortcut (`Mod+K`, `Mod+/`, `Alt+Shift+P`, `Alt+Shift+J`, `Alt+Shift+U`,
+  `Alt+Shift+Q`, `Mod+Alt+Shift+D`) in Chrome and Edge on Windows with Arabic and English input
+  languages installed, where the page wins `P` and `I` and the input language never switches, and on
+  ChromeOS.

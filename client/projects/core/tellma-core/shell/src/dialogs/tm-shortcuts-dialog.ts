@@ -136,7 +136,7 @@ let nextDialogId = 0;
     }
 
     .tm-shortcuts-dialog__table th {
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-size: var(--text-xs);
       font-weight: var(--weight-regular);
       text-align: start;
@@ -157,7 +157,7 @@ let nextDialogId = 0;
 
     .tm-shortcuts-dialog__empty {
       margin: 0;
-      color: var(--text-muted);
+      color: var(--text-secondary);
     }
   `,
 })

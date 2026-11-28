@@ -61,6 +61,12 @@ namespace Tellma.Distro.Acme.Development
         /// <summary>The step's order: after GL's sample centers.</summary>
         public const int StepOrder = 200;
 
+        /// <summary>
+        ///     The step's version: 2 added the pinned bar's end-to-end principals, which a re-run at
+        ///     this version inserts into a tenant provisioned at version 1.
+        /// </summary>
+        public const int StepVersion = 2;
+
         /// <summary>The most keys one <c>in</c> list names, the query language's ceiling on list items.</summary>
         private const int KeysPerList = 128;
 
@@ -95,7 +101,7 @@ namespace Tellma.Distro.Acme.Development
         public int Order => StepOrder;
 
         /// <inheritdoc />
-        public int Version => 1;
+        public int Version => StepVersion;
 
         /// <inheritdoc />
         public async Task RunAsync(TenantProvisioningContext context)
@@ -414,6 +420,8 @@ namespace Tellma.Distro.Acme.Development
             [
                 (AcmeDevelopmentPrincipals.SalesMember, sales),
                 (AcmeDevelopmentPrincipals.CenterReader, readers),
+                (AcmeDevelopmentPrincipals.PinsEnglish, sales),
+                (AcmeDevelopmentPrincipals.PinsArabic, sales),
             ];
             if (tenantId == AcmeDevelopmentPrincipals.SandboxTenantId)
             {

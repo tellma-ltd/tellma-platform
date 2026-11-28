@@ -38,8 +38,22 @@ namespace Tellma.Distro.Acme.Development
         public static readonly AcmeDevelopmentPrincipal SandboxOnly = new(
             "sandbox@localhost", "00000000-0000-0000-0000-000000000004", "Sandbox Tester", "مختبر البيئة التجريبية");
 
+        /// <summary>
+        ///     A member of the <c>Sales</c> role in every development tenant whose pins only the English
+        ///     end-to-end flows of the pinned bar write, so no other flow sees its pins change.
+        /// </summary>
+        public static readonly AcmeDevelopmentPrincipal PinsEnglish = new(
+            "pins-en@localhost", "00000000-0000-0000-0000-000000000005", "Pins Tester", "مختبر التثبيت");
+
+        /// <summary>
+        ///     A member of the <c>Sales</c> role in every development tenant whose pins only the Arabic
+        ///     end-to-end flows of the pinned bar write; those flows set its account to Arabic.
+        /// </summary>
+        public static readonly AcmeDevelopmentPrincipal PinsArabic = new(
+            "pins-ar@localhost", "00000000-0000-0000-0000-000000000006", "Arabic Pins Tester", "مختبرة التثبيت");
+
         /// <summary>The individuals, in the order the development identity server seeds them.</summary>
-        public static IReadOnlyList<AcmeDevelopmentPrincipal> Individuals { get; } = [SalesMember, CenterReader, SandboxOnly];
+        public static IReadOnlyList<AcmeDevelopmentPrincipal> Individuals { get; } = [SalesMember, CenterReader, SandboxOnly, PinsEnglish, PinsArabic];
     }
 
     /// <summary>An individual of Acme's development tenants, bound to the subject the development identity server seeds for its address.</summary>

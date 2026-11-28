@@ -35,7 +35,9 @@ In Development only, `migrate` writes into each seed tenant, through the stacks 
   picture (`SamplePortraits`), some with contacts and four inactive;
 - the roles `Sales` and `CenterReaders` (a read of the sales centers alone);
 - the end-to-end principals: `sales@localhost` (`Sales`), `centers@localhost` (`CenterReaders`),
-  in tenant 2 only `sandbox@localhost` (`Sales`), and the service account "Acme Integration"
+  the two pin keepers `pins-en@localhost` and `pins-ar@localhost` (`Sales`), whose stored pins the
+  browser suite's pin flows alone write, in tenant 2 only `sandbox@localhost` (`Sales`), and the
+  service account "Acme Integration"
   (`Sales`, no credentials until a test issues them);
 - 20 sales invoices over the invoiced sales centers, the six oldest closed.
 
