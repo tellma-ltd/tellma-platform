@@ -10,8 +10,9 @@ import type { TmLazyComponent } from '../declarations/tm-declaration-types';
 // The components the route table loads from other entry points: the shells,
 // and the hosts of the page families (spec 0024 §9.2, §4.4). Until each
 // family's entry point lands, its host is the shell's placeholder page; the
-// search family's is @tellma/core/search and the details family's is
-// @tellma/core/details (spec 0031 §1).
+// home page's is @tellma/core/dashboards (spec 0035 §15.1), the search
+// family's @tellma/core/search and the details family's @tellma/core/details
+// (spec 0031 §1).
 
 /**
  * The components the primary entry point loads from `@tellma/core/shell`,
@@ -35,16 +36,24 @@ export interface TmShellComponents {
 interface TmShellModule {
   /** The shell's components' loaders, by name. */
   readonly ɵTM_SHELL: TmShellComponents;
+  /**
+   * The tenant shell, the module's own export. The shell's build does not
+   * check this member, as it checks {@link TmShellComponents}; the tenant
+   * route's unit test fails without it.
+   */
+  readonly TmTenantShell: Type<unknown>;
 }
 
 /**
  * The shell's components that have loaded, by name: each is kept once its
- * own loader settles, since a loader may load a chunk of its own.
+ * own loader settles, since a loader may load a chunk of its own, and the
+ * tenant shell, which is in the module, as soon as the module arrives.
  */
 const loaded: { -readonly [Name in keyof TmShellComponents]?: Type<unknown> } = {};
 
 /**
- * Loads a component of `@tellma/core/shell`.
+ * Loads a component of `@tellma/core/shell`, and with it the tenant shell,
+ * which is in the shell's module.
  *
  * The specifier is cast so that TypeScript does not resolve it: the shell
  * imports this entry point, and the package build would report the dynamic
@@ -59,8 +68,15 @@ const loaded: { -readonly [Name in keyof TmShellComponents]?: Type<unknown> } = 
 export function tmShellComponent(name: keyof TmShellComponents): TmLazyComponent {
   return () =>
     (import('@tellma/core/shell' as string) as Promise<TmShellModule>)
-      .then((shell) => shell.ɵTM_SHELL[name]())
-      .then((component) => (loaded[name] = component));
+      .then((shell) => {
+        // Whichever component brings the module in also settles the tenant
+        // shell, which is in the module itself. The picker comes through this
+        // module, so by its first frame the tenant route returns the shell
+        // itself, and the first entry into a tenant paints its skeleton in the
+        // click's frame (spec 0024 §4.4), with no preload to race the click.
+        loaded.TmTenantShell = shell.TmTenantShell;
+        return shell.ɵTM_SHELL[name]().then((component) => (loaded[name] = component));
+      });
 }
 
 /**
@@ -75,8 +91,7 @@ export function tmShellRoute(name: keyof TmShellComponents): () => Type<unknown>
   // A later entry into a route whose component is already in memory
   // activates within the click's task, so its first frame shows the route
   // (spec 0024 §4.4); a promise would wait a task, and miss that frame.
-  const load = tmShellComponent(name);
-  return () => loaded[name] ?? load();
+  return () => loaded[name] ?? tmShellComponent(name)();
 }
 
 /** The page every family without an entry point of its own renders for now. */
@@ -90,6 +105,21 @@ interface TmSearchModule {
 
 /** The search host, from its own entry point, which the app's build splits into a chunk of its own. */
 const search: TmLazyComponent = () => (import('@tellma/core/search' as string) as Promise<TmSearchModule>).then((module) => module.TmSearchHost);
+
+/** What `@tellma/core/dashboards` holds for the route table. */
+interface TmDashboardsModule {
+  /** The home page's host. */
+  readonly TmHomeHost: Type<unknown>;
+}
+
+/**
+ * Loads the home page's host from `@tellma/core/dashboards`, whose specifier
+ * is cast for the reason {@link tmShellComponent} gives: the dashboards entry
+ * point imports this one.
+ *
+ * @returns The host's component.
+ */
+const home: TmLazyComponent = () => (import('@tellma/core/dashboards' as string) as Promise<TmDashboardsModule>).then((module) => module.TmHomeHost);
 
 /** The details entry point's module, as far as the primary reads it. */
 interface TmDetailsModule {
@@ -110,7 +140,7 @@ const details: TmLazyComponent = () =>
 /** The host of each route family whose component the route data does not name. */
 export const TM_ROUTE_HOSTS = {
   /** The tenant home's host, which picks the `home` hatch or the default home. */
-  home: placeholder,
+  home,
   /** The search host: an entity's search page and a drill-through list, which hosts the entity's `search` hatch. */
   search,
   /** The details host, which hosts an entity's `details` page, for create and view. */

@@ -200,6 +200,16 @@ export class TmReorderList<T> {
   /** The external payload kinds the list accepts as drops. Default none. */
   readonly accepts = input<readonly string[]>([]);
 
+  /**
+   * Each row's drag kind, for lists whose rows move between them, such as
+   * a list and the nested lists of its folder rows. Unset, rows drag under
+   * a kind of the list's own that no other list accepts. Set, rows drag
+   * under the kind it gives, and the list accepts `accepts` alone, its own
+   * rows' kinds among them: a row dropped on another list that accepts its
+   * kind is that list's `received`, and the consumer moves it.
+   */
+  readonly itemKind = input<((item: T) => string) | undefined>(undefined);
+
   /** The list's accessible name. */
   readonly ariaLabel = input.required<string>();
 
@@ -242,8 +252,8 @@ export class TmReorderList<T> {
   /** The drag kind of this list's own rows, which no other list accepts unless told to. */
   private readonly ownKind = `tm.reorder-list.${this.listId}`;
 
-  /** The kinds the drop target accepts: the list's own rows, then `accepts`. */
-  protected readonly acceptedKinds = computed(() => [this.ownKind, ...this.accepts()]);
+  /** The kinds the drop target accepts: the list's own rows, then `accepts`; with `itemKind`, `accepts` alone. */
+  protected readonly acceptedKinds = computed(() => (this.itemKind() === undefined ? [this.ownKind, ...this.accepts()] : this.accepts()));
 
   /** The keyboard instructions, in the active language. */
   protected readonly instructions = computed(() => this.translate('reorderList.instructions')());
@@ -261,7 +271,7 @@ export class TmReorderList<T> {
    */
   protected readonly draggingKey = computed(() => {
     const payload = this.dragDrop.current();
-    return payload !== null && payload.kind === this.ownKind ? this.keyOf(payload.data as T) : null;
+    return this.ownIndex(payload) === -1 ? null : this.keyOf(payload!.data as T);
   });
 
   /** The move menu. */
@@ -364,10 +374,10 @@ export class TmReorderList<T> {
     return this.translate('reorderList.handle', { label: this.labelOf(item) })();
   }
 
-  /** What a pointer drag of a row carries: the item, under the list's own kind. */
+  /** What a pointer drag of a row carries: the item, under its `itemKind`, else the list's own kind. */
   protected payloadOf(item: T): TmDragPayload {
     const label = this.labelOf(item);
-    return { kind: this.ownKind, data: item, text: label, label };
+    return { kind: this.itemKind()?.(item) ?? this.ownKind, data: item, text: label, label };
   }
 
   // ---- Pointer ----
@@ -652,7 +662,7 @@ export class TmReorderList<T> {
 
   /** The position of an own row a payload carries, or -1 for anything else. */
   private ownIndex(payload: TmDragPayload | null): number {
-    if (payload === null || payload.kind !== this.ownKind) {
+    if (payload === null || (this.itemKind() === undefined && payload.kind !== this.ownKind)) {
       return -1;
     }
     return this.items().indexOf(payload.data as T);

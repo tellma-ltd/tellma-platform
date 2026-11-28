@@ -131,6 +131,16 @@ namespace Tellma.Distro.Acme.Web.Tests
             Assert.Contains("    'core.User': CoreUser;", declarations, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public async Task The_emit_lists_the_registered_widget_types()
+        {
+            using AcmeEmit emit = await AcmeEmit.RunAsync(TestContext.Current.CancellationToken);
+
+            // --- The keys alone, the platform's first: Acme registers none of its own yet ---
+            using var core = JsonDocument.Parse(emit.Chunk("core-"));
+            Assert.Equal(["core.assignments-to-me", "core.assignments-by-me", "core.recents"], core.RootElement.GetProperty("widgetTypes").EnumerateArray().Select(static key => key.GetString()));
+        }
+
         /// <summary>Runs an emit under a culture, restoring the caller's cultures after it.</summary>
         /// <param name="culture">The culture, both for formatting and for resources.</param>
         /// <returns>The emit.</returns>

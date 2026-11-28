@@ -16,6 +16,7 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, '.')]).toEqual([]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention')].sort()).toEqual([
       '.',
+      './attention-rows',
       './error-paths',
       './private',
       './search-normalize',
@@ -23,6 +24,7 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './shell')].sort()).toEqual([
       '.',
       './attention',
+      './attention-rows',
       './error-paths',
       './private',
       './search-normalize',
@@ -33,12 +35,14 @@ describe('the @tellma/core entry-point table', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './private')]).toEqual(['.']);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search-normalize')]).toEqual([]);
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './error-paths')]).toEqual([]);
+    expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './attention-rows')]).toEqual(['.']);
   });
 
   it('lets lazy entry points import every eager and shared one', () => {
     expect([...tmAllowedImports(TM_CORE_ENTRY_POINTS, './search')].sort()).toEqual([
       '.',
       './attention',
+      './attention-rows',
       './column-filter',
       './entity',
       './error-paths',
@@ -96,9 +100,19 @@ describe('the @tellma/core entry-point table', () => {
   });
 
   it('keeps the edit side out of the entity entry point and the page hosts, for an editing page or dialog to load', () => {
-    expect(TM_CORE_ENTRY_POINTS['./entity-editing']).toEqual({ load: 'lazy', imports: ['./entity'] });
+    expect(TM_CORE_ENTRY_POINTS['./entity-editing']).toEqual({ load: 'lazy', imports: ['./entity', './uploads'] });
     for (const other of ['.', './attention', './shell', './entity', './search', './details']) {
       expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./entity-editing')).toBe(false);
+    }
+  });
+
+  it("lets only the details page and the edit side import a form's uploads, never the search page or the view side", () => {
+    expect(TM_CORE_ENTRY_POINTS['./uploads']).toEqual({ load: 'lazy', imports: [] });
+    for (const host of ['./details', './entity-editing']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, host).has('./uploads')).toBe(true);
+    }
+    for (const other of ['.', './attention', './shell', './entity', './search']) {
+      expect(tmAllowedImports(TM_CORE_ENTRY_POINTS, other).has('./uploads')).toBe(false);
     }
   });
 

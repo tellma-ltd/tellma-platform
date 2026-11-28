@@ -4,19 +4,67 @@
 
 ```ts
 
+import { AfterViewInit } from '@angular/core';
 import { DestroyableInjector } from '@angular/core';
 import { DestroyRef } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
 import { FieldTree } from '@angular/forms/signals';
 import * as i0 from '@angular/core';
 import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
+import { InputSignalWithTransform } from '@angular/core';
+import { LogicFn } from '@angular/forms/signals';
+import * as lucide from 'lucide';
+import { ModelSignal } from '@angular/core';
+import { OnInit } from '@angular/core';
+import { PathKind } from '@angular/forms/signals';
+import { SchemaPath } from '@angular/forms/signals';
+import { SchemaPathRules } from '@angular/forms/signals';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
+import { TemplateRef } from '@angular/core';
 import { Type } from '@angular/core';
+import { ValidationError } from '@angular/forms/signals';
 import { WritableSignal } from '@angular/core';
 
 // @public
 export function injectTmDetails<T = TmJsonObject>(): TmDetailsContext<T>;
+
+// @public
+export class TmChildFiles {
+    constructor();
+    readonly caption: InputSignal<string | undefined>;
+    readonly collection: InputSignal<string>;
+    protected readonly defer: ɵTmDeferTriggers;
+    protected readonly failedText: i0.Signal<string>;
+    readonly file: InputSignal<string>;
+    protected readonly loading: i0.Signal<boolean>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmChildFiles, "tm-child-files", never, { "collection": { "alias": "collection"; "required": true; "isSignal": true; }; "file": { "alias": "file"; "required": true; "isSignal": true; }; "caption": { "alias": "caption"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmChildFiles, never>;
+}
+
+// @public
+export class TmChildGrid {
+    constructor();
+    protected readonly child: Signal<TmChildDescriptor | undefined>;
+    readonly collection: InputSignal<string>;
+    readonly columns: InputSignal<readonly TmColumnInput<string>[]>;
+    readonly defaults: InputSignal<(() => TmJsonObject) | undefined>;
+    protected readonly defer: ɵTmDeferTriggers;
+    protected readonly editable: Signal<boolean>;
+    protected readonly failedText: Signal<string>;
+    protected readonly loading: Signal<boolean>;
+    readonly maxRows: InputSignalWithTransform<number, unknown>;
+    readonly readonly: InputSignalWithTransform<boolean, unknown>;
+    protected readonly rows: i0.WritableSignal<number>;
+    protected readonly size: Signal<_tellma_core_ui.TmControlSize>;
+    readonly totals: InputSignal<readonly string[]>;
+    protected readonly totalsText: Signal<string>;
+    protected readonly totalViews: Signal<readonly TmChildGridTotalView[]>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmChildGrid, "tm-child-grid", never, { "collection": { "alias": "collection"; "required": true; "isSignal": true; }; "columns": { "alias": "columns"; "required": true; "isSignal": true; }; "totals": { "alias": "totals"; "required": false; "isSignal": true; }; "defaults": { "alias": "defaults"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "maxRows": { "alias": "maxRows"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmChildGrid, never>;
+}
 
 // @public
 export interface TmDetailsAbilities {
@@ -24,6 +72,47 @@ export interface TmDetailsAbilities {
     readonly create: Signal<boolean>;
     readonly delete: Signal<boolean>;
     readonly edit: Signal<boolean>;
+}
+
+// @public
+export class TmDetailsAside {
+    readonly title: Signal<string>;
+    readonly titleKey: InputSignal<string | undefined>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsAside, "tm-details-aside", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; }, {}, never, ["*"], true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsAside, never>;
+}
+
+// @public
+export class TmDetailsAudit {
+    protected readonly paths: Signal<readonly string[]>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsAudit, "tm-details-audit", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsAudit, never>;
+}
+
+// @public
+export class TmDetailsCard implements OnInit {
+    constructor();
+    readonly collapsed: InputSignalWithTransform<boolean, unknown>;
+    readonly collapsible: InputSignalWithTransform<boolean, unknown>;
+    readonly columns: InputSignal<'auto' | 1 | 2>;
+    protected readonly expanded: i0.WritableSignal<boolean>;
+    readonly flush: InputSignalWithTransform<boolean, unknown>;
+    readonly id: InputSignal<string | undefined>;
+    ngOnInit(): void;
+    readonly scope: TmDetailsScope;
+    readonly scrollable: InputSignal<number | undefined>;
+    protected readonly title: i0.Signal<string | undefined>;
+    readonly titleKey: InputSignal<string | undefined>;
+    readonly width: InputSignal<'full' | 'half'>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsCard, "tm-details-card", never, { "titleKey": { "alias": "titleKey"; "required": false; "isSignal": true; }; "id": { "alias": "id"; "required": false; "isSignal": true; }; "width": { "alias": "width"; "required": false; "isSignal": true; }; "columns": { "alias": "columns"; "required": false; "isSignal": true; }; "collapsible": { "alias": "collapsible"; "required": false; "isSignal": true; }; "collapsed": { "alias": "collapsed"; "required": false; "isSignal": true; }; "scrollable": { "alias": "scrollable"; "required": false; "isSignal": true; }; "flush": { "alias": "flush"; "required": false; "isSignal": true; }; }, {}, never, ["*", "[tmDetailsCardSection], tm-details-tabs"], true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsCard, never>;
+}
+
+// @public
+export class TmDetailsCardSection {
+    readonly card: TmDetailsCard | null;
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmDetailsCardSection, "[tmDetailsCardSection]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsCardSection, never>;
 }
 
 // @public
@@ -78,6 +167,22 @@ export interface TmDetailsContext<T = TmJsonObject> {
 }
 
 // @public
+export class TmDetailsExtra implements OnInit {
+    constructor();
+    ngOnInit(): void;
+    static ngTemplateContextGuard(_directive: TmDetailsExtra, _context: unknown): _context is TmDetailsExtraContext;
+    readonly tmDetailsExtra: InputSignal<string>;
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmDetailsExtra, "[tmDetailsExtra]", never, { "tmDetailsExtra": { "alias": "tmDetailsExtra"; "required": true; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsExtra, never>;
+}
+
+// @public
+export interface TmDetailsExtraContext {
+    readonly $implicit: TmJson | readonly TmJsonObject[];
+    readonly value: TmJson;
+}
+
+// @public
 export interface TmDetailsFieldRef {
     readonly editable: Signal<boolean>;
     focus(): void;
@@ -96,6 +201,9 @@ export class TmDetailsHost {
 }
 
 // @public
+export const TmDetailsKit: readonly [typeof TmDetailsCard, typeof TmDetailsCardSection, typeof TmField, typeof TmFieldEdit, typeof TmFieldView, typeof TmFieldGroup, typeof TmChildGrid, typeof TmChildFiles, typeof TmDetailsTabs, typeof TmDetailsTab, typeof TmDetailsTabContent, typeof TmDetailsAside, typeof TmDetailsAudit, typeof TmDetailsExtra, typeof TmDetailsTitleExtra];
+
+// @public
 export type TmDetailsMode = 'create' | 'edit' | 'view';
 
 // @public
@@ -108,10 +216,30 @@ export class TmDetailsPage {
 }
 
 // @public
+export function tmDetailsPlatformSchema<T>(p: SchemaPathTree<T>, descriptor: TmEntityDescriptor, options?: TmDetailsSchemaOptions): void;
+
+// @public
 export interface TmDetailsRecord<T> {
     readonly entity: T;
     readonly extras?: Readonly<Record<string, TmJson>>;
     readonly related?: Readonly<Record<string, readonly TmJsonObject[]>>;
+}
+
+// @public
+export interface TmDetailsSchemaOptions {
+    readonly child?: (entity: string) => TmEntityDescriptor | undefined;
+    readonly errors?: Signal<readonly TmDetailsServerError[]>;
+    readonly mode?: Signal<TmDetailsMode>;
+    readonly uploads?: {
+        readonly running: Signal<ReadonlySet<string>>;
+    };
+}
+
+// @public
+export interface TmDetailsServerError {
+    readonly error: ValidationError.WithoutFieldTree;
+    readonly segments: readonly (number | string)[];
+    readonly value: unknown;
 }
 
 // @public
@@ -138,7 +266,118 @@ export interface TmDetailsSource<T> {
 export type TmDetailsStatus = 'error' | 'loading' | 'ready';
 
 // @public
+export class TmDetailsTab {
+    constructor();
+    readonly collection: InputSignal<string | undefined>;
+    readonly content: Signal<TmDetailsTabContent | undefined>;
+    readonly count: Signal<number | null>;
+    readonly id: InputSignal<string>;
+    readonly invalid: Signal<boolean>;
+    readonly label: Signal<string>;
+    readonly labelKey: InputSignal<string | undefined>;
+    readonly scope: TmDetailsScope;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsTab, "tm-details-tab", never, { "id": { "alias": "id"; "required": true; "isSignal": true; }; "labelKey": { "alias": "labelKey"; "required": false; "isSignal": true; }; "collection": { "alias": "collection"; "required": false; "isSignal": true; }; }, {}, ["content"], never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsTab, never>;
+}
+
+// @public
+export class TmDetailsTabContent {
+    readonly template: TemplateRef<unknown>;
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmDetailsTabContent, "ng-template[tmDetailsTabContent]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsTabContent, never>;
+}
+
+// @public
+export class TmDetailsTabs implements OnInit, AfterViewInit {
+    constructor();
+    protected errorName(tab: TmDetailsTab): string;
+    readonly id: InputSignal<string>;
+    ngAfterViewInit(): void;
+    ngOnInit(): void;
+    select(id: string): void;
+    readonly selected: ModelSignal<string | undefined>;
+    protected readonly tabs: Signal<readonly TmDetailsTab[]>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmDetailsTabs, "tm-details-tabs", never, { "id": { "alias": "id"; "required": false; "isSignal": true; }; "selected": { "alias": "selected"; "required": false; "isSignal": true; }; }, { "selected": "selectedChange"; }, ["tabs"], never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsTabs, never>;
+}
+
+// @public
+export class TmDetailsTitleExtra {
+    constructor();
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmDetailsTitleExtra, "ng-template[tmDetailsTitleExtra]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsTitleExtra, never>;
+}
+
+// @public
 export function tmEntitySource<T = TmJsonObject>(descriptor: TmEntityDescriptor, id: Signal<TmId | null>): TmDetailsSource<T>;
+
+// @public
+export class TmField {
+    constructor();
+    protected readonly cells: Signal<readonly ɵTmFieldCell[]>;
+    readonly create: InputSignalWithTransform<boolean, unknown>;
+    protected editing(cell: ɵTmFieldCell): boolean;
+    protected readonly editor: Signal<Type<unknown> | null>;
+    protected readonly editorFailed: WritableSignal<boolean>;
+    protected readonly editorFailedText: Signal<string>;
+    protected editorInputs(cell: ɵTmFieldCell): Readonly<Record<string, unknown>>;
+    protected readonly editTemplate: Signal<TmFieldEdit | undefined>;
+    readonly filter: InputSignal<string | null>;
+    readonly helpKey: InputSignal<string | undefined>;
+    protected readonly hint: Signal<string>;
+    readonly hintKey: InputSignal<string | undefined>;
+    readonly labelKey: InputSignal<string | undefined>;
+    protected readonly loading: Signal<boolean>;
+    protected readonly lockIcon: lucide.IconNode;
+    protected readonly mode: WritableSignal<_tellma_core_details.TmDetailsMode>;
+    readonly path: InputSignal<string>;
+    readonly readonly: InputSignalWithTransform<boolean, unknown>;
+    protected readonly readOnlyText: Signal<string>;
+    protected retryEditor(): void;
+    protected readonly retryText: Signal<string>;
+    protected readonly size: Signal<_tellma_core_ui.TmControlSize>;
+    readonly span: InputSignal<1 | 2 | undefined>;
+    protected valueOf(cell: ɵTmFieldCell): unknown;
+    protected viewContext(cell: ɵTmFieldCell): TmFieldViewContext;
+    protected readonly viewTemplate: Signal<TmFieldView | undefined>;
+    protected readonly voiced: Signal<boolean>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmField, "tm-field", never, { "path": { "alias": "path"; "required": true; "isSignal": true; }; "labelKey": { "alias": "labelKey"; "required": false; "isSignal": true; }; "hintKey": { "alias": "hintKey"; "required": false; "isSignal": true; }; "helpKey": { "alias": "helpKey"; "required": false; "isSignal": true; }; "span": { "alias": "span"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "filter": { "alias": "filter"; "required": false; "isSignal": true; }; "create": { "alias": "create"; "required": false; "isSignal": true; }; }, {}, ["editTemplate", "viewTemplate"], never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmField, never>;
+}
+
+// @public
+export class TmFieldEdit {
+    static ngTemplateContextGuard(_directive: TmFieldEdit, _context: unknown): _context is TmFieldEditContext;
+    readonly template: TemplateRef<TmFieldEditContext>;
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmFieldEdit, "ng-template[tmFieldEdit]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFieldEdit, never>;
+}
+
+// @public
+export interface TmFieldEditContext {
+    readonly $implicit: FieldTree<unknown>;
+    readonly property: TmNavigationDescriptor | TmPropertyDescriptor | null;
+}
+
+// @public
+export class TmFieldGroup {
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmFieldGroup, "[tmFieldGroup]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFieldGroup, never>;
+}
+
+// @public
+export class TmFieldView {
+    static ngTemplateContextGuard(_directive: TmFieldView, _context: unknown): _context is TmFieldViewContext;
+    readonly template: TemplateRef<TmFieldViewContext>;
+    static ɵdir: i0.ɵɵDirectiveDeclaration<TmFieldView, "ng-template[tmFieldView]", never, {}, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmFieldView, never>;
+}
+
+// @public
+export interface TmFieldViewContext {
+    readonly $implicit: unknown;
+    readonly property: TmNavigationDescriptor | TmPropertyDescriptor | null;
+}
 
 // @public
 export interface TmRelated {

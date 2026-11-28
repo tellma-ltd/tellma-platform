@@ -146,6 +146,12 @@ export type { TmListPayload, TmSearchQuery } from './src/urls/tm-search-query';
 export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck } from './src/routes/tm-leave-checks';
 // The contract of the components the primary loads from the shell entry point; not for app code.
 export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
+// The route host's page skeletons, which a family's host draws again while its own chunk loads; not for app code.
+export { TmPageSkeleton as ɵTmPageSkeleton } from './src/routes/tm-page-skeleton';
+// The arrival focus, which a family's host holds while its own page loads; not for app code.
+export { TmPageFocus as ɵTmPageFocus } from './src/routes/tm-page-focus';
+// Where the shown page's route started and whether its entry was cold, which a host's render timing reads; not for app code.
+export { TmLaunchTimer as ɵTmLaunchTimer } from './src/routes/tm-route-host';
 
 // The entity registry: summaries, descriptors and paths, display names, permissions.
 export { TmEntities } from './src/entity/tm-entities';
@@ -193,6 +199,7 @@ export {
   type TmEntityActionDeclaration,
   type TmEntityDeclaration,
   type TmEntityDeclarationInput,
+  type TmEntityRules,
   type TmFilterSource,
   type TmOrderInput,
   type TmPickerDeclaration,
@@ -218,6 +225,8 @@ export {
 } from './src/reports/tm-coded-report';
 export {
   tmWidget,
+  type TmDashboardWidgetModel,
+  type TmTextSlots,
   type TmWidgetDefinition,
   type TmWidgetSize,
   type TmWidgetTypeDeclaration,

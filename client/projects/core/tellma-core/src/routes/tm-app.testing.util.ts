@@ -19,6 +19,8 @@ import {
 } from '@tellma/core-testing';
 
 import { TM_API_UPDATES, type TmApiUpdateCheck } from '../api/tm-api-seams';
+import { TM_CORE_WIDGETS } from '../dashboards/tm-core-widgets';
+import { tmWidget, type TmWidgetDefinition } from '../dashboards/tm-widget';
 import { provideTellma } from '../app/provide-tellma';
 import type { TmAppConfig, TmLanguageDefinition } from '../app/tm-app-config';
 import { tmFeature, type TmFeature } from '../declarations/tm-feature';
@@ -93,6 +95,50 @@ export function tmRouteTestMetadata(): TmClientMetadata {
       summary('acme.SalesInvoiceLine', 'sales-invoice-lines', 'child'),
       summary('core.Dashboard', 'dashboards', 'stack'),
     ],
+  });
+}
+
+/**
+ * The route test metadata and a feature that give assignments their own
+ * search page at `/17/assignments`, with the lists' two tabs, so the home's
+ * assignment lists link to it.
+ *
+ * @returns The metadata, and the feature that declares the page.
+ */
+export function tmAssignmentsTestRoute(): { readonly metadata: TmClientMetadata; readonly feature: TmFeature } {
+  const base = tmRouteTestMetadata();
+  return {
+    metadata: { ...base, entities: [...base.entities, summary('core.Assignment', 'assignments', 'stack')] },
+    feature: tmFeature({
+      key: 'acme-assignments',
+      entities: [
+        tmEntity('core.Assignment', {
+          tabs: [
+            { key: 'to-me', labelKey: 'Tab_ToMe' },
+            { key: 'by-me', labelKey: 'Tab_ByMe' },
+          ],
+          search: tmLoadTestPage,
+        }),
+      ],
+    }),
+  };
+}
+
+/**
+ * A feature that redeclares a core widget type with a permission the test
+ * user lacks, as an app may, so the grid hides or locks its tiles.
+ *
+ * @param key - The core widget type.
+ * @returns The feature.
+ */
+export function tmGatedCoreWidget(key: string): TmFeature {
+  const core = TM_CORE_WIDGETS.find((widget) => widget.key === key);
+  if (core === undefined) {
+    throw new Error(`No core widget type '${key}'.`);
+  }
+  return tmFeature({
+    key: 'acme-gate',
+    overrides: [tmWidget(key, { ...(core as unknown as TmWidgetDefinition), requires: ['acme.Approval', 'Read'] })],
   });
 }
 

@@ -7,7 +7,7 @@ import type { Signal } from '@angular/core';
 import type { TmKeys } from '@tellma/core-ui/keys';
 
 import type { TmActionConfirmation } from '../entity/tm-entity-declaration';
-import type { TmJson, TmJsonSchema } from '../json/tm-json';
+import type { TmJson, TmJsonObject, TmJsonSchema } from '../json/tm-json';
 
 // The page action's contracts (spec 0026 §9.4). A page action is a command a
 // page exposes; the toolbar, the Actions menu, a shortcut and a future
@@ -20,9 +20,10 @@ export type TmActionOrigin = 'user' | 'shortcut' | 'launcher' | 'assistant';
 /**
  * How an invocation ended: `done`, with the action's data if any;
  * `cancelled` when the user declined its confirmation or its warnings;
- * `refused` without running, because no context offers the action
- * (`not-found`), it is disabled (`disabled`, with its reason as `message`)
- * or it is already running (`busy`); or `failed` when it threw.
+ * `refused` without running, because no context offers the action or the
+ * action does not accept the arguments (`not-found`), it is disabled
+ * (`disabled`, with its reason as `message`) or it is already running
+ * (`busy`); or `failed` when it threw.
  */
 export type TmActionResult =
   | { readonly outcome: 'done'; readonly data?: TmJson }
@@ -62,8 +63,30 @@ export interface TmPageAction {
    * cause, such as loading.
    */
   readonly disabledReason: Signal<string | null>;
-  /** The confirmation it asks for; required when `destructive`. */
-  readonly confirm?: TmActionConfirmation;
+  /**
+   * The confirmation it asks for; required when `destructive`. Its
+   * arguments may also be a function of the invocation's, so the texts can
+   * follow what is being confirmed, and it may name its cancel button.
+   */
+  readonly confirm?: Omit<TmActionConfirmation, 'args'> & {
+    /**
+     * The arguments of the title, the message and the confirm label. A
+     * function receives the invocation's arguments as given, unchecked.
+     */
+    readonly args?: Signal<TmJsonObject> | ((args: TmJson) => TmJsonObject);
+    /** The string key of the cancel button's label; "Cancel" without one. */
+    readonly cancelKey?: string;
+  };
+  /**
+   * Whether the invocation's arguments name something the action can act on
+   * now, such as a row that is still there. One it does not accept is
+   * refused as `not-found` before any confirmation; without it, every
+   * invocation is accepted.
+   *
+   * @param args - The arguments, as given.
+   * @returns Whether to go on.
+   */
+  accepts?(args: TmJson): boolean;
   /** Its shortcut, live while its context is on top. An action whose `params` require members takes none. */
   readonly shortcut?: TmKeys;
   /** The JSON Schema (2020-12) object schema of its arguments. */

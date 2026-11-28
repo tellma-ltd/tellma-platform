@@ -33,7 +33,7 @@ export interface TmReorderItemContext<T = unknown> {
 // @public
 export class TmReorderList<T> {
     constructor();
-    protected readonly acceptedKinds: _angular_core.Signal<string[]>;
+    protected readonly acceptedKinds: _angular_core.Signal<readonly string[]>;
     readonly accepts: _angular_core.InputSignal<readonly string[]>;
     readonly ariaLabel: _angular_core.InputSignal<string>;
     protected readonly draggingKey: _angular_core.Signal<string | null>;
@@ -47,6 +47,7 @@ export class TmReorderList<T> {
     protected readonly instructions: _angular_core.Signal<string>;
     protected readonly instructionsId: string;
     readonly itemKey: _angular_core.InputSignal<(item: T) => string>;
+    readonly itemKind: _angular_core.InputSignal<((item: T) => string) | undefined>;
     readonly itemLabel: _angular_core.InputSignal<(item: T) => string>;
     readonly items: _angular_core.ModelSignal<readonly T[]>;
     protected readonly itemTemplate: _angular_core.Signal<TmReorderItem<T> | undefined>;
@@ -70,7 +71,7 @@ export class TmReorderList<T> {
     protected readonly resolvedSize: _angular_core.Signal<TmControlSize>;
     protected readonly shown: _angular_core.Signal<readonly T[]>;
     readonly size: _angular_core.InputSignal<TmControlSize | undefined>;
-    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmReorderList<any>, "tm-reorder-list", never, { "items": { "alias": "items"; "required": false; "isSignal": true; }; "itemKey": { "alias": "itemKey"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "accepts": { "alias": "accepts"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "ariaLabel"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "items": "itemsChange"; "moved": "moved"; "received": "received"; }, ["itemTemplate", "emptyTemplate"], never, true, never>;
+    static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmReorderList<any>, "tm-reorder-list", never, { "items": { "alias": "items"; "required": false; "isSignal": true; }; "itemKey": { "alias": "itemKey"; "required": true; "isSignal": true; }; "itemLabel": { "alias": "itemLabel"; "required": true; "isSignal": true; }; "accepts": { "alias": "accepts"; "required": false; "isSignal": true; }; "itemKind": { "alias": "itemKind"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "ariaLabel"; "required": true; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; }, { "items": "itemsChange"; "moved": "moved"; "received": "received"; }, ["itemTemplate", "emptyTemplate"], never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmReorderList<any>, never>;
 }
 

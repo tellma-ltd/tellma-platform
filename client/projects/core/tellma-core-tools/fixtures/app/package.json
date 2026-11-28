@@ -5,6 +5,12 @@
   "private": true,
   "type": "module",
   "tellma": {
-    "migrator": "../migrator"
+    "migrator": "../migrator",
+    "budgets": {
+      "initialJs": {
+        "warn": 238,
+        "note": "The warn line is the fixture's measure rounded up to the next 0.5 KB, as a distribution sets its own: 236.14 KB on a clean build with the bell and the tray and the pinned bar, then 237.65 KB once the home route's chunk imports the attention entry point, which the build then splits from the shell's into a modulepreloaded file of its own."
+      }
+    }
   }
 }

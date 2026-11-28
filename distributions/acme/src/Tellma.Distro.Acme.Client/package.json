@@ -12,7 +12,13 @@
     "lint": "eslint . && stylelint \"src/**/*.css\""
   },
   "tellma": {
-    "migrator": "../Tellma.Distro.Acme.Migrator"
+    "migrator": "../Tellma.Distro.Acme.Migrator",
+    "budgets": {
+      "initialJs": {
+        "warn": 238.5,
+        "note": "The warn line is the app's measure rounded up to the next 0.5 KB, so growth shows as a warning well before the 260 KB error line: 236.87 KB on a clean build with the bell and the tray and the pinned bar, then 238.37 KB once the home route's chunk imports the attention entry point, which the build then splits from the shell's into a modulepreloaded file of its own."
+      }
+    }
   },
   "dependencies": {
     "@angular/aria": "catalog:",

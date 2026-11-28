@@ -117,6 +117,13 @@ export class TmLaunchTimer {
   #timed = false;
 
   /**
+   * The page being shown: when its route host started loading it, by
+   * `performance.now()`, and whether its tenant entry was cold. Internal: a
+   * page's own render timing reads it.
+   */
+  ɵpage = { at: 0, cold: true };
+
+  /**
    * Starts following the launch's navigations: one that ends outside a page
    * route ends the launch untimed. The launch page at `/` only passes the
    * launch on to where it leads. Internal: the boot sequence starts it.
@@ -351,6 +358,7 @@ export class TmRouteHost {
    */
   protected async load(): Promise<void> {
     const run = ++this.#run;
+    const started = performance.now();
     // A superseded load renders nothing: this load's hold, taken first, takes over from its hold.
     const hold = this.#focus.ɵhold();
     this.#release();
@@ -406,6 +414,8 @@ export class TmRouteHost {
       this.#rendered(release);
       return;
     }
+    // The page's own timing reads where its route started and whether the entry was cold.
+    this.#timer.ɵpage = { at: started, cold: entry.cold };
     this.#state.set({ view: 'page', component });
     // The launch is timed once the page has rendered.
     const routeKind = this.data().kind;

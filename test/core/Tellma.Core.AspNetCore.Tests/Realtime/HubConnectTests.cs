@@ -317,7 +317,10 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             await using TellmaTestHost host = await RealtimeTestHost.StartAsync();
             TestSession session = host.Session(accessTokenLifetime: TimeSpan.FromDays(30));
             DateTimeOffset before = host.Rows.ExpiresAt(session.Key)!.Value;
-            host.Time.Advance(TimeSpan.FromDays(4));
+
+            // Four days is far past the tenant snapshot's staleness bound: the move waits for the
+            // snapshot to be confirmed again, or the negotiate could meet it stale.
+            await host.AdvanceAsync(TimeSpan.FromDays(4));
 
             // --- The negotiate: no cookie written ---
             using HttpResponseMessage negotiate = await RealtimeTestHost.NegotiateAsync(host, RealtimeTestHost.Active, session.Cookie);

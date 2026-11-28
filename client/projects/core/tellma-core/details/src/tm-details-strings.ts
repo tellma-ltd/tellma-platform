@@ -5,7 +5,7 @@
 
 import type { TmStringTree } from '@tellma/core';
 
-// The details page's English strings (spec 0031 §3.4, §5.1–§5.3, §10.1),
+// The details page's English strings (spec 0031 §3.4, §5.1–§5.3, §6, §10.1),
 // merged under `tm.details` when the page first renders. A language pack
 // carries the same tree; the Arabic one is @tellma/locale-ar/details-strings.
 
@@ -23,6 +23,7 @@ export const TM_DETAILS_STRINGS_EN = {
   loading: 'Loading',
   editing: 'Editing {name}',
   saved: 'Saved',
+  uploadsFailed: "Nothing was saved: a file didn't upload.",
   refreshFailed: "This record couldn't be refreshed. Your changes are kept.",
   retry: 'Try again',
   discard: {
@@ -32,4 +33,17 @@ export const TM_DETAILS_STRINGS_EN = {
     keep: 'Keep editing',
   },
   outsideFilter: "Your “{permission}” permission doesn't cover this record.",
+  readOnly: 'Read only',
+  hasErrors: '{label}, has errors',
+  audit: 'Audit info',
+  aside: 'Related information',
+  editorFailed: "This field couldn't be loaded for editing.",
+  listEditorFailed: "This list couldn't be loaded for editing.",
+  total: 'Total {label}',
+  totals: 'Totals',
+  tableFailed: "This table couldn't be loaded.",
+  noFiles: 'No files',
+  filesFailed: "These files couldn't be loaded.",
+  fileRefused: '{name}: {message}',
+  uploading: 'Uploading {name}',
 } as const satisfies TmStringTree;

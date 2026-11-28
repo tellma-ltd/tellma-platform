@@ -18,7 +18,7 @@ import {
   untracked,
 } from '@angular/core';
 import { NavigationStart, Router } from '@angular/router';
-import { TmTelemetry } from '@tellma/core';
+import { TmTelemetry, ɵTmPageFocus } from '@tellma/core';
 import { tmPushEscapeDismissal } from '@tellma/core-ui/overlay';
 
 // The launcher (spec 0027 §9): the Menu button, the app bar's search field,
@@ -133,6 +133,7 @@ export class TmLauncher {
   readonly #telemetry = inject(TmTelemetry);
   readonly #document = inject(DOCUMENT);
   readonly #router = inject(Router, { optional: true });
+  readonly #pageFocus = inject(ɵTmPageFocus);
   readonly #query = signal('');
   readonly #open = signal(false);
   readonly #surface = signal<TmLauncherSurface | null>(null);
@@ -153,6 +154,8 @@ export class TmLauncher {
   #skeleton: HTMLElement | null = null;
   // The tenant the text was typed in, or `null` before any.
   #tenantId: number | null = null;
+  // Releases the hold on the page's focus move, which the launcher keeps while it is open.
+  #focusHold: (() => void) | null = null;
 
   /** Whether the launcher is closed, browsing, or listing matches for typed text. */
   readonly state: Signal<'closed' | 'browse' | 'typed'> = computed(() =>
@@ -224,6 +227,10 @@ export class TmLauncher {
       return;
     }
     this.#open.set(false);
+    // A page's focus move that waited for the launcher runs before the surface gives focus back,
+    // so focus ends where the close puts it.
+    this.#focusHold?.();
+    this.#focusHold = null;
     untracked(this.#surface)?.close(reason);
     if (waited) {
       this.#giveBack(reason);
@@ -308,6 +315,8 @@ export class TmLauncher {
     if (!reopened) {
       this.#open.set(true);
       this.#returnTo = returnTo;
+      // A page that renders while the launcher is open, as after a navigation, leaves focus in it.
+      this.#focusHold = this.#pageFocus.ɵhold();
       this.#telemetry.event('tm.launcher.opened', { via, state: untracked(this.state) }, { sampled: true });
     }
     const surface = untracked(this.#surface);

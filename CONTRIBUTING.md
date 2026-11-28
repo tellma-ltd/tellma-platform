@@ -25,7 +25,10 @@ vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/
 Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
 error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
 such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
-storage.
+storage. The testing providers keep the client's storage in memory, `TmClientCache` included, so a
+session's clean-up waits on no storage there and leaves the shared test page's stores alone; a
+spec that provides the real `TmClientCache` waits on its sweep as above, and removes what it
+created.
 
 ### Tags
 

@@ -26,6 +26,7 @@ import {
 } from '@tellma/core';
 import { TmLauncherHarness, TmTenantShellHarness, tmWarmTenant } from '@tellma/core-testing';
 import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
+import { TmModalHarness } from '@tellma/core-ui-testing';
 import { page } from 'vitest/browser';
 
 import {
@@ -36,6 +37,7 @@ import {
   tmNavigate,
   tmSettle,
   tmSettleUntil,
+  TmTestPage,
   type TmAppRig,
 } from '../../../src/routes/tm-app.testing.util';
 import { TM_LAUNCHER_LOAD, TmLauncher, type TmLauncherChunk } from './tm-launcher';
@@ -598,6 +600,32 @@ describe('the launcher', () => {
           expect(document.activeElement).toBe(button);
         });
 
+        it('keeps focus in its input as a page renders while it is open, and gives it back as it closes', async () => {
+          await start({ width, arabic });
+          let render!: () => void;
+          tmLoadTestPage.mockImplementationOnce(() => new Promise((resolve) => (render = () => resolve(TmTestPage))));
+          await rig.router.navigateByUrl('/17/centers/5/map');
+          await tmSettle();
+          const harness = await fromMenu();
+          expect(document.activeElement).toBe(input());
+
+          // The page renders while the launcher is open: its focus move waits.
+          render();
+          await tmSettleUntil(
+            () => document.querySelector('tm-page-skeleton') === null && document.querySelector('main [tmPageTitle]') !== null,
+            'the page renders',
+          );
+          await settled();
+          expect(document.activeElement).toBe(input());
+          await harness.close();
+          await settled();
+          expect(document.activeElement).toBe(menu());
+
+          // The next path change moves focus to its page's title.
+          await rig.router.navigateByUrl('/17/credit-review');
+          await tmSettleUntil(() => document.activeElement?.hasAttribute('tmPageTitle') === true, "focus moves to the page's title");
+        });
+
         it('gives focus back to the Menu button after Escape', async () => {
           await start({ width, arabic });
           const harness = await fromMenu();
@@ -768,10 +796,37 @@ describe('the launcher', () => {
       expect(events('tm.launcher.opened')).toHaveLength(2);
     });
 
-    it('has no commands by default, so the band hides with no pins', async () => {
+    it("has the tenant shell's pin commands by default: Pin this page, then Manage pins…", async () => {
       await start({ preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' } });
       const harness = await shell.openLauncher('menu');
-      expect(await harness.getGroupLabels()).not.toContain('Pinned');
+      expect((await outline(harness))[0]).toBe('Pinned: Pin this page, Manage pins…');
+      await harness.pressKey(TestKey.DOWN_ARROW);
+      await harness.pressKey(TestKey.ENTER);
+      expect(launcher().state()).toBe('closed');
+      // The page is pinned; the bar is hidden, so a toast says so.
+      await tmSettleUntil(() => document.querySelector('.tm-toast') !== null, 'the pinned toast shows');
+      expect(document.querySelector('.tm-toast')!.textContent).toContain('Pinned Credit review.');
+      const again = await shell.openLauncher('menu');
+      expect((await outline(again))[0]).toBe('Pinned: Credit review, Edit pin, Manage pins…');
+    });
+
+    it('opens Manage pins from its command, and closing the dialog gives focus to the Menu button with the launcher closed', async () => {
+      await start({ preferences: { 'nav.pinned': JSON.stringify({ v: 1, items: [] }), 'nav.pinnedBarVisible': 'false' } });
+      const harness = await shell.openLauncher('menu');
+      await harness.pressKey(TestKey.DOWN_ARROW);
+      await harness.pressKey(TestKey.DOWN_ARROW);
+      expect(await harness.getActiveDescendantLabel()).toBe('Manage pins…');
+      await harness.pressKey(TestKey.ENTER);
+      expect(launcher().state()).toBe('closed');
+      await tmSettleUntil(() => document.querySelector('tm-manage-pins-dialog') !== null, 'the Manage pins dialog opens');
+      const dialog = await loader.getHarness(TmModalHarness);
+      expect(await dialog.getTitle()).toBe('Manage pins');
+      await dialog.close();
+      await settled();
+      expect(document.querySelector('tm-manage-pins-dialog')).toBeNull();
+      expect(document.activeElement).toBe(menu());
+      expect(launcher().state()).toBe('closed');
+      expect(events('tm.launcher.opened')).toHaveLength(1);
     });
   });
 
@@ -801,7 +856,7 @@ describe('the launcher', () => {
     it('shows the pinned band while the pinned bar is hidden', async () => {
       await start({ preferences: { 'nav.pinnedBarVisible': 'false' } });
       const harness = await shell.openLauncher('menu');
-      expect((await outline(harness))[0]).toBe('Pinned: Centers, Corporate customers');
+      expect((await outline(harness))[0]).toBe('Pinned: Centers, Corporate customers, Pin this page, Manage pins…');
     });
 
     it('hides a recent page that visibleWhen hides, and one whose permission is lost', async () => {
@@ -1131,7 +1186,7 @@ describe('the launcher', () => {
       expect(await harness.getSurface()).toBe('sheet');
       expect(document.activeElement?.classList.contains('tm-launcher__close')).toBe(true);
       // Below md, the pinned band shows.
-      expect((await outline(harness))[0]).toBe('Pinned: Centers, Corporate customers');
+      expect((await outline(harness))[0]).toBe('Pinned: Centers, Corporate customers, Pin this page, Manage pins…');
       (document.activeElement as HTMLElement).click();
       await tmSettleUntil(() => document.querySelector('.tm-launcher__list') === null, 'the modal closes');
       expect(launcher().state()).toBe('closed');

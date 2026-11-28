@@ -10,6 +10,8 @@ import { TM_GRID_KEYS } from '@tellma/core-ui/contracts';
 import { type TmKeys, TmKbd } from '@tellma/core-ui/kbd';
 import { TmSearchField } from '@tellma/core-ui/search-field';
 
+import { tmRegisterPinCommandsStrings } from '../pins/tm-pin-commands-strings';
+
 // The Shortcuts dialog (spec 0027 §11.2), a deferred chunk that the session
 // menu's Keyboard shortcuts row and Mod+/ open. A filter field narrows every
 // section's rows through the search's text folding. Each section is a
@@ -205,9 +207,10 @@ export class TmShortcutsDialog {
   /** Whether the filter emptied every section. */
   protected readonly empty = computed(() => this.sections().every((section) => section.rows.length === 0));
 
-  /** Creates the dialog, which registers its strings. */
+  /** Creates the dialog, which registers its strings and the pin commands', which name Alt+Shift+P's row. */
   constructor() {
     this.#l10n.ɵregisterStrings(SCOPE, TM_SHORTCUTS_DIALOG_STRINGS_EN);
+    tmRegisterPinCommandsStrings(this.#l10n);
   }
 
   /**

@@ -1,0 +1,226 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The dashboard grid's geometry (spec 0035 §8.1, §8.2, §15): the centred
+   column, the subtle band, the 12-column grid of 30 px rows, each cell's
+   placement in the wide and the narrow layout, and the home page's greeting.
+   The rules are global, not the dashboards entry point's own, because the
+   route host's home skeleton draws the same boxes before that entry point
+   loads: one set of rules keeps the skeleton and the page in one place. */
+
+@layer tm.base {
+  /* The grid's tokens: rows, gaps, the tiles' width cap and the padding,
+     which is 14x16 px from sm up and 11x10 px below it; a list row is
+     31 px from sm up and 44 px, a touch target, below it. */
+  :root {
+    --tm-dashboard-row: 30px;
+    --tm-dashboard-gap: 10px;
+    --tm-dashboard-max-inline: 1600px;
+    --tm-dashboard-padding-block: 14px;
+    --tm-dashboard-padding-inline: 16px;
+    --tm-dashboard-list-row: 31px;
+  }
+
+  @media (width < 576px) {
+    :root {
+      --tm-dashboard-padding-block: 11px;
+      --tm-dashboard-padding-inline: 10px;
+      --tm-dashboard-list-row: 44px;
+    }
+  }
+
+  /* The home page: the greeting over the band, which fills the rest of main. */
+  .tm-home {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 100%;
+  }
+
+  /* The column that caps the tiles' width on large monitors, centred, its
+     padding outside the cap so the greeting and the grid share one edge.
+     It goes on the greeting and on the grid themselves, whose padding is
+     the column's. */
+  .tm-dashboard-column {
+    box-sizing: border-box;
+    inline-size: 100%;
+    max-inline-size: calc(var(--tm-dashboard-max-inline) + 2 * var(--tm-dashboard-padding-inline));
+    margin-inline: auto;
+  }
+
+  /* The band behind the grid: the subtle surface under a top rule, across
+     the whole width, so the surface outside the column stays subtle. */
+  .tm-dashboard-band {
+    flex: 1 0 auto;
+    background: var(--surface-subtle);
+    border-block-start: var(--border-width) solid var(--border-subtle);
+  }
+
+  /* The grid: twelve columns of fixed-height rows on the subtle surface. A
+     grid in a band leaves the rule to the band, which draws it full width.
+     It is the container its cells' layout reads, so a grid in a narrow
+     region goes narrow on its own width. */
+  .tm-dashboard-grid {
+    display: grid;
+    box-sizing: border-box;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: var(--tm-dashboard-row);
+    gap: var(--tm-dashboard-gap);
+    padding: var(--tm-dashboard-padding-block) var(--tm-dashboard-padding-inline);
+    background: var(--surface-subtle);
+    border-block-start: var(--border-width) solid var(--border-subtle);
+    container: tm-dashboard / inline-size;
+  }
+
+  .tm-dashboard-band .tm-dashboard-grid {
+    border-block-start: none;
+  }
+
+  /* A cell: its stored columns and rows from 768 px of grid width up. The
+     placement arrives as --tm-col, --tm-span, --tm-row, --tm-rows and
+     --tm-row-narrow, 1-based; columns count from the inline-start edge, so
+     the layout mirrors in right-to-left with no arithmetic. */
+  .tm-dashboard-grid__cell {
+    min-inline-size: 0;
+    min-block-size: 0;
+  }
+
+  @container tm-dashboard (width >= 768px) {
+    .tm-dashboard-grid__cell {
+      grid-column: var(--tm-col) / span var(--tm-span);
+      grid-row: var(--tm-row) / span var(--tm-rows);
+    }
+  }
+
+  /* Below 768 px, and in print: one column in reading order, each cell at
+     its stored height. */
+  @container tm-dashboard (width < 768px) {
+    .tm-dashboard-grid__cell {
+      grid-column: 1 / -1;
+      grid-row: var(--tm-row-narrow) / span var(--tm-rows);
+    }
+  }
+
+  @media print {
+    .tm-dashboard-grid__cell {
+      grid-column: 1 / -1;
+      grid-row: var(--tm-row-narrow) / span var(--tm-rows);
+    }
+  }
+
+  /* A tile's frame while its page loads: the card's edge and its header,
+     then list rows, each box at the size of the one that replaces it. */
+  .tm-dashboard-frame {
+    box-sizing: border-box;
+    overflow: hidden;
+    background: var(--card-bg);
+    border: var(--border-width) solid var(--card-border);
+    border-radius: var(--card-radius);
+  }
+
+  .tm-dashboard-frame__header {
+    display: flex;
+    align-items: center;
+    block-size: var(--card-line-height);
+    padding: var(--card-header-padding-y) var(--card-header-padding-x);
+    border-block-end: var(--border-width) solid var(--divider);
+  }
+
+  /* A frame's or a loading tile's list rows: one skeleton bar per row, each
+     centred in the row's height and inset like a row's text, so the rows
+     that replace them start where the bars stood. */
+  .tm-dashboard-frame__rows {
+    --skeleton-line-gap: calc(var(--tm-dashboard-list-row) - var(--skeleton-bar-height));
+
+    padding: calc((var(--tm-dashboard-list-row) - var(--skeleton-bar-height)) / 2) var(--card-header-padding-x);
+  }
+
+  /* The home skeleton's frames, where the home page places its three
+     widgets (spec 0035 §15.3): My assignments and Assigned by me down the
+     inline-start seven columns, Recently visited beside them; narrow, in
+     that reading order. */
+  .tm-home-skeleton > :nth-child(1) {
+    --tm-col: 1;
+    --tm-span: 7;
+    --tm-row: 1;
+    --tm-rows: 9;
+    --tm-row-narrow: 1;
+  }
+
+  .tm-home-skeleton > :nth-child(2) {
+    --tm-col: 8;
+    --tm-span: 5;
+    --tm-row: 1;
+    --tm-rows: 9;
+    --tm-row-narrow: 10;
+  }
+
+  .tm-home-skeleton > :nth-child(3) {
+    --tm-col: 1;
+    --tm-span: 7;
+    --tm-row: 10;
+    --tm-rows: 9;
+    --tm-row-narrow: 19;
+  }
+
+  /* A list row, such as a recent page's: a fixed height, its text inset like the card's header. */
+  .tm-dashboard-list-row {
+    display: flex;
+    box-sizing: border-box;
+    align-items: center;
+    gap: var(--space-2);
+    block-size: var(--tm-dashboard-list-row);
+    padding-inline: var(--card-header-padding-x);
+  }
+
+  /* The home page's greeting: a 16/600 heading on one line, then the 12 px
+     secondary date line, padded like the grid so the two share an edge.
+     Each line has a fixed height, which its skeleton bar keeps too. */
+  .tm-home-greeting {
+    display: block;
+    padding: var(--tm-dashboard-padding-block) var(--tm-dashboard-padding-inline);
+  }
+
+  .tm-home-greeting__title {
+    display: flex;
+    align-items: center;
+    block-size: 24px;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-strong);
+    font-size: var(--page-header-title-font-size);
+    font-weight: var(--weight-semibold);
+    line-height: 24px;
+    white-space: nowrap;
+  }
+
+  /* The heading's text ellipsizes as one run, the name's isolate within it. */
+  .tm-home-greeting__text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The greeting's skeleton: one bar centred in each line's box, the date's
+     the shorter. */
+  .tm-home-greeting__lines {
+    --skeleton-line-gap: calc(21px - var(--skeleton-bar-height));
+    --skeleton-last-line-width: 60%;
+
+    padding-block: calc((24px - var(--skeleton-bar-height)) / 2) calc((18px - var(--skeleton-bar-height)) / 2);
+  }
+
+  .tm-home-greeting__date {
+    display: flex;
+    align-items: center;
+    block-size: 18px;
+    margin: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: var(--text-xs);
+    line-height: 18px;
+    white-space: nowrap;
+  }
+}

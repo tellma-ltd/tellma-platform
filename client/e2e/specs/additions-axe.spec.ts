@@ -42,16 +42,23 @@ const CLIENT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /**
  * The library's folders that are not additions: the entry points that came
  * before them or stand outside them (the pivot and the chart, whose own
- * suites, pivot.spec.ts and chart.spec.ts, run their axe scans, and the
- * multi-select, which the select story shows and select.spec.ts scans), the
- * shared folders with no entry point of their own, the image's blob-fetching
+ * suites, pivot.spec.ts and chart.spec.ts, run their axe scans, the
+ * multi-select, which the select story shows and select.spec.ts scans, and
+ * the progress ring, split out of the progress entry point so that a bar
+ * alone never loads it, which the progress story shows beside the bar and
+ * this battery scans with it), the shared folders with no entry point of
+ * their own, the image's blob-fetching
  * seam, split out of the image's entry point with no UI to scan, the avatar's
  * initials and tone helpers, split out of the avatar's entry point with no UI
  * of their own (the avatar's story scans the faces they draw), l10n's input
  * side, its parsers, split out of l10n with no UI either, and the keys
  * grammar, split out of kbd's entry point with no UI of its own (the kbd
- * story draws and matches the combinations it defines). A new folder must
- * join this list or the additions, so that none is skipped unclassified.
+ * story draws and matches the combinations it defines), and the search
+ * input's directive, split out of the search field's entry point so that a
+ * page or a launcher with chrome of its own takes it without the field, with
+ * no UI of its own (the search field's story scans the input it drives). A
+ * new folder must join this list or the additions, so that none is skipped
+ * unclassified.
  */
 const OLDER_FOLDERS: readonly string[] = [
   'alert',
@@ -90,7 +97,9 @@ const OLDER_FOLDERS: readonly string[] = [
   'pivot',
   'popover',
   'private',
+  'progress-ring',
   'providers',
+  'search-input',
   'select',
   'spinner',
   'styles',

@@ -497,7 +497,8 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
    * activation. (Deliberately NOT the native <select> behavior of changing
    * the value silently while closed: a keystroke must never mutate the
    * model.) aria's own collapsed handling covers only ArrowDown/Enter/Space,
-   * all plain opens.
+   * all plain opens. A key the trigger takes is marked handled, so a page
+   * listener that types unhandled keys elsewhere (type-to-search) leaves it.
    */
   protected onTriggerKeydown(event: KeyboardEvent): void {
     if (this.relayPromptly(event)) {
@@ -515,6 +516,7 @@ export abstract class TmSelectBase<T, V> implements TmFormFieldControl {
     ) {
       return;
     }
+    event.preventDefault();
     this.holdTypeaheadKey(event.key);
     this.setExpanded(true);
   }

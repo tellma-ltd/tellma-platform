@@ -7,13 +7,15 @@ import { ComponentHarness, HarnessPredicate, type HarnessQuery, type TestElement
 import { TmPopoverHarness } from '@tellma/core-ui-testing';
 
 import { TmLauncherHarness } from './tm-launcher-harness';
+import { TmPinnedBarHarness } from './tm-pinned-bar-harness';
 import { TmSessionMenuHarness } from './tm-session-menu-harness';
 
 // The tenant shell at /{t}: what its main landmark shows (the routed page,
 // the error state of a failed cold sync, or what replaces the route host),
 // and its app bar: the wordmark, the installed-mode history, the slots, the
 // reserved boxes, the markers with their popovers and the session button
-// with its menu, and the controls that open the launcher. The menu and the
+// with its menu, the controls that open the launcher, and the pinned bar
+// under it. The menu and the
 // popovers live in a chunk the shell loads after its first frame, the
 // launcher's panel in another and the installed-mode Back and Forward in a
 // chunk of their own, so opening one or reading the other waits for it.
@@ -83,6 +85,7 @@ export class TmTenantShellHarness extends ComponentHarness {
   readonly #outlet = this.locatorForOptional('main router-outlet');
   readonly #errorActions = this.locatorForAll('.tm-tenant-shell__error button');
   readonly #launcherSkeleton = this.locatorForOptional('.tm-app-bar__launcher-skeleton');
+  readonly #pinnedBar = this.locatorForOptional(TmPinnedBarHarness);
 
   /**
    * What the main landmark shows.
@@ -237,7 +240,7 @@ export class TmTenantShellHarness extends ComponentHarness {
   /**
    * The ids of the boxes the app bar reserves for slots other specs fill.
    *
-   * @returns The ids, such as `['bell', 'tray', 'help', 'assistant']`.
+   * @returns The ids, such as `['help', 'assistant']`.
    */
   async getReservedSlots(): Promise<string[]> {
     return Promise.all((await this.#reserved()).map(async (box) => (await box.getAttribute('data-tm-slot')) ?? ''));
@@ -335,6 +338,15 @@ export class TmTenantShellHarness extends ComponentHarness {
    */
   async isLauncherSkeletonShown(): Promise<boolean> {
     return (await this.#launcherSkeleton()) !== null;
+  }
+
+  /**
+   * The pinned bar under the app bar.
+   *
+   * @returns Its harness, or `null` while the user has hidden it.
+   */
+  async getPinnedBar(): Promise<TmPinnedBarHarness | null> {
+    return this.#pinnedBar();
   }
 
   /** The history buttons, which must show, waiting for their chunk. */

@@ -1292,7 +1292,7 @@
     <value>The hierarchy is too deep.</value>
   </data>
   <data name="Blob_NotAttachable" xml:space="preserve">
-    <value>This file can’t be attached. Upload it again.</value>
+    <value>{reason, select, expired {This file expired. Choose it again.} missing {This file expired. Choose it again.} other {This file can’t be attached. Upload it again.}}</value>
   </data>
   <data name="Blob_DuplicateReference" xml:space="preserve">
     <value>The same file is attached more than once.</value>

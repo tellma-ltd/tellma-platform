@@ -11,6 +11,7 @@ import { TmAvatar } from '@tellma/core-ui/avatar';
 import { TmImage } from '@tellma/core-ui/image';
 
 import { tmEntityRig, type TmEntityRig } from '../../src/entity/tm-entity.testing.util';
+import { tmSettleUntil } from '../../src/routes/tm-app.testing.util';
 import { tmSelectPlan } from './tm-select-plan';
 import { TmValue } from './tm-value';
 import type { TmValueStyle } from './tm-formats';
@@ -143,10 +144,11 @@ describe('tm-value', () => {
       },
     });
     const center = await show({ type: 'integer', nullable: true, target: 'gl.Center' }, 9);
-    await vi.waitFor(async () => {
-      await fixture.whenStable();
-      expect(center.querySelector('a')?.textContent?.trim()).toBe('W-09');
-    });
+    // The read flushes on a frame and its code is in the entity model's chunk,
+    // which each read loads first; the name then renders.
+    await tmSettleUntil(() => rig.names.label('gl.Center', 9)() !== null, 'the unknown center is named');
+    await fixture.whenStable();
+    expect(center.querySelector('a')?.textContent?.trim()).toBe('W-09');
     expect(rig.api.calls().filter((call) => call.route === 'centers/query')).toHaveLength(1);
   });
 
@@ -180,6 +182,15 @@ describe('tm-value', () => {
     expect(link.textContent?.trim()).toBe('invoice.pdf');
     expect(link.getAttribute('href')).toBe('/17/blobs/email-attachment/51?download=true');
     expect(link.hasAttribute('download')).toBe(true);
+  });
+
+  it("shows a file's size beside its name, from the blob's row", async () => {
+    const { show, rig } = await start();
+    const file = await show(rig.entities.resolve('core.OutgoingEmailAttachment', 'File')!, { id: 51, fileName: 'invoice.pdf', size: '1536' });
+    expect(file.querySelector('a')?.textContent?.trim()).toBe('invoice.pdf');
+    expect(file.querySelector('.tm-value__size')?.textContent?.trim()).toBe('1.5 kB');
+    const unsized = await show(rig.entities.resolve('core.OutgoingEmailAttachment', 'File')!, { id: 51, fileName: 'invoice.pdf' });
+    expect(unsized.querySelector('.tm-value__size')).toBeNull();
   });
 
   it('shows a plan’s group and navigation cells', async () => {

@@ -114,6 +114,13 @@
   margin-inline-start: auto;
 }
 
+/* Row 1's end slot takes the row's free space while still packing its items
+   against the end, so an item that grows (a search field on a phone) fills
+   the row after the title; items that do not grow sit where they did. */
+.tm-page-header__title-row > .tm-page-header__end {
+  flex: 1 0 auto;
+}
+
 .tm-page-header__extra:empty,
 .tm-page-header__end:empty {
   display: none;

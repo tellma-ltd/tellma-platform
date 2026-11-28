@@ -26,12 +26,13 @@ import { tmFeature } from '../declarations/tm-feature';
 import { tmEnglish } from '../l10n/tm-english';
 import { TmLocalization } from '../l10n/tm-localization';
 import type { TmEntitiesChunk } from '../metadata/tm-client-metadata';
-import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle } from '../routes/tm-app.testing.util';
+import { TM_T17, tmLoadTestPage, tmNavigate, tmRouteTestConfig, tmSettle, tmSettleUntil } from '../routes/tm-app.testing.util';
 import type { TmAccessSummary, TmLaunchDocs, TmMeResult, TmTenantFacts, TmTenantSettingsForClient } from '../state/launch/tm-launch-docs';
 import { TmClientStore } from '../state/store/tm-client-store';
 import { TmDisplayNames } from './tm-display-names';
 import { TmEntities } from './tm-entities';
 import { tmEntity, type TmEntityActionDeclaration, type TmEntityDeclarationInput, type TmPickerDeclaration } from './tm-entity-declaration';
+import type { TmEntitySummary } from './tm-entity-metadata';
 import { TmPermissions } from './tm-permissions';
 
 // The entity registry's test app: the server's recorded entity model (the
@@ -137,6 +138,8 @@ export interface TmEntityRigOptions {
   readonly state?: TmTenantFacts['state'];
   /** The Entities chunk, the recorded one when omitted. */
   readonly chunk?: TmEntitiesChunk;
+  /** The Core chunk's summaries of the entities a patched chunk adds; none when omitted. */
+  readonly summaries?: readonly TmEntitySummary[];
   /** Whether the app runs in development; it does when omitted. */
   readonly devMode?: boolean;
   /** Whether the rig loads the Entities chunk before it returns; it does when omitted. */
@@ -230,7 +233,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
       provideTellma({
         metadata: {
           ...base.metadata,
-          core: () => Promise.resolve(tmTestMetadata({ entities: summaries, securables: SECURABLES })),
+          core: () => Promise.resolve(tmTestMetadata({ entities: [...summaries, ...(options.summaries ?? [])], securables: SECURABLES })),
           entities: () => Promise.resolve(options.chunk ?? chunk),
           strings: {
             en: () => Promise.resolve({ ...ENGLISH, ...options.labels?.en }),
@@ -295,4 +298,25 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
       await tmSettle();
     },
   };
+}
+
+/**
+ * Waits for the display-name read of one row to reach the rig's server,
+ * then for its answer to land, so the read does not outlive the test. The
+ * read flushes on a frame and loads the entity model's chunk before it
+ * queries, which no number of turns bounds; once it has queried, the fake
+ * server answers on a microtask and the rest lands within a fixed settle.
+ *
+ * @param rig - The rig.
+ * @param route - The target's query route, such as `centers/query`.
+ * @param id - The row's id.
+ * @throws Error naming the read when it has not been sent by the wait's deadline.
+ */
+export async function tmDisplayNameRead(rig: TmEntityRig, route: string, id: number): Promise<void> {
+  const filter = `Id in (${id})`;
+  // A display-name read asks for its ids alone, in one filter leaf.
+  const sent = (): boolean =>
+    rig.api.calls().some((call) => call.route === route && ((call.body as { readonly filters?: readonly string[] } | undefined)?.filters ?? []).includes(filter));
+  await tmSettleUntil(sent, `the display-name read of ${id} on ${route} is sent`);
+  await tmSettle();
 }

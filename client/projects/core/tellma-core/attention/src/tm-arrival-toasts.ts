@@ -3,8 +3,6 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-/// <reference types="@tellma/core-tools/lucide-icons" />
-
 import { DOCUMENT, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import {
@@ -23,13 +21,11 @@ import {
   TmUrls,
   ɵTmClientMetadataStore,
 } from '@tellma/core';
-import { TmIconRegistry } from '@tellma/core-ui/icon';
 import { type TmToast, type TmToastRef, TmToasts } from '@tellma/core-ui/toast';
-import Inbox from 'lucide/dist/esm/icons/inbox.mjs';
+
+import { TmAttentionText, tmIcuArguments } from '@tellma/core/attention-rows';
 
 import { TmAttention } from './tm-attention';
-import { TmAttentionText } from './tm-attention-text';
-import { tmIcuArguments } from './tm-icu-arguments';
 
 // The arrival toasts (spec 0028 §8.1): which rows of a copy arrived and the
 // toast each arrival shows. The arrival engine loads this file with import()
@@ -90,8 +86,8 @@ function newest<R extends object>(rows: readonly R[], member: keyof R): number {
 
 /**
  * Shows the toasts of what arrived in a copy of a tenant's attention
- * documents. Created in an injection context, once the chunk loads; it
- * registers the `inbox` icon the assignment toasts draw.
+ * documents. Created in an injection context, once the chunk loads; the
+ * assignment toasts draw the `inbox` icon the arrival engine registers.
  */
 export class TmArrivalToasts {
   readonly #toasts = inject(TmToasts);
@@ -106,10 +102,9 @@ export class TmArrivalToasts {
   readonly #launch = inject(TmLaunchCache);
   readonly #document = inject(DOCUMENT);
 
-  /** Creates the toasts, registering their strings and the icon they draw. */
+  /** Creates the toasts, registering their strings. */
   constructor() {
     this.#l10n.ɵregisterStrings(SCOPE, STRINGS_EN);
-    inject(TmIconRegistry).register({ inbox: Inbox });
   }
 
   // --- Notifications ---

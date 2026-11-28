@@ -21,7 +21,7 @@ package, built with `tsc -b` into `dist/`, and nothing in it ships to the browse
 | `tm/core-import-boundary` | Inside `@tellma/core`, a static import that leaves the entry-point graph or crosses entry points by a relative path (but for a spec's path to another entry point's `*.testing.util` rig); everywhere, an import below an entry point, and `@tellma/core/private` outside platform packages |
 | `tm/no-raw-http` | `fetch`, `XMLHttpRequest` and Angular's `HttpClient`: every request goes through `TmApi` |
 | `tm/no-web-storage` | `localStorage`, `sessionStorage`, `indexedDB` and `caches`: the platform's client store keeps data per user |
-| `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')`; an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
+| `tm/lazy-layouts` | In `tmEntity`, `tmPage`, `tmFeature`, `tmWidget`, `tmOverride` and `tmCodedReport`, a layout member (`details`, `page`, `create`, `search`, `component`, `display`, `dialog`, `home`, `settingsEditor`, `panel`) that is not an inline `() => import('…')` with a literal specifier, which may be cast (`(import('@tellma/core/x' as string) as Promise<M>)`, as the platform loads its own entry points); an entity's `details` may be an object whose `page` and `create` are checked instead, and `icons` and `providers` are not entered |
 | `tm/literal-declaration-keys` | A declaration key that is not a string literal |
 | `tm/no-decimal-operators` | `+`, `+=`, `<`, `<=`, `>` and `>=` on a `TmDecimal` (type-aware) |
 | `tm/telemetry-names` | A literal name passed to `TmTelemetry`'s `event` or `timing` that is not `<scope>.<area>.<event>` in at most 64 characters, or a `tm.` name outside the platform's areas; a literal page action id (in an object literal with `id`, `labelKey` and `invoke`, or passed to `TmPageActions.invoke`) that is not two to five lowercase parts. With type information the receivers are known by type, else by name |
@@ -65,6 +65,22 @@ drop them: the agent reporter under a coding agent (as `std-env`, Vitest's own d
 one), else the default reporter, then on GitHub Actions the annotations reporter. After them comes
 `TmVitestWatchdog`. The unit-test builder's own `reporters` option, or `ng test --reporters`,
 replaces that whole list, the watchdog included.
+
+Before each test the preset restores every spy made with `vi.spyOn` and every global and
+environment variable stubbed with `vi.stubGlobal` or `vi.stubEnv` (Vitest's `restoreMocks`,
+`unstubGlobals` and `unstubEnvs`). The builder runs a browser project's files one after another in
+one page per worker (`isolate: false`), and Vitest's browser tester, unlike its Node runner,
+restores nothing between files: a spy one file left on a prototype, such as a mocked
+`HTMLAnchorElement.prototype.click`, would stay in force for the files that follow it in the same
+page, and which files those are depends on how the run splits them between its workers. A spy or
+stub that several tests share must therefore be made in `beforeEach`, not in `beforeAll` or at the
+top of the file. The restore runs before the next test, not at the end of a file: a spy a file's
+last test leaves behind is still live while the next file in the page is imported and runs its
+`beforeAll` hooks. A spec therefore still restores a spy it makes on state the page shares, such as
+a prototype or `URL`, at the end of the test that made it (`onTestFinished(() => spy.mockRestore())`
+or a `finally`). `src/tm-unit-runner.spec.ts` in `@tellma/core`, and its copy in the reference
+distribution's client, fail if the restore stops reaching their project.
+
 Vitest's own limits fail a test or a hook that runs too long, inside the browser, and a browser
 session that does not connect within a minute. Nothing bounds the other phases of a browser-mode
 run: the browser server's start, the import of a test file into the tester frame, the clean-up

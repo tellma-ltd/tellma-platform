@@ -485,7 +485,8 @@ export class TmHttpApi implements TmApi {
     const url = this.#urlOf(route, tenantId);
 
     // --- Development checks of the call's shape ---
-    if (method === 'GET' && body !== undefined && body !== null && dev) {
+    // `!= null`: an undefined body and a null one alike are no body.
+    if (method === 'GET' && body != null && dev) {
       throw new Error(`The GET of '${route}' has a body.`);
     }
     const confirmations = options.confirmations ?? [];

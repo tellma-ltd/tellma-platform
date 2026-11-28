@@ -96,3 +96,38 @@ export async function ɵtmCropCoverSquare(
     bitmap.close();
   }
 }
+
+/** The byte-size formats, by locale and unit, built once each. */
+const BYTE_FORMATS = new Map<string, Intl.NumberFormat>();
+
+/** The units a size is written in, each 1024 times the one before. */
+const BYTE_UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte'] as const;
+
+/**
+ * A file's size as a person reads it, in the largest unit it fills:
+ * `512 bytes`, `1.5 kB`, `10 MB`, with one fraction digit at most. The
+ * units are binary (a kilobyte is 1024 bytes), as file pickers show them.
+ * Internal: the file views and the editors' size limits share it.
+ *
+ * @param bytes - The size, in bytes; a `long` as its decimal text too.
+ * @param locale - The locale to write it in.
+ * @returns The text; empty when the size is not a number.
+ */
+export function ɵtmByteSize(bytes: number | string, locale: string): string {
+  let size = Number(bytes);
+  if (!Number.isFinite(size) || size < 0) {
+    return '';
+  }
+  let unit = 0;
+  while (size >= 1024 && unit < BYTE_UNITS.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+  const key = `${locale}|${unit}`;
+  let format = BYTE_FORMATS.get(key);
+  if (format === undefined) {
+    format = new Intl.NumberFormat(locale, { style: 'unit', unit: BYTE_UNITS[unit], unitDisplay: 'short', maximumFractionDigits: unit === 0 ? 0 : 1 });
+    BYTE_FORMATS.set(key, format);
+  }
+  return format.format(size);
+}

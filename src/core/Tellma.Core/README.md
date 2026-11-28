@@ -2830,6 +2830,22 @@ only when no resource declares the label, and the row a succeeded job leaves.
 All four run on a read-only tenant and report their progress after every page, round, kind or
 table.
 
+## Dashboard widget types
+
+A feature registers each dashboard widget type it ships with `contribution.WidgetType(key)`, or
+`contribution.WidgetType<TSettings>(key)` when a widget's settings bind to a class. The key is the
+feature's name, a dot, then a hyphenated lower-case name, such as `acme.cash-position`.
+`WidgetTypeRegistry` (`IWidgetTypeRegistry`) lists the types in realisation order, `CoreFeature`'s
+first, each with its feature, its settings class and its subject: only `core.report` shows a
+report. Core registers `core.recents`, the recently visited pages. `WidgetTypeClientAssetContributor`
+writes every key into the `widgetTypes` section of the client metadata's Core chunk, so the client's
+build refuses a widget it declares that the server does not register. The client declares how each
+type renders; the server never renders a widget.
+
+| Check | Fails when | Needs infrastructure |
+|---|---|---|
+| `core.widget-types` | a key breaks the grammar, or its first segment is not the registering feature's name; a key is registered twice; a settings type is not a concrete, closed class | no |
+
 ## Excel
 
 `Excel/` holds the workbook features' runtime contracts and the engine that writes them. Workbooks
@@ -3001,6 +3017,7 @@ are SpreadsheetML packages written with `DocumentFormat.OpenXml` (MIT), forward-
 | `Notifications/` | `NotificationTypeRegistry`, `NotificationChannelRegistry`, `ClientEventRegistry`, `NotificationsClientAssetContributor`, `ClientEventPublisher`, `NullClientEventPublisher`, `NotificationConfiguration` and `NotificationDeliveryArguments`; internally the notifier, its statements and the delivering channels, the email channel's sender, the renderer, the preference row, the metrics, the name grammars, the hub-less real-time status, the composition step and the log events. |
 | `Outbox/` | `OutgoingEmailService`; internally the outbox, the stored address lists, the outgoing emails' model configuration, the sending job's handler and the composition step that binds the outbox's options. |
 | `Sharing/` | Internally: the share tables' model configuration, a shareable's shape in the model, the bespoke access criteria and the shared-with-me filter, the shares extra, the sharing commands behind share, publish and transfer, the `core.shareables` check and the composition step that binds `Tellma:Sharing`. |
+| `Dashboards/` | Internally: the widget type realizer, `WidgetTypeRegistry`, the key grammar, the `core.widget-types` check and the `widgetTypes` contributor ([Dashboard widget types](#dashboard-widget-types)). |
 | `Reports/` | `ReportService`, the reports' stack service, and `ReportServiceDependencies`; internally the reports' model configuration, the default titles, the document's binding and expressions, the dashboards' null read-through and the composition step that binds `Tellma:Reports`. |
 | `Client/` | Internally: the client entity model, its data types, the action arguments' fields and schema, the declarations writer and the client-asset contributor; and `ClientSyncService`, the `client/sync` route. |
 | `Localization/` | `LanguageCatalog`, `LanguageDeclaration`, `LocalizationNegotiator`, `ValueSetRegistry`, `IcuStringLocalizerFactory`, `ConventionalStringKeys`; internally the catalogue's data, the declaration's resolution, the `Accept-Language` reader, the negotiated cultures, the pinned culture data with its reader, writer and generator source, the localizer's resource reader, ICU renderer, calendar formatter, argument reader and missing-key telemetry, the string-pack composer with its resource sources and client-asset contributor, the label provider, the label key chains, the named enums, the key conventions and the name humanizer. |

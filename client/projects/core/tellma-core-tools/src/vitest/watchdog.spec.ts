@@ -393,4 +393,8 @@ describe('the Vitest preset', () => {
     vi.stubEnv('GITHUB_ACTIONS', '');
     expect(tmVitestConfig().test?.reporters).toEqual(['agent', expect.any(TmVitestWatchdog)]);
   });
+
+  it('restore every spy, global stub and environment stub before each test, since the files of a page share its globals', () => {
+    expect(tmVitestConfig().test).toMatchObject({ restoreMocks: true, unstubGlobals: true, unstubEnvs: true });
+  });
 });

@@ -426,7 +426,9 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             await tracker.OnStateChangedAsync(tenant with { State = TenantState.Suspended }, TenantState.Active);
 
             // --- Just inside the lifetime: still refused ---
-            host.Time.Advance(lifetime - TimeSpan.FromSeconds(1));
+            // Each move waits for the tenant snapshot to be confirmed again: five minutes and a
+            // second is past its staleness bound, where a connect could otherwise meet it stale.
+            await host.AdvanceAsync(lifetime - TimeSpan.FromSeconds(1));
             await using (HubClient refused = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie))
             {
                 Assert.Equal("session-terminated", Envelope.Payload(await refused.NextAsync(), "reason"));
@@ -434,7 +436,7 @@ namespace Tellma.Core.AspNetCore.Tests.Realtime
             }
 
             // --- Past it: every memo has expired, and the connection is admitted ---
-            host.Time.Advance(TimeSpan.FromSeconds(2));
+            await host.AdvanceAsync(TimeSpan.FromSeconds(2));
             await using HubClient admitted = await RealtimeTestHost.ConnectAsync(host, RealtimeTestHost.Active, session.Cookie);
             Assert.Equal(HubConnectionState.Connected, admitted.Connection.State);
             Assert.False(admitted.HasUnread());

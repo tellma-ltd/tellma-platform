@@ -19,9 +19,11 @@ import {
 } from '@tellma/core';
 import { TmDrafts } from '@tellma/core/drafts';
 import { ɵTM_HUB_FACTORY } from '@tellma/core/leader';
+import { TmClientCache } from '@tellma/core-ui';
 
 import { provideTellmaStateTesting } from './provide-tellma-state-testing';
 import { provideTellmaTesting } from './provide-tellma-testing';
+import { TmFakeClientCache } from './tm-fake-client-cache';
 import { TmFakeHub } from './tm-fake-hub';
 import { TmFakeSession, tmTestProfile } from './tm-fake-session';
 import { TmFakeTabBus } from './tm-fake-tab-bus';
@@ -36,9 +38,10 @@ describe('provideTellmaStateTesting', () => {
     TestBed.configureTestingModule({ providers: [provideTellmaTesting(), provideTellmaStateTesting()] });
   });
 
-  it('puts the fakes behind the tab bus and the session', () => {
+  it('puts the fakes behind the tab bus, the session and the client cache', () => {
     expect(TestBed.inject(TmTabBus)).toBe(TestBed.inject(TmFakeTabBus));
     expect(TestBed.inject(TmSession)).toBe(TestBed.inject(TmFakeSession));
+    expect(TestBed.inject(TmClientCache)).toBe(TestBed.inject(TmFakeClientCache));
   });
 
   it("opens the leader's realtime connections on the fake hub, which reports through the leader's sink", async () => {
@@ -136,6 +139,11 @@ describe('provideTellmaTesting', () => {
     // With no session, a read is all a test can do; it finds nothing.
     await TestBed.inject(TmClientStore).readAll({ kind: 'device' });
     expect(TestBed.inject(TmClientStore).mode).toBe('memory');
+  });
+
+  it("sweeps a client cache kept in memory too, so no test sweeps the browser's stores", () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaTesting()] });
+    expect(TestBed.inject(TmClientCache)).toBe(TestBed.inject(TmFakeClientCache));
   });
 });
 
