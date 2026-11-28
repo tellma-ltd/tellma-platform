@@ -24,7 +24,7 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
         private const int Tenant = AcmeDeployment.LiveTenant;
 
         [Fact]
-        public async Task A_report_is_saved_read_every_way_shared_published_transferred_deactivated_reactivated_and_deleted()
+        public async Task A_report_is_saved_read_every_way_shared_its_audience_read_published_transferred_deactivated_reactivated_and_deleted()
         {
             using SpaClient admin = await deployment.SignInAsync(deployment.Administrator);
             using SpaClient editor = await deployment.SignInAsync(deployment.Editor);
@@ -59,6 +59,15 @@ namespace Tellma.Core.AspNetCore.IntegrationTests.Stacks
                 ["set"] = new JsonArray(new JsonObject { ["userId"] = editorId, ["access"] = "View" }),
             }))).Expect(HttpStatusCode.OK);
             Assert.Single(Wire.Rows((await editor.PostAsync(Tenant, "reports/query", Wire.Query("Title", byId))).Expect(HttpStatusCode.OK)));
+
+            // --- Its audience: the owner's and the editor's grants, each with its members and who cannot read the root ---
+            JsonNode audience = (await admin.PostAsync(Tenant, "reports/audience", new JsonObject { ["id"] = id })).Expect(HttpStatusCode.OK);
+            JsonNode?[] grants = [.. audience["grants"]!.AsArray().Where(static grant => grant!["kind"]!.GetValue<string>() is "Owner" or "UserShare")];
+            Assert.Equal(
+                [("Owner", administrator, "Owner", 1), ("UserShare", editorId, "View", 1)],
+                grants.Select(static grant => (grant!["kind"]!.GetValue<string>(), grant["userId"]!.GetValue<int>(), grant["access"]!.GetValue<string>(), grant["members"]!.GetValue<int>())));
+            Assert.All(grants, static grant => Assert.Single(grant!["cannotRead"]!.AsArray()));
+            Assert.True(audience["total"]!.GetValue<int>() >= 2);
             details["title"] = "Centers by name";
             JsonObject renamed = Assert.Single(Wire.Entities((await admin.PostAsync(Tenant, "reports/save", Wire.Save(details))).Expect(HttpStatusCode.OK)));
             Assert.Equal(("Centers by name", administrator), (renamed["title"]!.GetValue<string>(), renamed["ownerId"]!.GetValue<int>()));

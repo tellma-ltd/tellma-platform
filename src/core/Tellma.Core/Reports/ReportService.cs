@@ -3,7 +3,12 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+using System.Globalization;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Api;
 using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Errors;
 using Tellma.Core.Abstractions.Reports;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Sharing;
@@ -18,17 +23,19 @@ namespace Tellma.Core.Reports
     // the definition document strictly, stamps the query language version its expressions were
     // written in, keeps the seeds' codes to the seeds (§13), and refuses to delete a report a
     // dashboard's widget shows (§5.6). The three sharing actions delegate to the shareable's
-    // commands (§5.4).
-    /// <summary>The stored reports' stack service: default titles, the document's binding and version, reserved codes, and the sharing actions.</summary>
+    // commands (§5.4); the audience delegates to the audience resolver (§6).
+    /// <summary>The stored reports' stack service: default titles, the document's binding and version, reserved codes, the sharing actions and the audience.</summary>
     /// <param name="factory">The pipeline factory the scope resolves.</param>
     /// <param name="commands">The reports' sharing commands.</param>
     /// <param name="dashboards">The read-through into dashboards, which says which reports a widget shows.</param>
+    /// <param name="audiences">The audience resolver, which says who sees a report and why.</param>
     /// <param name="dependencies">The platform's collaborators of the service.</param>
     /// <exception cref="ArgumentNullException">An argument is null.</exception>
     public class ReportService(
         IEntityPipelineFactory factory,
         IShareCommands<Report> commands,
         IDashboardReadThrough dashboards,
+        IAudienceResolver audiences,
         ReportServiceDependencies dependencies)
         : ShareableService<Report, ReportShare>(factory, commands)
     {
@@ -38,11 +45,18 @@ namespace Tellma.Core.Reports
         /// <summary>The most dashboard titles a delete's refusal names per report.</summary>
         private const int DashboardsNamed = 5;
 
+        /// <summary>The most dashboards whose audiences see a report through them.</summary>
+        private const int DashboardsThrough = 20;
+
+
         /// <summary>The read-through into dashboards.</summary>
         private readonly IDashboardReadThrough _dashboards = dashboards ?? throw new ArgumentNullException(nameof(dashboards));
 
         /// <summary>The platform's collaborators.</summary>
         private readonly ReportServiceDependencies _dependencies = dependencies ?? throw new ArgumentNullException(nameof(dependencies));
+
+        /// <summary>The audience resolver.</summary>
+        private readonly IAudienceResolver _audiences = audiences ?? throw new ArgumentNullException(nameof(audiences));
 
         /// <summary>Shares reports with users: merges each user grant into every target and notifies each newly granted user.</summary>
         /// <param name="context">The action's context.</param>
@@ -72,6 +86,46 @@ namespace Tellma.Core.Reports
         public Task TransferAsync(ActionContext<Report, int> context, TransferArguments arguments)
         {
             return Commands.TransferAsync(context, arguments);
+        }
+
+        /// <summary>
+        ///     Says which users see a report and why: each member with its reasons and highest access,
+        ///     each grant with its members, and who among them cannot read the report's root; the
+        ///     audiences of the dashboards that show the report see it through them.
+        /// </summary>
+        /// <param name="request">The report.</param>
+        /// <param name="cancellationToken">Cancels the reads.</param>
+        /// <returns>The audience.</returns>
+        /// <exception cref="NotFoundException">The caller cannot read or share the report, or it does not exist.</exception>
+        [ApiAction("audience", Action = AccessActions.Share, Mutation = false, Idempotent = true, Long = true)]
+        public async Task<ShareAudience> AudienceAsync(IdRequest request, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            string resource = CoreResources.Report;
+            string id = request.Id.ToString(CultureInfo.InvariantCulture);
+            if (request.Id is <= 0 or > int.MaxValue)
+            {
+                throw new NotFoundException(resource, [id]);
+            }
+
+            // --- The report's root, whose Read its members need to see its data; a row the caller cannot read is not found ---
+            int reportId = (int)request.Id;
+            RowPage page = await QueryAsync(
+                new QueryRequest { Select = nameof(Report.Root), Filters = [$"{nameof(Report.Id)} = {id}"], IncludeInactive = true },
+                cancellationToken).ConfigureAwait(false);
+            if (page.Rows.RowCount == 0 || ((string?[])page.Rows.GetBuffer(0))[0] is not string root)
+            {
+                throw new NotFoundException(resource, [id]);
+            }
+
+            // --- The dashboards that show it, each once, the first twenty by id ---
+            IReadOnlyList<(int ReportId, int Id, string? Title)> showing = await _dashboards.DashboardsUsing([reportId]).ConfigureAwait(false);
+            int[] through = [.. showing.Select(static dashboard => dashboard.Id).Distinct().Order().Take(DashboardsThrough)];
+
+            // --- The audience, under the caller's Share decision on the report ---
+            return await _audiences.ResolveAsync(
+                new AudienceQuery(resource, reportId, [new SecurableRef(root, AccessActions.Read)], CoreResources.Dashboard, through),
+                cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>Stamps the owners, then fills each empty title with the default one in every empty configured slot.</summary>

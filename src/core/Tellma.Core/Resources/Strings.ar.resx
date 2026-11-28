@@ -1418,6 +1418,9 @@
   <data name="Core_Report_Action_Transfer_Owner" xml:space="preserve">
     <value>المالك الجديد</value>
   </data>
+  <data name="Core_Report_Action_Audience" xml:space="preserve">
+    <value>الجمهور</value>
+  </data>
   <data name="Report_UnknownMember" xml:space="preserve">
     <value>يحتوي تعريف التقرير على عنصر غير معروف أو بشكل غير صحيح، في {pointer}.</value>
   </data>

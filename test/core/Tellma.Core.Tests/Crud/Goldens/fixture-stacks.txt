@@ -241,6 +241,7 @@ stack core.Report
   action share: entity Share filtered args ShareArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Shares reports with users.
   action publish: entity Publish filtered args PublishArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Shares reports with roles or everyone.
   action transfer: entity Transfer filtered args TransferArguments; mutation; result EntitiesResult<Report>; mcp Full, revision 0; Changes the owner of reports.
+  action audience: api core.Report:Share body IdRequest handler ReportService; idempotent, long; result ShareAudience; mcp Full, revision 0; -
 stack fixture.Widget
   segment: widgets
   entity: Tellma.Testing.Entities.Widget

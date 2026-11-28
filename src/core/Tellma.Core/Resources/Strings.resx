@@ -1418,6 +1418,9 @@
   <data name="Core_Report_Action_Transfer_Owner" xml:space="preserve">
     <value>New owner</value>
   </data>
+  <data name="Core_Report_Action_Audience" xml:space="preserve">
+    <value>Audience</value>
+  </data>
   <data name="Report_UnknownMember" xml:space="preserve">
     <value>The report’s definition has a member that isn’t recognized or has the wrong shape, at {pointer}.</value>
   </data>

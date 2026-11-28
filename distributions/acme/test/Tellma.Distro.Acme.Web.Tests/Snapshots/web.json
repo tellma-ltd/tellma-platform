@@ -10271,6 +10271,135 @@
         }
       }
     },
+    "/{tenantId}/api/web/reports/audience": {
+      "post": {
+        "tags": [
+          "reports"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/IdRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Precondition Failed",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json; charset=utf-8": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareAudience"
+                }
+              }
+            }
+          }
+        },
+        "x-tellma-securable": {
+          "resource": "core.Report",
+          "action": "Share"
+        }
+      }
+    },
     "/{tenantId}/api/web/centers/query": {
       "post": {
         "tags": [
@@ -20058,6 +20187,181 @@
         },
         "description": "The body of a cacheable stack's `all`: every row in details shape, served from the cache."
       },
+      "AudienceAccess": {
+        "description": "What an audience user may do with a shareable row, lowest first."
+      },
+      "AudienceGrant": {
+        "required": [
+          "kind",
+          "userId",
+          "roleId",
+          "permissionId",
+          "throughId",
+          "access",
+          "members",
+          "cannotRead"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "What the grant is.",
+            "$ref": "#/components/schemas/AudienceReasonKind"
+          },
+          "userId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The owner, or the user of a user grant.",
+            "format": "int32"
+          },
+          "roleId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The role of a role grant or of a stored permission.",
+            "format": "int32"
+          },
+          "permissionId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The stored permission.",
+            "format": "int32"
+          },
+          "throughId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The row seen through.",
+            "format": "int32"
+          },
+          "access": {
+            "description": "What the grant lets its users do.",
+            "$ref": "#/components/schemas/AudienceAccess"
+          },
+          "members": {
+            "type": "integer",
+            "description": "The audience users the grant reaches: none for a grant of a deactivated user or an inactive\nrole, every audience user for the Everyone grant and a public role.",
+            "format": "int32"
+          },
+          "cannotRead": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Parallel to the query's data securables: how many of those users lack each one."
+          }
+        },
+        "description": "One grant that can reach a shareable row, with the audience users it reaches: the owner, a\nuser, role or Everyone grant, a stored permission, or a row seen through. Only the ids that\nfit the kind are set."
+      },
+      "AudienceMember": {
+        "required": [
+          "userId",
+          "access",
+          "reasons",
+          "cannotRead"
+        ],
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "integer",
+            "description": "The user.",
+            "format": "int32"
+          },
+          "access": {
+            "description": "The highest access among the reasons: owner, then edit, then view.",
+            "$ref": "#/components/schemas/AudienceAccess"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudienceReason"
+            },
+            "description": "Every reason the user can see the row, in the order of the audience's grants."
+          },
+          "cannotRead": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "The positions, among the query's data securables, of those the user lacks."
+          }
+        },
+        "description": "One audience user of a shareable row: every reason they can see it, and the highest access those reasons give."
+      },
+      "AudienceReason": {
+        "required": [
+          "kind",
+          "access",
+          "roleId",
+          "sharedById",
+          "sharedAt",
+          "permissionId",
+          "filtered",
+          "throughId"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "description": "What brings the user.",
+            "$ref": "#/components/schemas/AudienceReasonKind"
+          },
+          "access": {
+            "description": "What this reason lets the user do.",
+            "$ref": "#/components/schemas/AudienceAccess"
+          },
+          "roleId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The role of a role grant or of a stored permission.",
+            "format": "int32"
+          },
+          "sharedById": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The user who made a user, role or Everyone grant.",
+            "format": "int32"
+          },
+          "sharedAt": {
+            "description": "When a user, role or Everyone grant was made.",
+            "format": "date-time"
+          },
+          "permissionId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The stored permission of a permission reason.",
+            "format": "int32"
+          },
+          "filtered": {
+            "type": "boolean",
+            "description": "Whether the stored permission carries a filter, which the row satisfies."
+          },
+          "throughId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "description": "The row seen through, of the query's through resource.",
+            "format": "int32"
+          }
+        },
+        "description": "One reason an audience user can see a shareable row. Only the ids that fit the kind are set."
+      },
+      "AudienceReasonKind": {
+        "description": "What brings an audience user to a shareable row."
+      },
       "BespokeAccessGrant": {
         "required": [
           "filter",
@@ -24360,6 +24664,58 @@
           }
         },
         "description": "The arguments of the `share` action: user grants merged into each target's grants.\nGrants the arguments do not name are kept."
+      },
+      "ShareAudience": {
+        "required": [
+          "total",
+          "capped",
+          "cannotRead",
+          "members",
+          "grants",
+          "related"
+        ],
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "The distinct audience users who can see the row, exact.",
+            "format": "int32"
+          },
+          "capped": {
+            "type": "boolean",
+            "description": "Whether Members was cut at the configured maximum, so it lists fewer than Total."
+          },
+          "cannotRead": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "description": "Parallel to the query's data securables: the distinct audience users who can see the row but lack each one, exact."
+          },
+          "members": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AudienceMember"
+            },
+            "description": "Each audience user with every reason and the highest access, by display name in the\nreader's language; null unless the caller may read the roles."
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudienceGrant"
+            },
+            "description": "One row per grant that can reach the row, for the share dialog: the owner, the user grants, the role grants, the Everyone grant, the stored permissions, then each row seen through."
+          },
+          "related": {
+            "description": "The display projections of the users (with their kind) and roles the grants and members\nname, and of the rows seen through that the caller may read.",
+            "$ref": "#/components/schemas/RelatedEntities"
+          }
+        },
+        "description": "Who can see a shareable row, and why."
       },
       "TenantCategory": {
         "description": "Whether a tenant is a business's live books or a sandbox. Fixed when the tenant is\nregistered and never changed afterwards."

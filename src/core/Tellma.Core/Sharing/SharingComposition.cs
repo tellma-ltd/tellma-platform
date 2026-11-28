@@ -4,7 +4,10 @@
 // LICENSE file in the root directory of this source tree.
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Tellma.Core.Abstractions.Access;
 using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Data;
 using Tellma.Core.Abstractions.Sharing;
 using Tellma.Core.Composition;
 
@@ -13,11 +16,12 @@ namespace Tellma.Core.Sharing
     /// <summary>
     ///     Registers what the sharing model needs beyond each shareable declaration: its options,
     ///     bound from <c>Tellma:Sharing</c> and validated by the startup gate, and the check that every
-    ///     shareable pair is whole in the built model.
+    ///     shareable pair is whole in the built model; and the audience resolver, closed over the
+    ///     distribution's user and role leaves, with its shapes and instruments.
     /// </summary>
     internal static class SharingComposition
     {
-        /// <summary>Registers the options, the shareables check and the share entities the client metadata leaves out.</summary>
+        /// <summary>Registers the options, the shareables check, the share entities the client metadata leaves out and the audience resolver.</summary>
         /// <param name="services">The composition's services.</param>
         /// <param name="record">The realised composition, which the check reads and keeps.</param>
         /// <param name="options">The options registrar, whose bindings the startup gate validates.</param>
@@ -37,6 +41,15 @@ namespace Tellma.Core.Sharing
 
             // --- The share entities' leaves, which the client entity model leaves out ---
             _ = services.AddSingleton(new ShareEntityTypes(record.Shareables.Select(shareable => record.LeafOf(shareable.ShareType)).ToHashSet()));
+
+            // --- The audience resolver (spec 0033 §6.2): the shapes over the leaves, the instrument, and the resolver per scope ---
+            List<(Type Entity, Type Share)> pairs = [.. record.Shareables.Select(shareable => (record.LeafOf(shareable.EntityType), record.LeafOf(shareable.ShareType)))];
+            _ = services.AddMetrics();
+            services.TryAddSingleton(provider => new ShareableShapes(provider.GetRequiredService<IEntityMetadataProvider>(), pairs));
+            services.TryAddSingleton<SharingMetrics>();
+            services.TryAddScoped(
+                typeof(IAudienceResolver),
+                typeof(AudienceResolver<,>).MakeGenericType(record.LeafOf(typeof(User)), record.LeafOf(typeof(Role))));
         }
     }
 }

@@ -47,7 +47,7 @@ namespace Tellma.Core.Tests.Sharing
             Metadata = _services.GetRequiredService<IEntityMetadataProvider>();
             StackDescriptor descriptor = _services.GetRequiredService<IStackRegistry>().Find("core.Report")
                 ?? throw new InvalidOperationException("The composition has no reports' stack.");
-            Service = new ReportsUnderTest(new DescriptorPipelines(descriptor), Commands, Dashboards, _services.GetRequiredService<ReportServiceDependencies>());
+            Service = new ReportsUnderTest(new DescriptorPipelines(descriptor), Commands, Dashboards, new UnusedAudiences(), _services.GetRequiredService<ReportServiceDependencies>());
         }
 
         /// <summary>The model's entity metadata.</summary>
@@ -190,9 +190,11 @@ namespace Tellma.Core.Tests.Sharing
     /// <param name="factory">The pipeline factory.</param>
     /// <param name="commands">The sharing commands.</param>
     /// <param name="dashboards">The dashboards' read-through.</param>
+    /// <param name="audiences">The audience resolver.</param>
     /// <param name="dependencies">The platform's collaborators.</param>
-    internal sealed class ReportsUnderTest(IEntityPipelineFactory factory, IShareCommands<Report> commands, IDashboardReadThrough dashboards, ReportServiceDependencies dependencies)
-        : ReportService(factory, commands, dashboards, dependencies)
+    internal sealed class ReportsUnderTest(
+        IEntityPipelineFactory factory, IShareCommands<Report> commands, IDashboardReadThrough dashboards, IAudienceResolver audiences, ReportServiceDependencies dependencies)
+        : ReportService(factory, commands, dashboards, audiences, dependencies)
     {
         /// <summary>Why a row refuses an ability, as the permissions extra asks.</summary>
         /// <param name="row">The row.</param>
@@ -292,6 +294,16 @@ namespace Tellma.Core.Tests.Sharing
         public void WithdrawAll(DeletePersistContext<Report> context)
         {
             Calls.Add(("withdraw-all", context));
+        }
+    }
+
+    /// <summary>An audience resolver the service's sharing and save tests never reach.</summary>
+    internal sealed class UnusedAudiences : IAudienceResolver
+    {
+        /// <inheritdoc />
+        public Task<ShareAudience> ResolveAsync(AudienceQuery query, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException("The audience is resolved on real SQL, by the integration tests.");
         }
     }
 

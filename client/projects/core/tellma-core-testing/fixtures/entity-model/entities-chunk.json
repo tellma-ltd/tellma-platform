@@ -5343,6 +5343,43 @@
               }
             }
           ]
+        },
+        {
+          "name": "audience",
+          "kind": "api",
+          "builtIn": false,
+          "action": "Share",
+          "labelKey": "Core_Report_Action_Audience",
+          "mutation": false,
+          "idempotent": true,
+          "destructive": false,
+          "singleTarget": false,
+          "supportsFilter": false,
+          "result": "own",
+          "arguments": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^-?[0-9]+$"
+              }
+            },
+            "required": [
+              "id"
+            ]
+          },
+          "fields": [
+            {
+              "name": "id",
+              "labelKey": "Id",
+              "required": true,
+              "value": {
+                "type": "integer",
+                "nullable": false,
+                "long": true
+              }
+            }
+          ]
         }
       ],
       "relatedSelect": [
