@@ -97,11 +97,16 @@ namespace Tellma.Core.AspNetCore.Tests.Api
             RateChainSpec report = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/report").Metadata);
             RateChainSpec summary = RatePolicies.Resolve(Endpoint(projected, "pj-inbox/summary").Metadata);
             RateChainSpec builtIn = RatePolicies.Resolve(Endpoint(projected, "centers/get-by-parent-ids").Metadata);
+            RateChainSpec audience = RatePolicies.Resolve(Endpoint(projected, "reports/audience").Metadata);
 
             Assert.Equal([TellmaRatePolicies.Export, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], export.Policies.Select(static policy => policy.Name));
             Assert.False(export.HonorsPriority);
             Assert.Equal([TellmaRatePolicies.Reports, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], report.Policies.Select(static policy => policy.Name));
             Assert.True(report.HonorsPriority);
+
+            // --- The stored reports' audience takes the reports' policy in the interactive lane alone ---
+            Assert.Equal([TellmaRatePolicies.Reports, RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], audience.Policies.Select(static policy => policy.Name));
+            Assert.False(audience.HonorsPriority);
 
             // --- An action that names none, a built-in action and a standard operation take the group's alone ---
             Assert.Equal([RatePolicies.UserAcrossTenants, TellmaRatePolicies.User, TellmaRatePolicies.Tenant], summary.Policies.Select(static policy => policy.Name));

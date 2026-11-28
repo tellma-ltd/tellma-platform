@@ -21,6 +21,12 @@ namespace Tellma.Core.Abstractions.Sharing
     ///     role, every audience user for the Everyone grant and a public role.
     /// </param>
     /// <param name="CannotRead">Parallel to the query's data securables: how many of those users lack each one.</param>
+    /// <param name="DependsOnViewer">
+    ///     Whether the grant is a stored permission whose filter reads the current user (<c>me()</c>), so
+    ///     whether it reaches the row differs from one holder to the next. Such a grant counts no member
+    ///     and gives no member a reason: its holders reach the row only when the row satisfies the
+    ///     filter for them.
+    /// </param>
     public sealed record AudienceGrant(
         AudienceReasonKind Kind,
         int? UserId,
@@ -29,5 +35,6 @@ namespace Tellma.Core.Abstractions.Sharing
         int? ThroughId,
         AudienceAccess Access,
         int Members,
-        IReadOnlyList<int> CannotRead);
+        IReadOnlyList<int> CannotRead,
+        bool DependsOnViewer);
 }

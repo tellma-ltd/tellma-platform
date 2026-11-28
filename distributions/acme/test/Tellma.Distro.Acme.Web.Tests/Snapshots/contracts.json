@@ -83,7 +83,7 @@
     "POST /{tenantId}/api/web/reports/share": "fuSY7nB-9A1e",
     "POST /{tenantId}/api/web/reports/publish": "ZiORrXV-G841",
     "POST /{tenantId}/api/web/reports/transfer": "bq570jZlNC8X",
-    "POST /{tenantId}/api/web/reports/audience": "zHhyqXIdWkiA",
+    "POST /{tenantId}/api/web/reports/audience": "UDwi6wN9by8t",
     "POST /{tenantId}/api/web/centers/query": "PqV1-faRenCx",
     "POST /{tenantId}/api/web/centers/get-by-parent-ids": "cl9JkVt-Dxju",
     "POST /{tenantId}/api/web/centers/get": "5aYFsXxKAKdl",

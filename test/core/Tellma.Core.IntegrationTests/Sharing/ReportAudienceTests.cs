@@ -60,7 +60,7 @@ namespace Tellma.Core.IntegrationTests.Sharing
             await fixture.SeedMembershipAsync(memberStranger, role);
             int id = await CreateAsync(ownerSubject);
             await ShareAsync(ownerSubject, id, new ShareArguments([new UserGrant(reader, ShareAccess.View), new UserGrant(stranger, ShareAccess.Edit)], null));
-            await GrantRoleAsync(id, role, ShareAccess.View);
+            await GrantAsync(id, role, ShareAccess.View);
 
             ShareAudience audience = await ResolveAsync(ownerSubject, id, [RoleRead]);
 
@@ -117,7 +117,7 @@ namespace Tellma.Core.IntegrationTests.Sharing
             int shared = await fixture.SeedRoleAsync();
             await fixture.SeedMembershipAsync(service, shared);
             int first = await CreateAsync(ownerSubject);
-            await GrantRoleAsync(first, shared, ShareAccess.Edit);
+            await GrantAsync(first, shared, ShareAccess.Edit);
             AudienceMember viaRole = Assert.Single((await ResolveAsync(ownerSubject, first, [])).Members!, member => member.UserId == service);
             Assert.Equal((AudienceAccess.Edit, AudienceReasonKind.RoleShare, shared), (viaRole.Access, Assert.Single(viaRole.Reasons).Kind, viaRole.Reasons[0].RoleId));
 
@@ -125,7 +125,7 @@ namespace Tellma.Core.IntegrationTests.Sharing
             int open = await fixture.SeedRoleAsync();
             await fixture.ExecuteAsync(ConnectDatabase.TenantA, $"UPDATE [core].[Roles] SET [IsPublic] = 1 WHERE [Id] = {open};");
             int second = await CreateAsync(ownerSubject);
-            await GrantRoleAsync(second, open, ShareAccess.View);
+            await GrantAsync(second, open, ShareAccess.View);
             ShareAudience everyone = await ResolveAsync(ownerSubject, second, []);
             int audienceUsers = await AudienceUsersAsync();
             Assert.Equal(audienceUsers, everyone.Total);
@@ -187,7 +187,7 @@ namespace Tellma.Core.IntegrationTests.Sharing
             int[] users = await SeedUsersAsync(6, "Capped six");
             int role = await RoleOfAsync(users);
             int id = await CreateAsync(ownerSubject);
-            await GrantRoleAsync(id, role, ShareAccess.View);
+            await GrantAsync(id, role, ShareAccess.View);
             await using ServiceProvider capped = fixture.CreateInstance(static services => services.Configure<SharingOptions>(static options => options.MaxAudienceMembers = 3));
 
             ShareAudience audience = await ResolveAsync(ownerSubject, id, [RoleRead], capped);
@@ -257,6 +257,91 @@ namespace Tellma.Core.IntegrationTests.Sharing
             Assert.Equal([host], RelatedIds(audience, Resource));
         }
 
+        [Fact]
+        public async Task A_permission_filtered_by_the_current_user_reaches_no_holder_whether_the_owner_or_an_administrator_reads_the_audience()
+        {
+            // --- The report authors may publish their own reports; the owner and another author hold it ---
+            (int owner, string ownerSubject) = await OwnerAsync("Owner ten");
+            (int author, _) = await fixture.SeedCallerAsync("Author ten");
+            int authors = await fixture.SeedRoleAsync((Resource, AccessActions.Publish, "OwnerId = me()"));
+            await fixture.SeedMembershipAsync(owner, authors);
+            await fixture.SeedMembershipAsync(author, authors);
+            int id = await CreateAsync(ownerSubject);
+
+            // --- An administrator of this report, who reads the roles ---
+            (int administrator, string administratorSubject) = await fixture.SeedCallerAsync("Administrator ten");
+            await fixture.SeedMembershipAsync(administrator, await fixture.SeedRoleAsync((Resource, AccessActions.Share, Only(id)), (CoreResources.Role, AccessActions.Read, null)));
+
+            // --- Either reader sees the authors' grant as depending on the viewer, with no member, and the same audience ---
+            foreach (string subject in new[] { ownerSubject, administratorSubject })
+            {
+                ShareAudience audience = await ResolveAsync(subject, id, [RoleRead]);
+
+                AudienceGrant grant = Assert.Single(audience.Grants, grant => grant.RoleId == authors);
+                Assert.Equal((AudienceReasonKind.Permission, true, 0, 0), (grant.Kind, grant.DependsOnViewer, grant.Members, grant.CannotRead[0]));
+                Assert.Equal([owner, administrator], audience.Members!.Select(static member => member.UserId).Order());
+                Assert.Equal(2, audience.Total);
+                Assert.DoesNotContain(audience.Members!.SelectMany(static member => member.Reasons), reason => reason.RoleId == authors);
+                Assert.All(audience.Grants.Where(grant => grant.RoleId != authors), static grant => Assert.False(grant.DependsOnViewer));
+            }
+        }
+
+        [Fact]
+        public async Task An_everyone_grant_counts_the_readers_of_current_memberships_alone_and_a_public_reader_role_leaves_no_one_lacking()
+        {
+            // --- Readers of the roles through one role: a current, an expired and a future membership ---
+            (_, string ownerSubject) = await OwnerAsync("Owner eleven");
+            (int current, _) = await fixture.SeedCallerAsync("Current eleven");
+            (int expired, _) = await fixture.SeedCallerAsync("Expired eleven");
+            (int future, _) = await fixture.SeedCallerAsync("Future eleven");
+            int readers = await fixture.SeedRoleAsync((CoreResources.Role, AccessActions.Read, null));
+            await fixture.SeedMembershipAsync(current, readers, startsAt: "DATEADD(day, -1, SYSDATETIMEOFFSET())", endsAt: "DATEADD(day, 1, SYSDATETIMEOFFSET())");
+            await fixture.SeedMembershipAsync(expired, readers, endsAt: "DATEADD(day, -1, SYSDATETIMEOFFSET())");
+            await fixture.SeedMembershipAsync(future, readers, startsAt: "DATEADD(day, 1, SYSDATETIMEOFFSET())");
+
+            // --- Shared with everyone, and with a role that is inactive ---
+            int inactive = await fixture.SeedRoleAsync();
+            await fixture.SeedMembershipAsync(current, inactive);
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, $"UPDATE [core].[Roles] SET [IsActive] = 0 WHERE [Id] = {inactive};");
+            int id = await CreateAsync(ownerSubject);
+            await GrantAsync(id, null, ShareAccess.View);
+            await GrantAsync(id, inactive, ShareAccess.View);
+
+            ShareAudience audience = await ResolveAsync(ownerSubject, id, [RoleRead]);
+
+            // --- Every audience user listed; the count of those lacking the roles agrees with the members' marks ---
+            int audienceUsers = await AudienceUsersAsync();
+            AudienceGrant everyone = Assert.Single(audience.Grants, static grant => grant.Kind == AudienceReasonKind.Everyone);
+            Assert.Equal((audienceUsers, audienceUsers, false), (everyone.Members, audience.Total, audience.Capped));
+            Assert.Equal(audienceUsers, audience.Members!.Count);
+            int lacking = audience.Members!.Count(static member => member.CannotRead.Count > 0);
+            Assert.Equal((lacking, lacking), (everyone.CannotRead[0], audience.CannotRead[0]));
+            Assert.Empty(Member(audience, current).CannotRead);
+            Assert.Equal([0], Member(audience, expired).CannotRead);
+            Assert.Equal([0], Member(audience, future).CannotRead);
+            Assert.Equal([AudienceReasonKind.Everyone], Member(audience, expired).Reasons.Select(static reason => reason.Kind));
+
+            // --- The inactive role's grant reaches no one ---
+            AudienceGrant share = Assert.Single(audience.Grants, grant => grant.RoleId == inactive);
+            Assert.Equal((0, 0), (share.Members, share.CannotRead[0]));
+
+            // --- A public role that reads the roles makes every audience user a reader ---
+            int open = await fixture.SeedRoleAsync((CoreResources.Role, AccessActions.Read, null));
+            await fixture.ExecuteAsync(ConnectDatabase.TenantA, $"UPDATE [core].[Roles] SET [IsPublic] = 1 WHERE [Id] = {open};");
+            try
+            {
+                ShareAudience opened = await ResolveAsync(ownerSubject, id, [RoleRead]);
+
+                Assert.Equal(0, opened.CannotRead[0]);
+                Assert.All(opened.Grants, static grant => Assert.Equal(0, grant.CannotRead[0]));
+                Assert.All(opened.Members!, static member => Assert.Empty(member.CannotRead));
+            }
+            finally
+            {
+                await fixture.ExecuteAsync(ConnectDatabase.TenantA, $"UPDATE [core].[Roles] SET [IsPublic] = 0 WHERE [Id] = {open};");
+            }
+        }
+
         // --- Helpers ---
 
         /// <summary>The reports' service of a scope.</summary>
@@ -316,19 +401,29 @@ namespace Tellma.Core.IntegrationTests.Sharing
         }
 
         /// <summary>
-        ///     Grants a report to a role, bypassing the publish action: a caller's stored permission to
-        ///     publish would reach every report, and so every other test's audience.
+        ///     Grants a report to a role or to everyone, bypassing the publish action: a caller's stored
+        ///     permission to publish would reach every report, and so every other test's audience.
         /// </summary>
         /// <param name="id">The report.</param>
-        /// <param name="role">The role.</param>
+        /// <param name="role">The role; null for the Everyone grant.</param>
         /// <param name="access">The grant's access.</param>
         /// <returns>A task that completes when the grant is seeded.</returns>
-        private Task GrantRoleAsync(int id, int role, ShareAccess access)
+        private Task GrantAsync(int id, int? role, ShareAccess access)
         {
             int system = WellKnownIds.SystemUserId;
+            string grantee = role is int roleId ? roleId.ToString(CultureInfo.InvariantCulture) : "NULL";
             return fixture.ExecuteAsync(
                 ConnectDatabase.TenantA,
-                $"INSERT INTO [core].[ReportShares] ([Id], [ReportId], [UserId], [RoleId], [Access], [SharedById], [SharedAt]) VALUES (NEXT VALUE FOR [core].[sq_ReportShares], {id}, NULL, {role}, '{access}', {system}, SYSDATETIMEOFFSET());");
+                $"INSERT INTO [core].[ReportShares] ([Id], [ReportId], [UserId], [RoleId], [Access], [SharedById], [SharedAt]) VALUES (NEXT VALUE FOR [core].[sq_ReportShares], {id}, NULL, {grantee}, '{access}', {system}, SYSDATETIMEOFFSET());");
+        }
+
+        /// <summary>One listed member of an audience.</summary>
+        /// <param name="audience">The audience.</param>
+        /// <param name="user">The member.</param>
+        /// <returns>The member.</returns>
+        private static AudienceMember Member(ShareAudience audience, int user)
+        {
+            return Assert.Single(audience.Members!, member => member.UserId == user);
         }
 
         /// <summary>Resolves a report's audience as a caller, seen through nothing.</summary>

@@ -98,6 +98,7 @@ namespace Tellma.Core.Reports
         /// <returns>The audience.</returns>
         /// <exception cref="NotFoundException">The caller cannot read or share the report, or it does not exist.</exception>
         [ApiAction("audience", Action = AccessActions.Share, Mutation = false, Idempotent = true, Long = true)]
+        [RatePolicy(TellmaRatePolicies.Reports)]
         public async Task<ShareAudience> AudienceAsync(IdRequest request, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);

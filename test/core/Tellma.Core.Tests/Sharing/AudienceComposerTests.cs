@@ -50,6 +50,37 @@ namespace Tellma.Core.Tests.Sharing
         }
 
         [Fact]
+        public void A_permission_whose_filter_reads_the_current_user_is_listed_as_depending_on_the_viewer_and_reaches_no_one()
+        {
+            AudienceSubject row = new(null, 1, true, [], [new AudiencePermission(90, 3, false, AudienceAccess.View, true, DependsOnViewer: true), new AudiencePermission(91, 4, true, AudienceAccess.View, true, DependsOnViewer: true)]);
+
+            AudienceComposition audience = Compose(Facts(10, [row], Roles((3, [1, 2, 5])), Readers(1)));
+
+            Assert.Equal(
+                [(90, true, 0, 0), (91, true, 0, 0)],
+                audience.Grants.Where(static grant => grant.Kind == AudienceReasonKind.Permission).Select(static grant => (grant.PermissionId!.Value, grant.DependsOnViewer, grant.Members, grant.CannotRead[0])));
+            Assert.False(audience.Grants[0].DependsOnViewer);
+            Assert.Equal(1, audience.Total);
+            Assert.Equal([AudienceReasonKind.Owner], Assert.Single(audience.Members!).Reasons.Select(static reason => reason.Kind));
+        }
+
+        [Theory]
+        [InlineData("OwnerId = me()", true)]
+        [InlineData("OwnerId = ME ( )", true)]
+        [InlineData("CreatedBy.Id = me() or IsActive", true)]
+        [InlineData("Title = 'me()'", false)]
+        [InlineData("Title = 'it''s me()'", false)]
+        [InlineData("[me] = 1", false)]
+        [InlineData("Owner.me() = 1", false)]
+        [InlineData("Name = @me", false)]
+        [InlineData("CreatedAt < now() and Id = 4", false)]
+        [InlineData("Theme = 'x'", false)]
+        public void A_filter_reads_the_current_user_only_through_a_call_to_me_written_as_code(string filter, bool reads)
+        {
+            Assert.Equal(reads, ViewerFilters.ReadsCurrentUser(filter));
+        }
+
+        [Fact]
         public void A_member_reached_twice_has_both_reasons_and_the_higher_access()
         {
             AudienceSubject row = new(null, null, false, [UserShare(1, 5, ShareAccess.View)], [new AudiencePermission(70, 3, false, AudienceAccess.Edit, true)]);

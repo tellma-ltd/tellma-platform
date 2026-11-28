@@ -685,13 +685,17 @@ namespace Tellma.Core.Sharing
                     // Saving, or doing anything, edits the row; every other action only reads it.
                     bool edits = classification.Action == AccessActions.Wildcard
                         || string.Equals(classification.Action, AccessActions.Save, StringComparison.OrdinalIgnoreCase);
+                    // A filter that reads the current user is listed for every row and evaluated for none:
+                    // one evaluation, as the reader, would answer for the reader alone.
+                    bool dependsOnViewer = classification.Filter is string text && ViewerFilters.ReadsCurrentUser(text);
                     AudiencePermission permission = new(
                         permissionIds[index],
                         permissionRoles[index],
                         permissionPublic[index],
                         edits ? AudienceAccess.Edit : AudienceAccess.View,
-                        classification.Filter is not null);
-                    if (classification.Filter is string filter && classification.FilterQueryexVersion is int version)
+                        classification.Filter is not null,
+                        dependsOnViewer);
+                    if (!dependsOnViewer && classification.Filter is string filter && classification.FilterQueryexVersion is int version)
                     {
                         pending.Add(new Pending(group, read.Ids, filter, version, permission));
                     }
@@ -881,7 +885,10 @@ namespace Tellma.Core.Sharing
 
         /// <summary>A group's facts after the first round trip.</summary>
         /// <param name="Rows">The rows that exist, in the group's order.</param>
-        /// <param name="Unfiltered">The stored permissions that reach every row of the group.</param>
+        /// <param name="Unfiltered">
+        ///     The stored permissions listed for every row of the group: the unfiltered ones, which reach
+        ///     it, and those whose filter reads the current user, which reach no one.
+        /// </param>
         private sealed record GroupFacts(IReadOnlyList<GroupRow> Rows, IReadOnlyList<AudiencePermission> Unfiltered);
 
         /// <summary>A filtered stored permission that reaches the rows of its group that satisfy its filter.</summary>

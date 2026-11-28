@@ -81,7 +81,7 @@ POST /{tenantId}/api/web/reports/deactivate | deactivate | core.Report | entity 
 POST /{tenantId}/api/web/reports/share | share | core.Report | entity | EntityActionRequest<ShareArguments> | EntitiesResult<Report> | core.Report:Share | mutation | fuSY7nB-9A1e
 POST /{tenantId}/api/web/reports/publish | publish | core.Report | entity | EntityActionRequest<PublishArguments> | EntitiesResult<Report> | core.Report:Publish | mutation | ZiORrXV-G841
 POST /{tenantId}/api/web/reports/transfer | transfer | core.Report | entity | EntityActionRequest<TransferArguments> | EntitiesResult<Report> | core.Report:Transfer | mutation | bq570jZlNC8X
-POST /{tenantId}/api/web/reports/audience | audience | core.Report | api | IdRequest | ShareAudience | core.Report:Share | long, idempotent | zHhyqXIdWkiA
+POST /{tenantId}/api/web/reports/audience | audience | core.Report | api | IdRequest | ShareAudience | core.Report:Share | long, idempotent | UDwi6wN9by8t
 POST /{tenantId}/api/web/widgets/query | query | fixture.Widget | - | QueryRequest | RowPage | fixture.Widget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/widgets/get | get | fixture.Widget | - | GetRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | 3dOZYmvbGZ23
 POST /{tenantId}/api/web/widgets/get-by-ids | get-by-ids | fixture.Widget | - | GetByIdsRequest | EntitiesResult<Widget> | fixture.Widget:Read | idempotent | UlcZ--uZYDvm

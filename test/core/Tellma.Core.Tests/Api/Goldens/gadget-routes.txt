@@ -81,7 +81,7 @@ POST /{tenantId}/api/web/reports/deactivate | deactivate | core.Report | entity 
 POST /{tenantId}/api/web/reports/share | share | core.Report | entity | EntityActionRequest<ShareArguments> | EntitiesResult<Report> | core.Report:Share | mutation | fuSY7nB-9A1e
 POST /{tenantId}/api/web/reports/publish | publish | core.Report | entity | EntityActionRequest<PublishArguments> | EntitiesResult<Report> | core.Report:Publish | mutation | ZiORrXV-G841
 POST /{tenantId}/api/web/reports/transfer | transfer | core.Report | entity | EntityActionRequest<TransferArguments> | EntitiesResult<Report> | core.Report:Transfer | mutation | bq570jZlNC8X
-POST /{tenantId}/api/web/reports/audience | audience | core.Report | api | IdRequest | ShareAudience | core.Report:Share | long, idempotent | zHhyqXIdWkiA
+POST /{tenantId}/api/web/reports/audience | audience | core.Report | api | IdRequest | ShareAudience | core.Report:Share | long, idempotent | UDwi6wN9by8t
 POST /{tenantId}/api/web/gadgets/query | query | sm.SmGadget | - | QueryRequest | RowPage | sm.SmGadget:Read | idempotent | PqV1-faRenCx
 POST /{tenantId}/api/web/gadgets/get | get | sm.SmGadget | - | GetRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | 5mezyF2jCvNp
 POST /{tenantId}/api/web/gadgets/get-by-ids | get-by-ids | sm.SmGadget | - | GetByIdsRequest | EntitiesResult<SmGadget> | sm.SmGadget:Read | idempotent | -dbsTnnQ9xYd

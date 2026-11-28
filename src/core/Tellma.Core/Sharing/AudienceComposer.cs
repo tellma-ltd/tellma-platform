@@ -62,7 +62,8 @@ namespace Tellma.Core.Sharing
                 entry.ThroughId,
                 entry.Reason.Access,
                 entry.Reach.Count(facts.Audience),
-                [.. facts.Readers.Select(readers => Lacking(entry.Reach, readers, facts.Audience))]))];
+                [.. facts.Readers.Select(readers => Lacking(entry.Reach, readers, facts.Audience))],
+                entry.DependsOnViewer))];
 
             // --- The users and roles the grants name, which the related projections carry ---
             HashSet<int> users = [.. entries.Select(static entry => entry.UserId).OfType<int>()];
@@ -133,9 +134,14 @@ namespace Tellma.Core.Sharing
             // --- The stored permissions that reach the row, by role then permission ---
             foreach (AudiencePermission permission in subject.Permissions.OrderBy(static permission => permission.RoleId).ThenBy(static permission => permission.PermissionId))
             {
-                Reach reach = permission.IsPublic ? Reach.Everyone : Reach.Of(membersByRole.GetValueOrDefault(permission.RoleId) ?? []);
+                // A filter that reads the current user reaches the row for some holders and not for
+                // others; evaluating it once, as the reader, would answer for the reader alone, so the
+                // grant is listed but reaches no one.
+                Reach reach = permission.DependsOnViewer ? Reach.None
+                    : permission.IsPublic ? Reach.Everyone
+                    : Reach.Of(membersByRole.GetValueOrDefault(permission.RoleId) ?? []);
                 AudienceReason reason = new(AudienceReasonKind.Permission, permission.Access, permission.RoleId, null, null, permission.PermissionId, permission.Filtered, null);
-                entries.Add(new Entry(AudienceReasonKind.Permission, null, permission.RoleId, permission.PermissionId, null, reason, reach));
+                entries.Add(new Entry(AudienceReasonKind.Permission, null, permission.RoleId, permission.PermissionId, null, reason, reach, permission.DependsOnViewer));
             }
 
             return entries;
@@ -162,7 +168,8 @@ namespace Tellma.Core.Sharing
         /// <param name="ThroughId">The row seen through.</param>
         /// <param name="Reason">The reason it gives.</param>
         /// <param name="Reach">The audience users it reaches.</param>
-        private sealed record Entry(AudienceReasonKind Kind, int? UserId, int? RoleId, int? PermissionId, int? ThroughId, AudienceReason Reason, Reach Reach);
+        /// <param name="DependsOnViewer">Whether it is a stored permission whose filter reads the current user, so it reaches no one.</param>
+        private sealed record Entry(AudienceReasonKind Kind, int? UserId, int? RoleId, int? PermissionId, int? ThroughId, AudienceReason Reason, Reach Reach, bool DependsOnViewer = false);
 
         /// <summary>The audience users a grant reaches: every one, or a set.</summary>
         /// <param name="All">Whether it reaches every audience user.</param>
@@ -271,7 +278,11 @@ namespace Tellma.Core.Sharing
     /// <param name="IsPublic">Whether the role is public, so the permission reaches every audience user.</param>
     /// <param name="Access">What it lets its holders do with the row.</param>
     /// <param name="Filtered">Whether it carries a filter, which the row satisfies.</param>
-    internal sealed record AudiencePermission(int PermissionId, int RoleId, bool IsPublic, AudienceAccess Access, bool Filtered);
+    /// <param name="DependsOnViewer">
+    ///     Whether its filter reads the current user, so it was not evaluated and reaches no one; such
+    ///     a permission is listed as a grant whatever its filter says.
+    /// </param>
+    internal sealed record AudiencePermission(int PermissionId, int RoleId, bool IsPublic, AudienceAccess Access, bool Filtered, bool DependsOnViewer = false);
 
     /// <summary>Who can read one data securable.</summary>
     /// <param name="Everyone">Whether every user can: a bespoke criterion or a public role grants it.</param>
