@@ -384,6 +384,18 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-421 — PC-169 R1: the shell's muted texts move to an AA-passing token; spec 0025 §5.3's sync check should repeat after the throttle (2026-11-27)
+
+- The shell e2e battery found launcher headings, descriptions, footer and shortcut headers on --text-muted, which measures 3.41:1 and fails AA. PC-169 moves them to --text-secondary, and its fix1 moves the remaining shell texts on --text-muted as well (the session-menu email, About's copyright and status, Manage pins' "No access" and empty state, the picker). The orchestrator accepts this: spec 0027 §9's "muted description" describes a look, not a token, and WCAG AA is a platform requirement.
+  - For Ahmad: 0027 §9 could say "secondary text" so that the word does not read as the --text-muted token.
+- PC-169 R1-3: the server publishes cache.changed when a write commits, and that can reach the tab before the write's own response. TmCacheRefresher checked whether a sync was needed only before its 2 s throttle, so a sync the response had made unnecessary still went out. PC-169's fix1 checks again after the throttle.
+  - For Ahmad: spec gap. 0025 §5.3 should say that the need for a sync is re-checked when the throttle expires.
+
+### D-420 — PC-157: spec 0028 §1's 10 KB for /attention-pages is measured on the entry point alone (2026-11-27)
+
+PC-157 R2 asked whether spec 0028 §1's 10 KB for the /attention-pages entry point includes its lazy chunks. The orchestrator reads it as the entry point alone, the code a list page's cells download. Each page body (the settings body now, TmJobDetails and the open page later) sits in its own lazy chunk with its own budget line, as D-254 did for the primary's lazy chunks. Today the entry is 1.47 KB and the settings body chunk 7.71 KB; together they are 9.18 KB, and with later bodies the members would total about 17 KB, so the other reading would already fail.
+- For Ahmad: a reading of the spec, not a departure. 0028 §1 should say whether its 10 KB covers the entry point only and what budget a lazy page body gets.
+
 ### D-419 — Ahmad: raise the ./search budget for PC-131 (2026-11-27)
 
 Ahmad, in chat, answering D-418: "Raise the ./search budget" (option A). PC-131 raises the ./search ceiling from 23.5 to its final measured figure, after the two further cuts, rounded up to the next 0.5 KB. It records a budgetNotes entry with the bytes' cause and the savings taken, and lists the figure as a deviation against spec 0030 §1's 16 KB. The ruling covers this raise only. A later item that grows ./search takes savings first and, if it still needs a raise, stops and reports again.
