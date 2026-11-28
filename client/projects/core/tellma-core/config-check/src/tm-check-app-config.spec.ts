@@ -20,7 +20,7 @@ import {
   tmPage,
   tmWidget,
 } from '@tellma/core';
-import { tmTestEntities, tmTestEntitiesChunk, tmTestMetadata } from '@tellma/core-testing';
+import { tmTestEntitiesChunk, tmTestMetadata } from '@tellma/core-testing';
 
 import { tmCheckAppConfig } from './tm-check-app-config';
 import type { TmConfigProblem } from './tm-config-problem';
@@ -86,91 +86,17 @@ function lines(problems: readonly TmConfigProblem[]): string[] {
   return problems.map((problem) => `${problem.code} ${problem.key} ${problem.feature}`);
 }
 
-// The test metadata carries the platform's entities as the server emits them, and the server
-// writes a fallback for each of their labels that no string resource declares yet. The specs
-// check against the chunks a platform whose strings are complete would send: each recorded
-// platform fallback is dropped, so a spec sees only the warnings its own configuration and
-// patches cause. A fallback a spec patches into a platform item, new or changed, is kept.
+// The test metadata carries the platform's entities as the server emits them, every label of
+// theirs declared, so a spec sees only the warnings its own configuration and patches cause.
 
-/** The recorded entity model, whose platform fallbacks the specs treat as declared. */
-const RECORDED = tmTestEntities();
-
-/** A JSON object's members. */
-type TmMembers = Readonly<Record<string, unknown>>;
-
-/** Whether a JSON value is an object. */
-function isMembers(value: unknown): value is TmMembers {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * An array element's counterpart in the recording: the element with the same `name` (an enum
- * value: the same `value`), none when no element has it, else the element at the same index.
- */
-function counterpart(item: unknown, recorded: readonly unknown[], index: number): unknown {
-  if (isMembers(item)) {
-    for (const key of ['name', 'value']) {
-      const id = item[key];
-      if (typeof id === 'string') {
-        return recorded.find((other) => isMembers(other) && other[key] === id);
-      }
-    }
-  }
-  return recorded[index];
-}
-
-/** A JSON value, at any depth, without the label fallbacks its recorded counterpart has at the same place. */
-function withoutRecordedFallbacks(value: unknown, recorded: unknown): unknown {
-  if (Array.isArray(value)) {
-    const others: readonly unknown[] = Array.isArray(recorded) ? recorded : [];
-    return value.map((item: unknown, index) => withoutRecordedFallbacks(item, counterpart(item, others, index)));
-  }
-  if (!isMembers(value)) {
-    return value;
-  }
-  const twin = isMembers(recorded) ? recorded : {};
-  const result: Record<string, unknown> = {};
-  for (const [key, member] of Object.entries(value)) {
-    if (key !== 'labelFallback' || member !== twin[key]) {
-      result[key] = key === 'labelFallback' ? member : withoutRecordedFallbacks(member, twin[key]);
-    }
-  }
-  return result;
-}
-
-/**
- * Platform (`core.*`) items without their recorded label fallbacks; other items as they are.
- *
- * @param items - The (patched) items.
- * @param recorded - The recording's items of the same list.
- * @returns The items.
- */
-function declared<T extends { readonly name: string }>(items: readonly T[], recorded: readonly T[]): T[] {
-  return items.map((item) =>
-    item.name.startsWith('core.') ? (withoutRecordedFallbacks(item, recorded.find((other) => other.name === item.name)) as T) : item,
-  );
-}
-
-/** The test Core chunk, patched, with the platform's labels declared. */
-function coreChunk(patch: Partial<TmClientMetadata> = {}): TmClientMetadata {
-  const core = tmTestMetadata(patch);
-  return { ...core, entities: declared(core.entities, RECORDED.summaries) };
-}
-
-/** The test Entities chunk, patched, with the platform's labels declared. */
-function entitiesChunk(patch: Partial<TmEntitiesChunk> = {}): TmEntitiesChunk {
-  const chunk = tmTestEntitiesChunk(patch);
-  return { entities: declared(chunk.entities, RECORDED.chunk.entities), enums: declared(chunk.enums, RECORDED.chunk.enums) };
-}
-
-/** Checks a configuration against (patched) test metadata, the platform's labels declared. */
+/** Checks a configuration against (patched) test metadata. */
 function check(
   appConfig: TmAppConfig,
   metadata: Partial<TmClientMetadata> = {},
   entities: Partial<TmEntitiesChunk> = {},
   strings: Readonly<Record<string, Readonly<Record<string, string>>>> = {},
 ): readonly TmConfigProblem[] {
-  return tmCheckAppConfig(appConfig, coreChunk(metadata), entitiesChunk(entities), strings);
+  return tmCheckAppConfig(appConfig, tmTestMetadata(metadata), tmTestEntitiesChunk(entities), strings);
 }
 
 /** An app-bar slot. */
@@ -282,8 +208,8 @@ describe('tmCheckAppConfig', () => {
     };
     const problems = tmCheckAppConfig(
       appConfig,
-      coreChunk({ calendars: ['gc', 'hj'], features: [...tmTestMetadata().features, { key: 'zeta', version: '1' }] }),
-      entitiesChunk(),
+      tmTestMetadata({ calendars: ['gc', 'hj'], features: [...tmTestMetadata().features, { key: 'zeta', version: '1' }] }),
+      tmTestEntitiesChunk(),
     );
     // Every declaration and every patch was accepted, so each path ran over its spies.
     expect(problems).toEqual([]);
@@ -635,7 +561,7 @@ describe('tmCheckAppConfig', () => {
       expect(result[0]?.message).toBe("No string resource declares 'acme_Customer', so the emit wrote the fallback 'Customer'.");
     });
 
-    it("warns label-missing for a platform label a spec patches in, and drops only the recording's own", () => {
+    it('warns label-missing for a platform label a spec patches in', () => {
       const summaries = tmTestMetadata().entities.map((summary) => (summary.name === 'core.User' ? { ...summary, labelFallback: 'Person' } : summary));
       const entities = tmTestEntitiesChunk().entities.map((entity) => {
         const [code] = entity.properties.filter((property) => property.name === 'Code');

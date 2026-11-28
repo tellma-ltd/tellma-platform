@@ -34,10 +34,16 @@ namespace Tellma.Core.Localization
         /// <summary>
         ///     The bare member keys Core ships as the shared fallback of every entity's member of that
         ///     name (<c>Name</c>, <c>Parent</c>, …), whichever entities a composition holds: a pack's
-        ///     tree entity finds <c>Parent</c> though Core declares no tree entity.
+        ///     tree entity finds <c>Parent</c> though Core declares no tree entity. They include every
+        ///     column the platform's conventions give an entity: the key, the audit columns and a
+        ///     tree's subtree counts, so no entity needs a key of its own for them.
         /// </summary>
         public static IReadOnlyList<string> SharedMemberLabels { get; } =
-            ["Name", "Code", "Description", "IsActive", "CreatedAt", "CreatedBy", "ModifiedAt", "ModifiedBy", "Parent"];
+        [
+            "Id", "Name", "Code", "Description", "IsActive",
+            "CreatedAt", "CreatedById", "CreatedBy", "ModifiedAt", "ModifiedById", "ModifiedBy",
+            "Parent", "SubtreeCount", "ActiveSubtreeCount",
+        ];
 
         /// <summary>
         ///     The prefix every key of an entity or resource starts with: its qualified name with the

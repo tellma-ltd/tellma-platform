@@ -7,8 +7,7 @@ import type { TmDashboardWidgetModel } from '@tellma/core';
 
 // The home page's code-defined grid (spec 0035 §15.3): My assignments over
 // Assigned by me, with Recently visited beside them, 7 : 5. Each list holds
-// up to ten rows in its 350 px tile. The home page renders the widgets whose
-// types the app declares, so a type that has not shipped leaves no hole.
+// up to ten rows in its 350 px tile.
 
 /**
  * The home page's widgets, for everyone: My assignments, Recently visited

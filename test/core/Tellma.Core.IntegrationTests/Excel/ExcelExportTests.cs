@@ -71,7 +71,7 @@ namespace Tellma.Core.IntegrationTests.Excel
                 Assert.Equal(0, outcome.Workbook.Position);
 
                 List<Dictionary<string, string>> rows = Sheet(outcome.Workbook, 0);
-                Assert.Equal(["Code", "Double", "Id"], [rows[0]["A"], rows[0]["C"], rows[0]["D"]]);
+                Assert.Equal(["Code", "Double", "ID"], [rows[0]["A"], rows[0]["C"], rows[0]["D"]]);
                 int[] ids = [.. Enumerable.Range(1, 20).Where(static id => !ExcelRowSourceDatabase.IsInactive(id)).Reverse()];
                 Assert.Equal(ids.Select(static id => string.Create(CultureInfo.InvariantCulture, $"X{id:000}")), rows.Skip(1).Select(static row => row["A"]));
                 Assert.Equal(ids.Select(static id => $"Widget {id}"), rows.Skip(1).Select(static row => row["B"]));

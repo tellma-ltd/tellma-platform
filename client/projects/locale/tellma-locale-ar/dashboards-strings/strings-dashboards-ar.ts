@@ -16,8 +16,8 @@ import type { TmStringTree } from '@tellma/core';
 /**
  * The Arabic of the home page and the dashboard grid, under `tm`: the home
  * page's title, its three greetings and its grid's label, and the grid's
- * not-available and failed-load headings with the recently visited widget's
- * title and empty state. The same shape as their English.
+ * tile states, header and status line with the built-in widgets' titles,
+ * empty and offline states. The same shape as their English.
  */
 export const TM_DASHBOARDS_STRINGS_AR: TmStringTree = {
   home: {
@@ -32,6 +32,23 @@ export const TM_DASHBOARDS_STRINGS_AR: TmStringTree = {
   dashboard: {
     unavailable: 'هذه الأداة غير متاحة.',
     loadFailed: 'تعذّر تحميل هذه الأداة.',
+    options: 'خيارات الأداة {title}',
+    refresh: 'تحديث',
+    viewAll: 'عرض الكل',
+    viewAllOf: 'عرض الكل: {title}',
+    updated: 'آخر تحديث {time}',
+    stale: 'تعذّر التحديث. البيانات المعروضة من {time}.',
+    totalsOmitted: 'المجاميع غير معروضة',
+    totalsOmittedHint: 'لا يظهر صف المجاميع لأن الصفوف لا تتسع كلها في الصفحة الأولى.',
+    assignmentsOffline: 'أنت غير متصل. تظهر مهامك عند عودة الاتصال.',
+    toMe: {
+      title: 'مهامي',
+      empty: 'لا شيء بانتظارك',
+    },
+    byMe: {
+      title: 'ما أسندتُه',
+      empty: 'لا مهام أسندتها ما زالت مفتوحة',
+    },
     recents: {
       title: 'الصفحات الأخيرة',
       empty: 'تظهر هنا الصفحات التي تمت زيارتها',

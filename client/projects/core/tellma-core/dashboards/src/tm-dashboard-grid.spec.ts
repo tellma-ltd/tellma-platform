@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { ChangeDetectionStrategy, Component, signal, type Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, signal, type Type } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import {
@@ -13,17 +13,23 @@ import {
   type TmDashboardWidgetModel,
   type TmFeature,
   type TmLazyComponent,
+  type TmClientMetadata,
+  type TmReportArgs,
 } from '@tellma/core';
 
-import { tmAppRig, tmSettle } from '../../src/routes/tm-app.testing.util';
+import { tmAppRig, tmAssignmentsTestRoute, tmGatedCoreWidget, tmNavigate, tmSettle } from '../../src/routes/tm-app.testing.util';
 import { TmDashboardGrid } from './tm-dashboard-grid';
+import { injectTmWidget, type TmWidgetContext } from './tm-widget-context';
 
 // The grid over a test app whose feature declares three widget types: one
 // that renders, one whose permission the user lacks, and one whose body's
 // chunk the spec controls. Each tile resolves its type, title and access
 // against the declarations, renders in reading order at its placement, and
 // shows its body or the state that stands in for it, which the grid's tile
-// states report.
+// states report. A fourth, fixture type with a status line reads its
+// context through injectTmWidget() and reports its runs, which the status
+// line and the tile states show; its menu's Refresh and the grid's
+// refreshAll tick it.
 
 /** A widget body, which names itself. */
 @Component({
@@ -32,6 +38,38 @@ import { TmDashboardGrid } from './tm-dashboard-grid';
   template: '<p class="cash">Cash 42</p>',
 })
 class TmCashBody {}
+
+/** The fixture type's last created context, which the spec drives. */
+let reporting: TmWidgetContext | null = null;
+
+/** The fixture type's body: it writes out what its context gives it, and hands the spec its context. */
+@Component({
+  selector: 'tm-reporting-body',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: '<p class="reporting">{{ text() }}</p>',
+})
+class TmReportingBody {
+  readonly #widget = injectTmWidget();
+
+  /** The context, written out. */
+  protected readonly text = computed(() => {
+    const size = this.#widget.size();
+    return [
+      this.#widget.key,
+      this.#widget.type,
+      String(size.w) + 'x' + String(size.h),
+      JSON.stringify(this.#widget.settings()),
+      JSON.stringify(this.#widget.parameters()),
+      this.#widget.mode(),
+      String(this.#widget.tick().generation),
+    ].join(' ');
+  });
+
+  /** Hands the spec the context. */
+  constructor() {
+    reporting = this.#widget;
+  }
+}
 
 /** A pending load the spec settles. */
 interface TmDeferred<T> {
@@ -90,6 +128,14 @@ function acme(loadFlaky: TmLazyComponent): TmFeature {
         minSize: { w: 2, h: 3 },
         requires: ['acme.Approval', 'Read'],
       }),
+      tmWidget('acme.reporting', {
+        labelKey: 'Acme_Reporting',
+        icon: 'chart-column',
+        component: () => Promise.resolve(TmReportingBody),
+        defaultSize: { w: 4, h: 6 },
+        minSize: { w: 2, h: 3 },
+        status: true,
+      }),
       tmWidget('acme.flaky', {
         labelKey: 'Acme_Flaky',
         icon: 'list',
@@ -105,9 +151,19 @@ function acme(loadFlaky: TmLazyComponent): TmFeature {
 @Component({
   imports: [TmDashboardGrid],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<tm-dashboard-grid [widgets]="widgets()" label="Cash overview" [denied]="denied()" />`,
+  template: `<tm-dashboard-grid
+    [widgets]="widgets()"
+    label="Cash overview"
+    [denied]="denied()"
+    [parameters]="parameters()"
+    [presenting]="presenting()"
+  />`,
 })
 class TmGridHost {
+  /** The dashboard's supplied arguments. */
+  readonly parameters = signal<TmReportArgs>({});
+  /** Whether the dashboard is presented. */
+  readonly presenting = signal(false);
   /** The grid's widgets. */
   readonly widgets = signal<readonly TmDashboardWidgetModel[]>([]);
   /** Whether a denied tile shows. */
@@ -121,6 +177,7 @@ class TmGridHost {
  * @param denied - Whether a denied tile shows.
  * @param loadFlaky - The controlled type's body.
  * @param slot - The active content slot, when not the first.
+ * @param app - More features, the Core chunk when not the route test metadata, and a tenant route to open first, which the lists' links need.
  * @returns The host's fixture.
  */
 async function render(
@@ -128,18 +185,25 @@ async function render(
   denied: 'show' | 'hide' = 'hide',
   loadFlaky: TmLazyComponent = () => Promise.resolve(TmCashBody),
   slot?: 2 | 3,
+  app: { readonly features?: readonly TmFeature[]; readonly metadata?: TmClientMetadata; readonly at?: string } = {},
 ): Promise<ComponentFixture<TmGridHost>> {
   await tmAppRig({
-    features: [acme(loadFlaky)],
+    metadata: app.metadata,
+    features: [acme(loadFlaky), ...(app.features ?? [])],
     strings: {
       en: {
         Acme_Cash: 'Cash position',
         Acme_Approvals: 'Approvals',
         Acme_Flaky: 'Flaky',
         Acme_Margins: 'Margins',
+        Acme_Reporting: 'Receivables',
+        Acme_Overdue: 'Invoices past their due date, by customer',
       },
     },
   });
+  if (app.at !== undefined) {
+    await tmNavigate(app.at);
+  }
   if (slot !== undefined) {
     vi.spyOn(TestBed.inject(TmLocalization), 'contentSlot').mockReturnValue(slot);
   }
@@ -204,8 +268,25 @@ function state(tile: HTMLElement): string | null {
   return tile.querySelector('.tm-empty-state__heading')?.textContent?.trim() ?? null;
 }
 
+/**
+ * A tile's status line, its parts joined by the separator the line draws between them.
+ *
+ * @param tile - The tile's element.
+ * @returns The line's text, or `null` when the tile shows none.
+ */
+function statusLine(tile: HTMLElement): string | null {
+  const line = tile.querySelector('.tm-dashboard-tile__status');
+  if (line === null) {
+    return null;
+  }
+  return [...line.querySelectorAll('.tm-dashboard-tile__description, time, .tm-dashboard-tile__updated > span')]
+    .map((part) => (part.textContent ?? '').trim())
+    .join(' · ');
+}
+
 describe('the dashboard grid', () => {
   afterEach(() => {
+    reporting = null;
     TestBed.resetTestingModule();
   });
 
@@ -419,12 +500,200 @@ describe('the dashboard grid', () => {
 
     expect(state(tile!)).toBe("This widget couldn't be loaded.");
     expect(statuses(fixture)).toEqual([['flaky', 'error']]);
-    const retry = tile!.querySelector<HTMLButtonElement>('button')!;
+    const retry = tile!.querySelector<HTMLButtonElement>('.tm-empty-state button')!;
     expect(retry.textContent?.trim()).toBe('Try again');
 
     retry.click();
     await tmSettle();
     expect(tile!.querySelector('.cash')).not.toBeNull();
     expect(loadFlaky).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives a type's body its context: its key, type, size, settings, the dashboard's arguments, view mode and the first tick", async () => {
+    const fixture = await render([
+      { key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 5, settings: { basis: 'due' } },
+    ]);
+    fixture.componentInstance.parameters.set({ center: 4 });
+    await tmSettle();
+
+    expect(tiles(fixture)[0]!.querySelector('.reporting')?.textContent).toBe(
+      'ar acme.reporting 6x5 {"basis":"due"} {"center":4} view 0',
+    );
+  });
+
+  it("holds the status line's row with a bar before the first result, then shows when the numbers were computed", async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    const [tile] = tiles(fixture);
+    expect(tile!.querySelector('.tm-dashboard-tile__status .tm-skeleton__bar')).not.toBeNull();
+
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('section')?.getAttribute('aria-busy')).toBe('true');
+    expect(statuses(fixture)).toEqual([['ar', 'loading']]);
+
+    const at = new Date().toISOString();
+    reporting!.report({ status: 'ready', executedAt: at });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__status tm-skeleton')).toBeNull();
+    expect(tile!.querySelector('.tm-dashboard-tile__status time')?.getAttribute('datetime')).toBe(at);
+    expect(statusLine(tile!)).toMatch(/^Updated \d/);
+    expect(tile!.querySelector('section')?.hasAttribute('aria-busy')).toBe(false);
+    expect(gridOf(fixture).tiles()).toEqual([
+      { key: 'ar', title: 'Receivables', executedAt: at, status: 'ready' },
+    ]);
+  });
+
+  it('writes the date beside the time of a result from another day', async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    reporting!.report({ status: 'ready', executedAt: '2026-01-15T09:00:00Z' });
+    await tmSettle();
+
+    expect(statusLine(tiles(fixture)[0]!)).toContain('2026');
+  });
+
+  it('leaves the status line empty after a failed first run', async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    reporting!.report({ status: 'error', executedAt: null, error: null });
+    await tmSettle();
+    const [tile] = tiles(fixture);
+
+    expect(tile!.querySelector('.tm-dashboard-tile__status')).not.toBeNull();
+    expect(statusLine(tile!)).toBe('');
+    expect(tile!.querySelector('.tm-dashboard-tile__status tm-skeleton')).toBeNull();
+    expect(statuses(fixture)).toEqual([['ar', 'error']]);
+  });
+
+  it('marks held numbers stale after a failed run over them, through the next run, until its result', async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    const [tile] = tiles(fixture);
+    const at = new Date().toISOString();
+    reporting!.report({ status: 'ready', executedAt: at });
+    reporting!.report({ status: 'error', error: null });
+    await tmSettle();
+
+    const stale = tile!.querySelector('.tm-dashboard-tile__stale');
+    expect(stale?.getAttribute('aria-label')).toMatch(/^Couldn't refresh\. Showing data from \d/);
+    expect(tile!.querySelector('.tm-dashboard-tile__status time')?.getAttribute('datetime')).toBe(at);
+
+    // The next run's start keeps the marker: only its success clears it.
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__stale')).not.toBeNull();
+
+    reporting!.report({ status: 'ready', executedAt: at });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__stale')).toBeNull();
+  });
+
+  it('notes omitted totals after the time, and describes the section by the full description', async () => {
+    const fixture = await render([
+      { key: 'ar', type: 'acme.reporting', descriptionKey: 'Acme_Overdue', x: 0, y: 0, w: 6, h: 6 },
+    ]);
+    reporting!.report({ status: 'ready', executedAt: new Date().toISOString(), totalsOmitted: true });
+    await tmSettle();
+    const [tile] = tiles(fixture);
+
+    expect(statusLine(tile!)).toMatch(/^Invoices past their due date, by customer · Updated .+ · Totals not shown$/);
+    const section = tile!.querySelector('section')!;
+    expect(document.getElementById(section.getAttribute('aria-describedby')!)?.textContent).toBe(
+      'Invoices past their due date, by customer',
+    );
+  });
+
+  it('shows no status line for a type that declares none', async () => {
+    const fixture = await render([{ key: 'cash', type: 'acme.cash-position', x: 0, y: 0, w: 6, h: 6 }]);
+
+    expect(tiles(fixture)[0]!.querySelector('.tm-dashboard-tile__status')).toBeNull();
+  });
+
+  it("offers Refresh in the tile's options menu, which ticks its body clearing what it shows; none when presented or denied", async () => {
+    const fixture = await render(
+      [
+        { key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 },
+        { key: 'locked', type: 'acme.approvals', x: 6, y: 0, w: 6, h: 6 },
+      ],
+      'show',
+    );
+    const [tile, locked] = tiles(fixture);
+    const options = tile!.querySelector<HTMLButtonElement>('.tm-dashboard-tile__options')!;
+    expect(options.getAttribute('aria-label')).toBe('Widget options for Receivables');
+    expect(options.parentElement?.classList.contains('tm-card__actions')).toBe(true);
+    expect(locked!.querySelector('.tm-dashboard-tile__options')).toBeNull();
+
+    options.click();
+    await tmSettle();
+    const refresh = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent?.trim() === 'Refresh',
+    );
+    expect(refresh).toBeDefined();
+    refresh!.click();
+    await tmSettle();
+    expect(tile!.querySelector('.reporting')?.textContent).toMatch(/ 1$/);
+    expect(reporting!.tick()).toEqual({ generation: 1, clear: true, background: false });
+
+    fixture.componentInstance.presenting.set(true);
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__options')).toBeNull();
+  });
+
+  it("ticks every tile's body on refreshAll, each clearing what it shows first", async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    const [tile] = tiles(fixture);
+    reporting!.report({ status: 'ready', executedAt: new Date().toISOString() });
+    await tmSettle();
+
+    gridOf(fixture).refreshAll();
+    await tmSettle();
+    expect(reporting!.tick()).toEqual({ generation: 1, clear: true, background: false });
+    // A cleared refresh drops the held time, and the line waits again.
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__status time')).toBeNull();
+    expect(tile!.querySelector('.tm-dashboard-tile__status .tm-skeleton__bar')).not.toBeNull();
+  });
+
+  it("keeps the time over a later run that no refresh forced, after a refresh's result", async () => {
+    const fixture = await render([{ key: 'ar', type: 'acme.reporting', x: 0, y: 0, w: 6, h: 6 }]);
+    const [tile] = tiles(fixture);
+    reporting!.report({ status: 'ready', executedAt: '2026-01-15T09:00:00Z' });
+    gridOf(fixture).refreshAll();
+    await tmSettle();
+    reporting!.report({ status: 'loading' });
+    const at = new Date().toISOString();
+    reporting!.report({ status: 'ready', executedAt: at });
+    await tmSettle();
+
+    // A change of the dashboard's arguments reloads the body in the same generation: the time holds.
+    fixture.componentInstance.parameters.set({ center: 5 });
+    await tmSettle();
+    expect(reporting!.tick().clear).toBe(true);
+    reporting!.report({ status: 'loading' });
+    await tmSettle();
+    expect(tile!.querySelector('.tm-dashboard-tile__status time')?.getAttribute('datetime')).toBe(at);
+    expect(tile!.querySelector('.tm-dashboard-tile__status .tm-skeleton__bar')).toBeNull();
+    expect(tile!.querySelector('section')?.hasAttribute('aria-busy')).toBe(false);
+  });
+
+  it("hides a list's View all when presented, and on a denied list tile", async () => {
+    const route = tmAssignmentsTestRoute();
+    const fixture = await render(
+      [
+        { key: 'to-me', type: 'core.assignments-to-me', x: 0, y: 0, w: 6, h: 9 },
+        { key: 'by-me', type: 'core.assignments-by-me', x: 6, y: 0, w: 6, h: 9 },
+      ],
+      'show',
+      undefined,
+      undefined,
+      { metadata: route.metadata, features: [route.feature, tmGatedCoreWidget('core.assignments-by-me')], at: '/17' },
+    );
+    const [toMe, locked] = tiles(fixture);
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')?.getAttribute('href')).toBe('/17/assignments');
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')?.parentElement?.classList.contains('tm-card__actions')).toBe(true);
+    expect(state(locked!)).toBe("You don't have permission for this");
+    expect(locked!.querySelector('.tm-dashboard-tile__view-all')).toBeNull();
+
+    fixture.componentInstance.presenting.set(true);
+    await tmSettle();
+    expect(toMe!.querySelector('.tm-dashboard-tile__view-all')).toBeNull();
   });
 });

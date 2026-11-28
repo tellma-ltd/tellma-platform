@@ -27,6 +27,23 @@ export const TM_HOME_STRINGS_EN = {
 export const TM_DASHBOARD_STRINGS_EN = {
   unavailable: "This widget isn't available.",
   loadFailed: "This widget couldn't be loaded.",
+  options: 'Widget options for {title}',
+  refresh: 'Refresh',
+  viewAll: 'View all',
+  viewAllOf: 'View all: {title}',
+  updated: 'Updated {time}',
+  stale: "Couldn't refresh. Showing data from {time}.",
+  totalsOmitted: 'Totals not shown',
+  totalsOmittedHint: 'The totals row is left out because not every row fits on the first page.',
+  assignmentsOffline: "You're offline. Your assignments show when you reconnect.",
+  toMe: {
+    title: 'My assignments',
+    empty: 'Nothing is waiting on you',
+  },
+  byMe: {
+    title: 'Assigned by me',
+    empty: 'Nothing you assigned is still open',
+  },
   recents: {
     title: 'Recently visited',
     empty: 'Pages you visit show up here',

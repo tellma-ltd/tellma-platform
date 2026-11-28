@@ -5,18 +5,21 @@
 
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { TmLocalization, TmUrls, ɵtmRecentPageIcon, type TmPageKind } from '@tellma/core';
+import { TmLocalization, TmTelemetry, TmUrls, ɵtmRecentPageIcon, type TmPageKind } from '@tellma/core';
 import { TmRecents } from '@tellma/core/recents';
 import { TmEmptyState } from '@tellma/core-ui/empty-state';
 import { TmIcon } from '@tellma/core-ui/icon';
 
 import { tmPrepareDashboards } from './tm-dashboard-setup';
+import { TM_HOME_SURFACE } from './tm-dashboard-tile';
+import { tmHomePosition } from './tm-home-telemetry';
 
 // The body of `core.recents` (spec 0035 §9.2): the pages the user last
 // visited, newest first and at most ten, as one list of links. A row draws
 // its launcher entry's icon, else its family's; it opens its page, and
 // hovering or focusing it preloads that page's chunks. The list follows the
 // recent pages across tabs, so a visit elsewhere changes only this list.
+// On the home page, opening a row is reported with its place in the list.
 
 /** The recently visited pages, as a dashboard tile's body. */
 @Component({
@@ -28,13 +31,14 @@ import { tmPrepareDashboards } from './tm-dashboard-setup';
       @if (pages.length > 0) {
         <!-- One link per page, each row a fixed height so ten fill the tile. -->
         <ul class="tm-recents-widget">
-          @for (page of pages; track page.url) {
+          @for (page of pages; track page.url; let index = $index) {
             <li>
               <a
                 class="tm-dashboard-list-row tm-recents-widget__link"
                 [routerLink]="page.url"
                 (pointerenter)="preload(page.url)"
                 (focus)="preload(page.url)"
+                (click)="opened(index)"
               >
                 <tm-icon class="tm-recents-widget__icon" [name]="page.icon ?? iconOf(page.kind)" size="sm" />
                 <span class="tm-recents-widget__title">{{ page.title() }}</span>
@@ -84,6 +88,8 @@ import { tmPrepareDashboards } from './tm-dashboard-setup';
 })
 export class ɵTmRecentsWidget {
   readonly #urls = inject(TmUrls);
+  readonly #telemetry = inject(TmTelemetry);
+  readonly #home = inject(TM_HOME_SURFACE);
 
   /** The recent pages, newest first. */
   protected readonly recents = inject(TmRecents);
@@ -106,5 +112,16 @@ export class ɵTmRecentsWidget {
    */
   protected preload(url: string): void {
     this.#urls.preload(url);
+  }
+
+  /**
+   * Reports a page the user opened from the list, on the home page.
+   *
+   * @param index - The row's index in the list.
+   */
+  protected opened(index: number): void {
+    if (this.#home) {
+      this.#telemetry.event('tm.home.item-opened', { list: 'recents', position: tmHomePosition(index + 1) });
+    }
   }
 }

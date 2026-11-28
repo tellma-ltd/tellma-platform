@@ -35,6 +35,7 @@ import {
 import { TmL10n } from '@tellma/core-ui';
 import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import { TmRelativeTime } from '@tellma/core-ui/relative-time';
+import { TmSkeleton } from '@tellma/core-ui/skeleton';
 import FileText from 'lucide/dist/esm/icons/file-text.mjs';
 import Send from 'lucide/dist/esm/icons/send.mjs';
 
@@ -54,7 +55,11 @@ import { TmRovingRows } from './tm-roving-rows';
 // order. Rows to the user that arrived after the `seenAt` the list was given,
 // and that the user did not assign themselves, are marked "New". The list
 // is one tab stop with roving rows; it fills its container and scrolls
-// inside. The row's box is the attention rows' shared anatomy.
+// inside. The row's box is the attention rows' shared anatomy, which the
+// home variant lays on one line of the dashboard's list-row height (spec
+// 0035 §15.3), so ten rows fill a tile; its loading rows are the dashboard
+// frames' bars, which the home skeleton and a loading tile draw too.
+// Hovering or focusing a row preloads its target's page.
 
 /** Which rows a list shows: those assigned to the user, or by the user. */
 export type TmAssignmentParty = 'to-me' | 'by-me';
@@ -138,7 +143,7 @@ const MINUTE_MS = 60_000;
  */
 @Component({
   selector: 'tm-assignment-list',
-  imports: [TmDisplayName, TmIcon, TmRelativeTime, ɵTmAttentionRowStyles, ɵTmAttentionSkeletonRows, TmRovingRows],
+  imports: [TmDisplayName, TmIcon, TmRelativeTime, TmSkeleton, ɵTmAttentionRowStyles, ɵTmAttentionSkeletonRows, TmRovingRows],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'tm-assignment-list',
@@ -146,7 +151,13 @@ const MINUTE_MS = 60_000;
   },
   template: `
     <tm-attention-row-styles />
-    @if (loading()) {
+    @if (loading() && variant() === 'home') {
+      <!-- The home lists loading: five bars in the dashboard's list rows, read as one busy text inside the tile's own region. -->
+      <div class="tm-assignment-list__loading" aria-busy="true">
+        <span class="tm-assignment-list__loading-text">{{ text('loading') }}</span>
+        <tm-skeleton class="tm-dashboard-frame__rows" shape="line" [lines]="5" />
+      </div>
+    } @else if (loading()) {
       <!-- Loading: three rows of the final geometry, read as one busy list. -->
       <tm-attention-skeleton-rows [label]="text('loading')" />
     } @else {
@@ -161,6 +172,8 @@ const MINUTE_MS = 60_000;
               [attr.aria-disabled]="view.href === null ? 'true' : null"
               [attr.aria-label]="rowLabel(view)"
               (click)="follow($event, view, index)"
+              (pointerenter)="preload(view)"
+              (focus)="preload(view)"
             >
               <tm-icon class="tm-attention-row__icon" [name]="view.iconName ?? undefined" [svg]="view.iconName === null ? view.iconSvg : undefined" />
               <span class="tm-attention-row__main">
@@ -210,6 +223,18 @@ const MINUTE_MS = 60_000;
       color: var(--text-muted);
     }
 
+    /* The loading text, read but not drawn: the bars draw the state. */
+    .tm-assignment-list__loading-text {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
     .tm-assignment-list__amount {
       color: var(--text-body);
       font-variant-numeric: tabular-nums;
@@ -222,6 +247,42 @@ const MINUTE_MS = 60_000;
       gap: var(--space-1);
       color: var(--text-link);
       font-weight: var(--weight-semibold);
+    }
+
+    /* The home rows: one line of the dashboard's list-row height, the code, the second line and the end side by side. */
+    :host(.tm-assignment-list--home) .tm-attention-row {
+      align-items: center;
+      block-size: var(--tm-dashboard-list-row, 31px);
+      min-block-size: 0;
+      padding-block: 0;
+      padding-inline: var(--card-header-padding-x);
+      border-radius: 0;
+    }
+
+    :host(.tm-assignment-list--home) .tm-attention-row__icon {
+      margin-block-start: 0;
+    }
+
+    :host(.tm-assignment-list--home) .tm-attention-row__main {
+      flex-direction: row;
+      align-items: baseline;
+      gap: var(--space-2);
+    }
+
+    :host(.tm-assignment-list--home) .tm-attention-row__title {
+      flex: 0 1 auto;
+      max-inline-size: 50%;
+    }
+
+    :host(.tm-assignment-list--home) .tm-attention-row__line {
+      flex: 1 1 0;
+      min-inline-size: 0;
+    }
+
+    :host(.tm-assignment-list--home) .tm-attention-row__end {
+      flex-direction: row;
+      align-items: center;
+      gap: var(--space-2);
     }
 
     .tm-assignment-list__new::before {
@@ -362,6 +423,17 @@ export class TmAssignmentList {
       this.fresh(view) ? this.text('new') : null,
     ];
     return parts.filter((part) => part !== null && part !== '').join(this.#l10n.ɵtext('tm.attentionRows.separator')());
+  }
+
+  /**
+   * Preloads a row's target page at idle, before the user opens it.
+   *
+   * @param view - The row.
+   */
+  protected preload(view: RowView): void {
+    if (view.url !== null) {
+      this.#urls.preload(view.url);
+    }
   }
 
   /**

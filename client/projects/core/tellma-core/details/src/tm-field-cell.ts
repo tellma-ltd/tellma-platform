@@ -33,6 +33,8 @@ export interface ɵTmFieldCell {
   readonly multiline: boolean;
   /** Whether the cell takes two grid columns. */
   readonly wide: boolean;
+  /** Whether the cell shows an image, whose box takes the thumbnail's height in both modes. */
+  readonly image: boolean;
 }
 
 /** What a cell's editor renders with, beside the cell. */

@@ -8,8 +8,8 @@
     "migrator": "../migrator",
     "budgets": {
       "initialJs": {
-        "warn": 236.5,
-        "note": "The warn line is the fixture's measure rounded up to the next 0.5 KB, as a distribution sets its own: 236.14 KB on a clean build with the bell and the tray and the pinned bar."
+        "warn": 238,
+        "note": "The warn line is the fixture's measure rounded up to the next 0.5 KB, as a distribution sets its own: 236.14 KB on a clean build with the bell and the tray and the pinned bar, then 237.65 KB once the home route's chunk imports the attention entry point, which the build then splits from the shell's into a modulepreloaded file of its own, then 237.66 KB once the primary also exports the route error view and its views for the Notifications section of My settings, whose shell renders them inline when its body chunk fails to load."
       }
     }
   }

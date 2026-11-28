@@ -32,6 +32,41 @@ import { WritableSignal } from '@angular/core';
 export function injectTmDetails<T = TmJsonObject>(): TmDetailsContext<T>;
 
 // @public
+export class TmChildFiles {
+    constructor();
+    readonly caption: InputSignal<string | undefined>;
+    readonly collection: InputSignal<string>;
+    protected readonly defer: ɵTmDeferTriggers;
+    protected readonly failedText: i0.Signal<string>;
+    readonly file: InputSignal<string>;
+    protected readonly loading: i0.Signal<boolean>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmChildFiles, "tm-child-files", never, { "collection": { "alias": "collection"; "required": true; "isSignal": true; }; "file": { "alias": "file"; "required": true; "isSignal": true; }; "caption": { "alias": "caption"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmChildFiles, never>;
+}
+
+// @public
+export class TmChildGrid {
+    constructor();
+    protected readonly child: Signal<TmChildDescriptor | undefined>;
+    readonly collection: InputSignal<string>;
+    readonly columns: InputSignal<readonly TmColumnInput<string>[]>;
+    readonly defaults: InputSignal<(() => TmJsonObject) | undefined>;
+    protected readonly defer: ɵTmDeferTriggers;
+    protected readonly editable: Signal<boolean>;
+    protected readonly failedText: Signal<string>;
+    protected readonly loading: Signal<boolean>;
+    readonly maxRows: InputSignalWithTransform<number, unknown>;
+    readonly readonly: InputSignalWithTransform<boolean, unknown>;
+    protected readonly rows: i0.WritableSignal<number>;
+    protected readonly size: Signal<_tellma_core_ui.TmControlSize>;
+    readonly totals: InputSignal<readonly string[]>;
+    protected readonly totalsText: Signal<string>;
+    protected readonly totalViews: Signal<readonly TmChildGridTotalView[]>;
+    static ɵcmp: i0.ɵɵComponentDeclaration<TmChildGrid, "tm-child-grid", never, { "collection": { "alias": "collection"; "required": true; "isSignal": true; }; "columns": { "alias": "columns"; "required": true; "isSignal": true; }; "totals": { "alias": "totals"; "required": false; "isSignal": true; }; "defaults": { "alias": "defaults"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "maxRows": { "alias": "maxRows"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmChildGrid, never>;
+}
+
+// @public
 export interface TmDetailsAbilities {
     readonly activate: Signal<boolean>;
     readonly create: Signal<boolean>;
@@ -166,7 +201,7 @@ export class TmDetailsHost {
 }
 
 // @public
-export const TmDetailsKit: readonly [typeof TmDetailsCard, typeof TmDetailsCardSection, typeof TmField, typeof TmFieldEdit, typeof TmFieldView, typeof TmFieldGroup, typeof TmDetailsTabs, typeof TmDetailsTab, typeof TmDetailsTabContent, typeof TmDetailsAside, typeof TmDetailsAudit, typeof TmDetailsExtra, typeof TmDetailsTitleExtra];
+export const TmDetailsKit: readonly [typeof TmDetailsCard, typeof TmDetailsCardSection, typeof TmField, typeof TmFieldEdit, typeof TmFieldView, typeof TmFieldGroup, typeof TmChildGrid, typeof TmChildFiles, typeof TmDetailsTabs, typeof TmDetailsTab, typeof TmDetailsTabContent, typeof TmDetailsAside, typeof TmDetailsAudit, typeof TmDetailsExtra, typeof TmDetailsTitleExtra];
 
 // @public
 export type TmDetailsMode = 'create' | 'edit' | 'view';

@@ -126,6 +126,21 @@
   <data name="Parent" xml:space="preserve">
     <value>Parent</value>
   </data>
+  <data name="Id" xml:space="preserve">
+    <value>ID</value>
+  </data>
+  <data name="CreatedById" xml:space="preserve">
+    <value>Created by</value>
+  </data>
+  <data name="ModifiedById" xml:space="preserve">
+    <value>Modified by</value>
+  </data>
+  <data name="SubtreeCount" xml:space="preserve">
+    <value>Branch size</value>
+  </data>
+  <data name="ActiveSubtreeCount" xml:space="preserve">
+    <value>Active branch size</value>
+  </data>
   <!-- Actions: the labels of the access actions, and the fallback label of every entity action of these names -->
   <data name="Action_Read" xml:space="preserve">
     <value>Read</value>
@@ -240,6 +255,115 @@
   <data name="Entity_DisplayNameFallback" xml:space="preserve">
     <value>#{id}</value>
   </data>
+  <!-- Files, the typed settings, the setting values and the users' activity stamps -->
+  <data name="Core_Blob" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Core_Blob_Plural" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="Core_Blob_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Blob_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_Blob_ContentType" xml:space="preserve">
+    <value>Content type</value>
+  </data>
+  <data name="Core_Blob_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_Blob_Size" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Core_Blob_Width" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Core_Blob_Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Core_Blob_Variants" xml:space="preserve">
+    <value>Variants</value>
+  </data>
+  <data name="Core_Blob_CommittedAt" xml:space="preserve">
+    <value>Attached at</value>
+  </data>
+  <data name="Core_Blob_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_BlobState_Staged" xml:space="preserve">
+    <value>Uploaded</value>
+  </data>
+  <data name="Core_BlobState_Committed" xml:space="preserve">
+    <value>Attached</value>
+  </data>
+  <data name="Core_BlobState_Released" xml:space="preserve">
+    <value>Released</value>
+  </data>
+  <data name="Core_BlobState_Deleting" xml:space="preserve">
+    <value>Being deleted</value>
+  </data>
+  <data name="Core_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Core_Settings_TenantId" xml:space="preserve">
+    <value>Tenant ID</value>
+  </data>
+  <data name="Core_Settings_PrimaryLanguage" xml:space="preserve">
+    <value>Primary language</value>
+  </data>
+  <data name="Core_Settings_SecondaryLanguage" xml:space="preserve">
+    <value>Secondary language</value>
+  </data>
+  <data name="Core_Settings_TertiaryLanguage" xml:space="preserve">
+    <value>Tertiary language</value>
+  </data>
+  <data name="Core_Settings_PrimaryCalendar" xml:space="preserve">
+    <value>Primary calendar</value>
+  </data>
+  <data name="Core_Settings_SecondaryCalendar" xml:space="preserve">
+    <value>Secondary calendar</value>
+  </data>
+  <data name="Core_Settings_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_Settings_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_Settings_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_SettingEntry" xml:space="preserve">
+    <value>Setting value</value>
+  </data>
+  <data name="Core_SettingEntry_Plural" xml:space="preserve">
+    <value>Setting values</value>
+  </data>
+  <data name="Core_SettingEntry_Key" xml:space="preserve">
+    <value>Setting</value>
+  </data>
+  <data name="Core_SettingEntry_Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Core_UserStamp" xml:space="preserve">
+    <value>User activity</value>
+  </data>
+  <data name="Core_UserStamp_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_UserStamp_LastActiveAt" xml:space="preserve">
+    <value>Last active at</value>
+  </data>
+  <data name="Core_UserStamp_InboxSeenAt" xml:space="preserve">
+    <value>Inbox seen at</value>
+  </data>
+  <data name="Core_UserStamp_InboxVersion" xml:space="preserve">
+    <value>Inbox version</value>
+  </data>
+  <data name="Core_UserStamp_AssignmentsSeenAt" xml:space="preserve">
+    <value>Assignments seen at</value>
+  </data>
   <!-- Settings and access -->
   <data name="SettingCategory_general" xml:space="preserve">
     <value>General</value>
@@ -250,8 +374,125 @@
   <data name="Access_Reason_share" xml:space="preserve">
     <value>Records shared with them</value>
   </data>
+  <data name="Core_User" xml:space="preserve">
+    <value>User</value>
+  </data>
   <data name="Core_User_Plural" xml:space="preserve">
     <value>Users</value>
+  </data>
+  <data name="Core_User_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_User_Subject" xml:space="preserve">
+    <value>Sign-in ID</value>
+  </data>
+  <data name="Core_User_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Core_User_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_User_InvitedAt" xml:space="preserve">
+    <value>Invited at</value>
+  </data>
+  <data name="Core_User_InviteStatus" xml:space="preserve">
+    <value>Invitation status</value>
+  </data>
+  <data name="Core_User_LastInviteError" xml:space="preserve">
+    <value>Last invitation error</value>
+  </data>
+  <data name="Core_User_JoinedAt" xml:space="preserve">
+    <value>Joined at</value>
+  </data>
+  <data name="Core_User_ImageId" xml:space="preserve">
+    <value>Picture</value>
+  </data>
+  <data name="Core_User_SignatureId" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="Core_User_PreferredLanguage" xml:space="preserve">
+    <value>Preferred language</value>
+  </data>
+  <data name="Core_User_PreferredCalendar" xml:space="preserve">
+    <value>Preferred calendar</value>
+  </data>
+  <data name="Core_User_PreferredTimeZone" xml:space="preserve">
+    <value>Preferred time zone</value>
+  </data>
+  <data name="Core_User_PreferredRegion" xml:space="preserve">
+    <value>Preferred region</value>
+  </data>
+  <data name="Core_User_PreferredDigits" xml:space="preserve">
+    <value>Preferred digits</value>
+  </data>
+  <data name="Core_User_Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Core_User_ContactEmail" xml:space="preserve">
+    <value>Contact email</value>
+  </data>
+  <data name="Core_User_ContactMobile" xml:space="preserve">
+    <value>Mobile</value>
+  </data>
+  <data name="Core_UserKind_Individual" xml:space="preserve">
+    <value>Individual</value>
+  </data>
+  <data name="Core_UserKind_Service" xml:space="preserve">
+    <value>Service account</value>
+  </data>
+  <data name="Core_UserKind_System" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="Core_UserState_New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="Core_UserState_Invited" xml:space="preserve">
+    <value>Invited</value>
+  </data>
+  <data name="Core_UserState_Joined" xml:space="preserve">
+    <value>Joined</value>
+  </data>
+  <data name="Core_InviteStatus_Invited" xml:space="preserve">
+    <value>Invited</value>
+  </data>
+  <data name="Core_InviteStatus_Reinvited" xml:space="preserve">
+    <value>Invited again</value>
+  </data>
+  <data name="Core_InviteStatus_Active" xml:space="preserve">
+    <value>Already has an account</value>
+  </data>
+  <data name="Core_Gender_Female" xml:space="preserve">
+    <value>Female</value>
+  </data>
+  <data name="Core_Gender_Male" xml:space="preserve">
+    <value>Male</value>
+  </data>
+  <data name="Core_DigitStyle_Latin" xml:space="preserve">
+    <value>Latin</value>
+  </data>
+  <data name="Core_DigitStyle_Native" xml:space="preserve">
+    <value>Native</value>
+  </data>
+  <data name="Core_MeLocaleMember_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Core_MeLocaleMember_Calendar" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="Core_MeLocaleMember_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_MeLocaleMember_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_MeLocaleMember_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Check" xml:space="preserve">
+    <value>Check for changes</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Override" xml:space="preserve">
+    <value>Overwrite changes</value>
   </data>
   <data name="Core_User_Action_Invite" xml:space="preserve">
     <value>Invite</value>
@@ -270,6 +511,15 @@
   </data>
   <data name="Core_User_Action_MeSave" xml:space="preserve">
     <value>Save my profile</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name2" xml:space="preserve">
+    <value>Name in the second language</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name3" xml:space="preserve">
+    <value>Name in the third language</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Concurrency" xml:space="preserve">
+    <value>Changes made meanwhile</value>
   </data>
   <data name="Core_User_Action_MeLocale" xml:space="preserve">
     <value>Change my language and region</value>
@@ -322,17 +572,176 @@
   <data name="Core_User_Action_PreferencesDelete_Keys" xml:space="preserve">
     <value>Preference names</value>
   </data>
+  <data name="Core_User_Action_MeTestNotification" xml:space="preserve">
+    <value>Send me a test notification</value>
+  </data>
+  <data name="Core_User_Action_MeTestNotification_Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet" xml:space="preserve">
+    <value>View notification settings</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave" xml:space="preserve">
+    <value>Change notification settings</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave_Preferences" xml:space="preserve">
+    <value>Notification settings</value>
+  </data>
+  <data name="Core_Role" xml:space="preserve">
+    <value>Role</value>
+  </data>
   <data name="Core_Role_Plural" xml:space="preserve">
     <value>Roles</value>
+  </data>
+  <data name="Core_Role_IsPublic" xml:space="preserve">
+    <value>Public</value>
+  </data>
+  <data name="Core_RoleMembership" xml:space="preserve">
+    <value>Role membership</value>
   </data>
   <data name="Core_RoleMembership_Plural" xml:space="preserve">
     <value>Role memberships</value>
   </data>
+  <data name="Core_RoleMembership_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_RoleMembership_RoleId" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="Core_RoleMembership_StartsAt" xml:space="preserve">
+    <value>Starts at</value>
+  </data>
+  <data name="Core_RoleMembership_EndsAt" xml:space="preserve">
+    <value>Ends at</value>
+  </data>
+  <data name="Core_RoleMembership_Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Core_Permission" xml:space="preserve">
+    <value>Permission</value>
+  </data>
   <data name="Core_Permission_Plural" xml:space="preserve">
     <value>Permissions</value>
   </data>
+  <data name="Core_Permission_RoleId" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="Core_Permission_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Permission_Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Core_Permission_Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Core_Permission_FilterQueryexVersion" xml:space="preserve">
+    <value>Filter version</value>
+  </data>
+  <data name="Core_Permission_Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Core_Job" xml:space="preserve">
+    <value>Job</value>
+  </data>
   <data name="Core_Job_Plural" xml:space="preserve">
     <value>Jobs</value>
+  </data>
+  <data name="Core_Job_HandlerKey" xml:space="preserve">
+    <value>Job type</value>
+  </data>
+  <data name="Core_Job_LabelKey" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="Core_Job_LabelArgumentsJson" xml:space="preserve">
+    <value>Label arguments</value>
+  </data>
+  <data name="Core_Job_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Core_Job_DueAt" xml:space="preserve">
+    <value>Due at</value>
+  </data>
+  <data name="Core_Job_Attempts" xml:space="preserve">
+    <value>Attempts</value>
+  </data>
+  <data name="Core_Job_LeaseExpiresAt" xml:space="preserve">
+    <value>Lease expires at</value>
+  </data>
+  <data name="Core_Job_LeaseOwner" xml:space="preserve">
+    <value>Running on</value>
+  </data>
+  <data name="Core_Job_StartedAt" xml:space="preserve">
+    <value>Started at</value>
+  </data>
+  <data name="Core_Job_CompletedAt" xml:space="preserve">
+    <value>Completed at</value>
+  </data>
+  <data name="Core_Job_CancelRequestedAt" xml:space="preserve">
+    <value>Stop requested at</value>
+  </data>
+  <data name="Core_Job_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Job_ProgressPercent" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="Core_Job_ProgressKey" xml:space="preserve">
+    <value>Progress message</value>
+  </data>
+  <data name="Core_Job_ProgressArgumentsJson" xml:space="preserve">
+    <value>Progress arguments</value>
+  </data>
+  <data name="Core_Job_ErrorCode" xml:space="preserve">
+    <value>Error code</value>
+  </data>
+  <data name="Core_Job_ErrorArgumentsJson" xml:space="preserve">
+    <value>Error arguments</value>
+  </data>
+  <data name="Core_Job_ErrorTraceId" xml:space="preserve">
+    <value>Trace ID</value>
+  </data>
+  <data name="Core_Job_PendingConfirmationsJson" xml:space="preserve">
+    <value>Warnings to confirm</value>
+  </data>
+  <data name="Core_Job_TraceParent" xml:space="preserve">
+    <value>Trace context</value>
+  </data>
+  <data name="Core_Job_RunAsUserId" xml:space="preserve">
+    <value>Runs as</value>
+  </data>
+  <data name="Core_Job_RequestedById" xml:space="preserve">
+    <value>Requested by</value>
+  </data>
+  <data name="Core_Job_ScheduleId" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
+  <data name="Core_Job_ScheduledFor" xml:space="preserve">
+    <value>Scheduled for</value>
+  </data>
+  <data name="Core_JobStatus_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
+  <data name="Core_JobStatus_Running" xml:space="preserve">
+    <value>Running</value>
+  </data>
+  <data name="Core_JobStatus_PendingConfirmation" xml:space="preserve">
+    <value>Waiting for confirmation</value>
+  </data>
+  <data name="Core_JobStatus_Held" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="Core_JobStatus_Succeeded" xml:space="preserve">
+    <value>Succeeded</value>
+  </data>
+  <data name="Core_JobStatus_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_JobStatus_Cancelled" xml:space="preserve">
+    <value>Cancelled</value>
   </data>
   <data name="Core_Job_Action_Confirm" xml:space="preserve">
     <value>Confirm and continue</value>
@@ -340,8 +749,62 @@
   <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
     <value>Warnings confirmed</value>
   </data>
+  <data name="Core_Schedule" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
   <data name="Core_Schedule_Plural" xml:space="preserve">
     <value>Schedules</value>
+  </data>
+  <data name="Core_Schedule_HandlerKey" xml:space="preserve">
+    <value>Job type</value>
+  </data>
+  <data name="Core_Schedule_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Schedule_CronExpression" xml:space="preserve">
+    <value>Cron expression</value>
+  </data>
+  <data name="Core_Schedule_TimeZoneId" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_Schedule_MissedPolicy" xml:space="preserve">
+    <value>Missed runs</value>
+  </data>
+  <data name="Core_Schedule_OverlapPolicy" xml:space="preserve">
+    <value>Overlapping runs</value>
+  </data>
+  <data name="Core_Schedule_CatchUpWindowMinutes" xml:space="preserve">
+    <value>Catch-up window (minutes)</value>
+  </data>
+  <data name="Core_Schedule_RunAsUserId" xml:space="preserve">
+    <value>Runs as</value>
+  </data>
+  <data name="Core_Schedule_PausedReason" xml:space="preserve">
+    <value>Paused because</value>
+  </data>
+  <data name="Core_MissedPolicy_Coalesce" xml:space="preserve">
+    <value>Run once</value>
+  </data>
+  <data name="Core_MissedPolicy_ReplayAll" xml:space="preserve">
+    <value>Run each missed time</value>
+  </data>
+  <data name="Core_MissedPolicy_Skip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Core_OverlapPolicy_Allow" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="Core_OverlapPolicy_Skip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Core_SchedulePausedReason_OwnerInactive" xml:space="preserve">
+    <value>Its user is inactive</value>
+  </data>
+  <data name="Core_SchedulePausedReason_Exhausted" xml:space="preserve">
+    <value>No more runs</value>
+  </data>
+  <data name="Core_SchedulePausedReason_HandlerRetired" xml:space="preserve">
+    <value>Job type no longer offered</value>
   </data>
   <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
     <value>Take over</value>
@@ -349,8 +812,50 @@
   <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
     <value>Run now</value>
   </data>
+  <data name="Core_Notification" xml:space="preserve">
+    <value>Notification</value>
+  </data>
   <data name="Core_Notification_Plural" xml:space="preserve">
     <value>Notifications</value>
+  </data>
+  <data name="Core_Notification_UserId" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="Core_Notification_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Core_Notification_Severity" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="Core_Notification_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Notification_TargetResource" xml:space="preserve">
+    <value>Target resource</value>
+  </data>
+  <data name="Core_Notification_TargetId" xml:space="preserve">
+    <value>Target ID</value>
+  </data>
+  <data name="Core_Notification_ActorUserId" xml:space="preserve">
+    <value>Caused by</value>
+  </data>
+  <data name="Core_Notification_DedupKey" xml:space="preserve">
+    <value>Grouping key</value>
+  </data>
+  <data name="Core_Notification_ReadAt" xml:space="preserve">
+    <value>Read at</value>
+  </data>
+  <data name="Core_NotificationSeverity_Info" xml:space="preserve">
+    <value>Information</value>
+  </data>
+  <data name="Core_NotificationSeverity_Success" xml:space="preserve">
+    <value>Success</value>
+  </data>
+  <data name="Core_NotificationSeverity_Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="Core_NotificationSeverity_Error" xml:space="preserve">
+    <value>Error</value>
   </data>
   <data name="Securable_core_UserStamp" xml:space="preserve">
     <value>User activity</value>
@@ -787,7 +1292,7 @@
     <value>The hierarchy is too deep.</value>
   </data>
   <data name="Blob_NotAttachable" xml:space="preserve">
-    <value>This file can’t be attached. Upload it again.</value>
+    <value>{reason, select, expired {This file expired. Choose it again.} missing {This file expired. Choose it again.} other {This file can’t be attached. Upload it again.}}</value>
   </data>
   <data name="Blob_DuplicateReference" xml:space="preserve">
     <value>The same file is attached more than once.</value>
@@ -832,22 +1337,22 @@
     <value>This value can’t contain “{separator}”.</value>
   </data>
   <!-- Reports and dashboards -->
-  <data name="ReportKind_List" xml:space="preserve">
+  <data name="Core_ReportKind_List" xml:space="preserve">
     <value>List</value>
   </data>
-  <data name="ReportKind_Summary" xml:space="preserve">
+  <data name="Core_ReportKind_Summary" xml:space="preserve">
     <value>Summary</value>
   </data>
-  <data name="ReportKind_Pivot" xml:space="preserve">
+  <data name="Core_ReportKind_Pivot" xml:space="preserve">
     <value>Pivot</value>
   </data>
-  <data name="ReportKind_Chart" xml:space="preserve">
+  <data name="Core_ReportKind_Chart" xml:space="preserve">
     <value>Chart</value>
   </data>
-  <data name="ShareAccess_View" xml:space="preserve">
+  <data name="Core_ShareAccess_View" xml:space="preserve">
     <value>View</value>
   </data>
-  <data name="ShareAccess_Edit" xml:space="preserve">
+  <data name="Core_ShareAccess_Edit" xml:space="preserve">
     <value>Edit</value>
   </data>
   <data name="Notification_core_report_shared" xml:space="preserve">
@@ -868,8 +1373,50 @@
   <data name="Core_Report_DefaultTitle" xml:space="preserve">
     <value>{entity} – {kind, select, List {list} Summary {summary} Pivot {pivot} other {chart}}</value>
   </data>
+  <data name="Core_Report" xml:space="preserve">
+    <value>Report</value>
+  </data>
   <data name="Core_Report_Plural" xml:space="preserve">
     <value>Reports</value>
+  </data>
+  <data name="Core_Report_Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Core_Report_Root" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Core_Report_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Report_DefinitionJson" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Core_Report_QueryexVersion" xml:space="preserve">
+    <value>Query language version</value>
+  </data>
+  <data name="Core_Report_OwnerId" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="Core_Report_BasedOnId" xml:space="preserve">
+    <value>Based on</value>
+  </data>
+  <data name="Core_Report_Action_Share_Set" xml:space="preserve">
+    <value>People to add or change</value>
+  </data>
+  <data name="Core_Report_Action_Share_Remove" xml:space="preserve">
+    <value>People to remove</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Set" xml:space="preserve">
+    <value>Roles to add or change</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Remove" xml:space="preserve">
+    <value>Roles to remove</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Everyone" xml:space="preserve">
+    <value>Everyone</value>
+  </data>
+  <data name="Core_Report_Action_Transfer_Owner" xml:space="preserve">
+    <value>New owner</value>
   </data>
   <data name="Report_UnknownMember" xml:space="preserve">
     <value>The report’s definition has a member that isn’t recognized or has the wrong shape, at {pointer}.</value>
@@ -1046,11 +1593,149 @@
     <value>A report was shared with you</value>
   </data>
   <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
+  <data name="Core_OutgoingEmail" xml:space="preserve">
+    <value>Outgoing email</value>
+  </data>
   <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
     <value>Outgoing emails</value>
   </data>
+  <data name="Core_OutgoingEmail_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_OutgoingEmail_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_OutgoingEmail_Audience" xml:space="preserve">
+    <value>Audience</value>
+  </data>
+  <data name="Core_OutgoingEmail_From" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Core_OutgoingEmail_ReplyTo" xml:space="preserve">
+    <value>Reply to</value>
+  </data>
+  <data name="Core_OutgoingEmail_To" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="Core_OutgoingEmail_Cc" xml:space="preserve">
+    <value>Cc</value>
+  </data>
+  <data name="Core_OutgoingEmail_Bcc" xml:space="preserve">
+    <value>Bcc</value>
+  </data>
+  <data name="Core_OutgoingEmail_Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Core_OutgoingEmail_TextBody" xml:space="preserve">
+    <value>Text body</value>
+  </data>
+  <data name="Core_OutgoingEmail_HtmlBody" xml:space="preserve">
+    <value>HTML body</value>
+  </data>
+  <data name="Core_OutgoingEmail_RecipientUserId" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingEntity" xml:space="preserve">
+    <value>Regarding</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingId" xml:space="preserve">
+    <value>Regarding record ID</value>
+  </data>
+  <data name="Core_OutgoingEmail_SendAfter" xml:space="preserve">
+    <value>Send after</value>
+  </data>
+  <data name="Core_OutgoingEmail_AttemptCount" xml:space="preserve">
+    <value>Attempts</value>
+  </data>
+  <data name="Core_OutgoingEmail_SentAt" xml:space="preserve">
+    <value>Sent at</value>
+  </data>
+  <data name="Core_OutgoingEmail_ProviderMessageId" xml:space="preserve">
+    <value>Provider message ID</value>
+  </data>
+  <data name="Core_OutgoingEmail_ExpectsDeliveryEvents" xml:space="preserve">
+    <value>Tracks delivery</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorCode" xml:space="preserve">
+    <value>Error code</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorDetail" xml:space="preserve">
+    <value>Error detail</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryStatus" xml:space="preserve">
+    <value>Delivery status</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryAt" xml:space="preserve">
+    <value>Delivery status at</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryRecipient" xml:space="preserve">
+    <value>Delivery recipient</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryReason" xml:space="preserve">
+    <value>Delivery reason</value>
+  </data>
+  <data name="Core_OutgoingEmail_LastProviderEventId" xml:space="preserve">
+    <value>Last provider event ID</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sending" xml:space="preserve">
+    <value>Sending</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sent" xml:space="preserve">
+    <value>Sent</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sandboxed" xml:space="preserve">
+    <value>Kept in the sandbox</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Rejected" xml:space="preserve">
+    <value>Rejected</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Cancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Core_EmailAudience_Internal" xml:space="preserve">
+    <value>Internal</value>
+  </data>
+  <data name="Core_EmailAudience_External" xml:space="preserve">
+    <value>External</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Deferred" xml:space="preserve">
+    <value>Deferred</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Delivered" xml:space="preserve">
+    <value>Delivered</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Bounced" xml:space="preserve">
+    <value>Bounced</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Dropped" xml:space="preserve">
+    <value>Dropped</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_SpamReported" xml:space="preserve">
+    <value>Reported as spam</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment" xml:space="preserve">
+    <value>Email attachment</value>
+  </data>
   <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
     <value>Email attachments</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_OutgoingEmailId" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_ContentId" xml:space="preserve">
+    <value>Content ID</value>
   </data>
   <data name="Email_InvalidMessage" xml:space="preserve">
     <value>This email can’t be sent as written. It needs at least one recipient, well-formed addresses, a subject on one line of at most 500 characters, a text body, and at most 20 attachments.</value>
@@ -1140,11 +1825,77 @@
     <value>The schedule {name} was paused: {reason, select, OwnerInactive {the user it runs as is no longer active} Exhausted {its cron expression never occurs again} other {its kind of job is no longer offered}}. It runs again once it is activated.</value>
   </data>
   <!-- Excel exports and imports: the export and import records' labels, the import records' guard, and the import's codes with their arguments -->
+  <data name="Core_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
   <data name="Core_Export_Plural" xml:space="preserve">
     <value>Exports</value>
   </data>
+  <data name="Core_Export_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_Export_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Export_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Export_RequestJson" xml:space="preserve">
+    <value>Request</value>
+  </data>
+  <data name="Core_Export_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_Export_RowCount" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Core_Export_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_ExportKind_Display" xml:space="preserve">
+    <value>For reading</value>
+  </data>
+  <data name="Core_ExportKind_ForImport" xml:space="preserve">
+    <value>For import</value>
+  </data>
+  <data name="Core_ExportKind_Report" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="Core_Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
   <data name="Core_Import_Plural" xml:space="preserve">
     <value>Imports</value>
+  </data>
+  <data name="Core_Import_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_Import_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Import_RequestJson" xml:space="preserve">
+    <value>Request</value>
+  </data>
+  <data name="Core_Import_ResultJson" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="Core_Import_RowCount" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Core_Import_ErrorCount" xml:space="preserve">
+    <value>Errors</value>
+  </data>
+  <data name="Core_Import_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_ImportMode_Insert" xml:space="preserve">
+    <value>Add new</value>
+  </data>
+  <data name="Core_ImportMode_Update" xml:space="preserve">
+    <value>Update existing</value>
+  </data>
+  <data name="Core_ImportMode_Upsert" xml:space="preserve">
+    <value>Add or update</value>
   </data>
   <data name="Imports_JobActive" xml:space="preserve">
     <value>This import hasn’t finished yet. Wait for it to finish, or cancel its job, before deleting it.</value>

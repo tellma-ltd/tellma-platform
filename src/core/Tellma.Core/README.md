@@ -878,9 +878,10 @@ string Core shows, keyed `PascalCase_Underscored`:
 | Regions | `Region_<code>` for every region of the catalogue, generated (below) |
 | Problems | `Problem_<code>` and `Problem_<code>_Detail`, `-` written `_` |
 | Validation | each pipeline and settings code with `.` written `_` (`Validation_MaxLength`, `Settings_UnknownSetting`) |
-| Labels and actions | `Name`, `Code`, `CreatedAt`, …; `Action_<verb>`, `Entity_New`, `Entity_DisplayNameFallback` |
+| Labels and actions | `Id`, `Name`, `Code`, `CreatedAt`, `CreatedById`, …, the shared labels of every entity's conventional columns; `Action_<verb>`, `Entity_New`, `Entity_DisplayNameFallback` |
+| Core's entities | `Core_<Entity>`, `Core_<Entity>_Plural`, `Core_<Entity>_<Property>` and `Core_<Enum>_<Value>` for each entity and enum Core declares, and `Core_<Entity>_Action_<Name>_<Field>` where an action's field needs a label of its own; a platform build emits no label fallback for them |
 | Startup | `Boot_*`, the browser application's boot page, which its build copies into the boot script |
-| Reports and dashboards | `ReportKind_*`, `ShareAccess_*`, `Core_Report_*`, `Core_Dashboard_*`, their notifications |
+| Reports and dashboards | `Core_Report_*`, `Core_Dashboard_*`, their notifications |
 | Query language | `Queryex_<code>` for every diagnostic code |
 
 `Strings.resx` reaches the browser through the string pack; `Resources/ServerStrings.resx` holds text
@@ -944,13 +945,17 @@ and the twin's humanized name beyond the tenant's shape. The key-resolving twins
 primary's, and null when none is.
 
 `ConventionalStringKeys.Of(services)` lists every key a composed model derives by convention
-(entities and their members, securables and the platform's actions, stacks, settings,
+(entities and their members, the read-only roots the query language reads and their columns,
+securables and the platform's actions, stacks, settings,
 notifications, job handlers, calendars, value sets and the brand). A feature's resource audit takes
 it as the derived keys and fails a key no convention derives and no source literal names
 (`test/shared/Tellma.Testing.Resources`). Each family derives exactly the keys a lookup reads: a
 collection has no bare key (its label falls back to its child entity's), an entity's securable reads
 the entity's own labels, and the shared member labels Core ships (`Name`, `Code`, `Parent`, …) are
-derived whichever entities a composition holds.
+derived whichever entities a composition holds. Those include every column the platform's
+conventions add (`Id`, `CreatedById`, `ModifiedById`, `SubtreeCount`, `ActiveSubtreeCount`), so
+no entity declares a key of its own for them. An audit column's navigation (`CreatedBy`) resolves
+through its foreign key's chain to the same shared label.
 
 ### The client entity model
 

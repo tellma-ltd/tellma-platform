@@ -9,9 +9,10 @@ import { expect, test } from '../support/acme';
 
 // The tenant home (spec 0035 §15) against the real distribution: a sign-in
 // lands on /1, titled by the greeting with the user's name over today's
-// date, and its grid holds the recently visited pages, the one home widget
-// Acme declares today. A page the user opens from the launcher and stays on
-// for its dwell then shows in that list as a link back to it.
+// date, and its grid holds the three home lists in reading order: My
+// assignments, Recently visited and Assigned by me. A page the user opens
+// from the launcher and stays on for its dwell then shows in the recently
+// visited list as a link back to it.
 
 test.describe('the tenant home', () => {
   // On a localhost scope the Angular worker prefetches its whole shell group before it answers
@@ -20,7 +21,7 @@ test.describe('the tenant home', () => {
   // This test is not about the worker.
   test.use({ serviceWorkers: 'block' });
 
-  test('a sign-in lands on the home, its greeting over the recently visited pages, which list a page once visited', async ({
+  test('a sign-in lands on the home, its greeting over the three home lists, whose recent pages list a page once visited', async ({
     page,
     text,
     cast,
@@ -35,13 +36,20 @@ test.describe('the tenant home', () => {
     await expect(greeting.locator('bdi')).not.toBeEmpty();
     await expect(page.locator('.tm-home-greeting__date')).not.toBeEmpty();
 
-    // --- The grid: one region, its one tile the recently visited pages ---
+    // --- The grid: one region, its three tiles in reading order ---
     const grid = page.getByRole('region', { name: text.yourWork });
     await expect(grid).toBeVisible();
     const recents = grid.getByRole('region', { name: text.recents });
     await expect(recents).toBeVisible();
     await expect(recents.getByRole('heading', { level: 2, name: text.recents })).toBeVisible();
-    await expect(grid.locator('tm-dashboard-tile')).toHaveCount(1);
+    await expect(grid.locator('tm-dashboard-tile')).toHaveCount(3);
+    await expect(grid.locator('tm-dashboard-tile .tm-card__heading')).toHaveText([
+      text.toMe,
+      text.recents,
+      text.byMe,
+    ]);
+    await expect(grid.getByRole('region', { name: text.toMe })).toBeVisible();
+    await expect(grid.getByRole('region', { name: text.byMe })).toBeVisible();
 
     // --- A page visited past its dwell is listed, and its link leads back to it ---
     // The visit and the way back are in-app navigations, so the list the

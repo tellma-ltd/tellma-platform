@@ -18,8 +18,8 @@ own.
 | `@tellma/core/recents` | The recently visited pages (`TmRecents`), which the launcher and the home page list; the app loads it with `import()` after its first render, when visits start to count | lazy, through `import()` after first render |
 | `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
 | `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`); the edit mode of the details layout kit's fields, which `tm-field` loads with `import()` on the first edit or once the record may be edited; the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
-| `@tellma/core/uploads` | A form's uploads (`TmUploads`): the paths with an upload in flight and the blob each staged, which a form's host provides (a details record does in every mode) and the value editor lists its uploads in; an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
-| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
+| `@tellma/core/uploads` | A form's uploads (`TmUploads`), which a form's host provides (a details record does in every mode) and the value editor lists its uploads in: the paths with an upload in flight, each one's progress, the blob each staged and the paths whose upload failed, with `removeRow` to move a collection's uploads up past a removed row and `cancelAll` to discard them all, as Cancel does; what a failed upload says (`tmUploadFailure`); an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-child-grid` and `tm-child-files` for child collections, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
 | `@tellma/core/dashboards` | The dashboard grid (`tm-dashboard-grid`, `TmDashboardGrid`) with its tiles (`TmDashboardTile`) and its layout (`tmPackDashboard`); the tenant home: the host the home route renders (`TmHomeHost`), which renders a feature's `home` hatch in place of the platform's home page (`TmHomePage`), its greeting and date line (`TmHomeGreeting`) and its widgets (`TM_HOME_WIDGETS`); and the bodies of the core widget types, which their declarations load | lazy, with the home route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
@@ -1199,10 +1199,35 @@ export default class CustomerDetails {
   the layout and renders the layout once both are in hand; the form applies it after the
   platform's rules, so it adds rules and never weakens one, and its imports of
   `@angular/forms/signals` stay out of the first load. A failed load is the layout's failure.
+- **Images and files.** A `tm-field` over an image or a file edits it through the value editor:
+  the file is checked against its kind when picked, a cover-square image is cropped, and the file
+  uploads at once with a progress ring through the record's `TmUploads`, so Save waits until it
+  settles, even in an edit with no other change; Cancel aborts it and ignores a result arriving
+  after. A failed upload stops Save: nothing is written while a file waits to be tried again or
+  removed, or when an upload Save waited for fails, and the page says why. The staged blob previews through its URL; a refusal (`blob-rejected`) shows the
+  server's reason on the field, any other failure offers Try again, and Remove clears the value.
+- **Child collections.** `<tm-child-grid collection="Lines" [columns]="['Center', 'Amount']" />`
+  shows a child collection in one grid bound to `form.<collection>`, read-only in view mode (a
+  navigation as its link) and edited in place in edit and create mode, where its placeholder row
+  adds rows `{ id: −n, ...defaults() }`. Its frame's height is set when the record lands, never
+  while typing; view mode reserves the placeholder row and the status band, so the frame's box is
+  the same in view mode, in Edit and after Cancel. `[totals]` adds exact decimal totals under it. The grid
+  loads in its own chunk once its placeholder, of the same geometry, enters the viewport
+  (prefetched once the browser is idle), and registers the collection with the page once its rows
+  render, so a save error can `reveal()` a row and column.
+  `<tm-child-files collection="Attachments" file="File" caption="Caption" />` shows a collection
+  of files as chips that download (a plain click previews), loaded the same way, behind a
+  placeholder while the record loads; its rows' errors reach the card and tab; in edit mode its
+  drop zone adds a row per file at once and uploads it under the row's file path, each row with
+  its progress, errors, retry and inline caption; a file the server refuses leaves the list, its
+  reason shown with the drop zone's refusals. When the edit side fails to load, the grid and the
+  list say so in edit mode, with Try again. Both load through `when` triggers rather than
+  `on viewport` and `on idle`, whose code would ride every app's first frame in `@angular/core`.
 - **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
   over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
 - **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
-  mode, the progress bar and the error state; `tmFakeDetails()` gives a layout test a real record
+  mode, the progress bar and the error state; `TmChildGridHarness` reads a child grid's frame,
+  state, height and totals and hands out its grid; `tmFakeDetails()` gives a layout test a real record
   state over a fake host, with `providers` to give the layout and `rules` for the form's own rules.
 
 ### Strings of a lazy entry point
@@ -1235,8 +1260,10 @@ and a set of the scopes registered.
 ## Dashboards and the home page
 
 A widget type is a `tmWidget(key, …)` declaration in a feature's `widgets`: its label, icon, body
-(a lazy component), default and minimum sizes, and the permission its tiles require. The core
-feature declares `core.recents`, the recently visited pages. The app's configuration check holds
+(a lazy component), default and minimum sizes, the permission its tiles require, and whether its
+tiles show the status line. The core feature declares the three built-in lists:
+`core.assignments-to-me` and `core.assignments-by-me`, the open assignments either way, and
+`core.recents`, the recently visited pages. The app's configuration check holds
 the declarations to the server's emitted widget types, so a type the server does not register
 fails the check. A widget (`TmDashboardWidgetModel`) places one type on a dashboard: its key, its
 title, its box on twelve columns of 30 px rows, and its settings.
@@ -1252,16 +1279,30 @@ declaration knows renders "This widget isn't available."; a type whose permissio
 leaves the grid, or shows its lock with `denied="show"`, and never loads its body; a body loads
 behind five skeleton rows in a busy section (`aria-busy`), and one whose chunk fails offers to try
 again. A tile takes what the grid resolved for it (`TmTileModel`) and shows one view of it
-(`TmTileView`); the grid reports each tile's state in `tiles`.
+(`TmTileView`); the grid reports each tile's state in `tiles`. The header never changes with
+state: a list type shows its count and "View all", any other type its options menu (Refresh; none
+on a denied tile or while presented), and a type with the status line reserves its row, which
+shows "Updated {time}" once the body reports a result, a stale marker after a failed run over it,
+and a note when totals were left out. A body reads its context with `injectTmWidget()`: its key,
+type, settings, the dashboard's arguments, the mode, its size, and a tick each refresh renews; it
+reports its runs back through `report`. A tile's Refresh and the grid's `refreshAll` tick it,
+clearing what it shows first.
+
+The assignment lists follow the stored assignments document live: the newest ten open rows, each
+its target's link, preloaded on hover or focus; five skeleton rows before the document exists,
+or, offline, a note that the rows show on reconnecting; and an empty state. Only a forced refresh
+reads the document again.
 
 The home route renders `TmHomeHost`, which renders the last `home` hatch a feature sets, else
 `TmHomePage`: the greeting by the hour in the display zone with the user's name, today's date in
-the user's calendar, and the grid of `TM_HOME_WIDGETS` whose types the app declares. The
+the user's calendar, and the grid of `TM_HOME_WIDGETS`. The
 greeting's one timer waits for the next boundary in the zone, an hour at most, so a night that
 springs forward delays it by no more than one wait. A hatch loads behind the home skeleton, holding
 the arrival focus until it renders, and one whose chunk fails leaves the platform's home page in
 its place. Hovering or focusing a recent page preloads it; preloading the home route preloads the
-hatch.
+hatch. The host registers the `home` page context, with the three lists' rows, and times each
+visit once as `tm.home.rendered`, from the route's start to the first frame with every tile's
+body; opening a list's row and following "View all" are reported too.
 
 ## The search page's query model
 

@@ -41,7 +41,7 @@ export {
 export { type TmEntityPickerContext, ɵTM_PICKER_PAGES, type ɵTmPickerPages } from './src/tm-picker-pages';
 
 // Blob-kind policies.
-export { tmCheckBlobFile, ɵtmCropCoverSquare, type TmBlobFileCheck } from './src/tm-blob-check';
+export { ɵtmByteSize, tmCheckBlobFile, ɵtmCropCoverSquare, type TmBlobFileCheck } from './src/tm-blob-check';
 
 // Entity actions: the runner, its dialogs and the confirmation loop.
 export {

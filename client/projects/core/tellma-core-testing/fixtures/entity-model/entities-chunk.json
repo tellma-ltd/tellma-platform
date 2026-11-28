@@ -33,8 +33,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Acme_Currency_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -54,8 +53,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Acme_Currency_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -76,8 +74,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Acme_Currency_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -135,7 +132,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -144,7 +141,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         }
       ],
       "children": [],
@@ -376,8 +373,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Acme_Customer_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -397,8 +393,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Acme_Customer_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -419,8 +414,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Acme_Customer_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -639,7 +633,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -648,7 +642,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Currency",
@@ -1686,8 +1680,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Acme_CustomerContact_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -1958,8 +1951,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Acme_CustomerExtra_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -2643,7 +2635,6 @@
       "labelKey": "Core_Blob",
       "pluralLabelKey": "Core_Blob_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Blob",
       "operations": [],
       "capabilities": [],
       "displayName": {
@@ -2663,8 +2654,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Blob_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -2675,7 +2665,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Blob_Kind",
-          "labelFallback": "Kind",
           "excel": true,
           "ownership": "editable",
           "maxLength": 40
@@ -2687,7 +2676,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Blob_State",
-          "labelFallback": "State",
           "excel": true,
           "ownership": "editable",
           "enum": "core.BlobState"
@@ -2699,7 +2687,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Blob_ContentType",
-          "labelFallback": "Content type",
           "excel": true,
           "ownership": "editable",
           "maxLength": 100
@@ -2711,7 +2698,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Blob_FileName",
-          "labelFallback": "File name",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -2724,7 +2710,6 @@
           "nullable": false,
           "long": true,
           "labelKey": "Core_Blob_Size",
-          "labelFallback": "Size",
           "excel": true,
           "ownership": "editable"
         },
@@ -2735,7 +2720,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Blob_Width",
-          "labelFallback": "Width",
           "excel": true,
           "ownership": "editable"
         },
@@ -2746,7 +2730,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Blob_Height",
-          "labelFallback": "Height",
           "excel": true,
           "ownership": "editable"
         },
@@ -2757,7 +2740,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Blob_Variants",
-          "labelFallback": "Variants",
           "excel": true,
           "ownership": "editable",
           "maxLength": 100
@@ -2778,8 +2760,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Blob_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "CreatedBy"
@@ -2791,7 +2772,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Blob_CommittedAt",
-          "labelFallback": "Committed at",
           "excel": true,
           "ownership": "editable"
         },
@@ -2802,7 +2782,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Blob_ExpiresAt",
-          "labelFallback": "Expires at",
           "excel": true,
           "ownership": "editable"
         }
@@ -2815,7 +2794,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         }
       ],
       "children": [],
@@ -2851,7 +2830,6 @@
       "labelKey": "Core_Export",
       "pluralLabelKey": "Core_Export_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Export",
       "operations": [
         "query",
         "details",
@@ -2878,8 +2856,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Export_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -2899,8 +2876,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Export_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -2921,8 +2897,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Export_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -2935,7 +2910,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_Export_JobId",
-          "labelFallback": "Job id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "Job"
@@ -2947,7 +2921,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Export_Resource",
-          "labelFallback": "Resource",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 128
@@ -2959,7 +2932,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Export_Kind",
-          "labelFallback": "Kind",
           "excel": true,
           "ownership": "write-once",
           "enum": "core.ExportKind"
@@ -2971,7 +2943,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Export_RequestJson",
-          "labelFallback": "Request json",
           "excel": true,
           "ownership": "write-once"
         },
@@ -2982,7 +2953,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Export_FileName",
-          "labelFallback": "File name",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -3027,7 +2997,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Export_RowCount",
-          "labelFallback": "Row count",
           "excel": true,
           "ownership": "editable"
         },
@@ -3038,7 +3007,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Export_ExpiresAt",
-          "labelFallback": "Expires at",
           "excel": true,
           "ownership": "write-once"
         }
@@ -3051,7 +3019,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -3060,7 +3028,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Job",
@@ -3069,8 +3037,7 @@
           "target": "core.Job",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Export_Job",
-          "labelFallback": "Job"
+          "labelKey": "Core_Export_JobId"
         },
         {
           "name": "File",
@@ -3110,7 +3077,6 @@
       "labelKey": "Core_Import",
       "pluralLabelKey": "Core_Import_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Import",
       "operations": [
         "query",
         "details",
@@ -3137,8 +3103,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Import_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3158,8 +3123,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Import_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -3180,8 +3144,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Import_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -3194,7 +3157,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_Import_JobId",
-          "labelFallback": "Job id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "Job"
@@ -3206,7 +3168,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Import_Resource",
-          "labelFallback": "Resource",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 128
@@ -3229,7 +3190,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Import_RequestJson",
-          "labelFallback": "Request json",
           "excel": true,
           "ownership": "write-once"
         },
@@ -3273,7 +3233,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Import_ResultJson",
-          "labelFallback": "Result json",
           "excel": true,
           "ownership": "editable"
         },
@@ -3284,7 +3243,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Import_RowCount",
-          "labelFallback": "Row count",
           "excel": true,
           "ownership": "editable"
         },
@@ -3295,7 +3253,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Import_ErrorCount",
-          "labelFallback": "Error count",
           "excel": true,
           "ownership": "editable"
         },
@@ -3306,7 +3263,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Import_ExpiresAt",
-          "labelFallback": "Expires at",
           "excel": true,
           "ownership": "write-once"
         }
@@ -3319,7 +3275,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -3328,7 +3284,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Job",
@@ -3337,8 +3293,7 @@
           "target": "core.Job",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Import_Job",
-          "labelFallback": "Job"
+          "labelKey": "Core_Import_JobId"
         },
         {
           "name": "File",
@@ -3378,7 +3333,6 @@
       "labelKey": "Core_Job",
       "pluralLabelKey": "Core_Job_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Job",
       "operations": [
         "query",
         "details"
@@ -3401,8 +3355,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Job_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3413,7 +3366,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Job_HandlerKey",
-          "labelFallback": "Handler key",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -3425,7 +3377,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_LabelKey",
-          "labelFallback": "Label key",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -3437,7 +3388,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_LabelArgumentsJson",
-          "labelFallback": "Label arguments json",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 4000
@@ -3449,7 +3399,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Job_Status",
-          "labelFallback": "Status",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.JobStatus"
@@ -3461,7 +3410,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Job_DueAt",
-          "labelFallback": "Due at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3472,7 +3420,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Job_Attempts",
-          "labelFallback": "Attempts",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3483,7 +3430,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_LeaseExpiresAt",
-          "labelFallback": "Lease expires at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3494,7 +3440,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_LeaseOwner",
-          "labelFallback": "Lease owner",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 128
@@ -3506,7 +3451,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_StartedAt",
-          "labelFallback": "Started at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3517,7 +3461,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_CompletedAt",
-          "labelFallback": "Completed at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3528,7 +3471,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_CancelRequestedAt",
-          "labelFallback": "Cancel requested at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3539,7 +3481,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ArgumentsJson",
-          "labelFallback": "Arguments json",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3550,7 +3491,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ProgressPercent",
-          "labelFallback": "Progress percent",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3561,7 +3501,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ProgressKey",
-          "labelFallback": "Progress key",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -3573,7 +3512,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ProgressArgumentsJson",
-          "labelFallback": "Progress arguments json",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 4000
@@ -3585,7 +3523,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ErrorCode",
-          "labelFallback": "Error code",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -3597,7 +3534,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ErrorArgumentsJson",
-          "labelFallback": "Error arguments json",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 4000
@@ -3609,7 +3545,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ErrorTraceId",
-          "labelFallback": "Error trace id",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 32
@@ -3621,7 +3556,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_PendingConfirmationsJson",
-          "labelFallback": "Pending confirmations json",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3632,7 +3566,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_TraceParent",
-          "labelFallback": "Trace parent",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 55
@@ -3644,7 +3577,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Job_RunAsUserId",
-          "labelFallback": "Run as user id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "RunAsUser"
@@ -3656,7 +3588,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_RequestedById",
-          "labelFallback": "Requested by id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "RequestedBy"
@@ -3668,7 +3599,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ScheduleId",
-          "labelFallback": "Schedule id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "Schedule"
@@ -3680,7 +3610,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Job_ScheduledFor",
-          "labelFallback": "Scheduled for",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3703,8 +3632,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "Core_Job_RunAsUser",
-          "labelFallback": "Run as user"
+          "labelKey": "Core_Job_RunAsUserId"
         },
         {
           "name": "RequestedBy",
@@ -3713,8 +3641,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Job_RequestedBy",
-          "labelFallback": "Requested by"
+          "labelKey": "Core_Job_RequestedById"
         },
         {
           "name": "Schedule",
@@ -3723,8 +3650,7 @@
           "target": "core.Schedule",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Job_Schedule",
-          "labelFallback": "Schedule"
+          "labelKey": "Core_Job_ScheduleId"
         }
       ],
       "children": [],
@@ -3840,7 +3766,6 @@
       "labelKey": "Core_Notification",
       "pluralLabelKey": "Core_Notification_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Notification",
       "operations": [
         "query",
         "details"
@@ -3863,8 +3788,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Notification_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3875,7 +3799,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Notification_UserId",
-          "labelFallback": "User id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "User"
@@ -3887,7 +3810,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Notification_Type",
-          "labelFallback": "Type",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -3899,7 +3821,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Notification_Severity",
-          "labelFallback": "Severity",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.NotificationSeverity"
@@ -3911,7 +3832,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Notification_ArgumentsJson",
-          "labelFallback": "Arguments json",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 4000
@@ -3923,7 +3843,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Notification_TargetResource",
-          "labelFallback": "Target resource",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 128
@@ -3936,7 +3855,6 @@
           "nullable": true,
           "long": true,
           "labelKey": "Core_Notification_TargetId",
-          "labelFallback": "Target id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -3947,7 +3865,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Notification_ActorUserId",
-          "labelFallback": "Actor user id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ActorUser"
@@ -3959,7 +3876,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Notification_DedupKey",
-          "labelFallback": "Dedup key",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 128
@@ -3981,7 +3897,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Notification_ReadAt",
-          "labelFallback": "Read at",
           "excel": true,
           "ownership": "server-owned"
         }
@@ -3994,8 +3909,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "Core_Notification_User",
-          "labelFallback": "User"
+          "labelKey": "Core_Notification_UserId"
         },
         {
           "name": "ActorUser",
@@ -4004,8 +3918,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Notification_ActorUser",
-          "labelFallback": "Actor user"
+          "labelKey": "Core_Notification_ActorUserId"
         }
       ],
       "children": [],
@@ -4034,7 +3947,6 @@
       "labelKey": "Core_OutgoingEmail",
       "pluralLabelKey": "Core_OutgoingEmail_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Outgoing email",
       "operations": [
         "query",
         "details",
@@ -4061,8 +3973,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_OutgoingEmail_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4082,8 +3993,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_OutgoingEmail_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -4104,8 +4014,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_OutgoingEmail_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -4118,7 +4027,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_OutgoingEmail_JobId",
-          "labelFallback": "Job id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "Job"
@@ -4130,7 +4038,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_State",
-          "labelFallback": "State",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.OutgoingEmailState"
@@ -4142,7 +4049,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_Audience",
-          "labelFallback": "Audience",
           "excel": true,
           "ownership": "write-once",
           "enum": "core.EmailAudience"
@@ -4154,7 +4060,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_From",
-          "labelFallback": "From",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 512
@@ -4166,7 +4071,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_ReplyTo",
-          "labelFallback": "Reply to",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 512
@@ -4178,7 +4082,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_To",
-          "labelFallback": "To",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4189,7 +4092,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_Cc",
-          "labelFallback": "Cc",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4200,7 +4102,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_Bcc",
-          "labelFallback": "Bcc",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4211,7 +4112,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_Subject",
-          "labelFallback": "Subject",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 500
@@ -4223,7 +4123,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_TextBody",
-          "labelFallback": "Text body",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4234,7 +4133,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_HtmlBody",
-          "labelFallback": "Html body",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4245,7 +4143,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_RecipientUserId",
-          "labelFallback": "Recipient user id",
           "excel": true,
           "ownership": "write-once",
           "foreignKeyOf": "RecipientUser"
@@ -4257,7 +4154,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_RegardingEntity",
-          "labelFallback": "Regarding entity",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 128
@@ -4270,7 +4166,6 @@
           "nullable": true,
           "long": true,
           "labelKey": "Core_OutgoingEmail_RegardingId",
-          "labelFallback": "Regarding id",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4281,7 +4176,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_SendAfter",
-          "labelFallback": "Send after",
           "excel": true,
           "ownership": "write-once"
         },
@@ -4292,7 +4186,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_AttemptCount",
-          "labelFallback": "Attempt count",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4303,7 +4196,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_SentAt",
-          "labelFallback": "Sent at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4314,7 +4206,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_ProviderMessageId",
-          "labelFallback": "Provider message id",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 255
@@ -4326,7 +4217,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmail_ExpectsDeliveryEvents",
-          "labelFallback": "Expects delivery events",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4337,7 +4227,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_ErrorCode",
-          "labelFallback": "Error code",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 64
@@ -4349,7 +4238,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_ErrorDetail",
-          "labelFallback": "Error detail",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 1024
@@ -4361,7 +4249,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_DeliveryStatus",
-          "labelFallback": "Delivery status",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.EmailDeliveryStatus"
@@ -4373,7 +4260,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_DeliveryAt",
-          "labelFallback": "Delivery at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4384,7 +4270,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_DeliveryRecipient",
-          "labelFallback": "Delivery recipient",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 255
@@ -4396,7 +4281,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_DeliveryReason",
-          "labelFallback": "Delivery reason",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 512
@@ -4408,7 +4292,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmail_LastProviderEventId",
-          "labelFallback": "Last provider event id",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 100
@@ -4422,7 +4305,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -4431,7 +4314,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Job",
@@ -4440,8 +4323,7 @@
           "target": "core.Job",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_OutgoingEmail_Job",
-          "labelFallback": "Job"
+          "labelKey": "Core_OutgoingEmail_JobId"
         },
         {
           "name": "RecipientUser",
@@ -4450,8 +4332,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_OutgoingEmail_RecipientUser",
-          "labelFallback": "Recipient user"
+          "labelKey": "Core_OutgoingEmail_RecipientUserId"
         }
       ],
       "children": [
@@ -4520,7 +4401,6 @@
       "labelKey": "Core_OutgoingEmailAttachment",
       "pluralLabelKey": "Core_OutgoingEmailAttachment_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Outgoing email attachment",
       "operations": [
         "query"
       ],
@@ -4547,8 +4427,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_OutgoingEmailAttachment_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4559,7 +4438,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmailAttachment_OutgoingEmailId",
-          "labelFallback": "Outgoing email id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "OutgoingEmail"
@@ -4571,7 +4449,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_OutgoingEmailAttachment_FileName",
-          "labelFallback": "File name",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -4583,7 +4460,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_OutgoingEmailAttachment_ContentId",
-          "labelFallback": "Content id",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -4630,8 +4506,7 @@
           "target": "core.OutgoingEmail",
           "kind": "owner",
           "nullable": false,
-          "labelKey": "Core_OutgoingEmailAttachment_OutgoingEmail",
-          "labelFallback": "Outgoing email"
+          "labelKey": "Core_OutgoingEmailAttachment_OutgoingEmailId"
         },
         {
           "name": "File",
@@ -4669,7 +4544,6 @@
       "labelKey": "Core_Permission",
       "pluralLabelKey": "Core_Permission_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Permission",
       "operations": [
         "query",
         "export"
@@ -4697,8 +4571,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Permission_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -4709,7 +4582,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Permission_RoleId",
-          "labelFallback": "Role id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "Role"
@@ -4721,7 +4593,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Permission_Resource",
-          "labelFallback": "Resource",
           "excel": true,
           "ownership": "editable",
           "maxLength": 128
@@ -4733,7 +4604,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Permission_Action",
-          "labelFallback": "Action",
           "excel": true,
           "ownership": "editable",
           "maxLength": 32
@@ -4745,7 +4615,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Permission_Filter",
-          "labelFallback": "Filter",
           "excel": true,
           "ownership": "editable",
           "maxLength": 2048
@@ -4757,7 +4626,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Permission_FilterQueryexVersion",
-          "labelFallback": "Filter queryex version",
           "excel": true,
           "ownership": "derived"
         },
@@ -4768,7 +4636,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Permission_Notes",
-          "labelFallback": "Notes",
           "excel": true,
           "ownership": "editable",
           "maxLength": 1024
@@ -4782,8 +4649,7 @@
           "target": "core.Role",
           "kind": "owner",
           "nullable": false,
-          "labelKey": "Core_Permission_Role",
-          "labelFallback": "Role"
+          "labelKey": "Core_Permission_RoleId"
         }
       ],
       "children": [],
@@ -4974,7 +4840,6 @@
       "labelKey": "Core_Report",
       "pluralLabelKey": "Core_Report_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Report",
       "operations": [
         "query",
         "details",
@@ -5004,8 +4869,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Report_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -5025,8 +4889,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Report_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -5047,8 +4910,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Report_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -5072,7 +4934,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Report_Title",
-          "labelFallback": "Title",
           "excel": true,
           "ownership": "editable",
           "defaulted": true,
@@ -5089,7 +4950,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Report_Title",
-          "labelFallback": "Title",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255,
@@ -5105,7 +4965,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Report_Title",
-          "labelFallback": "Title",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255,
@@ -5166,7 +5025,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Report_Root",
-          "labelFallback": "Root",
           "excel": true,
           "ownership": "editable",
           "maxLength": 128
@@ -5178,7 +5036,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Report_Kind",
-          "labelFallback": "Kind",
           "excel": true,
           "ownership": "editable",
           "enum": "core.ReportKind"
@@ -5190,7 +5047,6 @@
           "queryable": false,
           "nullable": false,
           "labelKey": "Core_Report_DefinitionJson",
-          "labelFallback": "Definition json",
           "excel": true,
           "ownership": "editable"
         },
@@ -5201,7 +5057,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Report_QueryexVersion",
-          "labelFallback": "Queryex version",
           "excel": true,
           "ownership": "derived"
         },
@@ -5212,7 +5067,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Report_OwnerId",
-          "labelFallback": "Owner id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "Owner"
@@ -5224,7 +5078,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Report_BasedOnId",
-          "labelFallback": "Based on id",
           "excel": true,
           "ownership": "write-once"
         },
@@ -5247,7 +5100,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -5256,7 +5109,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Owner",
@@ -5265,8 +5118,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_Report_Owner",
-          "labelFallback": "Owner"
+          "labelKey": "Core_Report_OwnerId"
         }
       ],
       "children": [],
@@ -5352,7 +5204,6 @@
             {
               "name": "set",
               "labelKey": "Core_Report_Action_Share_Set",
-              "labelFallback": "Set",
               "required": false,
               "value": {
                 "type": "json",
@@ -5362,7 +5213,6 @@
             {
               "name": "remove",
               "labelKey": "Core_Report_Action_Share_Remove",
-              "labelFallback": "Remove",
               "required": false,
               "value": {
                 "type": "json",
@@ -5432,7 +5282,6 @@
             {
               "name": "set",
               "labelKey": "Core_Report_Action_Publish_Set",
-              "labelFallback": "Set",
               "required": false,
               "value": {
                 "type": "json",
@@ -5442,7 +5291,6 @@
             {
               "name": "remove",
               "labelKey": "Core_Report_Action_Publish_Remove",
-              "labelFallback": "Remove",
               "required": false,
               "value": {
                 "type": "json",
@@ -5452,7 +5300,6 @@
             {
               "name": "everyone",
               "labelKey": "Core_Report_Action_Publish_Everyone",
-              "labelFallback": "Everyone",
               "required": false,
               "value": {
                 "type": "bool",
@@ -5488,7 +5335,6 @@
             {
               "name": "ownerId",
               "labelKey": "Core_Report_Action_Transfer_Owner",
-              "labelFallback": "Owner",
               "required": true,
               "value": {
                 "type": "integer",
@@ -5534,7 +5380,6 @@
       "labelKey": "Core_Role",
       "pluralLabelKey": "Core_Role_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Role",
       "operations": [
         "query",
         "details",
@@ -5567,8 +5412,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Role_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -5588,8 +5432,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Role_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -5610,8 +5453,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Role_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -5683,7 +5525,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Role_IsPublic",
-          "labelFallback": "Is public",
           "excel": true,
           "ownership": "editable"
         },
@@ -5706,7 +5547,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -5715,7 +5556,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         }
       ],
       "children": [
@@ -6432,7 +6273,6 @@
       "labelKey": "Core_RoleMembership",
       "pluralLabelKey": "Core_RoleMembership_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Role membership",
       "operations": [
         "query",
         "export"
@@ -6460,8 +6300,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_RoleMembership_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -6472,7 +6311,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_RoleMembership_UserId",
-          "labelFallback": "User id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "User"
@@ -6484,7 +6322,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_RoleMembership_RoleId",
-          "labelFallback": "Role id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "Role"
@@ -6496,7 +6333,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_RoleMembership_StartsAt",
-          "labelFallback": "Starts at",
           "excel": true,
           "ownership": "editable"
         },
@@ -6507,7 +6343,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_RoleMembership_EndsAt",
-          "labelFallback": "Ends at",
           "excel": true,
           "ownership": "editable"
         },
@@ -6518,7 +6353,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_RoleMembership_Notes",
-          "labelFallback": "Notes",
           "excel": true,
           "ownership": "editable",
           "maxLength": 1024
@@ -6532,8 +6366,7 @@
           "target": "core.User",
           "kind": "owner",
           "nullable": false,
-          "labelKey": "Core_RoleMembership_User",
-          "labelFallback": "User"
+          "labelKey": "Core_RoleMembership_UserId"
         },
         {
           "name": "Role",
@@ -6542,8 +6375,7 @@
           "target": "core.Role",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "Core_RoleMembership_Role",
-          "labelFallback": "Role"
+          "labelKey": "Core_RoleMembership_RoleId"
         }
       ],
       "children": [],
@@ -6734,7 +6566,6 @@
       "labelKey": "Core_Schedule",
       "pluralLabelKey": "Core_Schedule_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Schedule",
       "operations": [
         "query",
         "details",
@@ -6767,8 +6598,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Schedule_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -6788,8 +6618,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Schedule_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -6810,8 +6639,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Schedule_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -6880,7 +6708,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_HandlerKey",
-          "labelFallback": "Handler key",
           "excel": true,
           "ownership": "write-once",
           "maxLength": 64
@@ -6892,7 +6719,6 @@
           "queryable": false,
           "nullable": true,
           "labelKey": "Core_Schedule_ArgumentsJson",
-          "labelFallback": "Arguments json",
           "excel": true,
           "ownership": "editable"
         },
@@ -6903,7 +6729,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_CronExpression",
-          "labelFallback": "Cron expression",
           "excel": true,
           "ownership": "editable",
           "maxLength": 128
@@ -6915,7 +6740,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Schedule_TimeZoneId",
-          "labelFallback": "Time zone id",
           "excel": true,
           "ownership": "editable",
           "enum": "core.TimeZone"
@@ -6927,7 +6751,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_MissedPolicy",
-          "labelFallback": "Missed policy",
           "excel": true,
           "ownership": "editable",
           "enum": "core.MissedPolicy"
@@ -6939,7 +6762,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_OverlapPolicy",
-          "labelFallback": "Overlap policy",
           "excel": true,
           "ownership": "editable",
           "enum": "core.OverlapPolicy"
@@ -6951,7 +6773,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_CatchUpWindowMinutes",
-          "labelFallback": "Catch up window minutes",
           "excel": true,
           "ownership": "editable"
         },
@@ -6962,7 +6783,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Schedule_RunAsUserId",
-          "labelFallback": "Run as user id",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "RunAsUser"
@@ -6974,7 +6794,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Schedule_PausedReason",
-          "labelFallback": "Paused reason",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.SchedulePausedReason"
@@ -6998,7 +6817,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -7007,7 +6826,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "RunAsUser",
@@ -7016,8 +6835,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "Core_Schedule_RunAsUser",
-          "labelFallback": "Run as user"
+          "labelKey": "Core_Schedule_RunAsUserId"
         }
       ],
       "children": [],
@@ -7748,7 +7566,6 @@
       "labelKey": "Core_SettingEntry",
       "pluralLabelKey": "Core_SettingEntry_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Setting entry",
       "operations": [],
       "capabilities": [],
       "displayName": {
@@ -7768,8 +7585,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_SettingEntry_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -7789,8 +7605,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_SettingEntry_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -7811,8 +7626,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_SettingEntry_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -7825,7 +7639,6 @@
           "nullable": false,
           "unique": true,
           "labelKey": "Core_SettingEntry_Key",
-          "labelFallback": "Key",
           "excel": true,
           "ownership": "editable",
           "maxLength": 128
@@ -7837,7 +7650,6 @@
           "queryable": false,
           "nullable": false,
           "labelKey": "Core_SettingEntry_Value",
-          "labelFallback": "Value",
           "excel": true,
           "ownership": "editable"
         }
@@ -7850,7 +7662,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -7859,7 +7671,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         }
       ],
       "children": [],
@@ -7889,9 +7701,8 @@
       "name": "core.Settings",
       "segment": null,
       "labelKey": "Core_Settings",
-      "pluralLabelKey": "Core_Settings_Plural",
+      "pluralLabelKey": "Core_Settings",
       "newLabelKey": "Entity_New",
-      "labelFallback": "Settings",
       "operations": [],
       "capabilities": [],
       "displayName": {
@@ -7911,8 +7722,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_Settings_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -7932,8 +7742,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Settings_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -7954,8 +7763,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_Settings_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -7967,7 +7775,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Settings_TenantId",
-          "labelFallback": "Tenant id",
           "excel": true,
           "ownership": "editable"
         },
@@ -8023,7 +7830,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Settings_PrimaryLanguage",
-          "labelFallback": "Primary language",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Language"
@@ -8035,7 +7841,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Settings_SecondaryLanguage",
-          "labelFallback": "Secondary language",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Language"
@@ -8047,7 +7852,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Settings_TertiaryLanguage",
-          "labelFallback": "Tertiary language",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Language"
@@ -8059,7 +7863,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Settings_PrimaryCalendar",
-          "labelFallback": "Primary calendar",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Calendar"
@@ -8071,7 +7874,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Settings_SecondaryCalendar",
-          "labelFallback": "Secondary calendar",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Calendar"
@@ -8083,7 +7885,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_Settings_TimeZone",
-          "labelFallback": "Time zone",
           "excel": true,
           "ownership": "editable",
           "enum": "core.TimeZone"
@@ -8095,7 +7896,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Settings_Region",
-          "labelFallback": "Region",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Region"
@@ -8107,7 +7907,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_Settings_Digits",
-          "labelFallback": "Digits",
           "excel": true,
           "ownership": "editable",
           "enum": "core.DigitStyle"
@@ -8121,7 +7920,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -8130,7 +7929,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         }
       ],
       "children": [],
@@ -8166,7 +7965,6 @@
       "labelKey": "Core_User",
       "pluralLabelKey": "Core_User_Plural",
       "newLabelKey": "Entity_New",
-      "labelFallback": "User",
       "operations": [
         "query",
         "details",
@@ -8200,8 +7998,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Core_User_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -8221,8 +8018,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_User_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -8243,8 +8039,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Core_User_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -8256,7 +8051,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_User_Kind",
-          "labelFallback": "Kind",
           "excel": true,
           "ownership": "write-once",
           "enum": "core.UserKind"
@@ -8269,7 +8063,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_User_Subject",
-          "labelFallback": "Subject",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 255
@@ -8282,7 +8075,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_User_Email",
-          "labelFallback": "Email",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -8294,7 +8086,6 @@
           "queryable": true,
           "nullable": false,
           "labelKey": "Core_User_State",
-          "labelFallback": "State",
           "excel": true,
           "ownership": "database-owned",
           "enum": "core.UserState"
@@ -8306,7 +8097,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_InvitedAt",
-          "labelFallback": "Invited at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -8317,7 +8107,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_InviteStatus",
-          "labelFallback": "Invite status",
           "excel": true,
           "ownership": "server-owned",
           "enum": "core.InviteStatus"
@@ -8329,7 +8118,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_LastInviteError",
-          "labelFallback": "Last invite error",
           "excel": true,
           "ownership": "server-owned",
           "maxLength": 1024
@@ -8341,7 +8129,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_JoinedAt",
-          "labelFallback": "Joined at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -8398,7 +8185,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_User_ImageId",
-          "labelFallback": "Image id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "Image",
@@ -8428,7 +8214,6 @@
           "nullable": true,
           "unique": true,
           "labelKey": "Core_User_SignatureId",
-          "labelFallback": "Signature id",
           "excel": true,
           "ownership": "editable",
           "foreignKeyOf": "Signature",
@@ -8457,7 +8242,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_PreferredLanguage",
-          "labelFallback": "Preferred language",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Language"
@@ -8469,7 +8253,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_PreferredCalendar",
-          "labelFallback": "Preferred calendar",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Calendar"
@@ -8481,7 +8264,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_PreferredTimeZone",
-          "labelFallback": "Preferred time zone",
           "excel": true,
           "ownership": "editable",
           "enum": "core.TimeZone"
@@ -8493,7 +8275,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_PreferredRegion",
-          "labelFallback": "Preferred region",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Region"
@@ -8505,7 +8286,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_PreferredDigits",
-          "labelFallback": "Preferred digits",
           "excel": true,
           "ownership": "editable",
           "enum": "core.DigitStyle"
@@ -8517,7 +8297,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_Gender",
-          "labelFallback": "Gender",
           "excel": true,
           "ownership": "editable",
           "enum": "core.Gender"
@@ -8529,7 +8308,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_ContactEmail",
-          "labelFallback": "Contact email",
           "excel": true,
           "ownership": "editable",
           "maxLength": 255
@@ -8541,7 +8319,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_User_ContactMobile",
-          "labelFallback": "Contact mobile",
           "excel": true,
           "ownership": "editable",
           "maxLength": 32
@@ -8565,7 +8342,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -8574,7 +8351,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Image",
@@ -8583,8 +8360,7 @@
           "target": "core.Blob",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_User_Image",
-          "labelFallback": "Image"
+          "labelKey": "Core_User_ImageId"
         },
         {
           "name": "Signature",
@@ -8593,8 +8369,7 @@
           "target": "core.Blob",
           "kind": "reference",
           "nullable": true,
-          "labelKey": "Core_User_Signature",
-          "labelFallback": "Signature"
+          "labelKey": "Core_User_SignatureId"
         }
       ],
       "children": [
@@ -8765,7 +8540,6 @@
             {
               "name": "name2",
               "labelKey": "Core_User_Action_MeSave_Name2",
-              "labelFallback": "Name2",
               "required": false,
               "value": {
                 "type": "string",
@@ -8775,7 +8549,6 @@
             {
               "name": "name3",
               "labelKey": "Core_User_Action_MeSave_Name3",
-              "labelFallback": "Name3",
               "required": false,
               "value": {
                 "type": "string",
@@ -8784,8 +8557,7 @@
             },
             {
               "name": "imageId",
-              "labelKey": "Core_User_Action_MeSave_ImageId",
-              "labelFallback": "Image id",
+              "labelKey": "Core_User_ImageId",
               "required": false,
               "value": {
                 "type": "integer",
@@ -8794,8 +8566,7 @@
             },
             {
               "name": "signatureId",
-              "labelKey": "Core_User_Action_MeSave_SignatureId",
-              "labelFallback": "Signature id",
+              "labelKey": "Core_User_SignatureId",
               "required": false,
               "value": {
                 "type": "integer",
@@ -8804,8 +8575,7 @@
             },
             {
               "name": "gender",
-              "labelKey": "Core_User_Action_MeSave_Gender",
-              "labelFallback": "Gender",
+              "labelKey": "Core_User_Gender",
               "required": false,
               "value": {
                 "type": "enum",
@@ -8815,8 +8585,7 @@
             },
             {
               "name": "contactEmail",
-              "labelKey": "Core_User_Action_MeSave_ContactEmail",
-              "labelFallback": "Contact email",
+              "labelKey": "Core_User_ContactEmail",
               "required": false,
               "value": {
                 "type": "string",
@@ -8825,8 +8594,7 @@
             },
             {
               "name": "contactMobile",
-              "labelKey": "Core_User_Action_MeSave_ContactMobile",
-              "labelFallback": "Contact mobile",
+              "labelKey": "Core_User_ContactMobile",
               "required": false,
               "value": {
                 "type": "string",
@@ -8845,7 +8613,6 @@
             {
               "name": "concurrency",
               "labelKey": "Core_User_Action_MeSave_Concurrency",
-              "labelFallback": "Concurrency",
               "required": true,
               "value": {
                 "type": "enum",
@@ -8981,7 +8748,6 @@
           "builtIn": false,
           "action": null,
           "labelKey": "Core_User_Action_MeTestNotification",
-          "labelFallback": "Me test notification",
           "mutation": true,
           "idempotent": false,
           "destructive": false,
@@ -9003,7 +8769,6 @@
             {
               "name": "channel",
               "labelKey": "Core_User_Action_MeTestNotification_Channel",
-              "labelFallback": "Channel",
               "required": true,
               "value": {
                 "type": "string",
@@ -9018,7 +8783,6 @@
           "builtIn": false,
           "action": "Preferences",
           "labelKey": "Core_User_Action_NotificationPreferencesGet",
-          "labelFallback": "Notification preferences get",
           "mutation": false,
           "idempotent": true,
           "destructive": false,
@@ -9040,7 +8804,6 @@
             {
               "name": "userId",
               "labelKey": "Core_User_Action_NotificationPreferencesGet_UserId",
-              "labelFallback": "User id",
               "required": true,
               "value": {
                 "type": "integer",
@@ -9055,7 +8818,6 @@
           "builtIn": false,
           "action": "Preferences",
           "labelKey": "Core_User_Action_NotificationPreferencesSave",
-          "labelFallback": "Notification preferences save",
           "mutation": true,
           "idempotent": false,
           "destructive": false,
@@ -9097,7 +8859,6 @@
             {
               "name": "preferences",
               "labelKey": "Core_User_Action_NotificationPreferencesSave_Preferences",
-              "labelFallback": "Preferences",
               "required": true,
               "value": {
                 "type": "json",
@@ -10029,9 +9790,8 @@
       "name": "core.UserStamp",
       "segment": null,
       "labelKey": "Core_UserStamp",
-      "pluralLabelKey": "Core_UserStamp_Plural",
+      "pluralLabelKey": "Core_UserStamp",
       "newLabelKey": "Entity_New",
-      "labelFallback": "User stamp",
       "operations": [],
       "capabilities": [],
       "displayName": {
@@ -10052,7 +9812,6 @@
           "nullable": false,
           "unique": true,
           "labelKey": "Core_UserStamp_UserId",
-          "labelFallback": "User id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10063,7 +9822,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_UserStamp_LastActiveAt",
-          "labelFallback": "Last active at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10074,7 +9832,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_UserStamp_InboxSeenAt",
-          "labelFallback": "Inbox seen at",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10086,7 +9843,6 @@
           "nullable": false,
           "long": true,
           "labelKey": "Core_UserStamp_InboxVersion",
-          "labelFallback": "Inbox version",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10097,7 +9853,6 @@
           "queryable": true,
           "nullable": true,
           "labelKey": "Core_UserStamp_AssignmentsSeenAt",
-          "labelFallback": "Assignments seen at",
           "excel": true,
           "ownership": "server-owned"
         }
@@ -10110,8 +9865,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "Core_UserStamp_User",
-          "labelFallback": "User"
+          "labelKey": "Core_UserStamp_UserId"
         }
       ],
       "children": [],
@@ -10169,8 +9923,7 @@
           "queryable": true,
           "nullable": false,
           "unique": true,
-          "labelKey": "Gl_Center_Id",
-          "labelFallback": "Id",
+          "labelKey": "Id",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10190,8 +9943,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Gl_Center_CreatedById",
-          "labelFallback": "Created by id",
+          "labelKey": "CreatedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "CreatedBy"
@@ -10212,8 +9964,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Gl_Center_ModifiedById",
-          "labelFallback": "Modified by id",
+          "labelKey": "ModifiedById",
           "excel": true,
           "ownership": "server-owned",
           "foreignKeyOf": "ModifiedBy"
@@ -10236,8 +9987,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Gl_Center_SubtreeCount",
-          "labelFallback": "Subtree count",
+          "labelKey": "SubtreeCount",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10257,8 +10007,7 @@
           "type": "integer",
           "queryable": true,
           "nullable": false,
-          "labelKey": "Gl_Center_ActiveSubtreeCount",
-          "labelFallback": "Active subtree count",
+          "labelKey": "ActiveSubtreeCount",
           "excel": true,
           "ownership": "server-owned"
         },
@@ -10329,7 +10078,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "CreatedBy"
+          "labelKey": "CreatedById"
         },
         {
           "name": "ModifiedBy",
@@ -10338,7 +10087,7 @@
           "target": "core.User",
           "kind": "reference",
           "nullable": false,
-          "labelKey": "ModifiedBy"
+          "labelKey": "ModifiedById"
         },
         {
           "name": "Parent",
@@ -11104,23 +10853,19 @@
       "values": [
         {
           "value": "Staged",
-          "labelKey": "Core_BlobState_Staged",
-          "labelFallback": "Staged"
+          "labelKey": "Core_BlobState_Staged"
         },
         {
           "value": "Committed",
-          "labelKey": "Core_BlobState_Committed",
-          "labelFallback": "Committed"
+          "labelKey": "Core_BlobState_Committed"
         },
         {
           "value": "Released",
-          "labelKey": "Core_BlobState_Released",
-          "labelFallback": "Released"
+          "labelKey": "Core_BlobState_Released"
         },
         {
           "value": "Deleting",
-          "labelKey": "Core_BlobState_Deleting",
-          "labelFallback": "Deleting"
+          "labelKey": "Core_BlobState_Deleting"
         }
       ]
     },
@@ -11146,13 +10891,11 @@
       "values": [
         {
           "value": "Check",
-          "labelKey": "Core_ConcurrencyMode_Check",
-          "labelFallback": "Check"
+          "labelKey": "Core_ConcurrencyMode_Check"
         },
         {
           "value": "Override",
-          "labelKey": "Core_ConcurrencyMode_Override",
-          "labelFallback": "Override"
+          "labelKey": "Core_ConcurrencyMode_Override"
         }
       ]
     },
@@ -11161,13 +10904,11 @@
       "values": [
         {
           "value": "Latin",
-          "labelKey": "Core_DigitStyle_Latin",
-          "labelFallback": "Latin"
+          "labelKey": "Core_DigitStyle_Latin"
         },
         {
           "value": "Native",
-          "labelKey": "Core_DigitStyle_Native",
-          "labelFallback": "Native"
+          "labelKey": "Core_DigitStyle_Native"
         }
       ]
     },
@@ -11176,13 +10917,11 @@
       "values": [
         {
           "value": "Internal",
-          "labelKey": "Core_EmailAudience_Internal",
-          "labelFallback": "Internal"
+          "labelKey": "Core_EmailAudience_Internal"
         },
         {
           "value": "External",
-          "labelKey": "Core_EmailAudience_External",
-          "labelFallback": "External"
+          "labelKey": "Core_EmailAudience_External"
         }
       ]
     },
@@ -11191,33 +10930,27 @@
       "values": [
         {
           "value": "Deferred",
-          "labelKey": "Core_EmailDeliveryStatus_Deferred",
-          "labelFallback": "Deferred"
+          "labelKey": "Core_EmailDeliveryStatus_Deferred"
         },
         {
           "value": "Delivered",
-          "labelKey": "Core_EmailDeliveryStatus_Delivered",
-          "labelFallback": "Delivered"
+          "labelKey": "Core_EmailDeliveryStatus_Delivered"
         },
         {
           "value": "Dropped",
-          "labelKey": "Core_EmailDeliveryStatus_Dropped",
-          "labelFallback": "Dropped"
+          "labelKey": "Core_EmailDeliveryStatus_Dropped"
         },
         {
           "value": "Failed",
-          "labelKey": "Core_EmailDeliveryStatus_Failed",
-          "labelFallback": "Failed"
+          "labelKey": "Core_EmailDeliveryStatus_Failed"
         },
         {
           "value": "Bounced",
-          "labelKey": "Core_EmailDeliveryStatus_Bounced",
-          "labelFallback": "Bounced"
+          "labelKey": "Core_EmailDeliveryStatus_Bounced"
         },
         {
           "value": "SpamReported",
-          "labelKey": "Core_EmailDeliveryStatus_SpamReported",
-          "labelFallback": "Spam reported"
+          "labelKey": "Core_EmailDeliveryStatus_SpamReported"
         }
       ]
     },
@@ -11226,18 +10959,15 @@
       "values": [
         {
           "value": "Display",
-          "labelKey": "Core_ExportKind_Display",
-          "labelFallback": "Display"
+          "labelKey": "Core_ExportKind_Display"
         },
         {
           "value": "ForImport",
-          "labelKey": "Core_ExportKind_ForImport",
-          "labelFallback": "For import"
+          "labelKey": "Core_ExportKind_ForImport"
         },
         {
           "value": "Report",
-          "labelKey": "Core_ExportKind_Report",
-          "labelFallback": "Report"
+          "labelKey": "Core_ExportKind_Report"
         }
       ]
     },
@@ -11246,13 +10976,11 @@
       "values": [
         {
           "value": "Female",
-          "labelKey": "Core_Gender_Female",
-          "labelFallback": "Female"
+          "labelKey": "Core_Gender_Female"
         },
         {
           "value": "Male",
-          "labelKey": "Core_Gender_Male",
-          "labelFallback": "Male"
+          "labelKey": "Core_Gender_Male"
         }
       ]
     },
@@ -11261,18 +10989,15 @@
       "values": [
         {
           "value": "Insert",
-          "labelKey": "Core_ImportMode_Insert",
-          "labelFallback": "Insert"
+          "labelKey": "Core_ImportMode_Insert"
         },
         {
           "value": "Update",
-          "labelKey": "Core_ImportMode_Update",
-          "labelFallback": "Update"
+          "labelKey": "Core_ImportMode_Update"
         },
         {
           "value": "Upsert",
-          "labelKey": "Core_ImportMode_Upsert",
-          "labelFallback": "Upsert"
+          "labelKey": "Core_ImportMode_Upsert"
         }
       ]
     },
@@ -11281,18 +11006,15 @@
       "values": [
         {
           "value": "Invited",
-          "labelKey": "Core_InviteStatus_Invited",
-          "labelFallback": "Invited"
+          "labelKey": "Core_InviteStatus_Invited"
         },
         {
           "value": "Reinvited",
-          "labelKey": "Core_InviteStatus_Reinvited",
-          "labelFallback": "Reinvited"
+          "labelKey": "Core_InviteStatus_Reinvited"
         },
         {
           "value": "Active",
-          "labelKey": "Core_InviteStatus_Active",
-          "labelFallback": "Active"
+          "labelKey": "Core_InviteStatus_Active"
         }
       ]
     },
@@ -11301,38 +11023,31 @@
       "values": [
         {
           "value": "Pending",
-          "labelKey": "Core_JobStatus_Pending",
-          "labelFallback": "Pending"
+          "labelKey": "Core_JobStatus_Pending"
         },
         {
           "value": "Running",
-          "labelKey": "Core_JobStatus_Running",
-          "labelFallback": "Running"
+          "labelKey": "Core_JobStatus_Running"
         },
         {
           "value": "Succeeded",
-          "labelKey": "Core_JobStatus_Succeeded",
-          "labelFallback": "Succeeded"
+          "labelKey": "Core_JobStatus_Succeeded"
         },
         {
           "value": "Failed",
-          "labelKey": "Core_JobStatus_Failed",
-          "labelFallback": "Failed"
+          "labelKey": "Core_JobStatus_Failed"
         },
         {
           "value": "Cancelled",
-          "labelKey": "Core_JobStatus_Cancelled",
-          "labelFallback": "Cancelled"
+          "labelKey": "Core_JobStatus_Cancelled"
         },
         {
           "value": "Held",
-          "labelKey": "Core_JobStatus_Held",
-          "labelFallback": "Held"
+          "labelKey": "Core_JobStatus_Held"
         },
         {
           "value": "PendingConfirmation",
-          "labelKey": "Core_JobStatus_PendingConfirmation",
-          "labelFallback": "Pending confirmation"
+          "labelKey": "Core_JobStatus_PendingConfirmation"
         }
       ]
     },
@@ -11406,28 +11121,23 @@
       "values": [
         {
           "value": "Language",
-          "labelKey": "Core_MeLocaleMember_Language",
-          "labelFallback": "Language"
+          "labelKey": "Core_MeLocaleMember_Language"
         },
         {
           "value": "Calendar",
-          "labelKey": "Core_MeLocaleMember_Calendar",
-          "labelFallback": "Calendar"
+          "labelKey": "Core_MeLocaleMember_Calendar"
         },
         {
           "value": "TimeZone",
-          "labelKey": "Core_MeLocaleMember_TimeZone",
-          "labelFallback": "Time zone"
+          "labelKey": "Core_MeLocaleMember_TimeZone"
         },
         {
           "value": "Region",
-          "labelKey": "Core_MeLocaleMember_Region",
-          "labelFallback": "Region"
+          "labelKey": "Core_MeLocaleMember_Region"
         },
         {
           "value": "Digits",
-          "labelKey": "Core_MeLocaleMember_Digits",
-          "labelFallback": "Digits"
+          "labelKey": "Core_MeLocaleMember_Digits"
         }
       ]
     },
@@ -11436,18 +11146,15 @@
       "values": [
         {
           "value": "Coalesce",
-          "labelKey": "Core_MissedPolicy_Coalesce",
-          "labelFallback": "Coalesce"
+          "labelKey": "Core_MissedPolicy_Coalesce"
         },
         {
           "value": "ReplayAll",
-          "labelKey": "Core_MissedPolicy_ReplayAll",
-          "labelFallback": "Replay all"
+          "labelKey": "Core_MissedPolicy_ReplayAll"
         },
         {
           "value": "Skip",
-          "labelKey": "Core_MissedPolicy_Skip",
-          "labelFallback": "Skip"
+          "labelKey": "Core_MissedPolicy_Skip"
         }
       ]
     },
@@ -11456,23 +11163,19 @@
       "values": [
         {
           "value": "Info",
-          "labelKey": "Core_NotificationSeverity_Info",
-          "labelFallback": "Info"
+          "labelKey": "Core_NotificationSeverity_Info"
         },
         {
           "value": "Success",
-          "labelKey": "Core_NotificationSeverity_Success",
-          "labelFallback": "Success"
+          "labelKey": "Core_NotificationSeverity_Success"
         },
         {
           "value": "Warning",
-          "labelKey": "Core_NotificationSeverity_Warning",
-          "labelFallback": "Warning"
+          "labelKey": "Core_NotificationSeverity_Warning"
         },
         {
           "value": "Error",
-          "labelKey": "Core_NotificationSeverity_Error",
-          "labelFallback": "Error"
+          "labelKey": "Core_NotificationSeverity_Error"
         }
       ]
     },
@@ -11481,38 +11184,31 @@
       "values": [
         {
           "value": "Pending",
-          "labelKey": "Core_OutgoingEmailState_Pending",
-          "labelFallback": "Pending"
+          "labelKey": "Core_OutgoingEmailState_Pending"
         },
         {
           "value": "Sending",
-          "labelKey": "Core_OutgoingEmailState_Sending",
-          "labelFallback": "Sending"
+          "labelKey": "Core_OutgoingEmailState_Sending"
         },
         {
           "value": "Sent",
-          "labelKey": "Core_OutgoingEmailState_Sent",
-          "labelFallback": "Sent"
+          "labelKey": "Core_OutgoingEmailState_Sent"
         },
         {
           "value": "Sandboxed",
-          "labelKey": "Core_OutgoingEmailState_Sandboxed",
-          "labelFallback": "Sandboxed"
+          "labelKey": "Core_OutgoingEmailState_Sandboxed"
         },
         {
           "value": "Rejected",
-          "labelKey": "Core_OutgoingEmailState_Rejected",
-          "labelFallback": "Rejected"
+          "labelKey": "Core_OutgoingEmailState_Rejected"
         },
         {
           "value": "Failed",
-          "labelKey": "Core_OutgoingEmailState_Failed",
-          "labelFallback": "Failed"
+          "labelKey": "Core_OutgoingEmailState_Failed"
         },
         {
           "value": "Cancelled",
-          "labelKey": "Core_OutgoingEmailState_Cancelled",
-          "labelFallback": "Cancelled"
+          "labelKey": "Core_OutgoingEmailState_Cancelled"
         }
       ]
     },
@@ -11521,13 +11217,11 @@
       "values": [
         {
           "value": "Skip",
-          "labelKey": "Core_OverlapPolicy_Skip",
-          "labelFallback": "Skip"
+          "labelKey": "Core_OverlapPolicy_Skip"
         },
         {
           "value": "Allow",
-          "labelKey": "Core_OverlapPolicy_Allow",
-          "labelFallback": "Allow"
+          "labelKey": "Core_OverlapPolicy_Allow"
         }
       ]
     },
@@ -12285,23 +11979,19 @@
       "values": [
         {
           "value": "List",
-          "labelKey": "Core_ReportKind_List",
-          "labelFallback": "List"
+          "labelKey": "Core_ReportKind_List"
         },
         {
           "value": "Summary",
-          "labelKey": "Core_ReportKind_Summary",
-          "labelFallback": "Summary"
+          "labelKey": "Core_ReportKind_Summary"
         },
         {
           "value": "Pivot",
-          "labelKey": "Core_ReportKind_Pivot",
-          "labelFallback": "Pivot"
+          "labelKey": "Core_ReportKind_Pivot"
         },
         {
           "value": "Chart",
-          "labelKey": "Core_ReportKind_Chart",
-          "labelFallback": "Chart"
+          "labelKey": "Core_ReportKind_Chart"
         }
       ]
     },
@@ -12310,18 +12000,15 @@
       "values": [
         {
           "value": "OwnerInactive",
-          "labelKey": "Core_SchedulePausedReason_OwnerInactive",
-          "labelFallback": "Owner inactive"
+          "labelKey": "Core_SchedulePausedReason_OwnerInactive"
         },
         {
           "value": "Exhausted",
-          "labelKey": "Core_SchedulePausedReason_Exhausted",
-          "labelFallback": "Exhausted"
+          "labelKey": "Core_SchedulePausedReason_Exhausted"
         },
         {
           "value": "HandlerRetired",
-          "labelKey": "Core_SchedulePausedReason_HandlerRetired",
-          "labelFallback": "Handler retired"
+          "labelKey": "Core_SchedulePausedReason_HandlerRetired"
         }
       ]
     },
@@ -12330,13 +12017,11 @@
       "values": [
         {
           "value": "View",
-          "labelKey": "Core_ShareAccess_View",
-          "labelFallback": "View"
+          "labelKey": "Core_ShareAccess_View"
         },
         {
           "value": "Edit",
-          "labelKey": "Core_ShareAccess_Edit",
-          "labelFallback": "Edit"
+          "labelKey": "Core_ShareAccess_Edit"
         }
       ]
     },
@@ -14043,18 +13728,15 @@
       "values": [
         {
           "value": "Individual",
-          "labelKey": "Core_UserKind_Individual",
-          "labelFallback": "Individual"
+          "labelKey": "Core_UserKind_Individual"
         },
         {
           "value": "System",
-          "labelKey": "Core_UserKind_System",
-          "labelFallback": "System"
+          "labelKey": "Core_UserKind_System"
         },
         {
           "value": "Service",
-          "labelKey": "Core_UserKind_Service",
-          "labelFallback": "Service"
+          "labelKey": "Core_UserKind_Service"
         }
       ]
     },
@@ -14063,18 +13745,15 @@
       "values": [
         {
           "value": "New",
-          "labelKey": "Core_UserState_New",
-          "labelFallback": "New"
+          "labelKey": "Core_UserState_New"
         },
         {
           "value": "Invited",
-          "labelKey": "Core_UserState_Invited",
-          "labelFallback": "Invited"
+          "labelKey": "Core_UserState_Invited"
         },
         {
           "value": "Joined",
-          "labelKey": "Core_UserState_Joined",
-          "labelFallback": "Joined"
+          "labelKey": "Core_UserState_Joined"
         }
       ]
     },

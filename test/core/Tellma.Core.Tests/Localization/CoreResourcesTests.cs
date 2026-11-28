@@ -18,6 +18,7 @@ using Tellma.Core.Abstractions.Jobs;
 using Tellma.Core.Abstractions.Notifications;
 using Tellma.Core.Abstractions.Settings;
 using Tellma.Core.Abstractions.Validation;
+using Tellma.Core.Blobs;
 using Tellma.Core.Composition.Checks;
 using Tellma.Core.Localization;
 using Tellma.Core.Resources;
@@ -217,6 +218,22 @@ namespace Tellma.Core.Tests.Localization
                 Assert.Contains("Acme", rendered, StringComparison.Ordinal);
                 Assert.DoesNotContain("{", rendered, StringComparison.Ordinal);
             });
+        }
+
+        [Theory]
+        [InlineData("", BlobTelemetryTagValues.AttachExpired, "This file expired. Choose it again.")]
+        [InlineData("", BlobTelemetryTagValues.AttachMissing, "This file expired. Choose it again.")]
+        [InlineData("", BlobTelemetryTagValues.AttachKind, "This file can’t be attached. Upload it again.")]
+        [InlineData("", BlobTelemetryTagValues.AttachPersist, "This file can’t be attached. Upload it again.")]
+        [InlineData("ar", BlobTelemetryTagValues.AttachExpired, "انتهت صلاحية هذا الملف. اختره مرة أخرى.")]
+        [InlineData("ar", BlobTelemetryTagValues.AttachKind, "لا يمكن إرفاق هذا الملف. ارفعه مرة أخرى.")]
+        public void A_file_that_cannot_be_attached_says_by_its_reason_whether_choosing_it_again_mends_it(string culture, string reason, string expected)
+        {
+            // An expired or missing staged blob asks for the file again; any other reason keeps the general text.
+            string message = Entries(culture)["Blob_NotAttachable"];
+            MessageFormatter formatter = ProductionFormatter(CultureInfo.GetCultureInfo(culture.Length == 0 ? "en" : culture));
+
+            Assert.Equal(expected, formatter.FormatMessage(message, new Dictionary<string, object?> { [BlobAttachments.ReasonArgument] = reason }));
         }
 
         /// <summary>The entries of one culture's resources alone, without its parents'.</summary>

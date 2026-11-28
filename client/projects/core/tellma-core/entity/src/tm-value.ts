@@ -31,6 +31,7 @@ import { TmBadge } from '@tellma/core-ui/badge';
 import { TmIcon } from '@tellma/core-ui/icon';
 import { TmImage } from '@tellma/core-ui/image';
 
+import { ɵtmByteSize } from './tm-blob-check';
 import { TmFormats, type TmValueStyle } from './tm-formats';
 import { ɵtmPlanBlobPath } from './tm-select-plan';
 
@@ -62,7 +63,7 @@ type TmValueView =
   | { readonly kind: 'flag'; readonly on: boolean; readonly label: string }
   | { readonly kind: 'rows'; readonly items: readonly TmValueItem[] }
   | { readonly kind: 'image'; readonly src: string; readonly alt: string }
-  | { readonly kind: 'file'; readonly name: string; readonly href: string };
+  | { readonly kind: 'file'; readonly name: string; readonly href: string; readonly size: string };
 
 /** A blob a value names, with what the value knows of it. */
 interface TmBlobRef {
@@ -72,13 +73,15 @@ interface TmBlobRef {
   readonly variants?: string;
   /** The file's name, when the value says. */
   readonly fileName?: string;
+  /** The file's size in bytes, when the value says; a `long`, so decimal text. */
+  readonly size?: string;
 }
 
 /** A blob URL is complete as built; the image asks for no size of its own. */
 const AS_IS = (src: string): string => src;
 
 /** The width and height of a thumbnail, by surface. */
-const THUMBNAIL: Readonly<Record<TmValueStyle, number>> = { grid: 32, details: 96 };
+const THUMBNAIL: Readonly<Record<TmValueStyle, number>> = { grid: 32, details: 72 };
 
 /** Whether a value is absent: `null`, `undefined` or empty text. */
 function empty(value: unknown): boolean {
@@ -143,6 +146,10 @@ function objectOf(value: unknown): TmJsonObject | null {
     .tm-value__image-slot {
       display: inline-block;
     }
+    .tm-value__size {
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
   `,
   template: `
     @let shown = view();
@@ -195,9 +202,12 @@ function objectOf(value: unknown): TmJsonObject | null {
           <span class="tm-value__image-slot" aria-hidden="true" [style.inline-size.px]="size()" [style.block-size.px]="size()"></span>
         }
       }
-      <!-- A file's name, downloading it -->
+      <!-- A file's name, downloading it, and its size when the value says -->
       @case ('file') {
         <a [attr.href]="shown.href" download dir="auto">{{ shown.name }}</a>
+        @if (shown.size !== '') {
+          <span class="tm-value__size">{{ shown.size }}</span>
+        }
       }
     }
   `,
@@ -446,6 +456,7 @@ export class TmValue {
       kind: 'file',
       name: blob.fileName || this.#localization.ɵtext('tm.value.file')(),
       href: this.#urls.blob(policy.kind, blob.id, { download: true }),
+      size: blob.size === undefined ? '' : ɵtmByteSize(blob.size, this.#localization.locale()),
     };
   }
 
@@ -467,7 +478,13 @@ export class TmValue {
     };
     const variants = text('variants');
     const fileName = text('fileName');
-    return { id: Number(id), ...(variants !== undefined && { variants }), ...(fileName !== undefined && { fileName }) };
+    const size: TmJson | undefined = row?.['size'];
+    return {
+      id: Number(id),
+      ...(variants !== undefined && { variants }),
+      ...(fileName !== undefined && { fileName }),
+      ...((typeof size === 'string' || typeof size === 'number') && { size: String(size) }),
+    };
   }
 
   /**

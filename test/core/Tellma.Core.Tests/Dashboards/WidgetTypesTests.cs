@@ -37,6 +37,8 @@ namespace Tellma.Core.Tests.Dashboards
 
             Assert.Equal(
                 [
+                    new WidgetTypeDescriptor("core.assignments-to-me", "core", null, WidgetSubject.None),
+                    new WidgetTypeDescriptor("core.assignments-by-me", "core", null, WidgetSubject.None),
                     new WidgetTypeDescriptor("core.recents", "core", null, WidgetSubject.None),
                     new WidgetTypeDescriptor("fixture.cash-position", "fixture", typeof(CashPositionSettings), WidgetSubject.None),
                     new WidgetTypeDescriptor("fixture.overdue", "fixture", null, WidgetSubject.None),
@@ -51,6 +53,7 @@ namespace Tellma.Core.Tests.Dashboards
             IWidgetTypeRegistry registry = provider.GetRequiredService<IWidgetTypeRegistry>();
 
             Assert.Equal(new WidgetTypeDescriptor("core.recents", "core", null, WidgetSubject.None), registry.Find("core.recents"));
+            Assert.Equal(new WidgetTypeDescriptor("core.assignments-by-me", "core", null, WidgetSubject.None), registry.Find("core.assignments-by-me"));
             Assert.Null(registry.Find("Core.recents"));
             Assert.Null(registry.Find("core.report"));
             Assert.Null(registry.Find(null!));
@@ -201,7 +204,7 @@ namespace Tellma.Core.Tests.Dashboards
 
             ClientMetadataSection section = Assert.Single(context.Sections);
             Assert.Equal(
-                (ClientMetadataChunk.Core, "widgetTypes", /*lang=json,strict*/ """["core.recents","fixture.cash-position"]"""),
+                (ClientMetadataChunk.Core, "widgetTypes", /*lang=json,strict*/ """["core.assignments-to-me","core.assignments-by-me","core.recents","fixture.cash-position"]"""),
                 (section.Chunk, section.Name, Encoding.UTF8.GetString(section.Json.Span)));
         }
 

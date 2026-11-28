@@ -34,6 +34,12 @@ namespace Tellma.Core.Tests.Localization
         [InlineData("Parent")]
         [InlineData("Fixture_Link_OtherNode")]
         [InlineData("Fixture_WidgetKind_Fancy")]
+        // A read-only root's labels, and its columns' and navigations' by the same chains.
+        [InlineData("Core_UserStamp")]
+        [InlineData("Core_UserStamp_Plural")]
+        [InlineData("Core_UserStamp_LastActiveAt")]
+        [InlineData("Core_UserStamp_UserId")]
+        [InlineData("Core_UserStamp_User")]
         // Securables, the platform's actions, and the general settings' tab.
         [InlineData("Securable_core_UserStamp")]
         [InlineData("Core_User_Action_Read")]
@@ -77,7 +83,12 @@ namespace Tellma.Core.Tests.Localization
         public void Core_ships_the_shared_member_labels_whichever_entities_are_composed()
         {
             Assert.Superset(
-                new HashSet<string> { "Name", "Code", "Description", "IsActive", "CreatedAt", "CreatedBy", "ModifiedAt", "ModifiedBy", "Parent" },
+                new HashSet<string>
+                {
+                    "Id", "Name", "Code", "Description", "IsActive",
+                    "CreatedAt", "CreatedById", "CreatedBy", "ModifiedAt", "ModifiedById", "ModifiedBy",
+                    "Parent", "SubtreeCount", "ActiveSubtreeCount",
+                },
                 ConventionalStringKeys.Of(_provider).ToHashSet());
         }
 

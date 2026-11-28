@@ -5,10 +5,10 @@
 
 import type { TmBlobKindPolicy } from '@tellma/core';
 
-import { ɵtmCropCoverSquare, tmCheckBlobFile } from './tm-blob-check';
+import { ɵtmByteSize, ɵtmCropCoverSquare, tmCheckBlobFile } from './tm-blob-check';
 
 // The client blob-kind check and the cover-square crop, over real files
-// and a real canvas in the browser.
+// and a real canvas in the browser, and a file's size as a person reads it.
 
 /** A customer image's policy, as the entity model carries it. */
 const IMAGE: TmBlobKindPolicy = {
@@ -155,5 +155,34 @@ describe('cover-square crop', () => {
       format: 'png',
     });
     expect(kept).toBe(picked);
+  });
+});
+
+describe('a file size', () => {
+  it('takes the largest binary unit the size fills, with one fraction digit at most', () => {
+    expect(ɵtmByteSize(0, 'en')).toBe('0 byte');
+    expect(ɵtmByteSize(1023, 'en')).toBe('1,023 byte');
+    expect(ɵtmByteSize(1024, 'en')).toBe('1 kB');
+    expect(ɵtmByteSize(1536, 'en')).toBe('1.5 kB');
+    expect(ɵtmByteSize(1024 * 1024 - 1, 'en')).toBe('1,024 kB');
+    expect(ɵtmByteSize(10 * 1024 * 1024, 'en')).toBe('10 MB');
+    expect(ɵtmByteSize(5 * 1024 ** 3, 'en')).toBe('5 GB');
+    // Gigabytes are the largest unit.
+    expect(ɵtmByteSize(2 * 1024 ** 4, 'en')).toBe('2,048 GB');
+  });
+
+  it("reads a long's decimal text, and says nothing for a size that is not one", () => {
+    expect(ɵtmByteSize('2048', 'en')).toBe('2 kB');
+    expect(ɵtmByteSize('', 'en')).toBe('0 byte');
+    expect(ɵtmByteSize('large', 'en')).toBe('');
+    expect(ɵtmByteSize(-1, 'en')).toBe('');
+  });
+
+  it("writes the locale's digits and separators", () => {
+    expect(ɵtmByteSize(1536, 'ar')).toContain('كيلوبايت');
+    const arabicDigits = ɵtmByteSize(1536, 'ar-u-nu-arab');
+    expect(arabicDigits).toContain('١٫٥');
+    expect(arabicDigits).not.toMatch(/[0-9]/);
+    expect(ɵtmByteSize(1536, 'de')).toContain('1,5');
   });
 });

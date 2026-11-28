@@ -138,7 +138,7 @@ namespace Tellma.Distro.Acme.Web.Tests
 
             // --- The keys alone, the platform's first: Acme registers none of its own yet ---
             using var core = JsonDocument.Parse(emit.Chunk("core-"));
-            Assert.Equal(["core.recents"], core.RootElement.GetProperty("widgetTypes").EnumerateArray().Select(static key => key.GetString()));
+            Assert.Equal(["core.assignments-to-me", "core.assignments-by-me", "core.recents"], core.RootElement.GetProperty("widgetTypes").EnumerateArray().Select(static key => key.GetString()));
         }
 
         /// <summary>Runs an emit under a culture, restoring the caller's cultures after it.</summary>
