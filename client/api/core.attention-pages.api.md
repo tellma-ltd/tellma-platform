@@ -4,9 +4,25 @@
 
 ```ts
 
+import { ActivatedRouteSnapshot } from '@angular/router';
+import { ApplicationConfig } from '@angular/core';
+import { ApplicationRef } from '@angular/core';
+import { CanActivateFn } from '@angular/router';
+import { DestroyRef } from '@angular/core';
+import { EnvironmentProviders } from '@angular/core';
+import { ErrorHandler } from '@angular/core';
 import * as i0 from '@angular/core';
+import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
+import { InputSignal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { OnInit } from '@angular/core';
+import { Provider } from '@angular/core';
+import { RouterStateSnapshot } from '@angular/router';
+import { SchemaPathTree } from '@angular/forms/signals';
 import { Signal } from '@angular/core';
+import { TitleStrategy } from '@angular/router';
+import { Type } from '@angular/core';
 import { ViewContainerRef } from '@angular/core';
 import { WritableSignal } from '@angular/core';
 
@@ -22,9 +38,12 @@ export class TmNotificationSettings {
     constructor();
     protected readonly body: Signal<TmNotificationSettingsBody | null>;
     protected readonly busy: Signal<boolean>;
+    protected readonly failure: Signal<TmRouteErrorKind | null>;
     readonly headingLevel: i0.InputSignal<TmCardHeadingLevel>;
+    protected load(): void;
     protected readonly slot: Signal<ViewContainerRef>;
     readonly user: i0.InputSignal<TmNotificationSettingsUser>;
+    protected readonly views: Readonly<Record<"forbidden" | "not-found" | TmRouteErrorKind, _tellma_core.ɵTmRouteErrorView>>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmNotificationSettings, "tm-notification-settings", never, { "user": { "alias": "user"; "required": false; "isSignal": true; }; "headingLevel": { "alias": "headingLevel"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmNotificationSettings, never>;
 }

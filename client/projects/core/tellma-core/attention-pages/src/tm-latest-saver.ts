@@ -9,7 +9,9 @@ import { type Signal, signal } from '@angular/core';
 // asks for a save after a delay, a later change restarts the wait, and one
 // save is in flight at a time; the latest value wanted follows it. A failed
 // save keeps the value wanted, so Try again sends it. Leaving sends what is
-// still waiting, since a write is never aborted.
+// still waiting, since a write is never aborted; the page hiding (a closed
+// tab, a reload, an external link) hands it to the beacon, a keepalive send
+// whose answer is never read.
 
 /** Where a self-saving control's saves stand. Internal. */
 export type TmSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'failed';
@@ -26,7 +28,10 @@ export type TmSaveOutcome = 'saved' | 'reset';
  *
  * @example
  * ```ts
- * const saver = new TmLatestSaver<boolean>((value) => api.write('users/preferences/set', body(value)).then(() => 'saved'));
+ * const saver = new TmLatestSaver<boolean>(
+ *   (value) => api.write('users/preferences/set', body(value)).then(() => 'saved'),
+ *   (value) => api.send('users/preferences/set', body(value)),
+ * );
  * saver.want(true, 600);
  * ```
  */
@@ -53,8 +58,12 @@ export class TmLatestSaver<T> {
    * Creates the saver.
    *
    * @param send - Sends one value; it rejects when the save failed.
+   * @param beacon - Sends one value as the page hides, its answer never read.
    */
-  constructor(private readonly send: (value: T) => Promise<TmSaveOutcome>) {}
+  constructor(
+    private readonly send: (value: T) => Promise<TmSaveOutcome>,
+    private readonly beacon: (value: T) => void,
+  ) {}
 
   /** Where the saves stand: `pending` while a change waits, `saving` while one is in flight. */
   readonly state: Signal<TmSaveState> = this.#state.asReadonly();
@@ -98,6 +107,31 @@ export class TmLatestSaver<T> {
       this.#run();
     }
     this.#disposed = true;
+  }
+
+  /**
+   * Hands the beacon a value still waiting, out its delay or behind a
+   * flight, at once: the page is hiding. A failed value waits for Try again,
+   * as before; a page restored from the back-forward cache saves on as usual.
+   */
+  hide(): void {
+    if (this.#timer === null && !this.#due) {
+      return;
+    }
+    if (this.#timer !== null) {
+      clearTimeout(this.#timer);
+      this.#timer = null;
+    }
+    this.#due = false;
+    const value = this.#wanted;
+    this.#wanted = undefined;
+    if (value !== undefined) {
+      this.beacon(value);
+    }
+    if (!this.#flying) {
+      // The beacon's answer is never read: nothing is left saving.
+      this.#state.set('idle');
+    }
   }
 
   /** Sends the value wanted, unless one is in flight, which it then follows. */

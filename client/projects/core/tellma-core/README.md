@@ -834,7 +834,11 @@ and `tm-notification-settings-page` are thin shells: the section's body (its mod
 its template, its styles and the `tm.attentionPages` strings) is a lazy chunk of the entry point,
 budgeted on its own line, which the shell loads when it renders, drawing the body's first-read
 skeleton meanwhile. The entry point's other pages and list cells therefore never download it. A
-chunk that fails to load is reported to telemetry, and the next render of the section tries again.
+chunk that fails to load follows the route host's rule: it is reported to telemetry, the worker
+checks for an update, and the section shows `client-outdated` (Reload) or `offline` (Try again,
+which loads the chunk again) inline, in the primary's `tm.errors` strings, with `aria-busy` cleared
+and the page context in error. The same inline view shows when the error views' entry point does
+not load after a failed read, its Try again reading again.
 The body reads the user's stored deviations (`notification-preferences/get`) and lays the client metadata's
 notification types out as one card per category, in the order of each category's first type: one
 row per type, one column per channel in registration order, the labels being the server's
@@ -847,9 +851,13 @@ Every change applies in its frame. 600 ms after the last one the section sends t
 omitting the cells at their defaults, with one save in flight and the latest state after it; the
 header reads "Saving…", "All changes saved", or "Couldn't save your changes" with Try again, and a
 `422` reloads the set and shows the 400 dialog. Leaving the section, or turning it to another user,
-sends a change still waiting out its 600 ms at once. Only the first read shows the skeleton: a
+sends a change still waiting out its 600 ms at once; the page hiding (a closed tab, a reload, an
+external link) sends it as a keepalive `TmApi.send`, as `TmPreferences` and the locale writes do.
+Stored rows for types or channels this bundle does not know are kept and sent back unchanged with
+every save, since the save takes the caller's complete set. Only the first read shows the skeleton: a
 reload over the shown values (after a `422`) keeps the cards and their focus in place, with the
-switches read-only until it ends. The pop-up card's switch is `notifications.toasts`
+switches read-only until it ends; it leaves another user's pop-up switch alone while that switch's
+own save waits, runs or has failed. The pop-up card's switch is `notifications.toasts`
 through `TmPreferences`, applied at once. While `TmAttention.writable()` is false every control is
 disabled, with "You're offline" or the frozen tenant's reason as its tooltip and description, and
 the values stay; a read-only tenant saves the switches but disables "Send a test" with its reason.

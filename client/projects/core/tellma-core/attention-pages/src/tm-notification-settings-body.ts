@@ -10,6 +10,7 @@ import {
   computed,
   effect,
   inject,
+  InjectionToken,
   Injector,
   input,
   type Signal,
@@ -19,7 +20,21 @@ import {
   ViewContainerRef,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { type TmActionResult, TmApiError, type TmContextError, type TmJson, TmLocalization, type TmPageAction, TmUrls } from '@tellma/core';
+import {
+  ɵTM_API_UPDATES,
+  ɵTM_ROUTE_ERROR_VIEWS,
+  ɵTmRouteError,
+  type ɵTmRouteErrorKind,
+  type TmActionResult,
+  TmApiError,
+  type TmContextError,
+  type TmJson,
+  TmLocalization,
+  type TmPageAction,
+  TmTelemetry,
+  TmUrls,
+} from '@tellma/core';
+import type { TmErrorPresenter, TmErrorState } from '@tellma/core/errors';
 import { TmButton } from '@tellma/core-ui/button';
 import { TmCard, type TmCardHeadingLevel } from '@tellma/core-ui/card';
 import { TmSkeleton } from '@tellma/core-ui/skeleton';
@@ -47,6 +62,20 @@ import {
 // read-only, keeping their place and their focus. The body also builds the
 // pieces of the section's page context (spec 0026 §9.3) that read the model.
 
+/** What the body reads of the error views' entry point. Internal. */
+export interface TmNotificationSettingsErrors {
+  /** The presenter that describes a failed read. */
+  readonly TmErrorPresenter: typeof TmErrorPresenter;
+  /** The error state a failed read renders. */
+  readonly TmErrorState: typeof TmErrorState;
+}
+
+/** Loads the error views' entry point for a failed read. Internal: a test makes it fail. */
+export const TM_NOTIFICATION_SETTINGS_ERRORS_LOAD = new InjectionToken<() => Promise<TmNotificationSettingsErrors>>('TM_NOTIFICATION_SETTINGS_ERRORS_LOAD', {
+  providedIn: 'root',
+  factory: () => () => import('@tellma/core/errors'),
+});
+
 /** Tells the sections on one page apart, for their elements' ids. */
 let nextSection = 0;
 
@@ -71,7 +100,7 @@ const members = (args: TmJson): Readonly<Record<string, TmJson>> =>
  */
 @Component({
   selector: 'tm-notification-settings-body',
-  imports: [NgTemplateOutlet, RouterLink, TmButton, TmCard, TmSkeleton, TmSwitch, TmTooltip],
+  imports: [NgTemplateOutlet, RouterLink, TmButton, TmCard, TmSkeleton, TmSwitch, TmTooltip, ɵTmRouteError],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'tm-notification-settings__body' },
   template: `
@@ -114,9 +143,11 @@ const members = (args: TmJson): Readonly<Record<string, TmJson>> =>
           </div>
         }
         @case ('error') {
-          <!-- A failed read: the error views' state, else a plain line with Try again. -->
+          <!-- A failed read: the error views' state; if they did not load, why, inline; else a plain line with Try again. -->
           <ng-container #errorSlot />
-          @if (fallbackError()) {
+          @if (errorsFailure(); as kind) {
+            <tm-route-error [view]="views[kind]" (retry)="model.reload()" />
+          } @else if (fallbackError()) {
             <div class="tm-notification-settings__failed">
               <p>{{ text('settings.loadFailed') }}</p>
               <button tmButton type="button" size="sm" (click)="model.reload()">{{ text('settings.retry') }}</button>
@@ -280,11 +311,15 @@ const members = (args: TmJson): Readonly<Record<string, TmJson>> =>
       color: var(--error);
     }
 
+    /* The skeleton cards stretch to the section's width, as the shell's and the loaded cards do. */
     .tm-notification-settings__loading,
     .tm-notification-settings__failed {
       display: flex;
       flex-direction: column;
       gap: var(--space-4);
+    }
+
+    .tm-notification-settings__failed {
       align-items: flex-start;
     }
 
@@ -467,6 +502,9 @@ export class TmNotificationSettingsBody {
   /** Counts the error state's renders, so only the latest one shows. */
   #errorRun = 0;
 
+  /** Why the error views did not load after a failed read, or `null`. */
+  readonly #errorsFailure = signal<ɵTmRouteErrorKind | null>(null);
+
   /** Whose settings to edit: `'me'`, the signed-in user, or another user's id. */
   readonly user = input<TmNotificationSettingsUser>('me');
 
@@ -478,6 +516,12 @@ export class TmNotificationSettingsBody {
 
   /** Where the error views render a failed read. */
   protected readonly errorSlot = viewChild('errorSlot', { read: ViewContainerRef });
+
+  /** Why the error views did not load after a failed read, or `null`. */
+  protected readonly errorsFailure: Signal<ɵTmRouteErrorKind | null> = this.#errorsFailure.asReadonly();
+
+  /** The inline views of an entry point that did not load. */
+  protected readonly views = ɵTM_ROUTE_ERROR_VIEWS;
 
   /** Whether a failed read shows the plain line: its failure is not an API error the error views can describe. */
   protected readonly fallbackError = computed(() => this.#model()?.loadError() === null);
@@ -640,7 +684,9 @@ export class TmNotificationSettingsBody {
   }
 
   /**
-   * Renders a failed read's error state, with Try again reading again.
+   * Renders a failed read's error state, with Try again reading again. When
+   * the error views do not load, the worker's update check picks the inline
+   * view that says why, whose Try again reads again.
    *
    * @param model - The model whose read failed.
    * @param slot - The state's slot, while it renders.
@@ -649,13 +695,26 @@ export class TmNotificationSettingsBody {
   async #showError(model: TmNotificationSettingsModel | null, slot: ViewContainerRef | undefined, error: TmApiError | null): Promise<void> {
     const run = ++this.#errorRun;
     slot?.clear();
+    this.#errorsFailure.set(null);
     if (model === null || slot === undefined || error === null) {
       return;
     }
-    const { TmErrorPresenter, TmErrorState } = await import('@tellma/core/errors');
+    let errors: TmNotificationSettingsErrors;
+    try {
+      errors = await this.#injector.get(TM_NOTIFICATION_SETTINGS_ERRORS_LOAD)();
+    } catch (failure) {
+      // Spec 0024 §4.4: an update the worker has, or failed to get, means the client is outdated.
+      this.#injector.get(TmTelemetry).error(failure, { source: 'tm-notification-settings' });
+      const update = await this.#injector.get(ɵTM_API_UPDATES).check();
+      if (run === this.#errorRun) {
+        this.#errorsFailure.set(update === 'ready' || update === 'failed' ? 'client-outdated' : 'offline');
+      }
+      return;
+    }
     if (run !== this.#errorRun) {
       return;
     }
+    const { TmErrorPresenter, TmErrorState } = errors;
     const view = this.#injector.get(TmErrorPresenter).describe(error, { kind: 'read' });
     const state = slot.createComponent(TmErrorState, { injector: this.#injector });
     state.setInput('view', view);

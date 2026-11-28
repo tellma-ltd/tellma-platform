@@ -6,6 +6,7 @@
 import { LiveAnnouncer } from '@angular/cdk/a11y';
 import { computed, type Injector, type Signal, signal, untracked, type WritableSignal } from '@angular/core';
 import {
+  ɵTM_API_HOST,
   TM_CLIENT_METADATA,
   TmApi,
   TmApiError,
@@ -27,7 +28,11 @@ import { TmLatestSaver, type TmSaveOutcome, type TmSaveState } from './tm-latest
 // whole set 600 ms after the last change, one save at a time. For another
 // user (spec 0032 §4.8) it reads and saves through that user's routes and
 // has no test delivery. The component renders it; the page publishes its
-// page context from it.
+// page context from it. Stored rows for types or channels this bundle does
+// not know are kept and sent back unchanged, since the save takes the
+// caller's complete set (spec 0021 §4.3) and a tab on an older bundle must
+// not delete them. A change still waiting when the page hides goes out as a
+// keepalive send, as the preferences' and the locale writes' do.
 
 /** Whose notification settings a section edits: the signed-in user's, or another user's by id. */
 export type TmNotificationSettingsUser = 'me' | number;
@@ -170,6 +175,12 @@ export class TmNotificationSettingsModel {
 
   /** The values last read or saved. */
   #saved: Values = new Map();
+
+  /** The stored rows of types or channels this bundle does not know, sent back unchanged with every save. */
+  #foreign: readonly TmNotificationPreference[] = [];
+
+  /** Stops listening for the page hiding. */
+  readonly #stopHide: () => void;
 
   /** Whether the set has loaded, failed to, or is loading. */
   readonly #status = signal<'loading' | 'ready' | 'error'>('loading');
@@ -314,8 +325,27 @@ export class TmNotificationSettingsModel {
     );
 
     // --- Saving: the grid's whole set, and another user's pop-up value ---
-    this.#gridSaver = new TmLatestSaver((values) => this.#saveGrid(values));
-    this.#popupSaver = user === 'me' ? null : new TmLatestSaver((value) => this.#savePopups(user, value));
+    const tenant = { tenantId: this.#tenantId };
+    this.#gridSaver = new TmLatestSaver(
+      (values) => this.#saveGrid(values),
+      (values) => {
+        if (!same(values, this.#saved)) {
+          this.#api.send(...this.#gridRequest(values), tenant);
+        }
+      },
+    );
+    this.#popupSaver =
+      user === 'me'
+        ? null
+        : new TmLatestSaver(
+            (value) => this.#savePopups(user, value),
+            (value) => this.#api.send(...this.#popupRequest(user, value), tenant),
+          );
+    // The page hiding sends what still waits, its answer never read.
+    this.#stopHide = injector.get(ɵTM_API_HOST).listen('window', 'pagehide', () => {
+      this.#gridSaver.hide();
+      this.#popupSaver?.hide();
+    });
     this.popups = user === 'me' ? this.#preferences.get(tmNotificationToastsKey) : this.#otherPopups.asReadonly();
     const states = (): TmSaveState[] => [this.#gridSaver.state(), this.#popupSaver?.state() ?? 'idle'];
     this.saveStatus = computed(() => {
@@ -469,7 +499,10 @@ export class TmNotificationSettingsModel {
         return;
       }
       this.#apply(rows);
-      if (bag !== null) {
+      // A pop-up value that waits, saves or failed is kept: the read would show the
+      // stored value while Try again, or the save in flight, stores another.
+      const popupState = this.#popupSaver === null ? 'idle' : untracked(this.#popupSaver.state);
+      if (bag !== null && (popupState === 'idle' || popupState === 'saved')) {
         this.#otherPopups.set(this.#parsePopups(bag.preferences?.[tmNotificationToastsKey.key]));
       }
       this.#status.set('ready');
@@ -487,6 +520,7 @@ export class TmNotificationSettingsModel {
 
   /** Sends what is still waiting and stops the reads: the section is leaving. */
   dispose(): void {
+    this.#stopHide();
     this.#gridSaver.dispose();
     this.#popupSaver?.dispose();
     this.#abort.abort();
@@ -504,20 +538,63 @@ export class TmNotificationSettingsModel {
 
   /**
    * Applies a read set: each stored row a switch cell knows replaces its
-   * default; rows for cells that are not switches are ignored.
+   * default; rows for cells that are not switches are ignored, and rows for
+   * a type or a channel the bundle does not know are kept for the saves.
    *
    * @param rows - The stored rows.
    */
   #apply(rows: readonly TmNotificationPreference[]): void {
     const values = this.#defaults();
+    const foreign: TmNotificationPreference[] = [];
     for (const row of rows) {
       const key = cellKey(row.type, row.channel);
       if (values.has(key)) {
         values.set(key, row.enabled);
+      } else if (!this.#cells.has(key)) {
+        foreign.push(row);
       }
     }
     this.#current.set(values);
     this.#saved = values;
+    this.#foreign = foreign;
+  }
+
+  /**
+   * The grid's save: its route and its body, the whole set without the cells
+   * at their defaults, plus the rows of types and channels the bundle does
+   * not know, unchanged.
+   *
+   * @param values - The values to save.
+   * @returns The route and the body.
+   */
+  #gridRequest(values: Values): [route: string, body: unknown] {
+    const preferences: TmNotificationPreference[] = [];
+    for (const [key, enabled] of values) {
+      const cell = this.#cells.get(key)!;
+      if (enabled !== cell.defaultEnabled) {
+        preferences.push({ type: cell.type, channel: cell.channel, enabled });
+      }
+    }
+    preferences.push(...this.#foreign);
+    const user = this.user;
+    return user === 'me' ? ['notification-preferences/save', preferences] : ['users/notification-preferences/save', { id: user, arguments: { preferences } }];
+  }
+
+  /**
+   * Another user's pop-up save: its route and its body. The key's fallback
+   * deletes the stored value, as the signed-in user's own preferences do
+   * so a later change to the fallback reaches the user.
+   *
+   * @param userId - The user.
+   * @param enabled - The value.
+   * @returns The route and the body.
+   */
+  #popupRequest(userId: number, enabled: boolean): [route: string, body: unknown] {
+    const { key, fallback } = tmNotificationToastsKey;
+    // Spec 0025 §9.1: a value deep-equal to the fallback deletes the key.
+    return enabled === fallback
+      ? ['users/preferences/delete', { id: userId, arguments: { keys: [key] } }]
+      : ['users/preferences/set', { id: userId, arguments: { items: [{ key, value: JSON.stringify(enabled) }] } }];
   }
 
   /**
@@ -533,18 +610,8 @@ export class TmNotificationSettingsModel {
       return 'saved';
     }
     const changes = [...values].filter(([key, value]) => this.#saved.get(key) !== value).length;
-    const preferences: TmNotificationPreference[] = [];
-    for (const [key, enabled] of values) {
-      const cell = this.#cells.get(key)!;
-      if (enabled !== cell.defaultEnabled) {
-        preferences.push({ type: cell.type, channel: cell.channel, enabled });
-      }
-    }
     try {
-      const user = this.user;
-      await (user === 'me'
-        ? this.#api.write('notification-preferences/save', preferences, { tenantId: this.#tenantId })
-        : this.#api.write('users/notification-preferences/save', { id: user, arguments: { preferences } }, { tenantId: this.#tenantId }));
+      await this.#api.write(...this.#gridRequest(values), { tenantId: this.#tenantId });
     } catch (error) {
       this.#telemetry.event('tm.attention.settings-saved', { changes: bucket(changes), outcome: 'failed' });
       if (error instanceof TmApiError && error.kind === 'validation') {
@@ -560,21 +627,14 @@ export class TmNotificationSettingsModel {
   }
 
   /**
-   * Saves another user's pop-up value through their preferences routes: the
-   * key's fallback deletes the stored value, as the signed-in user's own
-   * preferences do, so a later change to the fallback reaches the user.
+   * Saves another user's pop-up value through their preferences routes.
    *
    * @param userId - The user.
    * @param enabled - The value.
    * @returns How the save ended.
    */
   async #savePopups(userId: number, enabled: boolean): Promise<TmSaveOutcome> {
-    const { key, fallback } = tmNotificationToastsKey;
-    const options = { tenantId: this.#tenantId };
-    // Spec 0025 §9.1: a value deep-equal to the fallback deletes the key.
-    await (enabled === fallback
-      ? this.#api.write('users/preferences/delete', { id: userId, arguments: { keys: [key] } }, options)
-      : this.#api.write('users/preferences/set', { id: userId, arguments: { items: [{ key, value: JSON.stringify(enabled) }] } }, options));
+    await this.#api.write(...this.#popupRequest(userId, enabled), { tenantId: this.#tenantId });
     return 'saved';
   }
 

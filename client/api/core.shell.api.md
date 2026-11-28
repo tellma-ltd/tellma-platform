@@ -17,6 +17,7 @@ import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import * as lucide from 'lucide';
 import { Observable } from 'rxjs';
+import { OnInit } from '@angular/core';
 import { Provider } from '@angular/core';
 import { RouterStateSnapshot } from '@angular/router';
 import { SchemaPathTree } from '@angular/forms/signals';

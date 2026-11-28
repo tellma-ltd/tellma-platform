@@ -405,6 +405,15 @@ export {
   type TmWorkerUpdates as ɵTmWorkerUpdates,
 } from './src/api/tm-api-seams';
 export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
+// The inline view a lazy body shows when its chunk does not load
+// (client-outdated or offline, after the worker's update check), which the
+// entry points' shells share with the route host; not for app code.
+export {
+  TM_ROUTE_ERROR_VIEWS as ɵTM_ROUTE_ERROR_VIEWS,
+  TmRouteError as ɵTmRouteError,
+  type TmRouteErrorKind as ɵTmRouteErrorKind,
+  type TmRouteErrorView as ɵTmRouteErrorView,
+} from './src/routes/tm-route-error';
 export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
 export {
   TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,

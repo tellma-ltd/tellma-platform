@@ -6,14 +6,14 @@
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { TmApiError, type TmLaunchDocs, TmLocalization, TmPageActions, TmPageContexts, TmPreferences } from '@tellma/core';
+import { ɵTM_API_UPDATES, TmApiError, type TmLaunchDocs, TmLocalization, TmPageActions, TmPageContexts, TmPreferences } from '@tellma/core';
 import { tmNotificationToastsKey } from '@tellma/core/attention';
 import { TmNotificationSettingsHarness } from '@tellma/core-testing';
 import { TmErrorDialogHarness } from '@tellma/core-ui-testing';
 import axe from 'axe-core';
 import { page } from 'vitest/browser';
 
-import { TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
+import { TM_T17_DOCS, TM_TEST_SUB } from '../../src/routes/tm-app.testing.util';
 import {
   type TmAttentionRig,
   tmAttentionRig,
@@ -23,12 +23,15 @@ import {
 } from '../../src/attention/tm-attention.testing.util';
 import type { TmNotificationPreference, TmNotificationSettingsUser } from './tm-notification-settings-model';
 import { TM_NOTIFICATION_SETTINGS_LOAD, TmNotificationSettings, type TmNotificationSettingsChunk } from './tm-notification-settings';
+import { TM_NOTIFICATION_SETTINGS_ERRORS_LOAD } from './tm-notification-settings-body';
 import { TmNotificationSettingsPage } from './tm-notification-settings-page';
 
 // The Notifications section of My settings in a whole test app entered into
-// tenant 17: the body's chunk behind the shell, the cards, the cells and
+// tenant 17: the body's chunk behind the shell, with its failure views and
+// a skeleton that never shifts, the cards, the cells and
 // their defaults, the whole-set save after the wait with one save in flight,
-// a change sent when the section leaves, the save status and Try again, a
+// a change sent when the section leaves or the page hides, the stored rows
+// of types the bundle does not know, the save status and Try again, a
 // 422's reload over the shown cards, the read-only, frozen and offline rules,
 // the pop-up switch of the signed-in user and of another, the test delivery
 // results and failures, the stacked layout below md, the page context and
@@ -106,6 +109,10 @@ async function setUp(
   rig.api.respond('notification-preferences/get', options.rows ?? []);
   rig.api.respond('users/notification-preferences/get', options.rows ?? []);
   rig.api.respond('users/preferences/get', { preferences: { 'notifications.toasts': 'false' } });
+  // The distribution document carries the support block the server always sends, which the 5xx dialog reads.
+  const distribution = { support: { enabled: false, providerAccess: false } };
+  rig.api.respond('/api/distribution-info', distribution);
+  await rig.store.put({ kind: 'user', sub: TM_TEST_SUB }, 'distribution', { tag: null, savedAt: Date.now(), data: distribution });
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.user.set(options.user ?? 'me');
   // The body's chunk loads after the shell renders, then reads the set.
@@ -114,12 +121,33 @@ async function setUp(
   return { rig, fixture, section };
 }
 
-/** The bodies of the calls to a route. */
+/** The bodies of the reads and writes to a route; a keepalive send is not one. */
 function bodies(rig: TmAttentionRig, route: string): unknown[] {
   return rig.api
     .calls()
-    .filter((call) => call.route === route)
+    .filter((call) => call.route === route && call.kind !== 'send')
     .map((call) => call.body);
+}
+
+/** The keepalive sends, with their routes, bodies and tenants. */
+function sends(rig: TmAttentionRig): unknown[] {
+  return rig.api
+    .calls()
+    .filter((call) => call.kind === 'send')
+    .map((call) => ({ route: call.route, body: call.body, tenantId: (call.options as { readonly tenantId?: number }).tenantId }));
+}
+
+/** The boxes of the elements a selector matches. */
+function boxes(host: HTMLElement, selector: string): { top: number; left: number; width: number; height: number }[] {
+  return [...host.querySelectorAll(selector)].map((element) => {
+    const { top, left, width, height } = element.getBoundingClientRect();
+    return { top, left, width, height };
+  });
+}
+
+/** The section's inline view of an entry point that did not load. */
+function routeError(host: HTMLElement): HTMLElement | null {
+  return host.querySelector<HTMLElement>('tm-route-error');
 }
 
 /** The tenant's launch facts in a given state. */
@@ -150,13 +178,84 @@ describe('tm-notification-settings', () => {
     expect(shell.getAttribute('aria-busy')).toBeNull();
   });
 
-  it("reports a body chunk that fails to load", async () => {
-    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [
-      { provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => Promise.reject(new Error('The chunk is gone.')) },
-    ]);
-    TestBed.createComponent(Host);
-    await tmSettleUntil(() => rig.telemetry.recent().some((item) => item.kind === 'error'));
+  it("shows offline inline with Try again when the body's chunk does not load, and loads it on Try again", async () => {
+    let fails = true;
+    const load = (): Promise<TmNotificationSettingsChunk> => (fails ? Promise.reject(new Error('The chunk is gone.')) : import('./tm-notification-settings-body'));
+    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [{ provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: load }]);
+    rig.api.respond('notification-preferences/get', []);
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.nativeElement as HTMLElement;
+    await tmSettleUntil(() => routeError(host) !== null);
+    // Reported, said inline in place of the skeleton, and no longer busy.
+    expect(rig.telemetry.recent().some((item) => item.kind === 'error')).toBe(true);
+    expect(routeError(host)!.textContent).toContain("You're offline");
+    expect(host.querySelector('.tm-notification-settings__placeholder')).toBeNull();
+    expect(host.querySelector('tm-notification-settings')!.getAttribute('aria-busy')).toBeNull();
     expect(bodies(rig, 'notification-preferences/get')).toEqual([]);
+    expect(await (await TestbedHarnessEnvironment.harnessForFixture(fixture, TmNotificationSettingsHarness)).hasLoadError()).toBe(true);
+
+    fails = false;
+    routeError(host)!.querySelector('button')!.click();
+    await tmSettleUntil(() => host.querySelector('.tm-notification-settings__body .tm-notification-settings__card') !== null);
+    expect(routeError(host)).toBeNull();
+    expect(bodies(rig, 'notification-preferences/get')).toHaveLength(1);
+  });
+
+  it("says the client was updated when the body's chunk does not load and the worker has an update", async () => {
+    await tmAttentionRig({}, { notificationTypes: TYPES }, [
+      { provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => Promise.reject(new Error('The chunk is gone.')) },
+      { provide: ɵTM_API_UPDATES, useValue: { check: () => Promise.resolve('ready') } },
+    ]);
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.nativeElement as HTMLElement;
+    await tmSettleUntil(() => routeError(host)?.textContent?.includes('was updated') === true);
+    expect(host.querySelector('tm-notification-settings')!.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('shows why the error views did not load after a failed read, and reads again on Try again', async () => {
+    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [
+      { provide: TM_NOTIFICATION_SETTINGS_ERRORS_LOAD, useValue: () => Promise.reject(new Error('The chunk is gone.')) },
+    ]);
+    let fails = true;
+    rig.api.respond('notification-preferences/get', () => {
+      if (fails) {
+        throw new TmApiError({ kind: 'server', status: 500 });
+      }
+      return [];
+    });
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.nativeElement as HTMLElement;
+    await tmSettleUntil(() => routeError(host) !== null);
+    expect(routeError(host)!.textContent).toContain("You're offline");
+    fails = false;
+    routeError(host)!.querySelector('button')!.click();
+    await tmSettleUntil(() => host.querySelector('.tm-notification-settings__card') !== null);
+    expect(routeError(host)).toBeNull();
+  });
+
+  it('keeps the skeleton cards in place from the shell to the body, and the loaded cards at their width', async () => {
+    const chunk = deferred<TmNotificationSettingsChunk>();
+    const read = deferred<readonly TmNotificationPreference[]>();
+    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [{ provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => chunk.promise }]);
+    rig.api.respond('notification-preferences/get', () => read.promise);
+    const fixture = TestBed.createComponent(Host);
+    const host = fixture.nativeElement as HTMLElement;
+    await tmSettle();
+    const placeholder = boxes(host, '.tm-notification-settings__placeholder tm-card');
+    expect(placeholder).toHaveLength(2);
+    expect(placeholder[0]!.width).toBeGreaterThan(200);
+
+    // The body's own first-read skeleton takes the shell's boxes exactly.
+    chunk.resolve(await import('./tm-notification-settings-body'));
+    await tmSettleUntil(() => host.querySelector('.tm-notification-settings__loading') !== null);
+    expect(boxes(host, '.tm-notification-settings__loading tm-card')).toEqual(placeholder);
+
+    // The loaded cards start where the skeleton did, at the same width.
+    read.resolve([]);
+    await tmSettleUntil(() => host.querySelector('.tm-notification-settings__card') !== null);
+    const loaded = boxes(host, '.tm-notification-settings__card');
+    expect(loaded[0]!.top).toBe(placeholder[0]!.top);
+    expect(loaded.map((card) => card.width)).toEqual(loaded.map(() => placeholder[0]!.width));
   });
 
   it("lays out one card per category, a type's cells at their defaults or stored values, a locked inbox and a channel-only dash", async () => {
@@ -330,6 +429,78 @@ describe('tm-notification-settings', () => {
     expect(bodies(rig, 'notification-preferences/save')).toEqual([[{ type: 'core.job.failed', channel: 'email', enabled: true }]]);
   });
 
+  it('sends a change still waiting when the page hides, as a keepalive send whose answer is never read', async () => {
+    const { rig, section } = await setUp({ rows: [{ type: 'gl.center.flagged', channel: 'email', enabled: true }] });
+    rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
+    await section.toggleCell('core.job.failed', 'email');
+    window.dispatchEvent(new Event('pagehide'));
+    expect(sends(rig)).toEqual([
+      {
+        route: 'notification-preferences/save',
+        body: [
+          { type: 'core.job.failed', channel: 'email', enabled: true },
+          { type: 'gl.center.flagged', channel: 'email', enabled: true },
+        ],
+        tenantId: 17,
+      },
+    ]);
+    // The wait it ended sends no second copy, and nothing is left saving.
+    await wait(PAST_WAIT_MS);
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([]);
+    expect(await section.getStatus()).toBe('');
+  });
+
+  it('sends back the stored rows of types and channels this bundle does not know, unchanged', async () => {
+    const { rig, section } = await setUp({
+      rows: [
+        { type: 'gl.center.flagged', channel: 'email', enabled: true },
+        { type: 'acme.order.shipped', channel: 'email', enabled: true },
+        { type: 'core.job.failed', channel: 'sms', enabled: true },
+      ],
+    });
+    rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
+    await section.toggleCell('core.job.failed', 'email');
+    await wait(PAST_WAIT_MS);
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([
+      [
+        { type: 'core.job.failed', channel: 'email', enabled: true },
+        { type: 'gl.center.flagged', channel: 'email', enabled: true },
+        { type: 'acme.order.shipped', channel: 'email', enabled: true },
+        { type: 'core.job.failed', channel: 'sms', enabled: true },
+      ],
+    ]);
+    // Only the user's own change counts.
+    expect(saves(rig)).toEqual([{ changes: '1', outcome: 'ok' }]);
+  });
+
+  it("keeps another user's pop-up value through a 422 reload while that switch's own save has failed", async () => {
+    const { rig, fixture, section } = await setUp({ user: 42 });
+    rig.api.respond('users/preferences/delete', () => {
+      throw new TmApiError({ kind: 'server', status: 500 });
+    });
+    const popups = await section.getPopupSwitch();
+    await popups.toggle();
+    await tmSettle();
+    expect(await section.getStatus()).toBe("Couldn't save your changes");
+    // A grid save answers 422, and its reload reads the stored pop-up value, off.
+    rig.api.respond('users/notification-preferences/save', () => {
+      throw gone();
+    });
+    await section.toggleCell('core.job.failed', 'email');
+    await wait(PAST_WAIT_MS);
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') !== null);
+    expect(bodies(rig, 'users/preferences/get')).toHaveLength(2);
+    expect(await popups.isChecked()).toBe(true);
+    expect(await section.getStatus()).toBe("Couldn't save your changes");
+    const dialog = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmErrorDialogHarness);
+    await dialog.pressEscape();
+    // Try again stores what the switch shows.
+    rig.api.respond('users/preferences/delete', { preferences: {} });
+    await section.retry();
+    await tmSettleUntil(() => bodies(rig, 'users/preferences/delete').length === 2);
+    expect(bodies(rig, 'users/preferences/delete')[1]).toEqual({ id: 42, arguments: { keys: ['notifications.toasts'] } });
+  });
+
   it("sends the signed-in user's change still waiting when the section turns to another user", async () => {
     const { rig, fixture, section } = await setUp();
     rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
@@ -494,6 +665,20 @@ describe('tm-notification-settings', () => {
     expect(await section.getStatus()).toBe('All changes saved');
   });
 
+  it('shows the 5xx dialog when a test meets a transport outage, and frees the button with no result', async () => {
+    const { rig, fixture, section } = await setUp();
+    rig.api.respond('users/me/test-notification', () => {
+      throw new TmApiError({ kind: 'server', status: 503 });
+    });
+    await section.sendTest('email');
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') !== null);
+    expect((await section.getTestRows())[0]).toMatchObject({ pending: false, disabled: false, result: null });
+    const dialog = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmErrorDialogHarness);
+    expect(await dialog.getTitle()).not.toBe('');
+    // Nothing announced a result.
+    expect(document.querySelector('.cdk-live-announcer-element')?.textContent ?? '').not.toBe('Sent');
+  });
+
   it("says a failed save of another user's pop-ups failed, and sends it again on Try again", async () => {
     const { rig, section } = await setUp({ user: 42 });
     rig.api.respond('users/preferences/delete', () => {
@@ -567,6 +752,19 @@ describe('tm-notification-settings-page', () => {
     await tmSettleUntil(() => TestBed.inject(TmPageContexts).current()?.status() === 'ready');
     return { rig, fixture };
   }
+
+  it("is loading with no actions while the body's chunk loads, and in error, saying why, once it fails", async () => {
+    const chunk = deferred<TmNotificationSettingsChunk>();
+    await tmAttentionRig({}, { notificationTypes: TYPES }, [{ provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => chunk.promise }]);
+    TestBed.createComponent(TmNotificationSettingsPage);
+    await tmSettle();
+    const context = TestBed.inject(TmPageContexts).current()!;
+    expect(context.status()).toBe('loading');
+    expect(context.actions()).toEqual([]);
+    chunk.reject(new Error('The chunk is gone.'));
+    await tmSettleUntil(() => context.status() === 'error');
+    expect(context.errors()).toEqual([{ source: 'request', code: 'offline', message: "Check your connection. We'll keep trying." }]);
+  });
 
   it('publishes a settings context whose state says whether a change is unsaved', async () => {
     const { rig } = await setUpPage();

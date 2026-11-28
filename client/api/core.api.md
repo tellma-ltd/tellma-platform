@@ -16,6 +16,7 @@ import { InjectionToken } from '@angular/core';
 import { Injector } from '@angular/core';
 import { InputSignal } from '@angular/core';
 import { Observable } from 'rxjs';
+import { OnInit } from '@angular/core';
 import { Provider } from '@angular/core';
 import { RouterStateSnapshot } from '@angular/router';
 import { SchemaPathTree } from '@angular/forms/signals';
@@ -205,9 +206,9 @@ export type TmApiErrorKind = 'bad-request' | 'cancelled' | 'client-outdated' | '
 
 // @public
 export class TmApp {
-    protected readonly failure: i0.Signal<TmRouteErrorKind | null>;
+    protected readonly failure: i0.Signal<ɵTmRouteErrorKind | null>;
     protected retry(): void;
-    protected readonly views: Readonly<Record<"forbidden" | "not-found" | TmRouteErrorKind, TmRouteErrorView>>;
+    protected readonly views: Readonly<Record<"forbidden" | "not-found" | ɵTmRouteErrorKind, _tellma_core.ɵTmRouteErrorView>>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmApp, "tm-app", never, {}, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmApp, never>;
 }

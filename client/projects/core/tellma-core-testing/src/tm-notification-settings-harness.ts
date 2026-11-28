@@ -68,7 +68,7 @@ export class TmNotificationSettingsHarness extends ComponentHarness {
   readonly #headings = this.locatorForAll('.tm-notification-settings__card[data-category] .tm-card__heading');
   readonly #tests = this.locatorForAll('.tm-notification-settings__test');
   readonly #testCard = this.locatorForOptional('.tm-notification-settings__test-card');
-  readonly #error = this.locatorForOptional('tm-error-state, .tm-notification-settings__failed');
+  readonly #error = this.locatorForOptional('tm-error-state, tm-route-error, .tm-notification-settings__failed');
 
   /**
    * The save status the header reads: "Saving…", "All changes saved",
@@ -99,7 +99,8 @@ export class TmNotificationSettingsHarness extends ComponentHarness {
   }
 
   /**
-   * Whether the section shows a failed read instead of its cards.
+   * Whether the section shows a failure instead of its cards: a failed read,
+   * or code of the section that did not load.
    *
    * @returns Whether it does.
    */

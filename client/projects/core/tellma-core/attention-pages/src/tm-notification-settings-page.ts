@@ -4,7 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, type Signal, viewChild } from '@angular/core';
-import { TmLocalization, TmPageContexts } from '@tellma/core';
+import { ɵTM_ROUTE_ERROR_VIEWS, type TmContextError, TmLocalization, TmPageContexts } from '@tellma/core';
 
 import type { TmNotificationSettingsBody } from './tm-notification-settings-body';
 import { TmNotificationSettings } from './tm-notification-settings';
@@ -16,7 +16,8 @@ import { TmNotificationSettings } from './tm-notification-settings';
 // and two actions. The set action saves like a click; the test action sends
 // a test message. The actions and the errors are the section body's, so
 // they arrive with its chunk; until then the context is loading with no
-// actions. The context has no form: every change here saves itself, while a
+// actions, and a chunk that did not load puts it in error, saying why. The
+// context has no form: every change here saves itself, while a
 // form's proposal must never save.
 
 /**
@@ -55,15 +56,23 @@ export class TmNotificationSettingsPage {
   /** Creates the page, which publishes its page context while it stays. */
   constructor() {
     const model = computed(() => this.#body()?.ɵmodel() ?? null);
+    const failure = computed(() => this.section()?.ɵfailure() ?? null);
     const dirty = computed(() => model()?.dirty() ?? false);
     inject(TmPageContexts).register(
       {
         kind: 'settings',
         routeTemplate: '/:t/me/notifications',
         title: this.#l10n.ɵtext('tm.nav.me.notifications'),
-        status: computed(() => model()?.status() ?? 'loading'),
+        status: computed(() => (failure() !== null ? 'error' : (model()?.status() ?? 'loading'))),
         state: computed(() => ({ category: 'notifications', mode: 'edit', dirty: dirty() })),
-        errors: computed(() => this.#body()?.ɵerrors() ?? []),
+        errors: computed((): readonly TmContextError[] => {
+          // The body's chunk did not load: the inline view's message says why.
+          const kind = failure();
+          if (kind !== null) {
+            return [{ source: 'request', code: kind, message: this.#l10n.ɵtext(ɵTM_ROUTE_ERROR_VIEWS[kind].message)() }];
+          }
+          return this.#body()?.ɵerrors() ?? [];
+        }),
         actions: computed(() => this.#body()?.ɵactions ?? []),
       },
       inject(DestroyRef),

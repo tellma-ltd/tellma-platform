@@ -7,8 +7,8 @@ import { type TmSaveOutcome, type TmSaveState, TmLatestSaver } from './tm-latest
 
 // The saving rule of a self-saving control, on fake timers: the wait and its
 // restart, one save in flight with the latest value after it, a failure
-// while a newer value waits, a reset that drops what waited, and leaving
-// within the wait or during a flight.
+// while a newer value waits, a reset that drops what waited, leaving within
+// the wait or during a flight, and the page hiding with a value waiting.
 
 /** The wait every case asks for. */
 const WAIT_MS = 600;
@@ -29,6 +29,8 @@ interface Rig {
   readonly saver: TmLatestSaver<string>;
   /** Each save sent, in order. */
   readonly flights: Flight[];
+  /** Each value the beacon sent, in order. */
+  readonly beacons: string[];
   /** The states seen at each step, a repeat left out. */
   readonly states: TmSaveState[];
   /** Lets the timers run for a duration and the settled saves' callbacks run, then notes the state. */
@@ -38,16 +40,19 @@ interface Rig {
 /** A saver whose saves the test answers. */
 function rig(): Rig {
   const flights: Flight[] = [];
+  const beacons: string[] = [];
   const saver = new TmLatestSaver<string>(
     (value) =>
       new Promise<TmSaveOutcome>((resolve, reject) => {
         flights.push({ value, resolve, reject });
       }),
+    (value) => beacons.push(value),
   );
   const states: TmSaveState[] = [saver.state()];
   return {
     saver,
     flights,
+    beacons,
     states,
     step: async (ms) => {
       await vi.advanceTimersByTimeAsync(ms);
@@ -171,5 +176,43 @@ describe('TmLatestSaver', () => {
     flights[0]!.resolve('saved');
     await step(0);
     expect(sent(flights)).toEqual(['a', 'b']);
+  });
+
+  it('hands a value still waiting out its delay to the beacon when the page hides, and sends no second copy', async () => {
+    const { saver, flights, beacons, step } = rig();
+    saver.want('a', WAIT_MS);
+    await step(100);
+    saver.hide();
+    expect(beacons).toEqual(['a']);
+    expect(saver.state()).toBe('idle');
+    await step(WAIT_MS);
+    expect(sent(flights)).toEqual([]);
+  });
+
+  it('hands a value due behind a flight to the beacon when the page hides, and lets the flight end', async () => {
+    const { saver, flights, beacons, step } = rig();
+    saver.want('a', 0);
+    await step(0);
+    saver.want('b', 0);
+    await step(0);
+    saver.hide();
+    expect(beacons).toEqual(['b']);
+    expect(saver.state()).toBe('saving');
+    flights[0]!.resolve('saved');
+    await step(0);
+    expect(sent(flights)).toEqual(['a']);
+    expect(saver.state()).toBe('saved');
+  });
+
+  it('hands nothing to the beacon when nothing waits, and leaves a failed value for Try again', async () => {
+    const { saver, flights, beacons, step } = rig();
+    saver.hide();
+    saver.want('a', 0);
+    await step(0);
+    flights[0]!.reject(new Error('The save failed.'));
+    await step(0);
+    saver.hide();
+    expect(beacons).toEqual([]);
+    expect(saver.state()).toBe('failed');
   });
 });
