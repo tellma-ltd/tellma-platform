@@ -177,6 +177,9 @@ export class TmNotificationSettingsModel {
   /** The failed read, while the section shows its error state. */
   readonly #loadError = signal<TmApiError | null>(null);
 
+  /** Whether a read runs over values already shown. */
+  readonly #refreshing = signal(false);
+
   /** Counts reads, so only the latest one applies. */
   #loadRun = 0;
 
@@ -206,6 +209,12 @@ export class TmNotificationSettingsModel {
 
   /** The failed read, while the section shows its error state. */
   readonly loadError: Signal<TmApiError | null> = this.#loadError.asReadonly();
+
+  /**
+   * Whether a read runs over values already shown: the section keeps them,
+   * and its switches turn read-only, until the read replaces them.
+   */
+  readonly refreshing: Signal<boolean> = this.#refreshing.asReadonly();
 
   /**
    * Why every switch is disabled: offline, else a frozen tenant; `null` while
@@ -272,7 +281,10 @@ export class TmNotificationSettingsModel {
         ? this.channels
             .filter((channel) => channel.key !== 'inbox')
             .map((channel) => {
-              // Spec 0021 §4.4: the email channel sends to the contact email, else the sign-in email.
+              // Spec 0021 §4.4: the email channel sends to the contact email, else the
+              // sign-in email. The same section names ContactMobile for an SMS
+              // channel, but no SMS channel key is registered yet, so only email
+              // resolves an address.
               const resolvesAddress = channel.key === 'email';
               const address = computed(() => {
                 const profile = this.#launch.docs.me()?.user;
@@ -340,14 +352,15 @@ export class TmNotificationSettingsModel {
   /**
    * Turns a cell's channel on or off; it applies at once and saves with the
    * whole set after the wait. Nothing happens to a cell that is not a
-   * switch, before the set has loaded, or while the switches are locked.
+   * switch, before the set has loaded, while a reload runs over it, or while
+   * the switches are locked.
    *
    * @param cell - The cell.
    * @param enabled - Whether the channel delivers the type.
    * @returns Whether the change applied.
    */
   set(cell: TmNotificationCell, enabled: boolean): boolean {
-    if (cell.kind !== 'switch' || untracked(this.#status) !== 'ready' || untracked(this.lockReason) !== null) {
+    if (cell.kind !== 'switch' || !this.#changeable()) {
       return false;
     }
     const values = new Map(untracked(this.#current));
@@ -360,11 +373,13 @@ export class TmNotificationSettingsModel {
   /**
    * Turns arrival pop-ups on or off: for `me` through the preferences, which
    * apply at once; for another user through their route, saved at once.
+   * Nothing happens before the set has loaded, while a reload runs over it,
+   * or while the switches are locked.
    *
    * @param enabled - Whether arrivals pop up.
    */
   setPopups(enabled: boolean): void {
-    if (untracked(this.#status) !== 'ready' || untracked(this.lockReason) !== null) {
+    if (!this.#changeable()) {
       return;
     }
     if (this.#popupSaver === null) {
@@ -427,10 +442,18 @@ export class TmNotificationSettingsModel {
     }
   }
 
-  /** Reads the user's set again, replacing the switches' values; a waiting change is dropped. */
+  /**
+   * Reads the user's set again, replacing the switches' values. The first
+   * read, and one after a failed read, shows the loading state; a read over
+   * values already shown keeps them in place until it ends.
+   */
   async reload(): Promise<void> {
     const run = ++this.#loadRun;
-    this.#status.set('loading');
+    if (untracked(this.#status) === 'ready') {
+      this.#refreshing.set(true);
+    } else {
+      this.#status.set('loading');
+    }
     this.#loadError.set(null);
     const options = { signal: this.#abort.signal, tenantId: this.#tenantId };
     try {
@@ -450,12 +473,15 @@ export class TmNotificationSettingsModel {
         this.#otherPopups.set(this.#parsePopups(bag.preferences?.[tmNotificationToastsKey.key]));
       }
       this.#status.set('ready');
+      this.#refreshing.set(false);
     } catch (error) {
       if (run !== this.#loadRun || this.#abort.signal.aborted) {
         return;
       }
+      // A failed read shows the error state, even over shown values, which it can no longer vouch for.
       this.#loadError.set(error instanceof TmApiError ? error : null);
       this.#status.set('error');
+      this.#refreshing.set(false);
     }
   }
 
@@ -464,6 +490,11 @@ export class TmNotificationSettingsModel {
     this.#gridSaver.dispose();
     this.#popupSaver?.dispose();
     this.#abort.abort();
+  }
+
+  /** Whether a switch may change: the set has loaded, no reload runs over it, and nothing locks the switches. */
+  #changeable(): boolean {
+    return untracked(this.#status) === 'ready' && !untracked(this.#refreshing) && untracked(this.lockReason) === null;
   }
 
   /** Every switch cell at its channel's default. */
@@ -529,15 +560,21 @@ export class TmNotificationSettingsModel {
   }
 
   /**
-   * Saves another user's pop-up value through their preferences route.
+   * Saves another user's pop-up value through their preferences routes: the
+   * key's fallback deletes the stored value, as the signed-in user's own
+   * preferences do, so a later change to the fallback reaches the user.
    *
    * @param userId - The user.
    * @param enabled - The value.
    * @returns How the save ended.
    */
   async #savePopups(userId: number, enabled: boolean): Promise<TmSaveOutcome> {
-    const items = [{ key: tmNotificationToastsKey.key, value: JSON.stringify(enabled) }];
-    await this.#api.write('users/preferences/set', { id: userId, arguments: { items } }, { tenantId: this.#tenantId });
+    const { key, fallback } = tmNotificationToastsKey;
+    const options = { tenantId: this.#tenantId };
+    // Spec 0025 §9.1: a value deep-equal to the fallback deletes the key.
+    await (enabled === fallback
+      ? this.#api.write('users/preferences/delete', { id: userId, arguments: { keys: [key] } }, options)
+      : this.#api.write('users/preferences/set', { id: userId, arguments: { items: [{ key, value: JSON.stringify(enabled) }] } }, options));
     return 'saved';
   }
 

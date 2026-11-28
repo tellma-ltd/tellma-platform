@@ -830,7 +830,12 @@ The toast policy's durations are `TM_TOAST_FEEDBACK_MS` (4 s, an outcome the act
 ## Attention: the Notifications section of My settings
 
 `@tellma/core/attention-pages` holds the hub's Notifications section. `tm-notification-settings`
-reads the user's stored deviations (`notification-preferences/get`) and lays the client metadata's
+and `tm-notification-settings-page` are thin shells: the section's body (its model, its saving,
+its template, its styles and the `tm.attentionPages` strings) is a lazy chunk of the entry point,
+budgeted on its own line, which the shell loads when it renders, drawing the body's first-read
+skeleton meanwhile. The entry point's other pages and list cells therefore never download it. A
+chunk that fails to load is reported to telemetry, and the next render of the section tries again.
+The body reads the user's stored deviations (`notification-preferences/get`) and lays the client metadata's
 notification types out as one card per category, in the order of each category's first type: one
 row per type, one column per channel in registration order, the labels being the server's
 `NotificationCategory_*`, `NotificationType_*` and `NotificationChannel_*` text. A cell is a switch
@@ -841,17 +846,23 @@ shows "—" in the inbox column. Below md each type's switches stack under its l
 Every change applies in its frame. 600 ms after the last one the section sends the whole set,
 omitting the cells at their defaults, with one save in flight and the latest state after it; the
 header reads "Saving…", "All changes saved", or "Couldn't save your changes" with Try again, and a
-`422` reloads the set and shows the 400 dialog. The pop-up card's switch is `notifications.toasts`
+`422` reloads the set and shows the 400 dialog. Leaving the section, or turning it to another user,
+sends a change still waiting out its 600 ms at once. Only the first read shows the skeleton: a
+reload over the shown values (after a `422`) keeps the cards and their focus in place, with the
+switches read-only until it ends. The pop-up card's switch is `notifications.toasts`
 through `TmPreferences`, applied at once. While `TmAttention.writable()` is false every control is
 disabled, with "You're offline" or the frozen tenant's reason as its tooltip and description, and
 the values stay; a read-only tenant saves the switches but disables "Send a test" with its reason.
 The test card has one row per channel beyond the inbox, with the address the channel would use (the
-contact email, else the email, for `email`) and "Send a test" (`users/me/test-notification`), whose
+contact email, else the email, for `email`; no SMS channel is registered yet, so no other channel
+resolves one) and "Send a test" (`users/me/test-notification`), whose
 result shows beside it and is announced politely.
 
 Given `[user]="id"`, the section reads and saves that user's set through
 `users/notification-preferences/get` and `save` and their pop-up value through
-`users/preferences/get` and `set`, at once, and has no test card; `[headingLevel]` sets its cards'
+`users/preferences/get` and `set`, at once (turning pop-ups back on, the key's fallback, deletes the
+stored value through `users/preferences/delete`, as the signed-in user's preferences do), and has no
+test card; `[headingLevel]` sets its cards'
 heading level for a dialog. `tm-notification-settings-page` holds the signed-in user's section and
 publishes its page context: kind `settings`, route `/:t/me/notifications`, state
 `{ category: 'notifications', mode: 'edit', dirty }`, and the `notifications.settings.set`
@@ -1210,7 +1221,7 @@ the same seam. `@tellma/core/details` registers `tm.details` when its first page
 grid's label, beside the title the route reads from the primary) when its first component is. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, its arrival toasts' chunk registers
 `tm.arrivals` as it loads, and its panels' chunk registers `tm.attentionPanels`;
-`@tellma/core/attention-rows` registers `tm.attentionRows` with its first service or list. `@tellma/core/attention-pages` registers `tm.attentionPages` when its first section or page is created. The seam itself costs the primary one method
+`@tellma/core/attention-rows` registers `tm.attentionRows` with its first service or list. `@tellma/core/attention-pages` registers `tm.attentionPages` when its first section body is created, from the body's chunk. The seam itself costs the primary one method
 and a set of the scopes registered.
 
 ## Dashboards and the home page

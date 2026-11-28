@@ -6,10 +6,12 @@
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { TmApiError, type TmLaunchDocs, TmLocalization, TmPageActions, TmPageContexts } from '@tellma/core';
+import { TmApiError, type TmLaunchDocs, TmLocalization, TmPageActions, TmPageContexts, TmPreferences } from '@tellma/core';
+import { tmNotificationToastsKey } from '@tellma/core/attention';
 import { TmNotificationSettingsHarness } from '@tellma/core-testing';
 import { TmErrorDialogHarness } from '@tellma/core-ui-testing';
 import axe from 'axe-core';
+import { page } from 'vitest/browser';
 
 import { TM_T17_DOCS } from '../../src/routes/tm-app.testing.util';
 import {
@@ -20,15 +22,17 @@ import {
   tmSettleUntil,
 } from '../../src/attention/tm-attention.testing.util';
 import type { TmNotificationPreference, TmNotificationSettingsUser } from './tm-notification-settings-model';
-import { TmNotificationSettings } from './tm-notification-settings';
+import { TM_NOTIFICATION_SETTINGS_LOAD, TmNotificationSettings, type TmNotificationSettingsChunk } from './tm-notification-settings';
 import { TmNotificationSettingsPage } from './tm-notification-settings-page';
 
 // The Notifications section of My settings in a whole test app entered into
-// tenant 17: the cards, the cells and their defaults, the whole-set save
-// after the wait with one save in flight, the save status and Try again, a
-// 422's reload, the read-only, frozen and offline rules, the test delivery
-// results, another user's routes, the page context and the accessibility
-// rules in both themes and both directions.
+// tenant 17: the body's chunk behind the shell, the cards, the cells and
+// their defaults, the whole-set save after the wait with one save in flight,
+// a change sent when the section leaves, the save status and Try again, a
+// 422's reload over the shown cards, the read-only, frozen and offline rules,
+// the pop-up switch of the signed-in user and of another, the test delivery
+// results and failures, the stacked layout below md, the page context and
+// the accessibility rules in both themes and both directions.
 
 /** The rig's types plus a channel-only one, which never shows in the app. */
 const TYPES = [
@@ -66,10 +70,27 @@ async function wait(ms: number): Promise<void> {
 }
 
 /** A promise the test settles. */
-function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void; readonly reject: (error: unknown) => void } {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => (resolve = done));
-  return { promise, resolve };
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => ((resolve = done), (reject = fail)));
+  return { promise, resolve, reject };
+}
+
+/** A 422 from a save: a type gone after a deployment. */
+const gone = (): TmApiError => new TmApiError({ kind: 'validation', status: 422, code: 'validation', message: 'The type is gone.' });
+
+/** The switch input of a type's cell on a channel. */
+function switchOf(fixture: ComponentFixture<unknown>, type: string, channel: string): HTMLInputElement {
+  return (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(`tr[data-type="${type}"] td[data-channel="${channel}"] input[role="switch"]`)!;
+}
+
+/** The section's save events' properties. */
+function saves(rig: TmAttentionRig): unknown[] {
+  return rig.telemetry
+    .recent()
+    .filter((item) => item.name === 'tm.attention.settings-saved')
+    .map((item) => item.props);
 }
 
 /**
@@ -87,7 +108,8 @@ async function setUp(
   rig.api.respond('users/preferences/get', { preferences: { 'notifications.toasts': 'false' } });
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.user.set(options.user ?? 'me');
-  await tmSettle();
+  // The body's chunk loads after the shell renders, then reads the set.
+  await tmSettleUntil(() => (fixture.nativeElement as HTMLElement).querySelector('.tm-notification-settings__body .tm-notification-settings__card') !== null);
   const section = await TestbedHarnessEnvironment.harnessForFixture(fixture, TmNotificationSettingsHarness);
   return { rig, fixture, section };
 }
@@ -109,6 +131,32 @@ describe('tm-notification-settings', () => {
   afterEach(() => {
     document.documentElement.removeAttribute('data-theme');
     TestBed.resetTestingModule();
+  });
+
+  it("draws the section's skeleton while the body's chunk loads, then the body in its place", async () => {
+    const chunk = deferred<TmNotificationSettingsChunk>();
+    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [{ provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => chunk.promise }]);
+    rig.api.respond('notification-preferences/get', []);
+    const fixture = TestBed.createComponent(Host);
+    await tmSettle();
+    const host = fixture.nativeElement as HTMLElement;
+    const shell = host.querySelector('tm-notification-settings')!;
+    expect(shell.getAttribute('aria-busy')).toBe('true');
+    expect(host.querySelectorAll('.tm-notification-settings__placeholder tm-card')).toHaveLength(2);
+    expect(bodies(rig, 'notification-preferences/get')).toEqual([]);
+    chunk.resolve(await import('./tm-notification-settings-body'));
+    await tmSettleUntil(() => host.querySelector('.tm-notification-settings__body .tm-notification-settings__card') !== null);
+    expect(host.querySelector('.tm-notification-settings__placeholder')).toBeNull();
+    expect(shell.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it("reports a body chunk that fails to load", async () => {
+    const rig = await tmAttentionRig({}, { notificationTypes: TYPES }, [
+      { provide: TM_NOTIFICATION_SETTINGS_LOAD, useValue: () => Promise.reject(new Error('The chunk is gone.')) },
+    ]);
+    TestBed.createComponent(Host);
+    await tmSettleUntil(() => rig.telemetry.recent().some((item) => item.kind === 'error'));
+    expect(bodies(rig, 'notification-preferences/get')).toEqual([]);
   });
 
   it("lays out one card per category, a type's cells at their defaults or stored values, a locked inbox and a channel-only dash", async () => {
@@ -152,9 +200,7 @@ describe('tm-notification-settings', () => {
     await wait(PAST_WAIT_MS);
     expect(bodies(rig, 'notification-preferences/save')).toEqual([[{ type: 'core.job.failed', channel: 'email', enabled: true }]]);
     expect(await section.getStatus()).toBe('All changes saved');
-    expect(rig.telemetry.recent().filter((item) => item.name === 'tm.attention.settings-saved').map((item) => item.props)).toEqual([
-      { changes: '2-5', outcome: 'ok' },
-    ]);
+    expect(saves(rig)).toEqual([{ changes: '2-5', outcome: 'ok' }]);
   });
 
   it('keeps one save in flight, and sends the latest state after it', async () => {
@@ -190,6 +236,7 @@ describe('tm-notification-settings', () => {
     expect(await section.getStatus()).toBe("Couldn't save your changes");
     expect(await section.canRetry()).toBe(true);
     expect((await section.getCell('core.job.failed', 'email')).checked).toBe(true);
+    expect(saves(rig)).toEqual([{ changes: '1', outcome: 'failed' }]);
     rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
     await section.retry();
     await tmSettleUntil(() => bodies(rig, 'notification-preferences/save').length === 2);
@@ -201,7 +248,7 @@ describe('tm-notification-settings', () => {
   it('reloads the set and shows the save error dialog on a 422', async () => {
     const { rig, fixture, section } = await setUp();
     rig.api.respond('notification-preferences/save', () => {
-      throw new TmApiError({ kind: 'validation', status: 422, code: 'validation', message: 'The type is gone.' });
+      throw gone();
     });
     await section.toggleCell('core.job.failed', 'email');
     rig.api.respond('notification-preferences/get', [{ type: 'gl.center.flagged', channel: 'email', enabled: true }]);
@@ -214,6 +261,83 @@ describe('tm-notification-settings', () => {
     expect(await section.getStatus()).toBe('');
     const dialog = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmErrorDialogHarness);
     expect(await dialog.getTitle()).not.toBe('');
+    expect(saves(rig)).toEqual([{ changes: '1', outcome: 'failed' }]);
+  });
+
+  it('keeps the cards and the focused switch through a 422 reload, read-only meanwhile, and returns focus to it after the dialog', async () => {
+    const { rig, fixture, section } = await setUp();
+    rig.api.respond('notification-preferences/save', () => {
+      throw gone();
+    });
+    await section.toggleCell('core.job.failed', 'email');
+    const input = switchOf(fixture, 'core.job.failed', 'email');
+    input.focus();
+    const reload = deferred<readonly TmNotificationPreference[]>();
+    rig.api.respond('notification-preferences/get', () => reload.promise);
+    await wait(PAST_WAIT_MS);
+    expect(bodies(rig, 'notification-preferences/get')).toHaveLength(2);
+
+    // The reload holds: the cards stay, with no skeleton, and the same switch keeps its focus, read-only.
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('tm-skeleton')).toBeNull();
+    expect(host.querySelector('tm-notification-settings')!.getAttribute('aria-busy')).toBe('true');
+    expect(switchOf(fixture, 'core.job.failed', 'email')).toBe(input);
+    expect(input.getAttribute('aria-readonly')).toBe('true');
+    expect(document.activeElement).toBe(input);
+    input.click();
+    await tmSettle();
+    expect(input.checked).toBe(true);
+
+    // The read replaces the values in place; the dialog opens over them and gives the focus back on close.
+    reload.resolve([]);
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') !== null);
+    expect(switchOf(fixture, 'core.job.failed', 'email')).toBe(input);
+    expect(input.checked).toBe(false);
+    expect(input.getAttribute('aria-readonly')).toBeNull();
+    const dialog = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmErrorDialogHarness);
+    await dialog.pressEscape();
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') === null);
+    expect(document.activeElement).toBe(input);
+    expect(bodies(rig, 'notification-preferences/save')).toHaveLength(1);
+  });
+
+  it('drops a change made while a save is in flight when a 422 answers it, along with the reload', async () => {
+    const { rig, section } = await setUp();
+    const answer = deferred<unknown>();
+    rig.api.respond('notification-preferences/save', () => answer.promise);
+    await section.toggleCell('core.job.failed', 'email');
+    await wait(PAST_WAIT_MS);
+    expect(bodies(rig, 'notification-preferences/save')).toHaveLength(1);
+    await section.toggleCell('gl.center.shared', 'inbox');
+    expect((await section.getCell('gl.center.shared', 'inbox')).checked).toBe(false);
+    answer.reject(gone());
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') !== null);
+    await wait(PAST_WAIT_MS);
+    // The reloaded set shows, and nothing more is sent for the set it replaced.
+    expect(bodies(rig, 'notification-preferences/save')).toHaveLength(1);
+    expect((await section.getCell('gl.center.shared', 'inbox')).checked).toBe(true);
+    expect((await section.getCell('core.job.failed', 'email')).checked).toBe(false);
+    expect(await section.getStatus()).toBe('');
+  });
+
+  it('sends a change still waiting out its delay when the section leaves', async () => {
+    const { rig, fixture, section } = await setUp();
+    rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
+    await section.toggleCell('core.job.failed', 'email');
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([]);
+    fixture.destroy();
+    await tmSettle();
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([[{ type: 'core.job.failed', channel: 'email', enabled: true }]]);
+  });
+
+  it("sends the signed-in user's change still waiting when the section turns to another user", async () => {
+    const { rig, fixture, section } = await setUp();
+    rig.api.respond('notification-preferences/save', (call: { readonly body: unknown }) => call.body);
+    await section.toggleCell('core.job.failed', 'email');
+    fixture.componentInstance.user.set(42);
+    await tmSettleUntil(() => bodies(rig, 'users/notification-preferences/get').length === 1);
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([[{ type: 'core.job.failed', channel: 'email', enabled: true }]]);
+    expect(bodies(rig, 'users/notification-preferences/save')).toEqual([]);
   });
 
   it('shows a failed read with its error state', async () => {
@@ -254,11 +378,33 @@ describe('tm-notification-settings', () => {
     await tmSettle();
     expect(await section.getLockReason()).toBe("You're offline");
     expect(await section.getCell('core.job.failed', 'email')).toMatchObject({ disabled: true, description: "You're offline" });
+    expect(await (await section.getPopupSwitch()).isDisabled()).toBe(true);
     expect((await section.getTestRows())[0]).toMatchObject({ disabled: true, reason: "You're offline" });
     rig.api.setOnline(true);
     await tmSettle();
     expect(await section.getLockReason()).toBeNull();
     expect((await section.getCell('core.job.failed', 'email')).disabled).toBe(false);
+    expect(await (await section.getPopupSwitch()).isDisabled()).toBe(false);
+  });
+
+  it("applies the signed-in user's pop-up switch through the preferences at once, and deletes the key when it goes back on", async () => {
+    const { rig, section } = await setUp();
+    rig.api.respond('users/me/preferences/set', { preferences: { 'notifications.toasts': 'false' }, preferencesTag: 'P2' });
+    rig.api.respond('users/me/preferences/delete', { preferences: {}, preferencesTag: 'P3' });
+    const toasts = TestBed.inject(TmPreferences).get(tmNotificationToastsKey);
+    const popups = await section.getPopupSwitch();
+    await popups.toggle();
+    expect(toasts()).toBe(false);
+    await tmSettleUntil(() => bodies(rig, 'users/me/preferences/set').length === 1);
+    expect(bodies(rig, 'users/me/preferences/set')).toEqual([{ items: [{ key: 'notifications.toasts', value: 'false' }] }]);
+    await popups.toggle();
+    expect(toasts()).toBe(true);
+    await tmSettleUntil(() => bodies(rig, 'users/me/preferences/delete').length === 1);
+    expect(bodies(rig, 'users/me/preferences/delete')).toEqual([{ keys: ['notifications.toasts'] }]);
+    // The signed-in user's value never takes another user's route, nor the grid's save.
+    expect(bodies(rig, 'users/preferences/set')).toEqual([]);
+    expect(bodies(rig, 'users/preferences/delete')).toEqual([]);
+    expect(bodies(rig, 'notification-preferences/save')).toEqual([]);
   });
 
   it('shows the contact email, else the email, else No address, on the test row', async () => {
@@ -295,6 +441,19 @@ describe('tm-notification-settings', () => {
     expect((await section.getTestRows())[0]?.result).toBe("Email isn't set up for this server.");
   });
 
+  it('shows the action error dialog when a test fails, and frees the button with no result', async () => {
+    const { rig, fixture, section } = await setUp();
+    // A role change took the user's access away while the page was open.
+    rig.api.respond('users/me/test-notification', () => {
+      throw new TmApiError({ kind: 'forbidden', status: 403, code: 'forbidden', message: 'You cannot do this.' });
+    });
+    await section.sendTest('email');
+    await tmSettleUntil(() => document.querySelector('tm-error-dialog-content') !== null);
+    expect((await section.getTestRows())[0]).toMatchObject({ pending: false, disabled: false, result: null });
+    const dialog = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(TmErrorDialogHarness);
+    expect(await dialog.getTitle()).not.toBe('');
+  });
+
   it("reads another user's set and pop-ups through their routes, saves each change there, and has no test delivery", async () => {
     const { rig, section } = await setUp({ user: 42, rows: [{ type: 'gl.center.flagged', channel: 'email', enabled: true }] });
     rig.api.respond('users/preferences/set', { preferences: {} });
@@ -307,10 +466,15 @@ describe('tm-notification-settings', () => {
     const popups = await section.getPopupSwitch();
     expect(await popups.isChecked()).toBe(false);
 
-    // The pop-up switch saves at once.
+    // The pop-up switch saves at once; back on, its fallback, it deletes the stored value.
+    rig.api.respond('users/preferences/delete', { preferences: {} });
     await popups.toggle();
     await tmSettle();
-    expect(bodies(rig, 'users/preferences/set')).toEqual([{ id: 42, arguments: { items: [{ key: 'notifications.toasts', value: 'true' }] } }]);
+    expect(bodies(rig, 'users/preferences/delete')).toEqual([{ id: 42, arguments: { keys: ['notifications.toasts'] } }]);
+    expect(bodies(rig, 'users/preferences/set')).toEqual([]);
+    await popups.toggle();
+    await tmSettle();
+    expect(bodies(rig, 'users/preferences/set')).toEqual([{ id: 42, arguments: { items: [{ key: 'notifications.toasts', value: 'false' }] } }]);
 
     // The grid saves the whole set after the wait.
     await section.toggleCell('core.job.failed', 'email');
@@ -328,6 +492,45 @@ describe('tm-notification-settings', () => {
     ]);
     expect(bodies(rig, 'notification-preferences/save')).toEqual([]);
     expect(await section.getStatus()).toBe('All changes saved');
+  });
+
+  it("says a failed save of another user's pop-ups failed, and sends it again on Try again", async () => {
+    const { rig, section } = await setUp({ user: 42 });
+    rig.api.respond('users/preferences/delete', () => {
+      throw new TmApiError({ kind: 'server', status: 500 });
+    });
+    const popups = await section.getPopupSwitch();
+    await popups.toggle();
+    await tmSettle();
+    expect(await section.getStatus()).toBe("Couldn't save your changes");
+    expect(await popups.isChecked()).toBe(true);
+    rig.api.respond('users/preferences/delete', { preferences: {} });
+    await section.retry();
+    await tmSettleUntil(() => bodies(rig, 'users/preferences/delete').length === 2);
+    await tmSettle();
+    expect(bodies(rig, 'users/preferences/delete')[1]).toEqual({ id: 42, arguments: { keys: ['notifications.toasts'] } });
+    expect(await section.getStatus()).toBe('All changes saved');
+  });
+
+  describe('below md', () => {
+    afterEach(async () => page.viewport(1280, 900));
+
+    it("stacks each type's switches under its label, each named by its channel", async () => {
+      await page.viewport(375, 900);
+      const { fixture } = await setUp();
+      const host = fixture.nativeElement as HTMLElement;
+      const row = host.querySelector('tr[data-type="core.job.failed"]')!;
+      const label = row.querySelector('th')!;
+      const inbox = row.querySelector('td[data-channel="inbox"]')!;
+      const email = row.querySelector('td[data-channel="email"]')!;
+      // The columns' headers go; each switch names its channel, under the type's label and under the one before it.
+      expect(getComputedStyle(host.querySelector('thead')!).display).toBe('none');
+      const name = email.querySelector('.tm-notification-settings__label')!;
+      expect(getComputedStyle(name).display).toBe('inline');
+      expect(name.textContent.trim()).toBe('Email');
+      expect(inbox.getBoundingClientRect().top).toBeGreaterThanOrEqual(label.getBoundingClientRect().bottom - 1);
+      expect(email.getBoundingClientRect().top).toBeGreaterThanOrEqual(inbox.getBoundingClientRect().bottom - 1);
+    });
   });
 
   for (const theme of ['light', 'dark'] as const) {

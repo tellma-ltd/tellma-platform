@@ -8,9 +8,9 @@ import { TmLocalization } from '@tellma/core';
 // The English strings of the attention pages, under `tm.attentionPages`
 // (spec 0028 §10.3): the Notifications section of My settings, with its
 // pop-up card, its type × channel grid, its save status and its test
-// delivery, and the section's page actions. They ship with this entry
-// point, which loads with the page that shows them, never with the first
-// frame; each component registers them when it is created. A language's
+// delivery, and the section's page actions. They ship in the section body's
+// chunk, which loads with the section, never with the first frame or with
+// the entry point's other pages; the body registers them when it is created. A language's
 // table that holds a key wins over them. The labels of the categories, the
 // types and the channels are the server's (NotificationCategory_*,
 // NotificationType_*, NotificationChannel_*).

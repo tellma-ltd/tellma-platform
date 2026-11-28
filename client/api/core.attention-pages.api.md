@@ -20,20 +20,10 @@ export interface TmNotificationPreference {
 // @public
 export class TmNotificationSettings {
     constructor();
-    protected cellName(row: TmNotificationRow, index: number): string;
-    protected change(cell: TmNotificationCell, enabled: boolean): void;
-    protected readonly errorSlot: Signal<ViewContainerRef | undefined>;
-    protected readonly fallbackError: Signal<boolean>;
+    protected readonly body: Signal<TmNotificationSettingsBody | null>;
+    protected readonly busy: Signal<boolean>;
     readonly headingLevel: i0.InputSignal<TmCardHeadingLevel>;
-    protected readonly ids: {
-        lock: string;
-        always: (cell: TmNotificationCell) => string;
-        test: (row: TmTestRow) => string;
-    };
-    protected readonly model: Signal<TmNotificationSettingsModel | null>;
-    protected readonly profileUrl: Signal<string | null>;
-    protected send(row: TmTestRow): void;
-    protected text(key: string, params?: Readonly<Record<string, unknown>>): string;
+    protected readonly slot: Signal<ViewContainerRef>;
     readonly user: i0.InputSignal<TmNotificationSettingsUser>;
     static ɵcmp: i0.ɵɵComponentDeclaration<TmNotificationSettings, "tm-notification-settings", never, { "user": { "alias": "user"; "required": false; "isSignal": true; }; "headingLevel": { "alias": "headingLevel"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: i0.ɵɵFactoryDeclaration<TmNotificationSettings, never>;
