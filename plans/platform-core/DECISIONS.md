@@ -384,6 +384,21 @@ Format, one entry per ruling:
 - Widening to saves is accepted (defence only under §4.1); the refusal moves to composition. No seam for raw SQL deletes now: carried to PC-145 (job and file retention DELETE of core.Jobs declares core.ScheduleStates and IJobEntity tables), wired by whichever of PC-145 and PC-F62 lands second. PC-088's local user-delete declaration is redundant and harmless once PC-F62 lands; removal carried to whichever lands second.
 - For Ahmad: spec gap, not a departure. 0012 §5.2's WrittenTables row should say Save and Delete also declare every table a referencing key's ON DELETE action writes (siblings, the §4.1 cascade tables, the IJobEntity and Jobs.ScheduleId SET NULL keys), read from the model's foreign keys. 0012 §5.2 (Write authority) and 0015 §13.3 should say the caller-channel check covers the tables the statement's own text writes, and tables written only by a key's action are declared but exempt.
 
+### D-423 — PC-183: viewer-dependent permission filters are left out of audience counts; spec 0033 §6.2's round-trip count cannot be met (2026-11-27)
+
+- PC-183 R1-1: a permission filter that calls me() was compiled once, in the caller's batch, and its result applied to every holder of the role. Under spec 0033 §5.2's own example (Publish filtered by OwnerId = me()), the owner then saw every member of the role counted as a reader, and an administrator saw the grant dropped. It is a correctness problem, not a disclosure: nothing is granted, and the caller learns only how the filter evaluates for themselves. The orchestrator rules that such filters are left out of every count and reach, and the grant is marked as depending on the viewer. Evaluating per holder would cost one statement per holder and is not done.
+  - For Ahmad: spec gap. 0033 §6.2's "one count per distinct filter text" does not hold for filters that depend on the caller; the spec should say how such grants are counted and shown.
+- PC-183 R1 ruling 1: spec 0033 §6.2 step 2's single round trip cannot be met when a permission carries a filter. Filters are Queryex text compiled in C#, and they are read in the same trip that would need them compiled. The resolver takes 1 trip, or 2 with a filtered permission, with Through folded into the first. That is never worse than the spec's 2 with Through.
+  - For Ahmad: 0033 §6.2 step 2 should say so.
+
+### D-422 — PC-133 R1: an Arabic-reading Acme principal for the save e2e; spec 0031 §8.3 wins over 0024 §4.4 for a create's landing only (2026-11-27)
+
+- The save e2e was skipped on chromium-ar because no Acme principal both reads Arabic and may save customers. The skip is in scope: PLAN §6 runs the PR-tier e2e in en and ar, and spec 0031 §18 asks for every e2e in ar. Granting Sales customer Save would break the specs that depend on Sales' read-only customers (cold-deep-link in ar, SampleDataTests). So PC-133 adds a fifth development principal, seed only, that reads Arabic and holds customer Read and Save.
+  - For Ahmad: this adds a principal to spec 0018 §6.3's development list, which does not fix their number.
+- After a create is saved, spec 0031 §8.3 sends focus to Edit, which differs from spec 0024 §4.4's move to the title. The orchestrator reads §8.3 as the specific rule. It applies only to the imperative navigation that adopts the create, never to a later Back or Forward to that entry; PC-133 R1-1 had applied it there too.
+  - For Ahmad: 0024 §4.4 should name the exception.
+- The failed-upload reading for 0031 §8.1 step 2 (refuse the write, keep the working copy, point at the failed upload) is supported by R1 through §6.3's "Save waits on uploads". It stays with Ahmad as PC-130 Deviation 13 and PC-133 Deviation 1.
+
 ### D-421 — PC-169 R1: the shell's muted texts move to an AA-passing token; spec 0025 §5.3's sync check should repeat after the throttle (2026-11-27)
 
 - The shell e2e battery found launcher headings, descriptions, footer and shortcut headers on --text-muted, which measures 3.41:1 and fails AA. PC-169 moves them to --text-secondary, and its fix1 moves the remaining shell texts on --text-muted as well (the session-menu email, About's copyright and status, Manage pins' "No access" and empty state, the picker). The orchestrator accepts this: spec 0027 §9's "muted description" describes a look, not a token, and WCAG AA is a platform requirement.
@@ -399,6 +414,8 @@ PC-157 R2 asked whether spec 0028 §1's 10 KB for the /attention-pages entry poi
 ### D-419 — Ahmad: raise the ./search budget for PC-131 (2026-11-27)
 
 Ahmad, in chat, answering D-418: "Raise the ./search budget" (option A). PC-131 raises the ./search ceiling from 23.5 to its final measured figure, after the two further cuts, rounded up to the next 0.5 KB. It records a budgetNotes entry with the bytes' cause and the savings taken, and lists the figure as a deviation against spec 0030 §1's 16 KB. The ruling covers this raise only. A later item that grows ./search takes savings first and, if it still needs a raise, stops and reports again.
+
+**Addendum (PC-131 fix1, 2026-11-27).** ./search closes at 26.49 of 26.5. To stay within it, the view toggle's stand-in rules moved into a new global stylesheet, @tellma/core/styles/tm-search.css, so they count in Acme's initialCss (9.02 KB) and not in ./search. The orchestrator accepts this because the stand-in has to paint in the first frame, before any chunk arrives. For Ahmad: listed with the ./search deviation.
 
 ### D-418 — PC-131 parks on the ./search budget; Ahmad asked to rule (2026-11-27)
 
