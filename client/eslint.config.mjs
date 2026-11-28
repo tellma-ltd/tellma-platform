@@ -8,9 +8,12 @@ import { defineConfig } from 'eslint/config';
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import angular from 'angular-eslint';
+import { TM_RESTRICT_PLUS_OPERANDS, tmEslintPlugin } from '@tellma/core-tools/eslint';
 
 import tmPrefixExports from './tools/eslint/tm-prefix-exports.mjs';
 import noStateBindingsOnFormField from './tools/eslint/no-state-bindings-on-form-field.mjs';
+import cspOnlyInCspSpecs from './tools/eslint/csp-only-in-csp-specs.mjs';
+import noPlatformSniffing from './tools/eslint/no-platform-sniffing.mjs';
 
 /**
  * The reviewed allowlist for deliberately-unprefixed library exports — the
@@ -27,13 +30,112 @@ const UNPREFIXED_EXPORTS = [
   // The calendar provider — the name the component-basics spec defines
   // (`provideTm…` carries the brand inside; only the prefix pattern differs).
   'provideTmCalendar',
+  // The page-scope provider, named by the observability spec in the same shape.
+  'provideTmPageScope',
+  // The Playwright assertion the app-foundation spec names for every suite.
+  'expectNoAxeViolations',
+  // The other e2e helpers the app-foundation spec names for every suite.
+  'warmUp',
+  'holdNetwork',
+  'goOffline',
+  'openTabs',
+  'signInAs',
+  'fakeProblem',
+  // The app's one provider call, which the app-foundation spec names; the
+  // prefix pattern expects a suffix after `provideTellma`.
+  'provideTellma',
+  // The app's start, which the app-foundation spec names beside it.
+  'bootstrapTellma',
 ];
 
+/**
+ * One `tm` plugin for the whole workspace: the rules @tellma/core-tools ships
+ * to distributions, plus the library-only rules under tools/eslint. ESLint
+ * refuses two different objects under one plugin name, so they merge here.
+ */
 const tmPlugin = {
+  meta: tmEslintPlugin.meta,
   rules: {
+    ...tmEslintPlugin.rules,
     'prefix-exports': tmPrefixExports,
     'no-state-bindings-on-form-field': noStateBindingsOnFormField,
+    'csp-only-in-csp-specs': cspOnlyInCspSpecs,
+    'no-platform-sniffing': noPlatformSniffing,
   },
+};
+
+/**
+ * The realtime client's restriction: only @tellma/core/realtime imports
+ * @microsoft/signalr. Flat config replaces a rule's whole setting with the
+ * last block that matches a file, so every later block that sets
+ * no-restricted-imports names it again.
+ */
+const SIGNALR_RESTRICTION = {
+  name: '@microsoft/signalr',
+  message: 'Only @tellma/core/realtime imports the SignalR client; the leader election loads it with import().',
+};
+
+/**
+ * The Lucide index restriction: icons come from their own modules, never
+ * from the `lucide` index. The index re-exports every icon, so a module the
+ * first frame loads that imports it makes every icon reachable from the first
+ * frame, and the app's bundler then moves each icon a lazy chunk draws into a
+ * chunk the first frame loads. Every block that sets no-restricted-imports
+ * names it, as it does SIGNALR_RESTRICTION.
+ */
+const LUCIDE_INDEX_RESTRICTION = {
+  name: 'lucide',
+  message:
+    "Import each icon from its own module: `import Check from 'lucide/dist/esm/icons/check.mjs'`, " +
+    'with `/// <reference types="@tellma/core-tools/lucide-icons" />` at the top of the file. ' +
+    "The index reaches every icon, so the first frame would carry the icons lazy chunks draw.",
+};
+
+// The foundation entry points' posture (icon, keys and kbd): no icon data,
+// no dependency beyond @angular/core, and no reach into a sibling's files.
+const FOUNDATION_PATTERNS = [
+  {
+    group: ['lucide', 'lucide/*', '@lucide/*'],
+    message: 'The foundation entry points (icon, keys, kbd) ship no icon data; importers pass their own.',
+  },
+  {
+    group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+    message: 'The foundation entry points (icon, keys, kbd) are dependency-free beyond @angular/core.',
+  },
+  {
+    group: ['../*'],
+    message: 'The foundation entry points (icon, keys, kbd) must not reach into sibling entry points.',
+  },
+];
+
+// The l10n-input boundary: l10n's pure posture, plus l10n itself.
+const L10N_INPUT_BOUNDARY = {
+  paths: [
+    {
+      name: '@tellma/core-ui',
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    SIGNALR_RESTRICTION,
+    LUCIDE_INDEX_RESTRICTION,
+  ],
+  patterns: [
+    {
+      group: ['@angular/*'],
+      message: 'The l10n-input entry point must stay free of Angular imports.',
+    },
+    {
+      group: ['@tellma/core-ui/*', '!@tellma/core-ui/l10n', '!@tellma/core-ui/contracts'],
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@tellma/core-ui-*', '@tellma/core-ui-*/**', '@tellma/locale-*', '@tellma/locale-*/**'],
+      message: 'The l10n-input entry point may depend on l10n and contracts only.',
+    },
+    {
+      group: ['@jsverse/*', 'rxjs', 'rxjs/*'],
+      message: 'The l10n-input entry point is dependency-free beyond Intl, l10n and contracts.',
+    },
+  ],
 };
 
 /**
@@ -49,6 +151,8 @@ const CALENDAR_BOUNDARY = {
       name: '@tellma/core-ui',
       message: 'Calendar entry points may depend on l10n and contracts only.',
     },
+    SIGNALR_RESTRICTION,
+    LUCIDE_INDEX_RESTRICTION,
   ],
   patterns: [
     {
@@ -70,6 +174,17 @@ const CALENDAR_BOUNDARY = {
   ],
 };
 
+// The calendar boundary for a calendar's specs, which may also import
+// l10n-input to read the dates they format back.
+const CALENDAR_SPEC_BOUNDARY = {
+  ...CALENDAR_BOUNDARY,
+  patterns: CALENDAR_BOUNDARY.patterns.map((pattern) =>
+    pattern.group.includes('!@tellma/core-ui/l10n')
+      ? { ...pattern, group: [...pattern.group, '!@tellma/core-ui/l10n-input'] }
+      : pattern,
+  ),
+};
+
 export default defineConfig(
   {
     ignores: [
@@ -78,6 +193,11 @@ export default defineConfig(
       '.angular/',
       '**/generated/',
       'projects/core/tellma-core-ui-mcp/dist/',
+      'projects/core/tellma-core-tools/dist/',
+      // The tellma-client fixture app's build output and the specs' working copies of it.
+      'projects/core/tellma-core-tools/fixtures/**/dist/',
+      'projects/core/tellma-core-tools/fixtures/run-*/',
+      'projects/core/tellma-core/boot/',
       '**/*.d.ts',
     ],
   },
@@ -118,19 +238,105 @@ export default defineConfig(
     },
   },
 
-  // tm/Tm/TM_ prefix on every library export (reviewed allowlist above).
+  // tm/Tm/TM_ prefix on every library export (reviewed allowlist above),
+  // in core packages, feature packs and locale packs alike.
   {
-    files: ['projects/core/**/*.ts', 'projects/locale/**/*.ts'],
+    files: ['projects/core/**/*.ts', 'projects/module/**/*.ts', 'projects/locale/**/*.ts'],
     ignores: [
       '**/*.spec.ts',
       '**/*.examples.ts',
       // Spec-only helpers (not exported from any entry point).
       '**/*testing.util.ts',
+      // Node packages: tooling, not library surface.
       'projects/core/tellma-core-ui-mcp/**',
+      'projects/core/tellma-core-tools/**',
     ],
     plugins: { tm: tmPlugin },
     rules: {
       'tm/prefix-exports': ['error', { allow: UNPREFIXED_EXPORTS }],
+    },
+  },
+
+  // The app framework's packages (spec 0024 §1, §10.4, §12): static imports
+  // between @tellma/core entry points follow its graph, declarations keep
+  // their keys literal and their layouts lazy, no + or comparison ever runs
+  // on a TmDecimal's text, and literal telemetry names and action ids follow
+  // their grammars (spec 0026 §3.2, §9.3). The decimal rules need type
+  // information, so these files lint against their TypeScript projects.
+  {
+    files: ['projects/core/tellma-core/**/*.ts', 'projects/core/tellma-core-testing/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: [
+          './projects/core/tellma-core/tsconfig.json',
+          './projects/core/tellma-core-testing/tsconfig.json',
+        ],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/core-import-boundary': ['error', { allowPrivate: true }],
+      'tm/lazy-layouts': 'error',
+      'tm/literal-declaration-keys': 'error',
+      'tm/no-decimal-operators': 'error',
+      'tm/telemetry-names': 'error',
+      '@typescript-eslint/restrict-plus-operands': TM_RESTRICT_PLUS_OPERANDS,
+    },
+  },
+
+  // Specs and their shared rigs build declarations from stand-in components
+  // and computed keys to exercise the merge, the config check and the derived
+  // routes; the lazy-layout and literal-key rules guard app sources, not
+  // these fixtures.
+  {
+    files: [
+      'projects/core/tellma-core/**/*.spec.ts',
+      'projects/core/tellma-core/**/*.testing.util.ts',
+      'projects/core/tellma-core-testing/**/*.spec.ts',
+    ],
+    rules: {
+      'tm/lazy-layouts': 'off',
+      'tm/literal-declaration-keys': 'off',
+    },
+  },
+
+  // Feature packs hold declarations and layouts, like a distribution's own
+  // code, so they take the distribution rules (spec 0024 §2.1) — all but the
+  // type-aware decimal rule, which joins when the first pack has a project.
+  // Without a project, the telemetry-names rule knows its receivers by name.
+  {
+    files: ['projects/module/**/*.ts'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/core-import-boundary': ['error', { allowPrivate: true }],
+      'tm/no-raw-http': 'error',
+      'tm/no-web-storage': 'error',
+      'tm/lazy-layouts': 'error',
+      'tm/literal-declaration-keys': 'error',
+      'tm/telemetry-names': 'error',
+    },
+  },
+
+  // Realtime client boundary (spec 0025 §1): @microsoft/signalr is imported
+  // only by @tellma/core/realtime, which the leader election loads with
+  // import() once a tab leads, so no follower tab downloads the client. The
+  // size gate's static-graph check (staticGraphExcludes) catches a static
+  // path to the entry point; this rule names the mistake where it is made.
+  // The same blocks keep every icon import per icon (LUCIDE_INDEX_RESTRICTION).
+  // The narrower blocks below set this rule for their own files, which
+  // replaces this setting there, so each of them names SIGNALR_RESTRICTION
+  // and LUCIDE_INDEX_RESTRICTION in its own list too.
+  {
+    files: ['projects/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION] }],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core/realtime/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [LUCIDE_INDEX_RESTRICTION] }],
     },
   },
 
@@ -143,6 +349,7 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION],
           patterns: [
             {
               group: ['@angular/*'],
@@ -159,6 +366,203 @@ export default defineConfig(
             {
               group: ['../*'],
               message: "The contracts entry point must not reach into the primary entry point's internals.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
+  // Foundation entry-point boundary (spec 0023 §1): icon and keys depend on
+  // no other @tellma entry point, since every other entry point builds on
+  // them, and the icon entry point carries no icon data of its own — the
+  // library registers nothing, so Lucide data belongs to its importers.
+  {
+    files: ['projects/core/tellma-core-ui/icon/**/*.ts', 'projects/core/tellma-core-ui/keys/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION],
+          patterns: [
+            {
+              // Covers the bare '@tellma/core-ui' as well as its subpaths.
+              group: ['@tellma/*'],
+              message: 'The icon and keys entry points depend on no other @tellma entry point.',
+            },
+            ...FOUNDATION_PATTERNS,
+          ],
+        },
+      ],
+    },
+  },
+
+  // The kbd entry point is the keys grammar's key caps: it builds on keys,
+  // which it re-exports, and on no other @tellma entry point.
+  {
+    files: ['projects/core/tellma-core-ui/kbd/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [SIGNALR_RESTRICTION, LUCIDE_INDEX_RESTRICTION],
+          patterns: [
+            {
+              // Every @tellma import but '@tellma/core-ui/keys' itself.
+              regex: '^@tellma/(?!core-ui/keys$)',
+              message: 'The kbd entry point depends on no @tellma entry point but @tellma/core-ui/keys.',
+            },
+            ...FOUNDATION_PATTERNS,
+          ],
+        },
+      ],
+    },
+  },
+
+  // Grid on-demand editing boundary (spec 0010 §C.11, Part C flag 6): the
+  // editing code and the editor controls it mounts load only once a grid is
+  // editable, so the grid and tree grid import them as types alone. A value
+  // import would put them back on every readonly grid's route. The size
+  // gate's static-graph check (staticGraphExcludes) catches that through any
+  // entry point; this rule names the mistake where it is made.
+  {
+    files: [
+      'projects/core/tellma-core-ui/grid/**/*.ts',
+      'projects/core/tellma-core-ui/tree-grid/**/*.ts',
+    ],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid-editing',
+            '@tellma/core-ui/date-picker',
+            '@tellma/core-ui/entity-picker',
+            '@tellma/core-ui/input',
+            '@tellma/core-ui/number',
+            '@tellma/core-ui/select',
+          ].map((name) => ({
+            name,
+            allowTypeImports: true,
+            message:
+              'The grid loads its editing code on demand: import this as a type only, and ' +
+              "reach the code through import('@tellma/core-ui/grid-editing').",
+          })),
+        },
+      ],
+    },
+  },
+
+  // Tiles boundary (spec 0023 §1, §8.5): tm-tiles mirrors the data grid's
+  // members and implements its driver interface, but carries no grid code,
+  // so it and its tree mode reach the grid and the tree grid as types alone.
+  // Tree mode is the tiles-tree entry point's, which plugs into tm-tiles, so
+  // tm-tiles never imports it, not even as a type: a flat list carries none
+  // of the tree's code. The size gate's static-graph check
+  // (staticGraphExcludes) catches a value import through any path; these
+  // rules name the mistake where it is made.
+  {
+    files: [
+      'projects/core/tellma-core-ui/tiles/**/*.ts',
+      'projects/core/tellma-core-ui/tiles-tree/**/*.ts',
+    ],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid',
+            '@tellma/core-ui/tree-grid',
+            '@tellma/core-ui/grid-editing',
+          ].map((name) => ({
+            name,
+            allowTypeImports: true,
+            message: 'The tiles carry no grid code: import the grid as a type only.',
+          })),
+        },
+      ],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core-ui/tiles/**/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            '@tellma/core-ui/grid',
+            '@tellma/core-ui/tree-grid',
+            '@tellma/core-ui/grid-editing',
+          ]
+            .map((name) => ({
+              name,
+              allowTypeImports: true,
+              message: 'The tiles carry no grid code: import the grid as a type only.',
+            }))
+            .concat({
+              name: '@tellma/core-ui/tiles-tree',
+              allowTypeImports: false,
+              message:
+                'Tree mode plugs into the tiles, not the other way round: a flat list must ' +
+                'not carry the tree, so the tiles reach it only through their own seam.',
+            }),
+        },
+      ],
+    },
+  },
+
+  // Chart engine boundary (spec 0034 §7.3): one internal adapter imports
+  // ECharts, and the chart reaches it, with the option builder and the
+  // theme bridge it uses, only through import(), so a card, a table view
+  // and every page without a plot never download the engine.
+  // The size gate measures the engine's chunk on its own and the entry point
+  // without it; these rules name the mistake where it is made.
+  {
+    files: ['projects/core/tellma-core-ui/chart/**/*.ts'],
+    ignores: [
+      '**/*.spec.ts',
+      '**/*.examples.ts',
+      'projects/core/tellma-core-ui/chart/internal/chart-engine.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['echarts', 'echarts/*', 'zrender', 'zrender/*'],
+              allowTypeImports: true,
+              message: 'Only the chart engine adapter imports ECharts; import its types only.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['projects/core/tellma-core-ui/chart/*.ts'],
+    ignores: ['**/*.spec.ts', '**/*.examples.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['echarts', 'echarts/*', 'zrender', 'zrender/*'],
+              allowTypeImports: true,
+              message: 'Only the chart engine adapter imports ECharts; import its types only.',
+            },
+            {
+              group: ['./internal/chart-engine', './internal/chart-option', './internal/chart-theme'],
+              allowTypeImports: true,
+              message:
+                "The engine's modules load on the first plot: reach them through " +
+                "import('./internal/chart-engine').",
             },
           ],
         },
@@ -206,6 +610,8 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The grid engine may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
+            LUCIDE_INDEX_RESTRICTION,
           ],
           patterns: [
             {
@@ -294,6 +700,15 @@ export default defineConfig(
     },
   },
 
+  // A calendar's specs also read its dates back through the parsers of
+  // l10n-input; its shipped code formats only.
+  {
+    files: ['projects/core/tellma-core-ui/calendar-*/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': ['error', CALENDAR_SPEC_BOUNDARY],
+    },
+  },
+
   // …and SHIPPED calendar code additionally never climbs out of its own
   // entry point (a relative sibling import would duplicate that sibling into
   // the pack's bundle). Specs are exempt: both packs are checked against the
@@ -318,6 +733,24 @@ export default defineConfig(
     },
   },
 
+  // l10n-input entry-point boundary: the input side of l10n keeps its
+  // posture (no Angular, no DOM, no DI) and depends on l10n itself, whose
+  // formatters the parsers read the locale's symbols, field order and names
+  // from.
+  {
+    files: ['projects/core/tellma-core-ui/l10n-input/**/*.ts'],
+    rules: {
+      'no-restricted-imports': ['error', L10N_INPUT_BOUNDARY],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "NewExpression[callee.name='InjectionToken']",
+          message: 'The l10n-input entry point must stay DI-free.',
+        },
+      ],
+    },
+  },
+
   // l10n entry-point boundary: pure TypeScript + Intl (+ the calendar
   // arithmetic dependency) — no Angular at all, no DOM, no DI, no other
   // @tellma packages except the contracts types. Formatting/parsing must
@@ -334,6 +767,8 @@ export default defineConfig(
               name: '@tellma/core-ui',
               message: 'The l10n entry point may depend on @tellma/core-ui/contracts only.',
             },
+            SIGNALR_RESTRICTION,
+            LUCIDE_INDEX_RESTRICTION,
           ],
           patterns: [
             {
@@ -402,6 +837,29 @@ export default defineConfig(
     },
   },
 
+  // One platform check (spec 0023 §3.2): only the keys grammar's
+  // tmIsApplePlatform reads navigator.platform or navigator.userAgentData, in
+  // shipped code and specs alike.
+  {
+    files: ['projects/core/**/*.ts', 'projects/module/**/*.ts'],
+    ignores: ['projects/core/tellma-core-ui/keys/**'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/no-platform-sniffing': 'error',
+    },
+  },
+
+  // Unit specs share one browser page per run, and a CSP <meta> can never be
+  // lifted: a spec that installs one must be a *.csp.spec.ts, which runs in
+  // the test-csp target, a run of its own.
+  {
+    files: ['projects/**/*.spec.ts'],
+    plugins: { tm: tmPlugin },
+    rules: {
+      'tm/csp-only-in-csp-specs': 'error',
+    },
+  },
+
   // Templates — inline templates are extracted by the processor above.
   {
     files: ['projects/**/*.html'],
@@ -414,7 +872,7 @@ export default defineConfig(
 
   // Workspace tooling (node scripts, lint rules, e2e specs).
   {
-    files: ['scripts/**/*.mjs', 'tools/**/*.mjs'],
+    files: ['scripts/**/*.mjs', 'tools/**/*.mjs', 'projects/core/tellma-core-tools/bin/*.js'],
     extends: [eslint.configs.recommended],
     languageOptions: {
       globals: {

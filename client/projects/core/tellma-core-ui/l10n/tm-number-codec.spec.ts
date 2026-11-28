@@ -3,60 +3,9 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { TM_PARSE_ERROR } from '@tellma/core-ui/contracts';
-
-import {
-  TM_NUMBER_MAX_DIGITS,
-  tmFormatNumber,
-  tmNumberDigitCount,
-  tmParseNumber,
-} from './tm-number-codec';
-
-/** U+200E LEFT-TO-RIGHT MARK — Intl prefixes RTL negatives with an invisible mark. */
-const LRM = String.fromCodePoint(0x200e);
-/** U+061C ARABIC LETTER MARK — the mark ar-EG emits before a negative. */
-const ALM = String.fromCodePoint(0x061c);
-/** U+066A ARABIC PERCENT SIGN. */
-const ARABIC_PERCENT = String.fromCodePoint(0x066a);
+import { tmFormatNumber } from './tm-number-codec';
 
 describe('tm-number-codec', () => {
-  it('round-trips a negative number in RTL / non-Latin-minus locales', () => {
-    // Intl.NumberFormat prefixes the negative with an invisible bidi-control
-    // mark in these locales; the codec must not reject or clear it.
-    for (const locale of ['ar', 'ar-EG', 'fa', 'he']) {
-      const formatted = tmFormatNumber(-1234.5, locale);
-      expect(tmParseNumber(formatted, locale)).toBe(-1234.5);
-    }
-  });
-
-  it('parses a negative even when a leading bidi-control mark is present', () => {
-    expect(tmParseNumber(`${LRM}-12`, 'ar')).toBe(-12);
-    expect(tmParseNumber(`${ALM}-12`, 'ar-EG')).toBe(-12);
-    // The last-resort machine-number path strips them too (String.trim keeps
-    // them, so Number(`${LRM}-3.5`) alone would be NaN).
-    expect(tmParseNumber(`${LRM}-3.5`, 'en')).toBe(-3.5);
-  });
-
-  it('round-trips localized group and decimal separators', () => {
-    for (const value of [0, 1234.56, -1000000, 0.5, -0.25]) {
-      for (const locale of ['en', 'de', 'fr', 'ar']) {
-        expect(tmParseNumber(tmFormatNumber(value, locale), locale)).toBe(value);
-      }
-    }
-  });
-
-  it('parses a paste from another locale by trying the source locale first', () => {
-    // A German-formatted number pasted into an English grid.
-    expect(tmParseNumber('1.234,56', 'en', { sourceLocale: 'de' })).toBe(1234.56);
-  });
-
-  it('parses empty text as null and rejects genuinely unparseable text', () => {
-    expect(tmParseNumber('', 'en')).toBeNull();
-    expect(tmParseNumber('   ', 'en')).toBeNull();
-    expect(tmParseNumber('abc', 'en')).toBe(TM_PARSE_ERROR);
-    expect(tmParseNumber('-', 'en')).toBe(TM_PARSE_ERROR);
-  });
-
   it('formats null / undefined / empty as an empty string', () => {
     expect(tmFormatNumber(null, 'en')).toBe('');
     expect(tmFormatNumber(undefined, 'en')).toBe('');
@@ -79,98 +28,57 @@ describe('tm-number-codec', () => {
     expect(tmFormatNumber(1.23, 'en', { minDecimals: 3, maxDecimals: 1 })).toBe('1.230');
   });
 
+  describe('grouping', () => {
+    it('writes no group separators when grouping is off', () => {
+      expect(tmFormatNumber(2026, 'en', { grouping: false })).toBe('2026');
+      expect(tmFormatNumber(1234567.5, 'en', { grouping: false })).toBe('1234567.5');
+      expect(tmFormatNumber(1234567, 'de', { grouping: false })).toBe('1234567');
+      expect(tmFormatNumber(-1234567, 'en', { grouping: false })).toBe('-1234567');
+      // The decimals and the percent mode still apply.
+      expect(tmFormatNumber(1234.5, 'en', { grouping: false, minDecimals: 2 })).toBe('1234.50');
+      expect(tmFormatNumber(12.5, 'en', { grouping: false, percent: true })).toBe('1250%');
+    });
+
+    it('groups by default, and under an explicit true', () => {
+      expect(tmFormatNumber(2026, 'en')).toBe('2,026');
+      expect(tmFormatNumber(2026, 'en', {})).toBe('2,026');
+      expect(tmFormatNumber(2026, 'en', { grouping: true })).toBe('2,026');
+      expect(tmFormatNumber(12.5, 'en', { percent: true })).toBe('1,250%');
+    });
+
+    it("keeps the locale's digits when grouping is off", () => {
+      expect(tmFormatNumber(2026, 'ar-SA', { grouping: false })).toBe('٢٠٢٦');
+      expect(tmFormatNumber(2026, 'ar-SA')).toBe('٢٬٠٢٦');
+    });
+
+    it("keeps the locale's minimum grouping digits when grouping is on", () => {
+      // Spanish groups from five digits.
+      expect(tmFormatNumber(1234, 'es')).toBe('1234');
+      expect(tmFormatNumber(12345, 'es')).toBe('12.345');
+      expect(tmFormatNumber(12345, 'es', { grouping: false })).toBe('12345');
+    });
+
+    it('formats the two settings apart, whichever was asked first', () => {
+      // One cached formatter per setting: neither answers for the other.
+      expect(tmFormatNumber(987654, 'fr', { grouping: false })).toBe('987654');
+      expect(tmFormatNumber(987654, 'fr')).not.toBe('987654');
+      expect(tmFormatNumber(987654, 'fr', { grouping: false })).toBe('987654');
+    });
+  });
+
+  describe('bidirectional controls', () => {
+    it('formats a negative with no mark beside its sign', () => {
+      expect(tmFormatNumber(-1234.5, 'ar')).toBe('-1,234.5');
+      expect(tmFormatNumber(-1234.5, 'ar-SA-u-nu-latn')).toBe('-1,234.5');
+      expect(tmFormatNumber(-12, 'he')).toBe('-12');
+    });
+  });
+
   describe('percent mode', () => {
     it('formats a fraction as a percentage with the bounds on displayed digits', () => {
       expect(tmFormatNumber(0.75, 'en', { percent: true })).toBe('75%');
       expect(tmFormatNumber(0.756789, 'en', { percent: true, maxDecimals: 2 })).toBe('75.68%');
       expect(tmFormatNumber(0.5, 'en', { percent: true, minDecimals: 1 })).toBe('50.0%');
-    });
-
-    it('parses bare numbers, trailing signs, and leading signs alike', () => {
-      expect(tmParseNumber('75', 'en', { percent: true })).toBe(0.75);
-      expect(tmParseNumber('75%', 'en', { percent: true })).toBe(0.75);
-      expect(tmParseNumber('%75', 'en', { percent: true })).toBe(0.75);
-      expect(tmParseNumber(' 75 % ', 'en', { percent: true })).toBe(0.75);
-    });
-
-    it('round-trips formatted output in locales with a leading percent sign', () => {
-      // Turkish formats percentages sign-first; the formatted text must
-      // parse back to the same fraction.
-      for (const locale of ['tr', 'eu', 'en', 'de']) {
-        const formatted = tmFormatNumber(0.25, locale, { percent: true });
-        expect(tmParseNumber(formatted, locale, { percent: true })).toBe(0.25);
-      }
-    });
-
-    it('round-trips Arabic percent output and accepts Arabic-Indic digits', () => {
-      const formatted = tmFormatNumber(0.75, 'ar-SA', { percent: true });
-      expect(tmParseNumber(formatted, 'ar-SA', { percent: true })).toBe(0.75);
-      expect(tmParseNumber(`٧٥${ARABIC_PERCENT}`, 'ar-SA', { percent: true })).toBe(0.75);
-    });
-
-    it('applies the sourceLocale ladder to the numeric remainder', () => {
-      expect(tmParseNumber('1.234,5%', 'en', { percent: true, sourceLocale: 'de' })).toBe(12.345);
-    });
-
-    it('rejects a lone percent sign and keeps empty-to-null semantics', () => {
-      expect(tmParseNumber('%', 'en', { percent: true })).toBe(TM_PARSE_ERROR);
-      expect(tmParseNumber('', 'en', { percent: true })).toBeNull();
-    });
-
-    it('every two-decimal percent entry parses drift-free and round-trips exactly', () => {
-      // The ÷100 float path double-rounds one ulp off for ~28% of these,
-      // drifting the value AND inflating its digit count past the
-      // 15-digit envelope — the division must happen textually.
-      for (let cents = 1; cents <= 9999; cents += 1) {
-        const text = `${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
-        const parsed = tmParseNumber(text, 'en', { percent: true });
-        expect(typeof parsed, text).toBe('number');
-        const value = parsed as number;
-        expect(tmNumberDigitCount(value), text).toBeLessThanOrEqual(6);
-        expect(
-          tmFormatNumber(value, 'en', { percent: true, minDecimals: 2, maxDecimals: 2 }),
-          text,
-        ).toBe(`${text}%`);
-      }
-    });
-
-    it('negative and high-precision percent entries stay exact too', () => {
-      expect(tmParseNumber('-51.46', 'en', { percent: true })).toBe(-0.5146);
-      expect(tmParseNumber('93.883', 'en', { percent: true })).toBe(0.93883);
-      expect(tmParseNumber('0.5', 'en', { percent: true })).toBe(0.005);
-      expect(tmParseNumber('99.99%', 'en', { percent: true })).toBe(0.9999);
-    });
-  });
-
-  describe('the machine-text fallback shape', () => {
-    it('accepts plain decimals and exponent forms, never JavaScript exotica', () => {
-      expect(tmParseNumber('1e5', 'en')).toBe(100000);
-      expect(tmParseNumber('-2.5e-3', 'en')).toBe(-0.0025);
-      expect(tmParseNumber('0x1A', 'en')).toBe(TM_PARSE_ERROR);
-      expect(tmParseNumber('Infinity', 'en')).toBe(TM_PARSE_ERROR);
-      expect(tmParseNumber('1e5', 'en', { percent: true })).toBe(1000);
-    });
-  });
-
-  describe('tmNumberDigitCount', () => {
-    it('counts integer plus fraction digits of the canonical rendering', () => {
-      expect(tmNumberDigitCount(1234.5)).toBe(5);
-      expect(tmNumberDigitCount(-1234.5)).toBe(5); // sign excluded
-      expect(tmNumberDigitCount(0.25)).toBe(3); // the integer zero counts
-      expect(tmNumberDigitCount(0)).toBe(1);
-      expect(tmNumberDigitCount(1000000)).toBe(7); // grouping never counts
-    });
-
-    it('places the documented envelope boundary', () => {
-      expect(tmNumberDigitCount(0.12345678901234)).toBe(TM_NUMBER_MAX_DIGITS);
-      expect(tmNumberDigitCount(123456789012345)).toBe(TM_NUMBER_MAX_DIGITS);
-      expect(tmNumberDigitCount(1234567890123456)).toBe(TM_NUMBER_MAX_DIGITS + 1);
-    });
-
-    it('never renders exponent forms and treats non-finite values as unbounded', () => {
-      expect(tmNumberDigitCount(1e21)).toBe(22);
-      expect(tmNumberDigitCount(Number.POSITIVE_INFINITY)).toBe(Number.POSITIVE_INFINITY);
-      expect(tmNumberDigitCount(Number.NaN)).toBe(Number.POSITIVE_INFINITY);
     });
   });
 });

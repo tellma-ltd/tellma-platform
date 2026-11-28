@@ -5,15 +5,17 @@
 
 import { Component, signal } from '@angular/core';
 
+import { TmButton } from '@tellma/core-ui/button';
 import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tabs';
 
 /**
  * tm-tab-group demo host — active-only DOM, `preserveContent` state
- * survival, explicit selection, a disabled tab, rich labels, and a
- * 20-tab overflow strip. Drives the Playwright battery.
+ * survival, explicit selection, a disabled tab, rich labels, a 20-tab
+ * overflow strip, and instantiating unvisited tabs on request. Drives the
+ * Playwright battery.
  */
 @Component({
-  imports: [TmTabGroup, TmTab, TmTabContent, TmTabLabel],
+  imports: [TmButton, TmTabGroup, TmTab, TmTabContent, TmTabLabel],
   template: `
     <h2>Tabs</h2>
 
@@ -70,6 +72,32 @@ import { TmTab, TmTabContent, TmTabGroup, TmTabLabel } from '@tellma/core-ui/tab
           }
         </tm-tab-group>
       </div>
+    </section>
+
+    <section>
+      <h3>Instantiate on request</h3>
+      <!-- A failed save must reach fields on tabs nobody opened: the button
+           renders every tab's content, hidden and inert, without selecting. -->
+      <tm-tab-group #invoice data-testid="instantiate-group">
+        <tm-tab id="header" label="Header">
+          <ng-template tmTabContent>
+            <label>Customer <input data-testid="field-customer" /></label>
+          </ng-template>
+        </tm-tab>
+        <tm-tab id="lines" label="Lines">
+          <ng-template tmTabContent>
+            <label>Quantity <input data-testid="field-quantity" /></label>
+          </ng-template>
+        </tm-tab>
+        <tm-tab id="notes" label="Notes">
+          <ng-template tmTabContent>
+            <label>Memo <input data-testid="field-memo" /></label>
+          </ng-template>
+        </tm-tab>
+      </tm-tab-group>
+      <button tmButton data-testid="instantiate-all" (click)="invoice.instantiate()">
+        Render every tab
+      </button>
     </section>
   `,
   styles: `

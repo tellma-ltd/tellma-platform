@@ -34,9 +34,11 @@
   block-size: calc(100vh - 2 * var(--modal-lg-margin));
 }
 
-/* Small-viewport convergence: every bucket goes near-full-screen. (A raw
-   600px breakpoint — custom properties don't resolve in media queries.) */
-@media (max-width: 600px) {
+/* Small-viewport convergence: below the sm breakpoint every bucket goes
+   near-full-screen. (A literal threshold — custom properties don't resolve
+   in media queries; the value is the sm entry of breakpoints.json.) Between
+   576 and 600 px a md modal keeps its width, clamped by max-inline-size. */
+@media (width < 576px) {
   .tm-modal-panel--sm,
   .tm-modal-panel--md,
   .tm-modal-panel--lg {
@@ -45,6 +47,41 @@
 
   .tm-modal-panel--lg {
     block-size: calc(100vh - 2 * var(--modal-margin));
+  }
+}
+
+/* The drawer (placement 'end'): a side sheet docked to the inline-end edge
+   at the full viewport height. The CDK's global position strategy docks the
+   pane; these rules give it its fixed width and height. The size buckets
+   re-point to the drawer widths, the centered caps are lifted, and nothing
+   here depends on content, so the drawer never resizes while open. These
+   rules follow the centered buckets so they win the equal-specificity ties. */
+.tm-modal-panel--end {
+  max-inline-size: 100%;
+  max-block-size: none;
+  block-size: 100dvh;
+}
+
+.tm-modal-panel--end.tm-modal-panel--sm {
+  inline-size: var(--modal-drawer-width-sm);
+}
+
+.tm-modal-panel--end.tm-modal-panel--md {
+  inline-size: var(--modal-drawer-width-md);
+}
+
+.tm-modal-panel--end.tm-modal-panel--lg {
+  inline-size: var(--modal-drawer-width-lg);
+}
+
+/* Below the sm breakpoint every drawer takes the full width (the pane's
+   flex container is the viewport-sized overlay wrapper, so 100% excludes a
+   classic scrollbar where 100vw would not). */
+@media (width < 576px) {
+  .tm-modal-panel--end.tm-modal-panel--sm,
+  .tm-modal-panel--end.tm-modal-panel--md,
+  .tm-modal-panel--end.tm-modal-panel--lg {
+    inline-size: 100%;
   }
 }
 
@@ -64,6 +101,21 @@
 
 .tm-modal-panel--lg > cdk-dialog-container {
   block-size: 100%;
+}
+
+/* The drawer's sheet fills its pane edge to edge: square corners against
+   the viewport edges, and no entrance motion — it appears in the frame of
+   the click, and its scrim appears with it instead of fading in. */
+.tm-modal-panel--end > cdk-dialog-container {
+  block-size: 100%;
+  border-radius: 0;
+  animation: none;
+}
+
+/* Two classes: the CDK's structural stylesheet, which carries the fade on
+   one class, is injected at run time after this one. */
+.tm-modal-backdrop.tm-modal-backdrop--end {
+  transition: none;
 }
 
 .tm-modal {
@@ -109,11 +161,8 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-}
-
-.tm-modal__close svg {
-  inline-size: var(--modal-icon-size);
-  block-size: var(--modal-icon-size);
+  /* The X inside is a tm-icon. */
+  --icon-size: var(--modal-icon-size);
 }
 
 .tm-modal__close:hover {

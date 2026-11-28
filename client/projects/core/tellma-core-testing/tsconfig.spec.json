@@ -1,0 +1,12 @@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  // The specs compile @tellma/core from its sources, so its lazily loaded
+  // entry points come with the second base.
+  "extends": ["../../../tsconfig.json", "../tellma-core/tsconfig.lazy-entry-points.json"],
+  "compilerOptions": {
+    "outDir": "../../../out-tsc/spec",
+    "types": ["vitest/globals"]
+  },
+  "include": ["**/*.spec.ts"]
+}

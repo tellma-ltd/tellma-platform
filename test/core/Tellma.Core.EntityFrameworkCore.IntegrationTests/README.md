@@ -11,6 +11,11 @@ views.
   TABLE sorting); a definitional change creates a **new version alongside** the old, which a
   zero-grace sweep then collects; `Migrate()` re-run no-op; the `--idempotent` script runs twice
   cleanly; `EnsureCreated()` creates types too.
+- `ColumnCollationTests` — the MigrationsHost's class-derived `SubjectsList` type deploys with
+  `Latin1_General_100_BIN2` on its `Subject` column (`sys.columns.collation_name`) and the
+  database collation on the other; a variable of the type joins a binary-collated table column
+  with binary semantics, while the same join through `StringList` (no collation) fails with
+  Msg 468.
 - `DropGuardTests` — a planted procedure referencing a type makes a manual `DropTableType` fail
   with error 53102 naming the procedure; after removing it, the drop and a recreate succeed.
 - `MemoryOptimizedTests` — a memory-optimized type deploys with `is_memory_optimized = 1` on
@@ -20,9 +25,10 @@ views.
 
 ## Running
 
-By default the suite starts a `mcr.microsoft.com/mssql/server:2022-latest` container through
-Testcontainers — identical locally and in CI. **Docker must be running**; if it is not, the
-fixture fails fast with an actionable message.
+The server is the shared `SqlServerFixture` of `Tellma.Testing.Support`, registered as an assembly fixture. By default it starts a
+`mcr.microsoft.com/mssql/server:2022-latest` container through Testcontainers — identical locally
+and in CI. **Docker must be running**; if it is not, the fixture fails fast with an actionable
+message.
 
 For a faster inner loop against an existing server:
 
@@ -31,8 +37,9 @@ $env:TELLMA_TEST_SQL = "Server=localhost;Integrated Security=true;TrustServerCer
 dotnet test test/core/Tellma.Core.EntityFrameworkCore.IntegrationTests
 ```
 
-Each test creates its own uniquely named database; databases created on a `TELLMA_TEST_SQL`
-server are dropped when the fixture disposes.
+Each test creates its own uniquely named database, in the platform collation
+(`Latin1_General_100_CI_AS`) rather than the server's default; databases created on a
+`TELLMA_TEST_SQL` server are dropped when the fixture disposes.
 
 If the default `mcr.microsoft.com/mssql/server:2022-latest` image crashes on your Docker
 Desktop/WSL2 kernel (exits 255 at startup), pick another image:

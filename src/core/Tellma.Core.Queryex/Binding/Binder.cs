@@ -52,8 +52,14 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>What the expression depends on besides its own text.</summary>
         private readonly BindingContext _context;
 
-        /// <summary>Where to report problems.</summary>
-        private readonly DiagnosticScope _scope;
+        /// <summary>Where to report problems about the list as a whole.</summary>
+        private readonly DiagnosticScope _listScope;
+
+        /// <summary>
+        ///     Where to report problems: the list's scope, or for a list of measures the scope of the
+        ///     item being bound, since each measure is a site of its own.
+        /// </summary>
+        private DiagnosticScope _scope;
 
         /// <summary>How deeply inside aggregations the current node sits.</summary>
         private int _aggregateDepth;
@@ -91,6 +97,7 @@ namespace Tellma.Core.Queryex.Binding
         internal Binder(BindingContext context, in DiagnosticScope scope)
         {
             _context = context;
+            _listScope = scope;
             _scope = scope;
         }
 
@@ -112,12 +119,15 @@ namespace Tellma.Core.Queryex.Binding
             // they are settled here rather than while parsing.
             if (_context.Mode.Shape == QueryexShape.Predicate && list.Items.Count > 1)
             {
-                _scope.Report(DiagnosticCodes.PredicateListNotPermitted, list.Items[1].Span);
+                _scope.Report(DiagnosticCodes.ListNotPermitted, list.Items[1].Span);
             }
 
             ImmutableArray<BoundItem>.Builder items = ImmutableArray.CreateBuilder<BoundItem>(list.Items.Count);
-            foreach (ExpressionItemSyntax item in list.Items)
+            for (int index = 0; index < list.Items.Count; index++)
             {
+                // Each measure is reported, and has its parameters located, at a site of its own.
+                ExpressionItemSyntax item = list.Items[index];
+                _scope = _context.Measures ? _listScope.Item(index) : _listScope;
                 if (item.Direction != QueryexDirection.None && !directions)
                 {
                     _scope.Report(DiagnosticCodes.DirectionNotPermitted, item.DirectionSpan);
@@ -126,7 +136,55 @@ namespace Tellma.Core.Queryex.Binding
                 items.Add(new BoundItem(BindItem(item), item.Span, item.Direction));
             }
 
+            _scope = _listScope;
             return items.ToImmutable();
+        }
+
+        /// <summary>Binds a text that has to be one expression of one given type.</summary>
+        /// <param name="list">The parsed text.</param>
+        /// <param name="expected">The type the expression has to have.</param>
+        /// <returns>The bound expression, or an error node when it is not one of that type.</returns>
+        /// <remarks>
+        ///     The expression is checked against the type rather than read on its own and compared
+        ///     afterwards, so a written string literal converts here exactly as it does beside a
+        ///     column of that type, and an absent value takes the type it is asked for.
+        /// </remarks>
+        internal TypedExpr BindSingle(ExpressionListSyntax list, BoundType expected)
+        {
+            _ordering = false;
+
+            // One expression, as in a predicate position; every item is still bound, so whatever
+            // else is wrong with the text is reported along with its shape.
+            if (list.Items.Count > 1)
+            {
+                _scope.Report(DiagnosticCodes.ListNotPermitted, list.Items[1].Span);
+            }
+
+            TypedExpr first = new TypedError(list.Span);
+            for (int index = 0; index < list.Items.Count; index++)
+            {
+                ExpressionItemSyntax item = list.Items[index];
+                if (item.Direction != QueryexDirection.None)
+                {
+                    _scope.Report(DiagnosticCodes.DirectionNotPermitted, item.DirectionSpan);
+                }
+
+                TypedExpr bound = CheckOrError(
+                    item.Expression,
+                    expected,
+                    DiagnosticCodes.IncompatibleOperandTypes);
+                if (bound.Type != BoundType.Error)
+                {
+                    CheckCollations(bound);
+                }
+
+                if (index == 0)
+                {
+                    first = bound;
+                }
+            }
+
+            return first;
         }
 
         /// <summary>Binds one item and checks what its position requires of it.</summary>
@@ -152,6 +210,15 @@ namespace Tellma.Core.Queryex.Binding
         /// <param name="bound">The bound expression.</param>
         private void CheckItemRules(ExpressionItemSyntax item, TypedExpr bound)
         {
+            CheckCollations(bound);
+
+            if (_context.Measures)
+            {
+                // A measure has rules of its own, which replace the select list's grouping rules.
+                CheckMeasureRules(item, bound);
+                return;
+            }
+
             if (_context.Mode.Shape == QueryexShape.Value && bound.Type == BoundType.Null)
             {
                 // An item whose only possible value is absent has no column type to give a result
@@ -985,6 +1052,20 @@ namespace Tellma.Core.Queryex.Binding
         private void Report(string code, QueryexSpan span, string name, string value, bool always = false)
         {
             Report(code, span, always, new KeyValuePair<string, string>(name, value));
+        }
+
+        /// <summary>Reports an operation that combines text from columns of different collations.</summary>
+        /// <param name="bound">A bound item, free of errors.</param>
+        /// <remarks>
+        ///     The types agree, so the expression binds; the backend would still refuse it when the
+        ///     statement runs, as a failure the author could not have read anything into.
+        /// </remarks>
+        private void CheckCollations(TypedExpr bound)
+        {
+            if (!bound.ContainsError && CollationCheck.FirstConflict(bound) is TypedExpr conflict)
+            {
+                _scope.Report(DiagnosticCodes.CollationConflict, conflict.Span);
+            }
         }
 
         /// <summary>Reports a problem.</summary>

@@ -13,7 +13,7 @@ const EDIT: TmGridEditingKeyContext = { mode: 'edit', isDropdownOpen: false };
 const ENTER: TmGridEditingKeyContext = { mode: 'enter', isDropdownOpen: false };
 const DROPDOWN: TmGridEditingKeyContext = { mode: 'edit', isDropdownOpen: true };
 
-describe('tmResolveEditingKey (§8.2 editing table)', () => {
+describe('tmResolveEditingKey (editing table)', () => {
   it('Enter commits toward the enter-run target; Shift+Enter runs back', () => {
     expect(tmResolveEditingKey(key({ key: 'Enter' }), EDIT)).toEqual({
       kind: 'commitMove',

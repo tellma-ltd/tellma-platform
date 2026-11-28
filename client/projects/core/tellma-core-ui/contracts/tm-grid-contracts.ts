@@ -109,10 +109,12 @@ export interface TmPasteContext extends TmParseContext {
 
 /**
  * One label's outcome from a batched label resolution: the resolved value,
- * or a definitive failure — `notFound` (no match) or `ambiguous` (several
- * matches; the resolver must not guess).
+ * a definitive failure — `notFound` (no match) or `ambiguous` (several
+ * matches; the resolver must not guess) — or `resolutionFailed`, a
+ * retryable one: the label was never checked, as when the read that would
+ * have checked it failed while the batch's other labels resolved.
  */
-export type TmLabelResolution<V> = { value: V } | { error: 'notFound' | 'ambiguous' };
+export type TmLabelResolution<V> = { value: V } | { error: 'notFound' | 'ambiguous' | 'resolutionFailed' };
 
 /**
  * Registration sink a grid provides to the editor views it creates. A token
@@ -212,6 +214,30 @@ export interface TmGridContentState {
    * and never serialized.
    */
   readonly history?: unknown;
-  /** Expanded row ids of a tree grid; unknown ids are pruned on restore. */
+  /**
+   * Expanded row ids of a tree grid that keeps its expansion in the store.
+   * Kept whole: an id whose row is not present yet stays, and expands when
+   * its row arrives. Absent, the tree starts at its default depth.
+   */
   readonly expandedRowIds?: ReadonlySet<TmRowId>;
 }
+
+/**
+ * The checkbox's cell-display contract: how a grid paints a boolean cell as
+ * static DOM with no component instance. It lives with the contracts, so a
+ * grid that paints booleans never loads the checkbox control itself;
+ * `@tellma/core-ui/checkbox` re-exports it. The text representation is the
+ * spreadsheet-interop literal `TRUE`/`FALSE` (never localized — it is what
+ * copy exports and paste parses); the glyph class renders a checkbox-box
+ * visual driven by the same `--checkbox-box-size` and field tokens the real
+ * control uses, so the two stay in lock-step. A `null` value (a cleared
+ * cell) displays as unchecked.
+ */
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null> = {
+  formatValue(value: boolean | null): string {
+    return value ? 'TRUE' : 'FALSE';
+  },
+  displayClass(value: boolean | null): string {
+    return value ? 'tm-grid-bool tm-grid-bool--on' : 'tm-grid-bool';
+  },
+};

@@ -10,6 +10,7 @@ import {
   activeCell,
   cell,
   cellText,
+  expectCellText,
   findBar,
   findCounter,
   findInput,
@@ -206,7 +207,7 @@ test.describe('tree deep-search (§8.7)', () => {
 
     await page.keyboard.press('Enter'); // navigation expands Assets → Current assets → Cash…
     await expect(activeCell(page)).toHaveAttribute('data-row', '3');
-    expect(await cellText(page, 3, 0)).toBe('Petty cash');
+    await expectCellText(page, 3, 0, 'Petty cash');
     await expect(cell(page, 3, 0)).toHaveClass(/tm-grid__cell--find-active/);
     const rowCount = Number(await gridScroller(page).getAttribute('aria-rowcount'));
     expect(rowCount).toBeGreaterThan(10); // the ancestor chain is open now
@@ -218,7 +219,7 @@ test.describe('tree deep-search (§8.7)', () => {
   }) => {
     await gotoGrid(page, 'tree-grid'); // fully expanded by default
     // Petty cash (row 3): balance 8900 renders grouped in the en locale.
-    expect(await cellText(page, 3, 2)).toBe('8,900');
+    await expectCellText(page, 3, 2, '8,900');
 
     await activateCell(page, 0, 0);
     await page.keyboard.press('Control+f');

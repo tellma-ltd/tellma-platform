@@ -1,0 +1,267 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-expression-editor (spec 0029 §10.3): a fixed box of `rows` lines, a
+   20px status line and, with parameters, a 24px chip row. Nothing in it
+   changes height while typing, so nothing below it moves. */
+
+:host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--expr-gap);
+  min-inline-size: 0;
+  font-family: var(--font-ui);
+}
+
+/* ---- The code box: the mirror under the textarea, with the same metrics ---- */
+
+.tm-expression-editor__box {
+  position: relative;
+  box-sizing: border-box;
+  block-size: calc(var(--tm-expression-editor-rows, 3) * var(--expr-line-height) + 2 * var(--expr-padding-y) + 2 * var(--border-width));
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  transition:
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.tm-expression-editor__box:hover {
+  border-color: var(--field-border-hover);
+}
+
+/* The same glow a field wears; the transparent outline carries focus in forced colors. */
+.tm-expression-editor__box:focus-within {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+:host(.tm-expression-editor--invalid) .tm-expression-editor__box {
+  border-color: var(--field-border-invalid);
+}
+
+:host(.tm-expression-editor--invalid) .tm-expression-editor__box:focus-within {
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--error-bg);
+}
+
+:host(.tm-expression-editor--disabled) .tm-expression-editor__box {
+  background: var(--field-bg-disabled);
+}
+
+:host(.tm-expression-editor--readonly) .tm-expression-editor__box {
+  background: var(--field-bg-filled);
+  border-color: var(--border-subtle);
+}
+
+/* Both layers wrap, pad and scroll alike, so every glyph of the mirror sits
+   under the textarea's own; the stable gutter keeps their widths equal
+   whether or not the textarea shows a scrollbar. */
+.tm-expression-editor__mirror,
+.tm-expression-editor__input {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--expr-padding-y) var(--expr-padding-x);
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: var(--field-font-size);
+  line-height: var(--expr-line-height);
+  letter-spacing: normal;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  tab-size: 4;
+  scrollbar-gutter: stable;
+}
+
+.tm-expression-editor__mirror {
+  overflow: hidden;
+  color: var(--expr-punctuator);
+  pointer-events: none;
+}
+
+/* The textarea's text is transparent: the mirror shows through it, while
+   the caret and the selection stay the textarea's. */
+.tm-expression-editor__input {
+  overflow: auto;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--field-text);
+  outline: none;
+}
+
+.tm-expression-editor__input::placeholder {
+  color: var(--field-placeholder);
+}
+
+.tm-expression-editor__input::selection {
+  background: var(--expr-selection);
+}
+
+/* ---- Token colors ---- */
+
+.tm-expression-editor__keyword {
+  color: var(--expr-keyword);
+}
+
+.tm-expression-editor__function {
+  color: var(--expr-function);
+}
+
+.tm-expression-editor__identifier {
+  color: var(--expr-identifier);
+}
+
+.tm-expression-editor__string {
+  color: var(--expr-string);
+}
+
+.tm-expression-editor__number {
+  color: var(--expr-number);
+}
+
+.tm-expression-editor__parameter {
+  color: var(--expr-parameter);
+  font-weight: var(--weight-bold);
+}
+
+.tm-expression-editor__punctuator {
+  color: var(--expr-punctuator);
+}
+
+.tm-expression-editor__error {
+  color: var(--expr-error);
+}
+
+/* A problem's span: a wavy underline in the error color. */
+.tm-expression-editor__problem {
+  text-decoration: underline wavy var(--expr-error);
+  text-decoration-skip-ink: none;
+  text-underline-offset: var(--expr-underline-offset);
+}
+
+/* Text just inserted, tinted for a moment. */
+.tm-expression-editor__inserted {
+  background: var(--expr-inserted-bg);
+  border-radius: var(--radius-xs);
+}
+
+/* ---- The status line: one line, its text clipped rather than wrapped ---- */
+
+.tm-expression-editor__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  block-size: var(--expr-status-height);
+  min-inline-size: 0;
+  font-size: var(--text-xs);
+  line-height: var(--expr-status-height);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.tm-expression-editor__status-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A problem reads in body ink; the quiet states stay secondary. */
+.tm-expression-editor__status--problem {
+  color: var(--text-body);
+}
+
+/* The status line's and the problems list's buttons read as links. */
+.tm-expression-editor__link {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-link);
+  cursor: pointer;
+}
+
+.tm-expression-editor__link:hover {
+  text-decoration: underline;
+}
+
+.tm-expression-editor__link:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
+}
+
+.tm-expression-editor__problems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tm-expression-editor__problem-item {
+  text-align: start;
+  font-size: var(--text-sm);
+}
+
+/* ---- The chip row: one line that scrolls sideways ---- */
+
+.tm-expression-editor__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--chip-set-gap);
+  block-size: var(--expr-chips-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.tm-expression-editor__chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  block-size: var(--chip-height-sm);
+  padding-inline: var(--chip-padding-xsm);
+  border: var(--border-width) solid var(--chip-neutral-border);
+  border-radius: var(--chip-radius);
+  background: var(--chip-neutral-bg);
+  color: var(--chip-neutral-ink);
+  font-size: var(--chip-font-size-sm);
+  white-space: nowrap;
+}
+
+.tm-expression-editor__chip bdi {
+  font-family: var(--font-mono);
+}
+
+.tm-expression-editor__chip--warning {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--text-strong);
+}
+
+/* ---- The announcer: read by screen readers, never seen ---- */
+
+.tm-expression-editor__announcer {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

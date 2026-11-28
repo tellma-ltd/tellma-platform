@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal, type OnDestroy } from '@angular/core';
+import { Component, signal, viewChild, type OnDestroy } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
@@ -58,6 +58,7 @@ class Host {
   readonly mode = signal<'follow' | 'explicit'>('follow');
   readonly preserve = signal(false);
   readonly thirdDisabled = signal(false);
+  readonly group = viewChild.required(TmTabGroup);
 }
 
 async function setup(): Promise<{ fixture: ComponentFixture<Host>; host: Host; root: HTMLElement }> {
@@ -174,5 +175,133 @@ describe('tm-tab-group + tm-tab', () => {
 
     await group.selectTab('One');
     expect(await group.getActivePanelText()).toBe('First content');
+  });
+});
+
+describe('TmTabGroup.instantiate', () => {
+  /** The panel element of the tab with this id. */
+  function panelOf(root: HTMLElement, id: string): HTMLElement {
+    return root.querySelector(`.tm-tab-group__panel[data-tm-tab="${id}"]`) as HTMLElement;
+  }
+
+  it('renders every unselected tab, hidden and inert, without changing the selection', async () => {
+    const { fixture, host, root } = await setup();
+    const tab = root.querySelectorAll<HTMLElement>('[role="tab"]')[0];
+    tab.focus();
+    host.group().instantiate();
+    await fixture.whenStable();
+
+    expect(liveProbes).toBe(1);
+    const two = panelOf(root, 'two');
+    const three = panelOf(root, 'three');
+    expect(two.querySelector('.content-two-input')).not.toBeNull();
+    expect(three.querySelector('.content-three')?.textContent).toBe('Third content');
+    for (const panel of [two, three]) {
+      expect(panel.inert).toBe(true);
+      expect(panel.checkVisibility()).toBe(false);
+    }
+    // Selection, focus and the panel order stay as they were.
+    expect(host.selected()).toBeUndefined();
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(tab);
+    expect(visiblePanels(root)).toHaveLength(1);
+    expect(visiblePanels(root)[0].textContent).toContain('First content');
+    expect(
+      Array.from(root.querySelectorAll('.tm-tab-group__panel')).map((panel) =>
+        panel.getAttribute('data-tm-tab'),
+      ),
+    ).toEqual(['one', 'two', 'three']);
+  });
+
+  it('renders only the named tabs and ignores unknown ids', async () => {
+    const { fixture, host, root } = await setup();
+    host.group().instantiate(['three', 'missing']);
+    await fixture.whenStable();
+    expect(panelOf(root, 'three').querySelector('.content-three')).not.toBeNull();
+    expect(liveProbes).toBe(0); // tab two stays unrendered
+  });
+
+  it('selecting an instantiated tab later shows the same instance', async () => {
+    const { fixture, host, root } = await setup();
+    host.group().instantiate(['two']);
+    await fixture.whenStable();
+    const input = panelOf(root, 'two').querySelector('.content-two-input') as HTMLInputElement;
+    input.value = 'typed while hidden';
+
+    host.selected.set('two');
+    await fixture.whenStable();
+    expect(panelOf(root, 'two').inert).toBe(false);
+    expect(panelOf(root, 'two').querySelector('.content-two-input')).toBe(input);
+    expect(input.value).toBe('typed while hidden');
+    expect(liveProbes).toBe(1);
+
+    // …and keeps it after the tab is left again.
+    host.selected.set('one');
+    await fixture.whenStable();
+    expect(panelOf(root, 'two').querySelector('.content-two-input')).toBe(input);
+    expect(liveProbes).toBe(1);
+  });
+
+  it('leaves the selected tab and a visited preserveContent tab as they are', async () => {
+    const { fixture, host, root } = await setup();
+    host.preserve.set(true);
+    host.selected.set('two');
+    await fixture.whenStable();
+    const input = panelOf(root, 'two').querySelector('.content-two-input') as HTMLInputElement;
+    host.selected.set('one');
+    await fixture.whenStable();
+    const first = panelOf(root, 'one').querySelector('.content-one');
+
+    host.group().instantiate();
+    await fixture.whenStable();
+    // Neither existing content was recreated.
+    expect(panelOf(root, 'one').querySelector('.content-one')).toBe(first);
+    expect(panelOf(root, 'two').querySelector('.content-two-input')).toBe(input);
+    expect(panelOf(root, 'two').querySelectorAll('.content-two-input')).toHaveLength(1);
+    expect(liveProbes).toBe(1);
+    // The tab nobody visited rendered.
+    expect(panelOf(root, 'three').querySelector('.content-three')).not.toBeNull();
+  });
+
+  it('reports instantiated panels through TmTabGroupHarness', async () => {
+    const { fixture, host } = await setup();
+    const harness = await TestbedHarnessEnvironment.loader(fixture).getHarness(TmTabGroupHarness);
+    expect(await harness.isInstantiated('one')).toBe(true);
+    expect(await harness.isInstantiated('three')).toBe(false);
+    host.group().instantiate(['three']);
+    await fixture.whenStable();
+    expect(await harness.isInstantiated('three')).toBe(true);
+    expect(await harness.isInstantiated('two')).toBe(false);
+    expect(await harness.isInstantiated('missing')).toBe(false);
+  });
+});
+
+describe('tm-tab-group with tabs from a loop', () => {
+  @Component({
+    imports: [TmTabGroup, TmTab, TmTabContent],
+    template: `
+      <tm-tab-group>
+        @for (n of numbers; track n) {
+          <tm-tab [id]="'t' + n" [label]="'Tab ' + n">
+            <ng-template tmTabContent><p class="loop-content">Panel {{ n }}</p></ng-template>
+          </tm-tab>
+        }
+      </tm-tab-group>
+    `,
+  })
+  class LoopHost {
+    readonly numbers = [1, 2, 3];
+    readonly group = viewChild.required(TmTabGroup);
+  }
+
+  it('renders and instantiates tabs whose ids bind after the group is created', async () => {
+    TestBed.configureTestingModule({ providers: [provideTellmaUi()] });
+    const fixture = TestBed.createComponent(LoopHost);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelectorAll('[role="tab"]')).toHaveLength(3);
+    fixture.componentInstance.group().instantiate();
+    await fixture.whenStable();
+    expect(root.querySelectorAll('.loop-content')).toHaveLength(3);
   });
 });

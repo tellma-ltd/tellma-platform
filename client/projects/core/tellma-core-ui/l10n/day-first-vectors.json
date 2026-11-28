@@ -1,0 +1,17 @@
+{
+  "$comment": "Numeric dates of the day-first languages: the server's short date of each pair and the client's numeric date style both write these texts, and the client reads them back. Read by the client's date engine suite and by Tellma.Core.Tests.",
+  "rows": [
+    { "locale": "om-ET", "date": "2026-03-05", "expected": "05/03/2026" },
+    { "locale": "om-ET", "date": "2026-11-22", "expected": "22/11/2026" },
+    { "locale": "om-ET", "date": "1999-12-31", "expected": "31/12/1999" },
+    { "locale": "om-KE", "date": "2026-03-05", "expected": "05/03/2026" },
+    { "locale": "om-KE", "date": "2026-11-22", "expected": "22/11/2026" },
+    { "locale": "om-KE", "date": "1999-12-31", "expected": "31/12/1999" },
+    { "locale": "ti-ER", "date": "2026-03-05", "expected": "05/03/2026" },
+    { "locale": "ti-ER", "date": "2026-11-22", "expected": "22/11/2026" },
+    { "locale": "ti-ER", "date": "1999-12-31", "expected": "31/12/1999" },
+    { "locale": "ti-ET", "date": "2026-03-05", "expected": "05/03/2026" },
+    { "locale": "ti-ET", "date": "2026-11-22", "expected": "22/11/2026" },
+    { "locale": "ti-ET", "date": "1999-12-31", "expected": "31/12/1999" }
+  ]
+}

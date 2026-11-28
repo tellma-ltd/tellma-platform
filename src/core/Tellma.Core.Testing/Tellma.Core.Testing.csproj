@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Test doubles and assertion helpers for the Tellma.Core.Abstractions contracts — the capturing email sender, its DI registrations, delivery-event builders, and the sender conformance suite every email transport must pass. Referenced by test projects only.</Description>
+    <Description>Test doubles and assertion helpers for the Tellma.Core.Abstractions contracts — the capturing email sender, its DI registrations, delivery-event builders, the sender conformance suite every email transport must pass, the store conformance suite every blob store must pass, the in-memory blob store and stub image processor a host's tests compose, the job item probe a handler's tests play the worker with, the fixed tenant settings a host over an in-memory catalog completes its tenant scopes with, the stack conformance suite every entity stack is closed over, the validation contexts a stack service's rules are unit tested in and the collector that holds the pipeline's instruments to their closed tag sets, and the collation and latest-migration pins every migrations assembly is held to. Referenced by test projects only.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- The conformance suite is xUnit test code that happens to ship in a library, so its members
          follow the repo's sentence_case_with_underscores test naming rather than the API-surface
@@ -15,8 +15,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!-- The relational model and migration operations, for the collation and latest-migration
+         pins every suite owning a migrations assembly runs. Relational alone, never a provider:
+         the pins read the model and the operations, and never reach a database. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <!-- ILoggerProvider and ILoggingBuilder, for the provider that routes logs into test output. -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- MetricCollector, which the instrument collector listens to a host's meter factory with. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
     <!-- The conformance suite is an abstract xUnit class, so xunit types are part of this
          package's public surface. It references the two component packages rather than the
          xunit.v3 metapackage, whose build targets fail any project that is not an executable

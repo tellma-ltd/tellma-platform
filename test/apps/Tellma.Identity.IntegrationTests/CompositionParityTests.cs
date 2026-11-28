@@ -32,8 +32,8 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Both_compositions_serve_the_same_authority()
         {
-            using StandaloneFactory standalone = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar1");
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar2");
+            using StandaloneFactory standalone = DatabaseBackedFactory.CreateStandalone(fixture, "idpar1");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar2");
 
             using JsonDocument standaloneDiscovery = await FetchDiscoveryAsync(
                 standalone.CreateClient(), "/.well-known/openid-configuration");
@@ -77,7 +77,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task InProc_host_still_serves_its_own_routes()
         {
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar3");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar3");
             using HttpClient client = inProc.CreateClient();
             string body = await client.GetStringAsync(new Uri("/", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal("Distribution host", body);
@@ -86,20 +86,20 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Operator_routes_exist_standalone_but_not_in_proc()
         {
-            using StandaloneFactory standalone = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar4");
-            using InProcFactory inProc = await DatabaseBackedFactory.CreateInProcAsync(fixture, "idpar5");
+            using StandaloneFactory standalone = DatabaseBackedFactory.CreateStandalone(fixture, "idpar4");
+            using InProcFactory inProc = DatabaseBackedFactory.CreateInProc(fixture, "idpar5");
 
             // Standalone: the route exists, so an anonymous request draws an authentication
             // challenge, not a 404.
             using HttpClient standaloneClient = standalone.CreateClient();
             using HttpResponseMessage standaloneResponse = await standaloneClient.GetAsync(
-                new Uri("/api/identity/users/some-sub", UriKind.Relative), TestContext.Current.CancellationToken);
+                new Uri("/api/identity/v1/users/some-sub", UriKind.Relative), TestContext.Current.CancellationToken);
             Assert.Equal(System.Net.HttpStatusCode.Unauthorized, standaloneResponse.StatusCode);
 
             // In-proc: the operator controller is removed from the application model, so the
             // route does not exist at all — under either path shape.
             using HttpClient inProcClient = inProc.CreateClient();
-            foreach (string path in (string[])["/id/api/identity/users/some-sub", "/api/identity/users/some-sub"])
+            foreach (string path in (string[])["/id/api/identity/v1/users/some-sub", "/api/identity/v1/users/some-sub"])
             {
                 using HttpResponseMessage inProcResponse = await inProcClient.GetAsync(
                     new Uri(path, UriKind.Relative), TestContext.Current.CancellationToken);

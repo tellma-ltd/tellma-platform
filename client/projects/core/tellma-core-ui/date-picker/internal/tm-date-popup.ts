@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 // The calendar popup: a non-modal role="dialog" implementing the APG
 // date-picker-dialog pattern — day grid → month grid → year grid, cycled
 // by the header button; the popup takes real focus on open, so arrow keys
@@ -22,18 +24,30 @@ import {
   untracked,
 } from '@angular/core';
 import { Directionality } from '@angular/cdk/bidi';
+import ChevronLeft from 'lucide/dist/esm/icons/chevron-left.mjs';
+import ChevronRight from 'lucide/dist/esm/icons/chevron-right.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon, type TmIconSource } from '@tellma/core-ui/icon';
 import {
-  tmFirstDayOfWeek,
   ɵtmFormatWithoutEra,
   ɵtmParseIsoDate,
   type TmCalendar,
   type TmCalendarParts,
 } from '@tellma/core-ui/l10n';
+import { tmFirstDayOfWeek } from '@tellma/core-ui/l10n-input';
 
 /** One cell of the month view; `null` pads the fixed five-row layout. */
 type MonthCell = { month: number; label: string; disabled: boolean } | null;
+
+/**
+ * The paging chevrons. Directional, so each mirrors under a right-to-left
+ * direction and follows a live flip: "previous" points to the inline start.
+ */
+const NAV_GLYPHS: { readonly previous: TmIconSource; readonly next: TmIconSource } = {
+  previous: { node: ChevronLeft, mirrorInRtl: true },
+  next: { node: ChevronRight, mirrorInRtl: true },
+};
 
 /** The hard ISO window (the intersection of ISO 8601 with SQL/BCL dates). */
 const MIN_ISO = '0001-01-01';
@@ -64,6 +78,7 @@ interface DayCell {
  */
 @Component({
   selector: 'tm-date-popup',
+  imports: [TmIcon],
   template: `
     <div
       class="tm-date-popup"
@@ -78,18 +93,7 @@ interface DayCell {
           [attr.aria-label]="prevLabel()"
           (click)="page(-1)"
         >
-          <svg
-            class="tm-date-popup__nav-glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <tm-icon class="tm-date-popup__nav-glyph" [svg]="glyphs.previous" />
         </button>
         <button
           type="button"
@@ -105,18 +109,7 @@ interface DayCell {
           [attr.aria-label]="nextLabel()"
           (click)="page(1)"
         >
-          <svg
-            class="tm-date-popup__nav-glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m9 18 6-6-6-6" />
-          </svg>
+          <tm-icon class="tm-date-popup__nav-glyph" [svg]="glyphs.next" />
         </button>
       </div>
 
@@ -236,6 +229,9 @@ export class ɵTmDatePopup {
   private readonly translate = inject(TM_UI_TRANSLATE);
   private readonly directionality = inject(Directionality);
   private readonly hostElement = inject(ElementRef).nativeElement as HTMLElement;
+
+  /** The paging chevrons' glyph data. */
+  protected readonly glyphs = NAV_GLYPHS;
 
   /** The display calendar. */
   readonly calendar = input.required<TmCalendar>();
@@ -372,6 +368,7 @@ export class ɵTmDatePopup {
         timeZone: 'UTC',
       }),
       this.utcOf(iso),
+      { calendar, iso },
     );
   }
 
@@ -390,6 +387,7 @@ export class ɵTmDatePopup {
           timeZone: 'UTC',
         }),
         this.utcOf(iso),
+        { calendar, iso },
       );
     }
     if (this.view() === 'month') {
@@ -413,6 +411,7 @@ export class ɵTmDatePopup {
         timeZone: 'UTC',
       }),
       this.utcOf(iso),
+      { calendar, iso },
     );
   }
 
@@ -563,7 +562,10 @@ export class ɵTmDatePopup {
       });
       cells.push({
         month,
-        label: iso === null ? String(month) : ɵtmFormatWithoutEra(formatter, this.utcOf(iso)),
+        label:
+          iso === null
+            ? String(month)
+            : ɵtmFormatWithoutEra(formatter, this.utcOf(iso), { calendar, iso }),
         // `last === null` means the month's END is past what the calendar
         // can represent (the ISO ceiling) — its earlier days are still
         // reachable, so that alone must not disable it.

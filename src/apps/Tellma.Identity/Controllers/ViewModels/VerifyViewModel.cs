@@ -17,6 +17,12 @@ namespace Tellma.Identity.Controllers.ViewModels
         /// <summary>The scopes the device is requesting, space-delimited.</summary>
         public string? Scope { get; set; }
 
+        /// <summary>
+        ///     The places the device's grant is for, described for a person (a distribution's host,
+        ///     or its host and a tenant id); empty when the request names no resource.
+        /// </summary>
+        public IReadOnlyList<string> Targets { get; set; } = [];
+
         /// <summary>A protocol error code when the user code could not be resolved.</summary>
         public string? Error { get; set; }
 

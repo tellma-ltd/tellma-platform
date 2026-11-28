@@ -21,7 +21,10 @@ namespace Tellma.Core.Queryex
         /// <summary>Maximum cached bound expressions. Default 4096.</summary>
         public int MaxCachedBoundExpressions { get; init; } = 4096;
 
-        /// <summary>Maximum cached compiled queries. Default 1024.</summary>
+        /// <summary>
+        ///     Maximum cached compiled statements: whole queries and constant statements together.
+        ///     Default 1024.
+        /// </summary>
         public int MaxCachedQueryTemplates { get; init; } = 1024;
     }
 }

@@ -33,3 +33,18 @@ export const Placement = {
     </tm-popover>
   `,
 };
+
+/**
+ * A fixed size: the panel keeps its width while its content loads, and a
+ * tall panel scrolls inside the room its side offers.
+ */
+export const FixedSize = {
+  template: `
+    <button tmButton variant="secondary" [tmPopoverTriggerFor]="columns">Columns</button>
+    <tm-popover #columns aria-label="Columns" size="lg">
+      <ng-template tmPopoverContent>
+        <p>Choose and order the columns of the list.</p>
+      </ng-template>
+    </tm-popover>
+  `,
+};

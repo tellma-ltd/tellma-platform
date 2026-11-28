@@ -1,7 +1,9 @@
 /**
- * Public API Surface of @tellma/core-ui/select — tm-select + tm-option, a
- * single-select dropdown (a CDK Overlay panel composed with the
- * `@angular/aria` combobox/listbox directives).
+ * Public API Surface of @tellma/core-ui/select — tm-select (one choice), a
+ * dropdown over a CDK Overlay panel composed with the `@angular/aria`
+ * combobox/listbox directives, reading tm-option and tm-option-group
+ * definitions, plus the shell it shares with `@tellma/core-ui/multi-select`
+ * (exported so their inherited API stays visible).
  *
  * @packageDocumentation
  */
@@ -12,3 +14,7 @@
 // LICENSE file in the root directory of this source tree.
 export { TmSelect } from './tm-select';
 export { TmOption } from './tm-option';
+export { TmOptionGroup } from './tm-option-group';
+
+// The shell both selects extend; its members are part of their public API.
+export { TmSelectBase, type TmSelectEntry } from './tm-select-base';

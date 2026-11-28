@@ -1,0 +1,8 @@
+// Tenant snapshot age, per instance.
+// Backs the "an instance serves a stale tenant snapshot" alert: a suspension or a state change
+// reaches an instance only when its snapshot is next confirmed against the catalog, so an age well
+// beyond the refresh interval means changes are not arriving. Five minutes is a starting point.
+customMetrics
+| where name == "tellma.tenancy.catalog.snapshot.age"
+| summarize age = max(valueMax) by cloud_RoleInstance, bin(timestamp, 5m)
+| where age > 300

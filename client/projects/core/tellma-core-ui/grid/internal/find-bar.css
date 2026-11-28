@@ -88,10 +88,10 @@
   outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
-.tm-grid__find-nav svg,
-.tm-grid__find-close svg {
-  inline-size: var(--grid-status-icon-size);
-  block-size: var(--grid-status-icon-size);
+/* The buttons' tm-icon glyphs take the status icon size. */
+.tm-grid__find-nav,
+.tm-grid__find-close {
+  --icon-size: var(--grid-status-icon-size);
 }
 
 @media (forced-colors: active) {

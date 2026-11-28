@@ -7,7 +7,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { provideTellmaUi } from '@tellma/core-ui';
 
-import { TM_BLOB_FETCHER, type TmBlobFetchOptions } from '../tm-blob-fetcher';
+import { TM_BLOB_FETCHER, type TmBlobFetchOptions } from '@tellma/core-ui/blob-fetcher';
 import { ɵTM_CACHE_STORAGE, ɵTmImageBlobCache } from './blob-cache';
 
 /** The real Cache API keys by ABSOLUTE request URL — the fake must too. */
@@ -90,8 +90,16 @@ function makeBlob(text: string): Blob {
 /** A scriptable fetcher recording every call. */
 function makeFetcher(): {
   calls: FetchCall[];
-  respond: (url: string, options?: TmBlobFetchOptions) => Promise<{ status: number; blob: Blob | null; etag: string | null }>;
-  script: (fn: (url: string, options?: TmBlobFetchOptions) => Promise<{ status: number; blob: Blob | null; etag: string | null }>) => void;
+  respond: (
+    url: string,
+    options?: TmBlobFetchOptions,
+  ) => Promise<{ status: number; blob: Blob | null; etag: string | null }>;
+  script: (
+    fn: (
+      url: string,
+      options?: TmBlobFetchOptions,
+    ) => Promise<{ status: number; blob: Blob | null; etag: string | null }>,
+  ) => void;
 } {
   const calls: FetchCall[] = [];
   let impl: (
@@ -131,6 +139,50 @@ function setup(storage: FakeCacheStorage | null): {
 
 async function text(blob: Blob): Promise<string> {
   return blob.text();
+}
+
+/** Lets the cache's async lookups run up to the fetcher. */
+function flush(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Scripts the fetcher to hold every response until the test resolves it by
+ * call index. A fetcher honouring the signal rejects with its reason on abort,
+ * as the default one does; one that ignores it answers whenever resolved.
+ */
+function pendingResponses(
+  fetcher: ReturnType<typeof makeFetcher>,
+  options: { readonly honourSignal?: boolean; readonly prefix?: string } = {},
+): { signal: (call: number) => AbortSignal; resolve: (call: number) => void } {
+  // Keyed by the fetcher's call index (the call is recorded before it runs).
+  const releases = new Map<number, () => void>();
+  fetcher.script(
+    (url, fetchOptions) =>
+      new Promise((resolve, reject) => {
+        const signal = fetchOptions?.signal;
+        if (options.honourSignal !== false) {
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+        }
+        releases.set(fetcher.calls.length - 1, () =>
+          resolve({
+            status: 200,
+            blob: makeBlob(`${options.prefix ?? 'bytes'}:${url}`),
+            etag: 'W/"e2"',
+          }),
+        );
+      }),
+  );
+  return {
+    signal: (call) => {
+      const signal = fetcher.calls[call].options?.signal;
+      if (signal === undefined) {
+        throw new Error(`fetch ${call} carried no signal`);
+      }
+      return signal;
+    },
+    resolve: (call) => releases.get(call)?.(),
+  };
 }
 
 describe('ɵTmImageBlobCache', () => {
@@ -227,9 +279,15 @@ describe('ɵTmImageBlobCache', () => {
     );
     const swaps: string[] = [];
     await Promise.all([
-      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`a:${blob.size}`)),
-      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`b:${blob.size}`)),
-      cache.getImage('/img/1?size=128', null, (blob) => swaps.push(`c:${blob.size}`)),
+      cache.getImage('/img/1?size=128', null, {
+        onRefresh: (blob) => swaps.push(`a:${blob.size}`),
+      }),
+      cache.getImage('/img/1?size=128', null, {
+        onRefresh: (blob) => swaps.push(`b:${blob.size}`),
+      }),
+      cache.getImage('/img/1?size=128', null, {
+        onRefresh: (blob) => swaps.push(`c:${blob.size}`),
+      }),
     ]);
     expect(fetcher.calls).toHaveLength(2); // still ONE conditional GET
     release();
@@ -255,7 +313,9 @@ describe('ɵTmImageBlobCache', () => {
     // 200 replaces the entry and reports the swap.
     fetcher.script(async (url) => ({ status: 200, blob: makeBlob(`new:${url}`), etag: 'W/"e2"' }));
     const refreshed: Blob[] = [];
-    const stale = await cache.getImage('/img/1?size=128', null, (blob) => refreshed.push(blob));
+    const stale = await cache.getImage('/img/1?size=128', null, {
+      onRefresh: (blob) => refreshed.push(blob),
+    });
     expect(await text(stale)).toBe('bytes:/img/1?size=128'); // still the old bytes
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(refreshed).toHaveLength(1);
@@ -326,5 +386,295 @@ describe('ɵTmImageBlobCache', () => {
     fetcher.script(async (url) => ({ status: 200, blob: makeBlob(`bytes:${url}`), etag: null }));
     await cache.getImage('/img/1?size=128', 'v1');
     expect(fetcher.calls).toHaveLength(2); // nothing was cached
+  });
+
+  // ---- cancellation ----
+
+  it('a pre-aborted signal rejects with its reason and fetches nothing', async () => {
+    const { cache, fetcher } = setup(new FakeCacheStorage());
+    const reason = new Error('gone before asking');
+    await expect(
+      cache.getImage('/img/1?size=128', 'v1', { signal: AbortSignal.abort(reason) }),
+    ).rejects.toBe(reason);
+    expect(fetcher.calls).toHaveLength(0);
+  });
+
+  it('aborting the only waiter rejects with its reason and aborts the request', async () => {
+    const { cache, fetcher } = setup(new FakeCacheStorage());
+    const pending = pendingResponses(fetcher);
+    const controller = new AbortController();
+    const waiting = cache.getImage('/img/1?size=128', 'v1', { signal: controller.signal });
+    await flush();
+    expect(fetcher.calls).toHaveLength(1);
+
+    const reason = new Error('left the screen');
+    controller.abort(reason);
+    await expect(waiting).rejects.toBe(reason);
+    expect(pending.signal(0).aborted).toBe(true);
+  });
+
+  it('two waiters on one URL abort the request only when both have gone', async () => {
+    const { cache, fetcher } = setup(new FakeCacheStorage());
+    const pending = pendingResponses(fetcher);
+    const first = new AbortController();
+    const second = new AbortController();
+    const firstWait = cache.getImage('/img/1?size=128', 'v1', { signal: first.signal });
+    const secondWait = cache.getImage('/img/1?size=128', 'v1', { signal: second.signal });
+    await flush();
+    expect(fetcher.calls).toHaveLength(1); // coalesced
+
+    first.abort();
+    await expect(firstWait).rejects.toBe(first.signal.reason);
+    expect(pending.signal(0).aborted).toBe(false); // the second still waits
+
+    second.abort();
+    await expect(secondWait).rejects.toBe(second.signal.reason);
+    expect(pending.signal(0).aborted).toBe(true);
+  });
+
+  it('a waiter that stays gets the bytes after another one aborted', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    const pending = pendingResponses(fetcher);
+    const leaving = new AbortController();
+    const staying = new AbortController();
+    const leftWait = cache.getImage('/img/1?size=128', 'v1', { signal: leaving.signal });
+    const stayWait = cache.getImage('/img/1?size=128', 'v1', { signal: staying.signal });
+    await flush();
+
+    leaving.abort();
+    await expect(leftWait).rejects.toBe(leaving.signal.reason);
+    pending.resolve(0);
+    expect(await text(await stayWait)).toBe('bytes:/img/1?size=128');
+    expect(storage.caches.get('tm-images-v1')!.has('/img/1?size=128')).toBe(true);
+  });
+
+  it('an abandoned request writes nothing, even from a fetcher that ignores the signal', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    const pending = pendingResponses(fetcher, { honourSignal: false });
+    const controller = new AbortController();
+    const waiting = cache.getImage('/img/1?size=128', 'v1', { signal: controller.signal });
+    await flush();
+    controller.abort();
+    await expect(waiting).rejects.toBe(controller.signal.reason);
+
+    // The transport answers anyway: its bytes are dropped.
+    pending.resolve(0);
+    await flush();
+    expect(storage.caches.get('tm-images-v1')!.has('/img/1?size=128')).toBe(false);
+
+    // A later caller starts a fresh request instead of joining the abandoned one.
+    const again = cache.getImage('/img/1?size=128', 'v1');
+    await flush();
+    expect(fetcher.calls).toHaveLength(2);
+    expect(pending.signal(1).aborted).toBe(false);
+    pending.resolve(1);
+    expect(await text(await again)).toBe('bytes:/img/1?size=128');
+  });
+
+  it('a waiter without a signal keeps the request alive for good', async () => {
+    const { cache, fetcher } = setup(new FakeCacheStorage());
+    const pending = pendingResponses(fetcher);
+    const controller = new AbortController();
+    const abandoned = cache.getImage('/img/1?size=128', 'v1', { signal: controller.signal });
+    const kept = cache.getImage('/img/1?size=128', 'v1');
+    await flush();
+
+    controller.abort();
+    await expect(abandoned).rejects.toBe(controller.signal.reason);
+    expect(pending.signal(0).aborted).toBe(false);
+    pending.resolve(0);
+    expect(await text(await kept)).toBe('bytes:/img/1?size=128');
+  });
+
+  it('the background revalidation is aborted with the last instance showing the URL', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    await cache.getImage('/img/1?size=128', 'v1');
+    const pending = pendingResponses(fetcher, { honourSignal: false, prefix: 'fresh' });
+
+    const first = new AbortController();
+    const second = new AbortController();
+    const swaps: string[] = [];
+    await Promise.all([
+      cache.getImage('/img/1?size=128', null, {
+        signal: first.signal,
+        onRefresh: () => swaps.push('first'),
+      }),
+      cache.getImage('/img/1?size=128', null, {
+        signal: second.signal,
+        onRefresh: () => swaps.push('second'),
+      }),
+    ]);
+    expect(fetcher.calls).toHaveLength(2); // one conditional GET
+    const revalidation = pending.signal(1);
+
+    first.abort();
+    expect(revalidation.aborted).toBe(false); // the second still shows the URL
+    second.abort();
+    expect(revalidation.aborted).toBe(true);
+
+    // A late answer is neither written nor swapped in.
+    pending.resolve(1);
+    await flush();
+    expect(swaps).toEqual([]);
+    expect(await text(await cache.getImage('/img/1?size=128', 'v1'))).toBe('bytes:/img/1?size=128');
+  });
+
+  it('an instance that leaves drops its swap; the one that stays still refreshes', async () => {
+    const storage = new FakeCacheStorage();
+    const { cache, fetcher } = setup(storage);
+    await cache.getImage('/img/1?size=128', 'v1');
+    const pending = pendingResponses(fetcher, { prefix: 'fresh' });
+
+    const leaving = new AbortController();
+    const swaps: string[] = [];
+    await Promise.all([
+      cache.getImage('/img/1?size=128', null, {
+        signal: leaving.signal,
+        onRefresh: () => swaps.push('leaving'),
+      }),
+      cache.getImage('/img/1?size=128', null, { onRefresh: () => swaps.push('staying') }),
+    ]);
+    leaving.abort();
+    expect(pending.signal(1).aborted).toBe(false);
+
+    pending.resolve(1);
+    await flush();
+    expect(swaps).toEqual(['staying']);
+    const stored = await storage.caches.get('tm-images-v1')!.match('/img/1?size=128');
+    expect(await stored!.text()).toBe('fresh:/img/1?size=128');
+  });
+
+  describe('blobs on screen', () => {
+    const url = '/img/1?size=128';
+
+    it('share one object URL per blob, revoked when the last instance lets go', async () => {
+      const { cache } = setup(new FakeCacheStorage());
+      const create = vi.spyOn(URL, 'createObjectURL');
+      const revoke = vi.spyOn(URL, 'revokeObjectURL');
+      try {
+        const blob = await cache.getImage(url, 'v1');
+        const first = cache.show(url, blob, null);
+        const second = cache.show(url, blob, null);
+        expect(second).toBe(first);
+        expect(create).toHaveBeenCalledTimes(1);
+        cache.hide(first);
+        expect(revoke).not.toHaveBeenCalled();
+        cache.hide(second);
+        expect(revoke).toHaveBeenCalledExactlyOnceWith(first.url);
+        // Off screen, the URL is answered from storage again, as new bytes.
+        expect(await cache.getImage(url, 'v1')).not.toBe(blob);
+      } finally {
+        create.mockRestore();
+        revoke.mockRestore();
+      }
+    });
+
+    it('share their object URL with every read of the same URL under the same stamp', async () => {
+      const { cache } = setup(new FakeCacheStorage());
+      const shown = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      const again = await cache.getImage(url, 'v1');
+      expect(again).not.toBe(shown.blob);
+      expect(cache.show(url, again, 'v1')).toBe(shown);
+      // Another stamp, or an unknown one, is other bytes until they are the same blob.
+      expect(cache.show(url, await cache.getImage(url, 'v2'), 'v2')).not.toBe(shown);
+      const unknown = cache.show(url, makeBlob('other'), null);
+      expect(unknown.url).not.toBe(shown.url);
+      expect(cache.show(url, makeBlob('other'), '')).not.toBe(unknown);
+    });
+
+    it('never stand in for the stored body under an unknown stamp, which still revalidates', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const blob = await cache.getImage(url, 'v1');
+      cache.show(url, blob, 'v1');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(blob);
+      expect(await text(served)).toBe(await text(blob));
+      await flush();
+      expect(fetcher.calls).toHaveLength(2);
+      expect(fetcher.calls[1].options?.ifNoneMatch).toBe('W/"http-etag"');
+    });
+
+    it('leave the stored bytes to an unknown stamp once storage takes others for their URL', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      // A load under a newer stamp stores new bytes that never reach the screen.
+      fetcher.script(async () => ({ status: 200, blob: makeBlob('v2 bytes'), etag: 'W/"e2"' }));
+      await cache.getImage(url, 'v2');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(old.blob);
+      expect(await text(served)).toBe('v2 bytes');
+      cache.hide(old);
+    });
+
+    it('leave bytes stored behind the cache (another tab) to an unknown stamp, and revalidate those', async () => {
+      const storage = new FakeCacheStorage();
+      const { cache, fetcher } = setup(storage);
+      const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+      // Another tab's refresh writes the shared storage directly.
+      const store = await storage.open('tm-images-v1');
+      await store.put(
+        url,
+        new Response(makeBlob('tab 2 bytes'), {
+          headers: { 'content-type': 'image/png', 'x-tm-etag': 'W/"e2"' },
+        }),
+      );
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      const served = await cache.getImage(url, null);
+      expect(served).not.toBe(old.blob);
+      expect(await text(served)).toBe('tab 2 bytes');
+      await flush();
+      expect(fetcher.calls[1].options?.ifNoneMatch).toBe('W/"e2"');
+      cache.hide(old);
+    });
+
+    it('never serve bytes read before storage took others, whenever they reach the screen', async () => {
+      const storage = new FakeCacheStorage();
+      const { cache, fetcher } = setup(storage);
+      await cache.getImage(url, 'v1');
+      // A read of the stored bytes that reaches the screen only after a
+      // refresh has replaced them in storage.
+      const late = await cache.getImage(url, 'v1');
+      fetcher.script(async () => ({ status: 200, blob: makeBlob('refreshed'), etag: 'W/"e2"' }));
+      await cache.getImage(url, null);
+      await flush();
+      const old = cache.show(url, late, 'v1');
+      fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+      expect(await text(await cache.getImage(url, null))).toBe('refreshed');
+      cache.hide(old);
+    });
+
+    it('give a refreshed blob its own URL, the old one staying until its instances let go', async () => {
+      const { cache, fetcher } = setup(new FakeCacheStorage());
+      const revoke = vi.spyOn(URL, 'revokeObjectURL');
+      try {
+        const old = cache.show(url, await cache.getImage(url, 'v1'), 'v1');
+        fetcher.script(async (src) => ({
+          status: 200,
+          blob: makeBlob(`new:${src}`),
+          etag: 'W/"e2"',
+        }));
+        const refreshed: Blob[] = [];
+        const stored = await cache.getImage(url, null, {
+          onRefresh: (blob) => refreshed.push(blob),
+        });
+        expect(await text(stored)).toBe(await text(old.blob));
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(refreshed).toHaveLength(1);
+        const fresh = cache.show(url, refreshed[0], null);
+        expect(fresh.url).not.toBe(old.url);
+        fetcher.script(async () => ({ status: 304, blob: null, etag: null }));
+        expect(await text(await cache.getImage(url, null))).toBe(`new:${url}`);
+        cache.hide(old);
+        expect(revoke).toHaveBeenCalledExactlyOnceWith(old.url);
+        expect(cache.show(url, refreshed[0], null)).toBe(fresh);
+      } finally {
+        revoke.mockRestore();
+      }
+    });
   });
 });

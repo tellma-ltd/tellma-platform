@@ -23,13 +23,15 @@ namespace Tellma.Core.Queryex
         /// <param name="isNotNull">Whether the column cannot hold an absent value.</param>
         /// <param name="isUnique">Whether the column is backed by a unique constraint or index.</param>
         /// <param name="storeType">The physical column type, or null for the default mapping.</param>
+        /// <param name="collation">The column's own collation, or null when it takes the database's.</param>
         internal PropertyDescriptor(
             string name,
             string column,
             QueryexType type,
             bool isNotNull,
             bool isUnique,
-            QueryexStoreType? storeType)
+            QueryexStoreType? storeType,
+            string? collation = null)
         {
             Name = name;
             Column = column;
@@ -37,6 +39,7 @@ namespace Tellma.Core.Queryex
             IsNotNull = isNotNull;
             IsUnique = isUnique;
             StoreType = storeType;
+            Collation = collation;
         }
 
         /// <summary>The logical property name, as expression authors write it.</summary>
@@ -70,6 +73,14 @@ namespace Tellma.Core.Queryex
         ///     semantics never read it. Null applies the default mapping for <see cref="Type" />.
         /// </summary>
         public QueryexStoreType? StoreType { get; }
+
+        /// <summary>
+        ///     The collation the column declares for itself, or null when it takes the database's.
+        ///     Host-authored and checked to be a bare collation name. Read only where a value of the
+        ///     database's collation meets the column: the keys of a table the host supplies are
+        ///     converted to it, so the comparison neither conflicts nor touches the column.
+        /// </summary>
+        public string? Collation { get; }
 
         /// <summary>Returns the logical name, for diagnostics and debugging.</summary>
         /// <returns>The logical property name.</returns>

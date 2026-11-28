@@ -9,7 +9,7 @@ import { pressUndo, readFixture, syntheticPaste } from '../support/clipboard';
 import {
   activateCell,
   cell,
-  cellText,
+  expectCellText,
   gotoGrid,
   modelJson,
   setScrollTop,
@@ -80,7 +80,7 @@ test.describe('foreign payloads (Excel / Sheets shapes)', () => {
       })
       .toEqual(['tab\there', 12, 'line\nbreak', null]);
     await expect(cell(page, 2, 1)).toHaveClass(/tm-grid__cell--error/);
-    expect(await cellText(page, 2, 1)).toBe('quote "q"');
+    await expectCellText(page, 2, 1, 'quote "q"');
 
     // The paste already leaves the pasted 2×2 block selected (§9.3 — the
     // Excel behavior), so copy it straight back: a byte-identical
@@ -168,7 +168,7 @@ test.describe('header-row content heuristic (§9.3)', () => {
         return [model[2].discount, model[3].discount];
       })
       .toEqual([3, 4]); // data rows shifted DOWN one — the first row landed
-    expect(await cellText(page, 1, 2)).toBe('Description'); // as an invalid input
+    await expectCellText(page, 1, 2, 'Description'); // as an invalid input
     await expect(cell(page, 1, 2)).toHaveClass(/tm-grid__cell--error/);
   });
 
@@ -186,7 +186,7 @@ test.describe('header-row content heuristic (§9.3)', () => {
         return [model[1].quantity, model[2].quantity];
       })
       .toEqual([null, 5]);
-    expect(await cellText(page, 1, 1)).toBe('Qty');
+    await expectCellText(page, 1, 1, 'Qty');
     await expect(cell(page, 1, 1)).toHaveClass(/tm-grid__cell--error/);
   });
 });

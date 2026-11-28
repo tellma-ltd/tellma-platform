@@ -15,11 +15,12 @@
  *
  *   "tellma": {
  *     "budgetsInKb": { ".": 4, "./select": 8 },      // KB gzipped per entry point
+ *     "capsInKb": { ".": { "error": 52, "note": "…" } }, // a raised platform cap
  *     "docs": { "globalStyles": { "./input": "…" } } // directive-owned stylesheet
  *   }
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 /**
  * @typedef {object} TmEntryPoint
@@ -27,8 +28,10 @@ import { join } from 'node:path';
  * @property {string} importPath  e.g. '@tellma/core-ui/select'
  * @property {string} dir         absolute folder of the entry point
  * @property {string} publicApi   absolute path of its public-api.ts
- * @property {string} fesm        client-relative path of the built FESM
- * @property {string} dts         client-relative path of the flattened d.ts
+ * @property {string} fesm        client-relative path of the built FESM (a Node
+ *                                package's compiled module)
+ * @property {string} dts         client-relative path of the flattened d.ts (a
+ *                                Node package's compiled declarations)
  * @property {string} report      API-golden filename, e.g. 'core-ui.select.api.md'
  */
 
@@ -101,15 +104,47 @@ export function discoverLibraries(clientDir) {
 }
 
 /**
- * Discovers the plain Node packages (package.json, no ng-package.json —
- * currently the MCP server), built with `tsc -b` rather than ng-packagr.
- * Apps carry no package.json, so they never appear here.
+ * Discovers the plain Node packages (package.json, no ng-package.json — the
+ * MCP server and the build tooling), built with `tsc -b` rather than
+ * ng-packagr. Apps carry no package.json, so they never appear here.
+ *
+ * A Node package's public entry points are the subpaths of its `exports`
+ * map that declare compiled `types`: each one's flattened d.ts is the
+ * compiled `dist/<path>.d.ts`, and its source the matching `src/<path>.ts`,
+ * whose `@packageDocumentation` header the API goldens restore. A package
+ * with no such export (the MCP server ships a bin only) has no entry points.
+ * A subpath whose `types` lies outside `dist/` is a preset shipped as it is
+ * written, like the tsconfig preset (`@tellma/core-tools/lucide-icons`, the
+ * declaration of another package's modules), not an entry point.
  *
  * @param {string} clientDir absolute path of the client workspace root
- * @returns {{ name: string, short: string, dir: string, tellma: any, dependsOn: string[] }[]}
+ * @returns {{ name: string, short: string, dir: string, tellma: any, dependsOn: string[], entryPoints: TmEntryPoint[] }[]}
  */
 export function discoverNodePackages(clientDir) {
   return packageDirs(clientDir)
     .filter(({ dir }) => !existsSync(join(dir, 'ng-package.json')))
-    .map(({ dir, folder }) => packageBasics(dir, folder));
+    .map(({ dir, folder }) => {
+      const basics = packageBasics(dir, folder);
+      const { exports = {} } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+      const entryPoints = [];
+      for (const [id, target] of Object.entries(exports)) {
+        const types = typeof target === 'object' && target !== null ? target.types : undefined;
+        // Only the compiled d.ts are entry points; a preset's own d.ts is not.
+        if (typeof types !== 'string' || !types.startsWith('./dist/')) {
+          continue;
+        }
+        const sub = id === '.' ? undefined : id.replace(/^\.\//, '');
+        const dts = join(dir, types);
+        entryPoints.push({
+          id,
+          importPath: sub ? `${basics.name}/${sub}` : basics.name,
+          dir: dirname(dts),
+          publicApi: join(dir, types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')),
+          fesm: relative(clientDir, join(dir, typeof target.default === 'string' ? target.default : types)),
+          dts: relative(clientDir, dts),
+          report: `${basics.short}${sub ? `.${sub}` : ''}.api.md`,
+        });
+      }
+      return { ...basics, entryPoints };
+    });
 }

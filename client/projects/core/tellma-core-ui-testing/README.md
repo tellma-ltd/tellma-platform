@@ -1,8 +1,41 @@
 # @tellma/core-ui-testing
 
 CDK `ComponentHarness` drivers for the `tm-*` controls, shipped for
-consumers: `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` +
-`TmOptionHarness`, and `TmFormFieldHarness`.
+consumers: `TmInputHarness`, `TmCheckboxHarness`, `TmSelectHarness` and
+`TmMultiSelectHarness` (with `TmOptionHarness` and `TmOptionGroupHarness`),
+and `TmFormFieldHarness`, among others. The status and identity indicators
+have `TmCounterHarness`, `TmAvatarHarness`, `TmProgressBarHarness`,
+`TmRelativeTimeHarness`, `TmCopyButtonHarness`, `TmReferenceHarness` and
+`TmEmptyStateHarness`; `tm-badge`, `tm-progress-ring` and `tm-skeleton` carry
+no behaviour a harness would add to a locator. Chips have `TmChipHarness` and
+`TmChipSetHarness`; the foreign-key selectors have `TmEntityPickerHarness`
+and `TmEntityMultiPickerHarness` (chips, the count badge, search and pick);
+and the feedback surfaces `TmBannerBarHarness`, plus
+`TmToastHarness` (one toast), `TmToastStackHarness` (the overflow pill and the
+live regions) and `TmBusyOverlayHarness`, which render on `<body>` and are
+located with a document-root loader. The dialogs `TmConfirmHarness` and
+`TmErrorDialogHarness` render in the overlay container and are located the
+same way. The layout pieces have `TmCardHarness` (the disclosure, the error
+dot and its name) and `TmSplitterHarness` (the bar's value, range and keys);
+`tm-page-header` and `dl[tmDescriptionList]` impose no behaviour of their
+own. The choice controls have `TmRadioGroupHarness` (with `TmRadioHarness`
+for one radio), `TmSegmentedHarness` and `TmSwitchHarness`; the search box
+has `TmSearchFieldHarness`; and the date and time controls have
+`TmDateRangeHarness`, `TmTimeFieldHarness` and `TmDateTimeFieldHarness`,
+whose parts are reached as `TmDatePickerHarness`, `TmTimeFieldHarness` and
+`TmFormFieldHarness` (for each part's messages). The collections have
+`TmPagerHarness` (the status, the buttons and the size select),
+`TmTreeHarness` with `TmTreeNodeHarness` (one node's state, twisty and
+keys), `TmReorderListHarness` (the rows, the handles and the grab
+model's keys, and the move menu a handle's click opens) and
+`TmTilesHarness` with `TmTileHarness` (one tile's corners, state,
+checkbox, twisty and keys); the drag-drop directives impose nothing a
+harness would add. The pivot has `TmPivotHarness` (its counts, header
+and row labels, sticky columns, tab stop and keys) with
+`TmPivotCellHarness` (one rendered cell's text, look, expansion, drill
+state, handle and keys). The chart has `TmChartHarness` (what it shows,
+the plot's name and description, whether the engine drew, the card's
+value, label, badge and activation, and the table view's grid).
 
 Harnesses are the typed, implementation-independent way to drive the
 components from TestBed-based tests — they survive internal DOM changes that

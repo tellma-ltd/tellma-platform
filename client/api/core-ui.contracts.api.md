@@ -8,6 +8,12 @@
 export type SignalLike<T> = () => T;
 
 // @public
+export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null>;
+
+// @public
+export const TM_GRID_KEYS: readonly TmGridKeyEntry[];
+
+// @public
 export const TM_PARSE_ERROR: unique symbol;
 
 // @public
@@ -76,12 +82,18 @@ export interface TmGridContentState {
 }
 
 // @public
+export interface TmGridKeyEntry {
+    readonly keys: string;
+    readonly labelKey: string;
+}
+
+// @public
 export interface TmGridRangeSnapshot {
     readonly anchorColumnKey: string | null;
     readonly anchorRowId: TmRowId | null;
     readonly focusColumnKey: string | null;
     readonly focusRowId: TmRowId | null;
-    readonly kind: 'cells' | 'rows' | 'cols' | 'all';
+    readonly kind: 'all' | 'cells' | 'cols' | 'rows';
 }
 
 // @public
@@ -100,9 +112,9 @@ export interface TmGridSelectionSnapshot {
 
 // @public
 export type TmLabelResolution<V> = {
-    value: V;
+    error: 'ambiguous' | 'notFound' | 'resolutionFailed';
 } | {
-    error: 'notFound' | 'ambiguous';
+    value: V;
 };
 
 // @public
@@ -124,7 +136,7 @@ export interface TmPasteContext extends TmParseContext {
 }
 
 // @public
-export type TmRowId = string | number;
+export type TmRowId = number | string;
 
 // @public
 export interface WritableSignalLike<T> extends SignalLike<T> {

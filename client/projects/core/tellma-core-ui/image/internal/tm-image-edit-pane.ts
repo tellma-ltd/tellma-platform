@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   Component,
   computed,
@@ -13,8 +15,10 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import Check from 'lucide/dist/esm/icons/check.mjs';
 
 import { TM_UI_TRANSLATE } from '@tellma/core-ui';
+import { TmIcon } from '@tellma/core-ui/icon';
 import { TmTooltip } from '@tellma/core-ui/tooltip';
 
 import type { TmImageFit } from '../tm-image-types';
@@ -43,7 +47,7 @@ function clampTo(value: number, max: number): number {
  */
 @Component({
   selector: 'tm-image-edit-pane',
-  imports: [TmTooltip],
+  imports: [TmIcon, TmTooltip],
   template: `
     <div
       class="tm-image__crop"
@@ -94,17 +98,7 @@ function clampTo(value: number, max: number): number {
         [tmTooltip]="doneLabel()"
         (click)="onDone()"
       >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.25"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M20 6 9 17l-5-5" />
-        </svg>
+        <tm-icon [svg]="doneIcon" />
       </button>
     </div>
   `,
@@ -131,6 +125,8 @@ export class ɵTmImageEditPane {
   readonly done = output<void>();
 
   protected readonly maxZoom = MAX_ZOOM;
+  /** The Done button's check, drawn at the pane's heavier stroke. */
+  protected readonly doneIcon = Check;
   protected readonly cropLabel = this.translate('image.cropSurface');
   protected readonly zoomLabel = this.translate('image.zoom');
   protected readonly doneLabel = this.translate('image.done');

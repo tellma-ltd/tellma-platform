@@ -16,64 +16,121 @@ namespace Tellma.Identity.Services.Keys
     ///     explicit development flag and outside the Development environment, so it never loads in
     ///     production.
     /// </summary>
+    /// <remarks>
+    ///     Every read and every replacement of a persisted certificate holds an exclusive lock on a
+    ///     gate file beside it, so hosts starting together, in one process or several, never read a
+    ///     certificate while another replaces it.
+    /// </remarks>
     public sealed class DevelopmentCertificateSource : ICertificateSource
     {
         /// <summary>Certificate validity; regenerated when less than 30 days remain.</summary>
         private static readonly TimeSpan Validity = TimeSpan.FromDays(365);
+
+        /// <summary>How long a load waits for another holder of the gate before it gives up.</summary>
+        private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>The pause between two attempts to take the gate.</summary>
+        private static readonly TimeSpan GateRetry = TimeSpan.FromMilliseconds(25);
+
+        /// <summary>The folder the certificates persist in; null for the local application-data folder.</summary>
+        private readonly string? _directory;
+
+        /// <summary>Creates the source over the local application-data folder.</summary>
+        public DevelopmentCertificateSource()
+        {
+        }
+
+        /// <summary>Creates the source over a folder of the caller's.</summary>
+        /// <param name="directory">The folder the certificates persist in.</param>
+        internal DevelopmentCertificateSource(string directory)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+            _directory = directory;
+        }
 
         /// <inheritdoc />
         public IReadOnlyList<X509Certificate2> Load(TellmaIdentityCertificateOptions options, CertificateUse use)
         {
             ArgumentNullException.ThrowIfNull(options);
 
-            string directory = Path.Combine(
+            string directory = _directory ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create),
                 "Tellma", "Identity", "dev-keys");
-            Directory.CreateDirectory(directory);
-
             string file = Path.Combine(directory, use == CertificateUse.Signing ? "dev-signing.pfx" : "dev-encryption.pfx");
 
-            // Reuse the persisted certificate while it has comfortable validity left.
-            if (File.Exists(file))
-            {
-                X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(file, password: null);
-                if (existing.NotAfter > DateTimeOffset.UtcNow.AddDays(30))
-                {
-                    return [existing];
-                }
-
-                existing.Dispose();
-            }
-
-            byte[] pkcs12 = Generate(use);
+            // --- The gate: one holder at a time reads or replaces the certificate ---
+            FileStream gate;
             try
             {
-                // Atomic overwrite so two processes generating concurrently cannot interleave
-                // writes and, critically, so an expiring certificate is actually replaced (a
-                // non-overwriting move would fail against the stale file and leave it in place).
-                string temporary = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                File.WriteAllBytes(temporary, pkcs12);
-                try
-                {
-                    File.Move(temporary, file, overwrite: true);
-                }
-                catch (IOException)
-                {
-                    // A concurrent winner already moved its file into place; drop ours and load theirs.
-                    File.Delete(temporary);
-                }
+                _ = Directory.CreateDirectory(directory);
+                gate = AcquireGate(file + ".lock");
             }
             catch (UnauthorizedAccessException)
             {
-                // Read-only data folder (rare, e.g. locked-down CI): fall back to the in-memory
-                // certificate for this process only.
-                return [X509CertificateLoader.LoadPkcs12(pkcs12, password: null)];
+                // Read-only data folder (rare, e.g. locked-down CI): an in-memory certificate for
+                // this process only.
+                return [X509CertificateLoader.LoadPkcs12(Generate(use), password: null)];
             }
 
-            return [X509CertificateLoader.LoadPkcs12FromFile(file, password: null)];
+            using (gate)
+            {
+                // --- Reuse the persisted certificate while it has comfortable validity left ---
+                if (File.Exists(file))
+                {
+                    X509Certificate2 existing = X509CertificateLoader.LoadPkcs12FromFile(file, password: null);
+                    if (existing.NotAfter > DateTimeOffset.UtcNow.AddDays(30))
+                    {
+                        return [existing];
+                    }
+
+                    existing.Dispose();
+                }
+
+                // --- Generate and replace atomically, so a crash mid-write never leaves a torn file ---
+                byte[] pkcs12 = Generate(use);
+                string temporary = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    File.WriteAllBytes(temporary, pkcs12);
+                    File.Move(temporary, file, overwrite: true);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // The folder takes the gate but not the certificate: this process's copy only.
+                    File.Delete(temporary);
+                    return [X509CertificateLoader.LoadPkcs12(pkcs12, password: null)];
+                }
+
+                return [X509CertificateLoader.LoadPkcs12FromFile(file, password: null)];
+            }
+        }
+
+        /// <summary>
+        ///     Takes the gate file exclusively, retrying while another thread or process holds it.
+        /// </summary>
+        /// <param name="path">The gate file's path.</param>
+        /// <returns>The open gate, which releases the lock when disposed.</returns>
+        /// <exception cref="IOException">The gate stayed taken for the whole timeout.</exception>
+        private static FileStream AcquireGate(string path)
+        {
+            long deadline = Environment.TickCount64 + (long)GateTimeout.TotalMilliseconds;
+            while (true)
+            {
+                try
+                {
+                    return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                }
+                catch (IOException) when (Environment.TickCount64 < deadline)
+                {
+                    // Another holder is reading or replacing the certificate; it releases within moments.
+                    Thread.Sleep(GateRetry);
+                }
+            }
         }
 
         /// <summary>Generates a fresh self-signed certificate and exports it as PKCS#12.</summary>
+        /// <param name="use">Whether the certificate signs or encrypts.</param>
+        /// <returns>The PKCS#12 bytes, without a password.</returns>
         private static byte[] Generate(CertificateUse use)
         {
             DateTimeOffset now = DateTimeOffset.UtcNow;

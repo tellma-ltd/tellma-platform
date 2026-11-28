@@ -1,0 +1,4 @@
+/* The application build's TypeScript configuration: the app from its entry file, and the lazily loaded entry points (see tsconfig.json). */
+{
+  "extends": "./tsconfig.json"
+}

@@ -1,0 +1,171 @@
+# Tellma.Core.Imaging.PdfWorker
+
+The PDF render worker of [Tellma.Core.Imaging](../Tellma.Core.Imaging/README.md): an executable
+assembly that runs only as a process the image processor starts, once per PDF thumbnail, so that
+PDFium, which parses hostile documents in native code no budget can interrupt, never runs inside a
+host. It depends on no Tellma package; it comes with `Tellma.Core.Imaging` and is never referenced
+directly.
+
+It has no app host, runtime configuration or dependency manifest of its own: the processor starts
+it as
+
+```
+dotnet exec --runtimeconfig <host>.runtimeconfig.json --depsfile <host>.deps.json Tellma.Core.Imaging.PdfWorker.dll --host-pid <pid>
+```
+
+so it resolves exactly the host's framework, PDFium and Skia natives, in whatever layout the host
+was built or published in. Run on its own on Windows or macOS, it would only wait for a request on
+standard input; on Linux it refuses to run unless the process that started it is the host it names.
+
+## One worker's life
+
+0. **Confinement, on Linux** ([WorkerConfinement](WorkerConfinement.cs)), when the host passes
+   `--confine` and the allowance (`--read <file>`, `--read-beneath <directory>`,
+   `--execute <program>`): it restricts its own thread with [Landlock](Landlock.cs), then executes
+   the same command line again, which the kernel starts under that restriction, every thread of it.
+   The second start finds `--confined <descriptor>` in place of the allowance, checks that the
+   restriction holds, and goes on (see [Filesystem confinement](#filesystem-confinement)).
+1. **Sandbox** ([WorkerSandbox](WorkerSandbox.cs)), before anything of the upload is read: it
+   closes each descriptor the host named as inherited by accident (`--close-fd <n> <target>`, only
+   when it still refers to that target), and keeps its protocol output on a private duplicate of
+   standard output while pointing standard output at standard error, so a printing native library
+   cannot corrupt a frame. On Linux it then asks the kernel to kill it when the host thread that
+   started it ends, stops if its parent is not the host named by `--host-pid`, starts a session of
+   its own, which leaves behind the terminal its host may have been started from, makes itself
+   non-dumpable, so that no process of its account without `CAP_SYS_PTRACE`, another worker
+   included, can open its descriptors or memory through `/proc`, drops every capability, and
+   installs its [SeccompFilter](SeccompFilter.cs) on every thread. Without the filter it does not
+   run on Linux.
+2. **Ready**: it writes the ready frame, with what it enforces on itself: the system-call filter,
+   and its filesystem confinement (Landlock on Linux; on Windows, the AppContainer it checks its
+   token is in). The host refuses a worker it confines that does not report it, and only then
+   applies its memory and CPU limits from outside.
+3. **Request**: it reads one request ([WorkerProtocol](WorkerProtocol.cs)): the thumbnail size and
+   the PDF, at most 32 MiB, refused before allocation when out of range. From then on, its input
+   ending means the host is gone or gave up, and it exits at once, mid-render or not.
+4. **Render** ([PdfRenderer](PdfRenderer.cs)): [PdfPreflight](PdfPreflight.cs) walks page 1 against
+   the caps (page side, image declarations, object count) through PDFium's object API, then
+   [PdfiumRasterizer](PdfiumRasterizer.cs) renders it through PDFtoImage, fitted to the square on
+   white without annotations or form fields, and Skia encodes it as a lossless PNG.
+5. **Answer**: one result frame, the PNG, a refusal (the document is at fault: encrypted, malformed,
+   over a cap) or a failure (the worker is: out of memory under its cap, say), and it exits.
+
+## Filesystem confinement
+
+A worker may read only what it runs on and write no file at all. The host computes the allowance
+(`WorkerAllowance` in the image processor's package): the runtime's installation (its `host` and
+`shared` directories), the host's runtime configuration, dependency manifest, trusted assemblies and
+native libraries one file at a time (never their directory, which holds the host's configuration
+and secrets too), and on Linux the system's library directory (the C library's), any other library
+the host has mapped, the dynamic loader's cache, and the font directories PDFium looks in.
+
+On Linux the worker puts that in place itself, through Landlock:
+
+- **Why it starts over.** A Landlock restriction binds the thread that asks for it and what that
+  thread starts, never the threads that already run, and the runtime has threads of its own before
+  any of the worker's code does. So the first start restricts its one thread, marks every
+  descriptor but one close-on-exec, and executes the same program again: the kernel starts it under
+  the restriction from its first instruction. The muxer and the ELF interpreter are the only
+  programs the restriction lets it execute, and its filter refuses `execve` once it is installed.
+- **What it handles.** Every filesystem right the kernel knows is refused except reading beneath
+  the allowed paths and executing those two programs. From the kernels that know them, TCP binding
+  and connecting are refused too (the filter refuses sockets already), and so are signals and
+  abstract Unix sockets aimed outside the restriction.
+- **`/proc`.** The worker's own `/proc/<pid>` stays readable, which the runtime reads: the first
+  start opens it as an `O_PATH` descriptor, grants it, and keeps it open across the restart, since
+  the kernel ties a rule to an inode that lasts only while something holds it. Every other
+  process's entries, and the listing of `/proc`, are refused. Landlock also refuses a restricted
+  process the `ptrace` family of access to any process outside its restriction, whatever Yama's
+  `ptrace_scope` is. Some of the worker's own entries describe what it shares with its host rather
+  than itself, its network and mount namespaces (`net/tcp`, `net/unix`, `mountinfo`), and Landlock
+  cannot refuse those beneath a directory it grants.
+- **The check.** The second start finds that descriptor (`--confined <n>`), checks that it is its
+  own `/proc/<pid>`, and checks that `/` cannot be read; otherwise it stops.
+
+The filter refuses the calls that change a file as well (below), whatever ABI the kernel's
+Landlock has, which covers what Landlock does not govern at all: modes, owners, times, extended
+attributes and `ioctl` on a file. It also refuses what Landlock leaves open to a path it refuses
+to read: watching it with inotify or fanotify, and reading or listing its extended attributes by
+name. What a path lookup tells, that a path exists and its size, owner and times (`stat`, `access`,
+`readlink`), stays open, as do the namespace entries under the worker's own `/proc/<pid>`: closing
+either would take a mount and network namespace of the worker's own.
+
+On Windows the host starts the worker in an AppContainer of its own (a lowbox token over its
+restricted, low-integrity one), holding one capability that the host's files of the allowance grant
+read and execute to; the system's files and a runtime installed under Program Files already grant
+every AppContainer read, and on a runtime installed elsewhere the host grants that capability read
+and execute on its muxer and its `host` and `shared` directories (or, where it may not, runs its
+workers unconfined, in Development only). The worker checks that its token is in an AppContainer
+and reports the confinement. An AppContainer with no network capability reaches no network, the
+loopback interface included, and no process grants it access, another worker's included, since
+each worker's AppContainer is its own.
+
+## The system-call filter
+
+On Linux (x64 and arm64) the worker refuses, with `EPERM`, what rendering a PDF never needs and
+code that took over the renderer would want:
+
+- **The network**: `socket` and `socketpair`, so nothing is reachable, the cloud metadata endpoint
+  included.
+- **Programs and processes**: `execve`, `execveat`, `fork`, `vfork` and a `clone` that is not a
+  thread.
+- **Other processes**: `ptrace`, `process_vm_readv`/`writev`, `kcmp`, the pidfd calls
+  (`pidfd_open`, `pidfd_send_signal`, `pidfd_getfd`), `tkill`, `ioprio_set`, `migrate_pages` and
+  `move_pages` are refused outright. `kill`, `tgkill`, `rt_sigqueueinfo` and `rt_tgsigqueueinfo` are
+  allowed only on the worker's own process id; `prlimit64`, `sched_setaffinity`,
+  `sched_setscheduler`, `sched_setparam` and `sched_setattr` only on that id or 0 (the caller);
+  `setpriority` only for that one process, never a process group or a user. The id is fixed into
+  the filter when it is installed, since a worker never forks, so the runtime's own signals and
+  the C library's limit queries keep working while the host, its process group and every other
+  process are out of reach.
+- **SysV shared memory, semaphores and message queues, and POSIX message queues** (`mq_open`,
+  `mq_unlink`, `mq_timedsend`, `mq_timedreceive`, `mq_notify`, `mq_getsetattr`), whose objects
+  outlive the process and escape its memory limits. Landlock does not stop a queue being made,
+  only its opening once made, nor one being removed.
+- **The parent-death signal**: `prctl(PR_SET_PDEATHSIG)`, which would withdraw the worker's request
+  to die with its host. Every other `prctl` is allowed.
+- **Signals sent by the kernel on the worker's word**: `fcntl`'s `F_SETOWN`, `F_SETOWN_EX` and
+  `F_SETSIG`, `F_SETFL` with `O_ASYNC` among its flags, and `ioctl`'s `FIOASYNC`, `FIOSETOWN` and
+  `SIOCSPGRP`. The kernel signals a descriptor's owner when the descriptor is ready for I/O, and
+  asks only that the owner be of the caller's account, as the host is; a terminal needs no naming,
+  its owner being whoever runs in its foreground.
+- **Input pushed into a terminal**: `ioctl`'s `TIOCSTI` and `TIOCLINUX`, whose input the next
+  reader of the terminal, a shell say, would take for typed.
+- **Kernel interfaces exploits favour**: `io_uring`, `userfaultfd`, `perf_event_open`, `bpf`,
+  `unshare`, `setns` and the key store.
+- **The calls that change a file**: `open` and `openat` with any of `O_WRONLY`, `O_RDWR`,
+  `O_CREAT` and `O_TRUNC`, `creat`, `truncate`, `open_by_handle_at`; renaming, linking and
+  unlinking; making directories, devices, pipes and symbolic links; changing a file's mode, owner,
+  times or extended attributes (`file_setattr` among them); `ioctl`'s `FS_IOC_SETVERSION`; and every
+  `ioctl` of the types `'f'` (the VFS's and ext4's: inode flags, fs-verity, encryption policies),
+  `'X'` (XFS's and the VFS's extended inode attributes), `0x94` (Btrfs's, and the VFS's clone,
+  dedupe and label calls) and `0xF5` (f2fs's), whatever the request, reads among them, since several
+  change a file through a descriptor opened only for reading (`FS_IOC_ENABLE_VERITY` makes a file
+  immutable for good). A descriptor opened for reading cannot be written, truncated or mapped shared
+  for writing, so the worker's only writable descriptors are its pipes and the runtime's anonymous
+  memory files. Every other `fcntl` and `ioctl` is allowed: another filesystem's own `ioctl` types
+  are not refused one by one, and changes through them rest on the kernel's own checks.
+- **Locking a file**: `flock`, which needs no write access, so that a worker holding a file of its
+  allowance locked would make every .NET process of the account that opens it fail, the host's
+  next start among them. .NET treats a refused lock as no lock, so the worker's own opens work as
+  before. `fcntl`'s record locks stay, since .NET takes none on opening a file.
+- **Watching or describing a file by name**: `inotify_init`, `inotify_init1`, `inotify_add_watch`,
+  `fanotify_init` and `fanotify_mark`, which Landlock does not govern and would tell when the host
+  reads or writes a file; and `getxattr`, `lgetxattr`, `listxattr`, `llistxattr`, `getxattrat` and
+  `listxattrat`, which read a file's extended attributes by its path alone. The descriptor forms,
+  `fgetxattr` and `flistxattr`, need a descriptor the confinement let the worker open.
+
+`clone3` and `openat2` answer `ENOSYS`, so the C library creates threads with `clone` and opens
+files with `openat`, whose flags the filter can read. A call through another architecture's entry
+point kills the process. Everything else is allowed: the filter is a list of what is refused, and
+what the worker may read is its confinement's to decide. The .NET runtime signals its threads with
+`tgkill` on glibc and with `tkill` on musl, which is why a host on musl renders no PDF thumbnails.
+
+## Exit codes
+
+0 once a result is written; 64 for an argument it does not know, 65 when the sandbox or the
+confinement could not be put in place (the reason on standard error), 66 for a malformed request, 67 when the host closed its
+input, 68 for a failure it could not report. A worker the host killed reports 137 on Linux
+(SIGKILL) and on Windows. One a limit stopped reports the signal's code on Linux (137 at the CPU
+limit, 153 for a file write) and the system's status on Windows; an allocation the memory limit
+refused surfaces as a reported failure, or as the native library's abort (134 on Linux).

@@ -7,11 +7,12 @@ import { NgTemplateOutlet } from '@angular/common';
 import {
   afterRenderEffect,
   Component,
+  computed,
   contentChild,
   Directive,
   DestroyRef,
   effect,
-  type ElementRef,
+  ElementRef,
   inject,
   input,
   isDevMode,
@@ -22,17 +23,37 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
+import { Directionality } from '@angular/cdk/bidi';
+import { ScrollDispatcher, ViewportRuler } from '@angular/cdk/scrolling';
+import {
+  CdkConnectedOverlay,
+  type ConnectedOverlayPositionChange,
+  type ConnectionPositionPair,
+  OverlayModule,
+} from '@angular/cdk/overlay';
 
 import {
   tmCreateAnchoredOverlay,
   tmLogicalPositions,
   type TmOverlayAlign,
   type TmOverlaySide,
-} from '@tellma/core-ui/private';
+  ɵtmOpenModals,
+  ɵtmWatchModals,
+} from '@tellma/core-ui/overlay';
+
+import { tmPopoverBlockRoom, tmPopoverInlineShift, tmTokenPx } from './internal/fit';
 
 /** Where a popover opens: an element or a rectangle. */
 export type TmPopoverAnchor = Element | DOMRect;
+
+/**
+ * The width of a popover panel. `'auto'` takes the content's width, up to
+ * `--popover-max-inline-size`. The fixed sizes (`--popover-width-sm|md|lg`)
+ * never change while the panel is open, whatever its content loads, so the
+ * panels of one kind read alike. Every size is capped at the viewport width
+ * less `--popover-viewport-margin` on each side.
+ */
+export type TmPopoverSize = 'auto' | 'sm' | 'md' | 'lg';
 
 /**
  * Marks the `ng-template` holding a popover's content. A template (rather
@@ -71,6 +92,11 @@ const FOCUSABLE =
  * On open, focus moves to the first tabbable element inside (else the
  * panel itself). Escape, an outside click, and tabbing past the content
  * close it; focus returns to the anchor only when it was inside the panel.
+ * A modal opened from inside the panel while it is open (a confirmation
+ * its content asks) leaves it open beneath: focus in that modal and clicks
+ * while it shows never count as leaving. Any other modal, one opened while
+ * focus is outside the panel, is outside the popover like the rest of the
+ * page.
  *
  * @tmGroup overlay
  * @tmA11yNotes The panel is a non-modal `role="dialog"` (no focus trap);
@@ -87,12 +113,15 @@ const FOCUSABLE =
       (attach)="anchored.handleAttach()"
       (detach)="anchored.handleDetach()"
       (overlayOutsideClick)="anchored.handleOutsideClick($event)"
+      (positionChange)="onPositionChange($event)"
     >
+      <!-- The size class fixes the width; panelClass is the consumer's hatch. -->
       <div
         #panel
-        class="tm-popover__panel"
         role="dialog"
         tabindex="-1"
+        [class]="panelClasses()"
+        [style.--tm-popover-inline-cap.px]="inlineCap()"
         [attr.aria-label]="ariaLabel()"
         (keydown)="onPanelKeydown($event)"
         (focusout)="onPanelFocusOut($event)"
@@ -116,6 +145,20 @@ export class TmPopover {
   readonly position = input<TmOverlaySide>('block-end');
   /** How the panel aligns along the chosen side's axis. */
   readonly align = input<TmOverlayAlign>('start');
+  /**
+   * The panel's width: `'auto'` (the default) for the content's width, or a
+   * fixed `'sm'`, `'md'` or `'lg'` that never changes while open. The panel's
+   * height is capped at the room the chosen side offers, and the content
+   * scrolls inside.
+   */
+  readonly size = input<TmPopoverSize>('auto');
+  /**
+   * Extra CSS class on the panel — the escape hatch for the rare panel the
+   * sizes do not fit. The panel renders in the top layer, outside this
+   * component's styles, so the class must be reachable from a global
+   * stylesheet.
+   */
+  readonly panelClass = input<string | undefined>(undefined);
   /** Accessible name of the dialog panel. */
   readonly ariaLabel = input<string | null>(null, { alias: 'aria-label' });
 
@@ -139,12 +182,43 @@ export class TmPopover {
   /** Where the overlay anchors. */
   protected readonly overlayOrigin = signal<TmPopoverAnchor | null>(null);
 
+  /** The panel's classes: the base, the size, and the consumer's hatch. */
+  protected readonly panelClasses = computed(() => {
+    const size = this.size();
+    const extra = this.panelClass();
+    return `tm-popover__panel tm-popover__panel--${size} ${extra ?? ''}`;
+  });
+
+  /**
+   * The physical inline offset that keeps a fixed-size panel inside the
+   * viewport margins on a block side (see `fitInline`).
+   */
+  private readonly inlineShift = signal(0);
+  /**
+   * The widest the panel may be: the visible viewport width (a classic
+   * scrollbar excluded, which `100vw` would count) less the margin on each
+   * side; null until the first open.
+   */
+  protected readonly inlineCap = signal<number | null>(null);
+  /** The side the CDK last placed the panel on, for re-fitting the height. */
+  private placedPair: ConnectionPositionPair | null = null;
+  /** The host element, on which the size tokens are resolved. */
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+  /** The live root direction, against which start and end resolve. */
+  private readonly direction = inject(Directionality);
+
   private readonly overlay = viewChild(CdkConnectedOverlay);
   private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
   private focusedOnOpen = false;
   private destroyed = false;
   /** Host elements of the triggers currently bound to this popover. */
   private readonly triggers = new Set<Element>();
+  /** The modals open at the last count: already open when the popover opened, or opened since. */
+  private modalsKnown: ReadonlySet<HTMLElement> = new Set();
+  /** The modals opened while focus was inside the panel, which sit above it as its content's own. */
+  private readonly modalsAbove = new Set<HTMLElement>();
+  /** Stops counting the modals, once the popover closes. */
+  private unwatchModals: (() => void) | null = null;
 
   /** This instance's stable anchor handler — its identity keys the removal. */
   private readonly onAnchorKeydown = (event: Event): void => {
@@ -162,12 +236,22 @@ export class TmPopover {
   protected readonly anchored = tmCreateAnchoredOverlay({
     overlay: () => this.overlay(),
     origin: () => this.overlayOrigin(),
-    positions: () => tmLogicalPositions(this.position(), this.align()),
+    // The inline shift rides every position as its offset, so the CDK's own
+    // fit and flip decisions already see the panel where it will sit.
+    positions: () => {
+      const offsetX = this.inlineShift();
+      return tmLogicalPositions(this.position(), this.align()).map((pair) => ({
+        ...pair,
+        offsetX,
+      }));
+    },
     remeasure: 'macrotask',
     onAttach: () => this.opened.emit(),
     onDetach: () => this.onOverlayDetach(),
     onOutsideClick: (event) => {
-      if (event.target instanceof Node && this.ownsClick(event.target)) {
+      // A modal the content opened above the panel (a confirmation) owns
+      // every click while it is open, its backdrop's included.
+      if ((event.target instanceof Node && this.ownsClick(event.target)) || this.modalAbove(null)) {
         return;
       }
       this.close();
@@ -176,8 +260,32 @@ export class TmPopover {
 
   constructor() {
     this.isOpen = this.expanded.asReadonly();
+
+    // While open, a scroll moves the anchor and a resize the viewport, but
+    // the CDK reports a placement only when its side changes: re-fit the
+    // height on every scroll, and the width and offset on a resize (the new
+    // offset reaches the CDK with the next render, which the re-anchor's
+    // macrotask follows).
+    const scrolls = inject(ScrollDispatcher);
+    const viewport = inject(ViewportRuler);
+    effect((onCleanup) => {
+      if (!this.expanded()) {
+        return;
+      }
+      const scrolled = scrolls.scrolled(0).subscribe(() => this.fitBlock());
+      const resized = viewport.change().subscribe(() => {
+        this.fitInline();
+        this.fitBlock();
+        this.anchored.reanchor();
+      });
+      onCleanup(() => {
+        scrolled.unsubscribe();
+        resized.unsubscribe();
+      });
+    });
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
+      this.unwatchModals?.();
     });
 
     // Initial focus once the panel content has rendered: the first tabbable
@@ -227,13 +335,23 @@ export class TmPopover {
       }
       return;
     }
+    // --- A fresh opening counts the modals: those opened from inside the panel are its content's ---
+    if (!untracked(this.expanded)) {
+      this.modalsKnown = new Set(ɵtmOpenModals());
+      this.modalsAbove.clear();
+      this.unwatchModals?.();
+      this.unwatchModals = ɵtmWatchModals(() => this.countModals());
+    }
     this.overlayOrigin.set(anchor);
     this.focusedOnOpen = false;
+    this.fitInline();
 
     // Re-anchor rather than (re)open whenever the overlay is still live (a
     // genuine open-while-open): the CDK `open` binding never toggles, so
     // the overlay neither re-attaches nor re-applies its object-form
-    // origin — drive the re-measure explicitly.
+    // origin — drive the re-measure explicitly. The re-measure is a
+    // macrotask queued after the change detection the new origin and
+    // offsets schedule, so it measures against them.
     if (untracked(this.expanded) || (this.overlay()?.overlayRef?.hasAttached() ?? false)) {
       this.expanded.set(true);
       this.anchored.reanchor();
@@ -275,6 +393,76 @@ export class TmPopover {
   }
 
   // ---- internals ----
+
+  /**
+   * The CDK placed the panel (on open, on a flip, or after the offsets
+   * changed): cap its height to the room on that side.
+   */
+  protected onPositionChange(change: ConnectedOverlayPositionChange): void {
+    this.placedPair = change.connectionPair;
+    this.fitBlock();
+  }
+
+  /** The anchor's viewport rectangle, or null while there is none. */
+  private anchorRect(): DOMRect | null {
+    const anchor = untracked(this.overlayOrigin);
+    return anchor instanceof Element ? anchor.getBoundingClientRect() : anchor;
+  }
+
+  /**
+   * Writes the panel's width cap (the visible viewport less the margin on
+   * each side), and keeps a fixed-size panel on a block side inside the
+   * viewport margins. Its width is known before it renders (the size
+   * token, clamped to that cap), so the offset is worked out
+   * from the anchor alone and handed to the CDK with the positions: a `lg`
+   * panel on a phone then sits full width with the margin on both sides,
+   * instead of hanging off the edge its anchor is near. `'auto'` panels
+   * and inline sides keep their anchor alignment.
+   */
+  private fitInline(): void {
+    const size = untracked(this.size);
+    const anchor = this.anchorRect();
+    const margin = tmTokenPx(this.host, '--popover-viewport-margin');
+    const viewport = document.documentElement.clientWidth;
+    const cap = viewport - 2 * margin;
+    this.inlineCap.set(cap);
+    let shift = 0;
+    if (size !== 'auto' && anchor !== null && !untracked(this.position).startsWith('inline')) {
+      shift = tmPopoverInlineShift(
+        anchor,
+        Math.min(tmTokenPx(this.host, `--popover-width-${size}`), cap),
+        untracked(this.align),
+        this.direction.value === 'rtl',
+        viewport,
+        margin,
+      );
+    }
+    this.inlineShift.set(shift);
+  }
+
+  /**
+   * Caps the panel's height at the room the side it was placed on offers,
+   * less the viewport margin, so a tall panel scrolls inside instead of
+   * running off screen, and a panel whose content loads later grows only up
+   * to that cap — it never flips while open. A panel the CDK placed at its
+   * full height because no side had room for it keeps the edge it is
+   * anchored by (its top below the anchor, its bottom above it) as it
+   * shrinks to the cap.
+   */
+  private fitBlock(): void {
+    const panel = this.panel()?.nativeElement;
+    const anchor = this.anchorRect();
+    if (panel === undefined || this.placedPair === null || anchor === null) {
+      return;
+    }
+    const room = tmPopoverBlockRoom(
+      anchor,
+      this.placedPair,
+      document.documentElement.clientHeight,
+      tmTokenPx(this.host, '--popover-viewport-margin'),
+    );
+    panel.style.setProperty('--tm-popover-block-cap', `${room}px`);
+  }
 
   /** Escape closes (unless an inner overlay already consumed it). */
   protected onPanelKeydown(event: KeyboardEvent): void {
@@ -333,21 +521,56 @@ export class TmPopover {
     });
   }
 
-  /** Closes unless the focus destination is inside the panel or the anchor. */
+  /**
+   * Closes unless the focus destination is inside the panel or the anchor,
+   * or inside a modal opened above the panel: the content's confirmation
+   * takes focus while the panel waits beneath it, and gives it back when it
+   * closes.
+   */
   private closeIfFocusLeft(next: Node | null): void {
     const panel = this.panel()?.nativeElement;
     const anchor = untracked(this.overlayOrigin);
     if (
       panel !== undefined &&
       (next === null || !panel.contains(next)) &&
-      !(anchor instanceof Element && next !== null && anchor.contains(next))
+      !(anchor instanceof Element && next !== null && anchor.contains(next)) &&
+      !(next !== null && this.modalAbove(next))
     ) {
       this.close();
     }
   }
 
+  /**
+   * Whether a modal the panel's content opened is open, holding `node` when
+   * one is given.
+   */
+  private modalAbove(node: Node | null): boolean {
+    return ɵtmOpenModals().some((modal) => this.modalsAbove.has(modal) && (node === null || modal.contains(node)));
+  }
+
+  /**
+   * Counts the open modals as one opens or closes: a modal that opens while
+   * focus is inside the panel was opened from it (the modal hears of itself
+   * before its content takes focus), so it sits above the popover.
+   */
+  private countModals(): void {
+    const open = ɵtmOpenModals();
+    const panel = this.panel()?.nativeElement;
+    const active = document.activeElement;
+    const fromPanel = panel !== undefined && active !== null && panel.contains(active);
+    for (const modal of open) {
+      if (fromPanel && !this.modalsKnown.has(modal)) {
+        this.modalsAbove.add(modal);
+      }
+    }
+    this.modalsKnown = new Set(open);
+  }
+
   /** Keeps `expanded` honest when the overlay detaches out-of-band. */
   private onOverlayDetach(): void {
+    this.placedPair = null;
+    this.unwatchModals?.();
+    this.unwatchModals = null;
     if (untracked(this.expanded)) {
       this.expanded.set(false);
     }

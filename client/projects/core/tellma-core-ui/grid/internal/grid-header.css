@@ -1,0 +1,151 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-grid-view's header row: the sticky header, its cells and their focus
+   ring, the sort indicator and the header-end slot. The view loads this
+   sheet before grid-view.css, so the body, chrome-column and forced-colors
+   rules there keep coming after these, as they did in one sheet. */
+
+/* ---- sticky header ---- */
+
+.tm-grid__header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--grid-template);
+  block-size: var(--grid-row-height);
+}
+
+.tm-grid__corner,
+.tm-grid__colhdr {
+  box-sizing: border-box;
+  padding-inline: var(--tm-grid-cell-padding-x);
+  background: var(--grid-header-bg);
+  color: var(--grid-header-text);
+  /* The header's lower edge is drawn at full strength in BOTH looks: it
+     separates chrome from data, which is a different job from separating
+     one cell from the next. */
+  border-block-end: var(--border-width) solid var(--grid-header-line);
+  border-inline-end: var(--border-width) solid var(--tm-grid-rule);
+  font-size: var(--grid-header-font-size);
+  font-weight: var(--weight-medium);
+  line-height: calc(var(--grid-row-height) - var(--border-width));
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tm-grid__colhdr {
+  position: relative; /* anchors the resize handle */
+}
+
+.tm-grid__colhdr-label {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* Header focus: the active-cell ring, drawn inset on a column header (its
+   border box is all the room there is — the next header covers anything
+   outside), hugging the box on the select-all checkbox, its own header
+   slot. Only keyboard focus shows it: a press never moves focus to a header. */
+.tm-grid__colhdr:focus-visible,
+.tm-grid__check:focus-visible {
+  outline: var(--focus-ring-width) solid var(--grid-selection-border);
+  outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.tm-grid__check:focus-visible {
+  outline-offset: var(--border-width);
+}
+
+/* ---- sort indicator (sortable headers) ---- */
+
+.tm-grid__colhdr--sortable {
+  cursor: pointer;
+}
+
+/* The label yields the indicator's slot, so a long label's ellipsis never
+   pushes the arrow out of the header. */
+.tm-grid__colhdr--sortable .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--icon-size-sm));
+}
+
+/* A fixed slot after the label, present whether or not the column is
+   sorted: sorting never shifts the label. */
+.tm-grid__sort {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--icon-size-sm);
+  block-size: calc(var(--grid-row-height) - var(--border-width));
+  vertical-align: bottom;
+}
+
+/* The next direction's arrow is the hover preview: hidden at rest, and
+   shown faintly in place of the current one while a pointer hovers. */
+.tm-grid__sort-glyph--next {
+  display: none;
+  color: var(--text-muted);
+}
+
+@media (hover: hover) {
+  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph {
+    display: none;
+  }
+
+  .tm-grid__colhdr--sortable:hover .tm-grid__sort-glyph--next {
+    display: inline-flex;
+  }
+}
+
+/* ---- header-end slot (a column's header action) ---- */
+
+/* One action's square after the label and the sort slot, reserved whenever
+   the column declares it, above the resize handle (which stays grabbable in
+   the cell's trailing padding). A popover the action opens renders in
+   place, inside the slot: it gets the page's typesetting back, not the
+   header's row-tall line height, weight, alignment, no-wrap and no-select. */
+.tm-grid__hdrend {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--grid-header-action-size);
+  block-size: calc(var(--grid-row-height) - var(--border-width));
+  vertical-align: bottom;
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-ui);
+  text-align: start;
+  white-space: normal;
+  user-select: text;
+  cursor: auto;
+}
+
+/* The label yields the slot (and the sort slot beside it, when sortable),
+   so a long label's ellipsis never pushes the action out of the header. */
+.tm-grid__colhdr--end .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--grid-header-action-size));
+}
+
+.tm-grid__colhdr--end.tm-grid__colhdr--sortable .tm-grid__colhdr-label {
+  max-inline-size: calc(100% - var(--icon-size-sm) - var(--grid-header-action-size));
+}
+
+.tm-grid__resize {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  inline-size: var(--grid-handle-size);
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}

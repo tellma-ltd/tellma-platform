@@ -1,0 +1,471 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+
+namespace Tellma.Core.Imaging.PdfWorker
+{
+    /// <summary>
+    ///     The worker's Linux system-call filter: a seccomp-bpf program, installed on every thread
+    ///     before the upload is read, that the kernel enforces for the rest of the process's life.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         It refuses, with <c>EPERM</c>, what rendering a PDF never needs and a compromised
+    ///         renderer would want: creating sockets (so no network, the cloud metadata endpoint
+    ///         included); running a program or starting a process (threads are still allowed); SysV
+    ///         shared memory, semaphores and message queues, and POSIX message queues, whose
+    ///         objects outlive the process and escape its memory limits; reading, writing or
+    ///         signalling another process, or changing its resource limits, scheduling, priority or
+    ///         memory placement (signals, <c>prlimit64</c> and the scheduling calls are allowed on
+    ///         the worker's own process only, and pidfds, <c>tkill</c>, I/O priorities and page
+    ///         migration not at all); having the kernel signal someone on the worker's word, by
+    ///         naming a descriptor's owner or signal or by asking for signal-driven I/O with
+    ///         <c>fcntl</c> or <c>ioctl</c>, since the kernel asks only that the owner be of the
+    ///         caller's account, and a terminal's owner is whoever runs in its foreground; pushing
+    ///         input into a terminal with <c>ioctl</c>; clearing the parent-death signal that ends
+    ///         the worker with its host; and the kernel interfaces exploits favour (io_uring,
+    ///         userfaultfd, perf events, BPF, namespaces, the key store).
+    ///     </para>
+    ///     <para>
+    ///         It also refuses the calls that change a file: opening one for writing, creating or
+    ///         truncating it, renaming, linking or removing it, making a directory, device or
+    ///         symbolic link, and changing its mode, owner, times or extended attributes; locking
+    ///         one with <c>flock</c>, which takes no write access and would hold a file the worker
+    ///         may read against every .NET process of the account that opens it; and every
+    ///         <c>ioctl</c> of the families that change a file's attributes or state through a
+    ///         descriptor opened only for reading (the VFS's and ext4's, XFS's, Btrfs's with the
+    ///         VFS's clone and dedupe calls, and f2fs's), whatever the request. That holds whatever
+    ///         the kernel's Landlock knows, which confines reads, and covers what Landlock does not
+    ///         restrict at all (modes, owners, times, attributes, <c>ioctl</c> on files). The worker's
+    ///         only writable descriptors are its pipes and the runtime's anonymous memory files.
+    ///     </para>
+    ///     <para>
+    ///         It refuses what would watch or describe files Landlock keeps the worker from reading:
+    ///         inotify and fanotify, and the path forms of reading and listing extended attributes.
+    ///         What a path lookup tells (that a path exists, and its size, owner and times, through
+    ///         <c>stat</c>, <c>access</c> or <c>readlink</c>) stays open, as do the entries of the
+    ///         worker's own <c>/proc/&lt;pid&gt;</c> that describe the network and mount namespaces
+    ///         it shares with its host (<c>net/tcp</c>, <c>net/unix</c>, <c>mountinfo</c>): only
+    ///         namespaces of the worker's own would close them.
+    ///     </para>
+    ///     <para>
+    ///         <c>clone3</c> and <c>openat2</c> answer <c>ENOSYS</c>, because their flags sit behind
+    ///         a pointer the filter cannot read; the C library then creates threads with
+    ///         <c>clone</c> and opens files with <c>openat</c>, whose flags it can. Any other system
+    ///         call is allowed, so the runtime and PDFium work as they would anywhere.
+    ///     </para>
+    ///     <para>
+    ///         A process id is a C <c>int</c>, which the kernel reads from the low half of the
+    ///         argument register, so the filter compares that half alone: whatever the high half
+    ///         holds, the kernel acts on the pid the filter checked.
+    ///     </para>
+    ///     <para>
+    ///         A system call made through another architecture's entry point (32-bit calls on x64,
+    ///         or the x32 ABI) kills the process, because its numbers mean different calls. The
+    ///         filter is written for x64 and arm64, the server architectures the platform deploys to.
+    ///     </para>
+    /// </remarks>
+    internal static unsafe partial class SeccompFilter
+    {
+        // Section: the BPF instruction classes and the filter's return values (linux/filter.h,
+        // linux/seccomp.h, linux/audit.h).
+        private const ushort LoadWordAbsolute = 0x00 | 0x00 | 0x20;
+        private const ushort JumpIfEqual = 0x05 | 0x10 | 0x00;
+        private const ushort JumpIfGreaterOrEqual = 0x05 | 0x30 | 0x00;
+        private const ushort JumpIfAnyBitSet = 0x05 | 0x40 | 0x00;
+        private const ushort AndConstant = 0x04 | 0x50 | 0x00;
+        private const ushort ReturnConstant = 0x06 | 0x00;
+        private const uint Allow = 0x7fff_0000;
+        private const uint KillProcess = 0x8000_0000;
+        private const uint ErrorNumber = 0x0005_0000;
+        private const uint PermissionDenied = 1;
+        private const uint NotImplemented = 38;
+        private const uint X64Architecture = 0xC000_003E;
+        private const uint Arm64Architecture = 0xC000_00B7;
+        private const uint X32SystemCallBit = 0x4000_0000;
+        private const uint CloneThread = 0x0001_0000;
+        private const uint ProcessPriority = 0; // PRIO_PROCESS
+        private const uint SetParentDeathSignal = 1; // PR_SET_PDEATHSIG
+        private const uint SetFlags = 4; // F_SETFL
+        private const uint SetOwner = 8; // F_SETOWN
+        private const uint SetSignal = 10; // F_SETSIG
+        private const uint SetOwnerExtended = 15; // F_SETOWN_EX
+        private const uint SignalDrivenIo = 0x2000; // O_ASYNC
+        private const uint OpenForWriting = 0x1 | 0x2 | 0x40 | 0x200; // O_WRONLY | O_RDWR | O_CREAT | O_TRUNC
+        private const uint IoctlType = 0xFF00; // _IOC_TYPEMASK << _IOC_TYPESHIFT
+
+        // Offsets into struct seccomp_data: the call number, the architecture, and the low words of
+        // the first three arguments (little-endian).
+        private const uint NumberOffset = 0;
+        private const uint ArchitectureOffset = 4;
+        private const uint FirstArgumentOffset = 16;
+        private const uint SecondArgumentOffset = 24;
+        private const uint ThirdArgumentOffset = 32;
+
+        // prctl and seccomp operations.
+        private const int SetNoNewPrivileges = 38;
+        private const ulong SetModeFilter = 1;
+        private const ulong SynchroniseThreads = 1;
+
+        /// <summary>Whether the filter exists for the processor this process runs on.</summary>
+        public static bool IsSupported =>
+            RuntimeInformation.ProcessArchitecture is Architecture.X64 or Architecture.Arm64;
+
+        /// <summary>Installs the filter on every thread of the process; it cannot be removed afterwards.</summary>
+        /// <exception cref="PlatformNotSupportedException">The process does not run on x64 or arm64.</exception>
+        /// <exception cref="InvalidOperationException">The kernel refused the filter.</exception>
+        [SupportedOSPlatform("linux")]
+        public static void Install()
+        {
+            if (!IsSupported)
+            {
+                throw new PlatformNotSupportedException($"The worker's system-call filter is written for x64 and arm64, not {RuntimeInformation.ProcessArchitecture}.");
+            }
+
+            Instruction[] program = Build(RuntimeInformation.ProcessArchitecture == Architecture.X64, Environment.ProcessId);
+
+            // Section: an unprivileged process may install a filter once it can never gain
+            // privileges again; synchronising the threads applies the filter to the runtime's
+            // threads that already exist, not only to this one.
+            if (Prctl(SetNoNewPrivileges, 1, 0, 0, 0) != 0)
+            {
+                throw new InvalidOperationException($"The kernel refused no_new_privs (errno {Marshal.GetLastPInvokeError()}).");
+            }
+
+            long seccomp = RuntimeInformation.ProcessArchitecture == Architecture.X64 ? 317 : 277;
+            fixed (Instruction* instructions = program)
+            {
+                var filter = new FilterProgram { Length = (ushort)program.Length, Instructions = instructions };
+                long result = SystemCall(seccomp, SetModeFilter, SynchroniseThreads, &filter);
+                if (result != 0)
+                {
+                    throw new InvalidOperationException(result > 0
+                        ? $"The kernel could not apply the system-call filter to thread {result}."
+                        : $"The kernel refused the system-call filter (errno {Marshal.GetLastPInvokeError()}).");
+                }
+            }
+        }
+
+        /// <summary>Builds the filter program for one architecture and one process.</summary>
+        /// <param name="x64">True for x64, false for arm64.</param>
+        /// <param name="processId">The worker's own process id, the only one its signals and limits may target.</param>
+        /// <returns>The program.</returns>
+        internal static Instruction[] Build(bool x64, int processId)
+        {
+            uint self = (uint)processId;
+
+            // Section: the calls refused with EPERM, by number. x64 numbers are from
+            // arch/x86/entry/syscalls/syscall_64.tbl, arm64's from include/uapi/asm-generic/unistd.h.
+            uint[] refused = x64
+                ? [
+                    41, 53,                     // socket, socketpair
+                    59, 322, 57, 58,            // execve, execveat, fork, vfork
+                    101, 310, 311, 312, 438,    // ptrace, process_vm_readv, process_vm_writev, kcmp, pidfd_getfd
+                    434, 424, 200,              // pidfd_open, pidfd_send_signal, tkill
+                    251, 256, 279,              // ioprio_set, migrate_pages, move_pages
+                    29, 30, 31,                 // shmget, shmat, shmctl
+                    64, 65, 66, 220,            // semget, semop, semctl, semtimedop
+                    68, 69, 70, 71,             // msgget, msgsnd, msgrcv, msgctl
+                    240, 241, 242, 243,         // mq_open, mq_unlink, mq_timedsend, mq_timedreceive
+                    244, 245,                   // mq_notify, mq_getsetattr
+                    425, 426, 427, 323, 298,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
+                    321, 272, 308,              // bpf, unshare, setns
+                    248, 249, 250,              // add_key, request_key, keyctl
+                    76, 85, 304,                // truncate, creat, open_by_handle_at
+                    82, 264, 316, 86, 265,      // rename, renameat, renameat2, link, linkat
+                    88, 266, 87, 263,           // symlink, symlinkat, unlink, unlinkat
+                    83, 258, 84, 133, 259,      // mkdir, mkdirat, rmdir, mknod, mknodat
+                    90, 91, 268, 452,           // chmod, fchmod, fchmodat, fchmodat2
+                    92, 93, 94, 260,            // chown, fchown, lchown, fchownat
+                    132, 235, 261, 280,         // utime, utimes, futimesat, utimensat
+                    188, 189, 190, 463,         // setxattr, lsetxattr, fsetxattr, setxattrat
+                    197, 198, 199, 466,         // removexattr, lremovexattr, fremovexattr, removexattrat
+                    469,                        // file_setattr
+                    73,                         // flock
+                    253, 294, 254, 300, 301,    // inotify_init, inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark
+                    191, 192, 194, 195,         // getxattr, lgetxattr, listxattr, llistxattr
+                    464, 465,                   // getxattrat, listxattrat
+                ]
+                : [
+                    198, 199,                   // socket, socketpair
+                    221, 281,                   // execve, execveat
+                    117, 270, 271, 272, 438,    // ptrace, process_vm_readv, process_vm_writev, kcmp, pidfd_getfd
+                    434, 424, 130,              // pidfd_open, pidfd_send_signal, tkill
+                    30, 238, 239,               // ioprio_set, migrate_pages, move_pages
+                    194, 196, 195,              // shmget, shmat, shmctl
+                    190, 193, 191, 192,         // semget, semop, semctl, semtimedop
+                    186, 189, 188, 187,         // msgget, msgsnd, msgrcv, msgctl
+                    180, 181, 182, 183,         // mq_open, mq_unlink, mq_timedsend, mq_timedreceive
+                    184, 185,                   // mq_notify, mq_getsetattr
+                    425, 426, 427, 282, 241,    // io_uring_setup, io_uring_enter, io_uring_register, userfaultfd, perf_event_open
+                    280, 97, 268,               // bpf, unshare, setns
+                    217, 218, 219,              // add_key, request_key, keyctl
+                    45, 265,                    // truncate, open_by_handle_at
+                    38, 276, 37,                // renameat, renameat2, linkat
+                    36, 35,                     // symlinkat, unlinkat
+                    34, 33,                     // mkdirat, mknodat
+                    52, 53, 452,                // fchmod, fchmodat, fchmodat2
+                    55, 54,                     // fchown, fchownat
+                    88,                         // utimensat
+                    5, 6, 7, 463,               // setxattr, lsetxattr, fsetxattr, setxattrat
+                    14, 15, 16, 466,            // removexattr, lremovexattr, fremovexattr, removexattrat
+                    469,                        // file_setattr
+                    32,                         // flock
+                    26, 27, 262, 263,           // inotify_init1, inotify_add_watch, fanotify_init, fanotify_mark
+                    8, 9, 11, 12,               // getxattr, lgetxattr, listxattr, llistxattr
+                    464, 465,                   // getxattrat, listxattrat
+                ];
+
+            // Section: the calls allowed only on the worker's own process, by its pid as the first
+            // argument; for the last five, 0 (this process) as well.
+            (uint Number, bool OrZero)[] ownProcessOnly = x64
+                ? [
+                    (62, false), (234, false), (129, false), (297, false),  // kill, tgkill, rt_sigqueueinfo, rt_tgsigqueueinfo
+                    (302, true), (203, true), (144, true), (142, true),     // prlimit64, sched_setaffinity, sched_setscheduler, sched_setparam
+                    (314, true),                                            // sched_setattr
+                ]
+                : [
+                    (129, false), (131, false), (138, false), (240, false), // kill, tgkill, rt_sigqueueinfo, rt_tgsigqueueinfo
+                    (261, true), (122, true), (119, true), (118, true),     // prlimit64, sched_setaffinity, sched_setscheduler, sched_setparam
+                    (274, true),                                            // sched_setattr
+                ];
+            uint setPriority = x64 ? 141u : 140u;
+            uint prctl = x64 ? 157u : 167u;
+            uint fcntl = x64 ? 72u : 25u;
+            uint ioctl = x64 ? 16u : 29u;
+            uint clone = x64 ? 56u : 220u;
+            uint openAt = x64 ? 257u : 56u;
+            const uint open = 2; // x64 only; arm64 has openat alone
+            const uint clone3 = 435;
+            const uint openAt2 = 437;
+
+            // Section: the ioctl requests refused, the same on both architectures
+            // (include/uapi/asm-generic/ioctls.h and sockios.h, linux/fs.h): TIOCSTI and
+            // TIOCLINUX, which push input into a terminal for whoever reads it next; FIOASYNC,
+            // which asks for signal-driven I/O; FIOSETOWN and SIOCSPGRP, which name a socket's
+            // owner; FS_IOC_SETVERSION in its 64- and 32-bit forms, which changes a file's
+            // generation through a descriptor opened only for reading.
+            uint[] refusedRequests = [0x5412, 0x541C, 0x5452, 0x8901, 0x8902, 0x40087602, 0x40047602];
+
+            // Section: the ioctl types refused whatever the request, by the request's type byte
+            // (linux/fs.h, linux/fsverity.h, linux/fscrypt.h, xfs_fs.h, linux/btrfs.h,
+            // linux/f2fs.h): 'f', the VFS's and ext4's (inode flags, fs-verity, encryption
+            // policies); 'X', XFS's and the VFS's extended inode attributes; 0x94, Btrfs's and
+            // the VFS's clone, dedupe and label calls; 0xF5, f2fs's. Several change a file through
+            // a descriptor opened only for reading (FS_IOC_ENABLE_VERITY makes a file immutable,
+            // FS_IOC_SET_ENCRYPTION_POLICY encrypts an empty directory, BTRFS_IOC_SUBVOL_SETFLAGS
+            // makes a subvolume read-only); the worker, its runtime and PDFium render with every
+            // one of them refused.
+            uint[] refusedTypes = [0x6600, 0x5800, 0x9400, 0xF500];
+
+            // Section: another architecture's calls kill the process; so do x32 calls on x64.
+            var program = new List<Instruction>
+            {
+                Statement(LoadWordAbsolute, ArchitectureOffset),
+                Jump(JumpIfEqual, x64 ? X64Architecture : Arm64Architecture, 1, 0),
+                Statement(ReturnConstant, KillProcess),
+                Statement(LoadWordAbsolute, NumberOffset),
+            };
+            if (x64)
+            {
+                program.Add(Jump(JumpIfGreaterOrEqual, X32SystemCallBit, 0, 1));
+                program.Add(Statement(ReturnConstant, KillProcess));
+            }
+
+            // Section: each refused call returns EPERM.
+            foreach (uint number in refused)
+            {
+                program.Add(Jump(JumpIfEqual, number, 0, 1));
+                program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            }
+
+            // Section: each own-process call. A block is entered only for its call and always
+            // returns, so the call number stays loaded for the blocks it skips.
+            foreach ((uint number, bool orZero) in ownProcessOnly)
+            {
+                if (orZero)
+                {
+                    program.Add(Jump(JumpIfEqual, number, 0, 5));
+                    program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
+                    program.Add(Jump(JumpIfEqual, self, 2, 0));
+                    program.Add(Jump(JumpIfEqual, 0, 1, 0));
+                }
+                else
+                {
+                    program.Add(Jump(JumpIfEqual, number, 0, 4));
+                    program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
+                    program.Add(Jump(JumpIfEqual, self, 1, 0));
+                }
+
+                program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+                program.Add(Statement(ReturnConstant, Allow));
+            }
+
+            // Section: setpriority(which, who, prio) only for PRIO_PROCESS and this process, as 0 or
+            // its pid: a process group or user would reach the host.
+            program.Add(Jump(JumpIfEqual, setPriority, 0, 7));
+            program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
+            program.Add(Jump(JumpIfEqual, ProcessPriority, 0, 3));
+            program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+            program.Add(Jump(JumpIfEqual, self, 2, 0));
+            program.Add(Jump(JumpIfEqual, 0, 1, 0));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: prctl may not change the parent-death signal that ends the worker with its
+            // host. Any other call skips the block's four remaining instructions.
+            program.Add(Jump(JumpIfEqual, prctl, 0, 4));
+            program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
+            program.Add(Jump(JumpIfEqual, SetParentDeathSignal, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: fcntl(fd, cmd, arg) may not name a descriptor's owner, nor the signal an owner
+            // gets, nor ask for signal-driven I/O (F_SETFL with O_ASYNC in its argument): the kernel
+            // signals the owner when the descriptor is ready for I/O, and an owner of the worker's
+            // account, as its host is, would be signalled on the worker's word. A terminal needs no
+            // naming: asking for signal-driven I/O on one makes its foreground job the owner.
+            program.Add(Jump(JumpIfEqual, fcntl, 0, 9));
+            program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+            program.Add(Jump(JumpIfEqual, SetOwner, 5, 0));
+            program.Add(Jump(JumpIfEqual, SetSignal, 4, 0));
+            program.Add(Jump(JumpIfEqual, SetOwnerExtended, 3, 0));
+            program.Add(Jump(JumpIfEqual, SetFlags, 0, 3));
+            program.Add(Statement(LoadWordAbsolute, ThirdArgumentOffset));
+            program.Add(Jump(JumpIfAnyBitSet, SignalDrivenIo, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: ioctl(fd, request, ...) by request, then by the request's type. Each refused
+            // request or type jumps to the refusal that ends the block; the last type falls into
+            // it, or steps over it to the allowance. The kernel reads the request as a C unsigned
+            // int, from the register's low half, which is all the filter loads.
+            int requests = refusedRequests.Length, types = refusedTypes.Length;
+            program.Add(Jump(JumpIfEqual, ioctl, 0, (byte)(requests + types + 4)));
+            program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+            for (int index = 0; index < requests; index++)
+            {
+                program.Add(Jump(JumpIfEqual, refusedRequests[index], (byte)(requests - index + types), 0));
+            }
+
+            program.Add(Statement(AndConstant, IoctlType));
+            for (int index = 0; index < types; index++)
+            {
+                bool last = index == types - 1;
+                program.Add(Jump(JumpIfEqual, refusedTypes[index], (byte)(types - 1 - index), (byte)(last ? 1 : 0)));
+            }
+
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+
+            // Section: a file may be opened only for reading: open (x64) and openat refuse any of
+            // O_WRONLY, O_RDWR, O_CREAT and O_TRUNC in their flags (the second argument of open,
+            // the third of openat). A descriptor opened for reading cannot be written, truncated or
+            // mapped shared for writing, so no file is written in place. openat2 takes its flags
+            // behind a pointer the filter cannot read, so it is not implemented, and the C library
+            // and the runtime open files with openat.
+            if (x64)
+            {
+                program.Add(Jump(JumpIfEqual, open, 0, 4));
+                program.Add(Statement(LoadWordAbsolute, SecondArgumentOffset));
+                program.Add(Jump(JumpIfAnyBitSet, OpenForWriting, 0, 1));
+                program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+                program.Add(Statement(ReturnConstant, Allow));
+            }
+
+            program.Add(Jump(JumpIfEqual, openAt, 0, 4));
+            program.Add(Statement(LoadWordAbsolute, ThirdArgumentOffset));
+            program.Add(Jump(JumpIfAnyBitSet, OpenForWriting, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+            program.Add(Jump(JumpIfEqual, openAt2, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | NotImplemented));
+
+            // Section: clone3 is not implemented, so the C library falls back to clone, which is
+            // allowed only to create a thread (CLONE_THREAD in its flags, its first argument).
+            program.Add(Jump(JumpIfEqual, clone3, 0, 1));
+            program.Add(Statement(ReturnConstant, ErrorNumber | NotImplemented));
+            program.Add(Jump(JumpIfEqual, clone, 0, 3));
+            program.Add(Statement(LoadWordAbsolute, FirstArgumentOffset));
+            program.Add(Jump(JumpIfAnyBitSet, CloneThread, 1, 0));
+            program.Add(Statement(ReturnConstant, ErrorNumber | PermissionDenied));
+            program.Add(Statement(ReturnConstant, Allow));
+            return [.. program];
+        }
+
+        /// <summary>A BPF statement: an instruction without jumps.</summary>
+        /// <param name="code">The instruction.</param>
+        /// <param name="value">Its operand.</param>
+        /// <returns>The instruction.</returns>
+        private static Instruction Statement(ushort code, uint value)
+        {
+            return new Instruction { Code = code, Value = value };
+        }
+
+        /// <summary>A BPF conditional jump, by instructions skipped when true and when false.</summary>
+        /// <param name="code">The comparison.</param>
+        /// <param name="value">The value compared with.</param>
+        /// <param name="whenTrue">The instructions skipped when the comparison holds.</param>
+        /// <param name="whenFalse">The instructions skipped when it does not.</param>
+        /// <returns>The instruction.</returns>
+        private static Instruction Jump(ushort code, uint value, byte whenTrue, byte whenFalse)
+        {
+            return new Instruction { Code = code, Value = value, WhenTrue = whenTrue, WhenFalse = whenFalse };
+        }
+
+        /// <summary><c>int prctl(int option, unsigned long, unsigned long, unsigned long, unsigned long)</c>.</summary>
+        /// <param name="option">The operation.</param>
+        /// <param name="argument2">Its first argument.</param>
+        /// <param name="argument3">Its second argument.</param>
+        /// <param name="argument4">Its third argument.</param>
+        /// <param name="argument5">Its fourth argument.</param>
+        /// <returns>0 on success; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "prctl", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [SupportedOSPlatform("linux")]
+        internal static partial int Prctl(int option, ulong argument2, ulong argument3, ulong argument4, ulong argument5);
+
+        /// <summary><c>long syscall(long number, ...)</c>, for <c>seccomp(2)</c>, which the C library does not wrap.</summary>
+        /// <param name="number">The system call.</param>
+        /// <param name="operation">The seccomp operation.</param>
+        /// <param name="flags">Its flags.</param>
+        /// <param name="filter">The filter program.</param>
+        /// <returns>0 on success; with thread synchronisation, the id of a thread that could not be synchronised; -1 with <c>errno</c> set on failure.</returns>
+        [LibraryImport("libc", EntryPoint = "syscall", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.SafeDirectories)]
+        [SupportedOSPlatform("linux")]
+        private static partial long SystemCall(long number, ulong operation, ulong flags, FilterProgram* filter);
+
+        /// <summary>One BPF instruction, <c>struct sock_filter</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Instruction
+        {
+            /// <summary>The instruction.</summary>
+            public ushort Code;
+
+            /// <summary>The instructions skipped when a comparison holds.</summary>
+            public byte WhenTrue;
+
+            /// <summary>The instructions skipped when it does not.</summary>
+            public byte WhenFalse;
+
+            /// <summary>The operand.</summary>
+            public uint Value;
+        }
+
+        /// <summary>A BPF program, <c>struct sock_fprog</c>.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FilterProgram
+        {
+            /// <summary>The number of instructions.</summary>
+            public ushort Length;
+
+            /// <summary>The instructions.</summary>
+            public Instruction* Instructions;
+        }
+    }
+}

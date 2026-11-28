@@ -1,0 +1,116 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-progress-bar — a 4 px track the full width of its box. Consumers
+   overlay it on the edge of the region that is loading, so the host is a
+   plain block and takes nothing but its own height. */
+
+:host {
+  --tm-progress-fill: var(--progress-accent);
+
+  display: block;
+  block-size: var(--progress-height);
+}
+
+/* A hidden bar (inactive, its hold over) is gone from layout and from the
+   accessibility tree. */
+:host(.tm-progress-bar--hidden) {
+  display: none;
+}
+
+/* Tones. */
+
+:host([data-tone='success']) {
+  --tm-progress-fill: var(--progress-success);
+}
+
+:host([data-tone='warning']) {
+  --tm-progress-fill: var(--progress-warning);
+}
+
+:host([data-tone='error']) {
+  --tm-progress-fill: var(--progress-error);
+}
+
+/* The track clips the fill to its rounded ends. It is a size container,
+   so the sweep can travel exactly its width (cqi). */
+.tm-progress-bar__track {
+  container-type: inline-size;
+  position: relative;
+  display: block;
+  block-size: 100%;
+  overflow: hidden;
+  border-radius: var(--progress-radius);
+  background: var(--progress-track);
+}
+
+/* A determinate fill grows from inline-start, so it is right in both
+   directions; it does not animate between values. */
+.tm-progress-bar__fill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  border-radius: inherit;
+  background: var(--tm-progress-fill);
+}
+
+/* The sweep: a segment that travels from inline-start to inline-end, on
+   a loop. Transforms are physical, so right-to-left runs its own
+   keyframes, mirror images of the left-to-right ones. */
+.tm-progress-bar__fill--sweep {
+  inline-size: var(--progress-sweep-width);
+  animation: tm-progress-sweep var(--progress-sweep-duration) ease-in-out infinite;
+}
+
+:host(:dir(rtl)) .tm-progress-bar__fill--sweep {
+  animation-name: tm-progress-sweep-rtl;
+}
+
+@keyframes tm-progress-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100cqi);
+  }
+}
+
+@keyframes tm-progress-sweep-rtl {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(-100cqi);
+  }
+}
+
+/* Reduced motion: no sweep. The whole track fills at half strength, which
+   says "running" without pretending to a share. */
+@media (prefers-reduced-motion: reduce) {
+  .tm-progress-bar__fill--sweep {
+    inline-size: 100%;
+    opacity: 0.5;
+    animation: none;
+  }
+}
+
+/* Forced colours would flatten the track and the fill into one colour.
+   Keep them apart with system colours: the fill in Highlight on a
+   CanvasText track edge. */
+@media (forced-colors: active) {
+  .tm-progress-bar__track {
+    forced-color-adjust: none;
+    background: Canvas;
+    box-shadow: inset 0 0 0 1px CanvasText;
+  }
+
+  .tm-progress-bar__fill {
+    background: Highlight;
+  }
+}

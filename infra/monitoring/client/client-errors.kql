@@ -1,0 +1,10 @@
+// Errors the SPA reported through the client telemetry relay.
+// Backs the "the web client is failing" alert: a render or global error is a fault in the client's
+// own code, which a release or a browser update can bring to every user at once. An API error is
+// counted too, under source "api", but the server's own alerts name its faults, and a client's
+// validation or conflict is a normal part of the day, so they stay out of this count.
+customMetrics
+| where name == "tellma.client.errors"
+| extend source = tostring(customDimensions["source"])
+| summarize errors = sumif(valueSum, source in ("render", "global")) by bin(timestamp, 15m)
+| where errors > 25

@@ -11,8 +11,20 @@ namespace Tellma.Identity.Controllers.ViewModels
         /// <summary>The requesting application's display name.</summary>
         public string? ApplicationName { get; set; }
 
+        /// <summary>
+        ///     For a document client, the host its metadata document is published on, which is
+        ///     what vouches for the name above it; null for a registered client.
+        /// </summary>
+        public string? ClientHost { get; set; }
+
         /// <summary>The requested scopes, space-delimited.</summary>
         public string Scope { get; set; } = string.Empty;
+
+        /// <summary>
+        ///     The places the grant is for, described for a person (a distribution's host, or its
+        ///     host and a tenant id); empty when the request names no resource.
+        /// </summary>
+        public IReadOnlyList<string> Targets { get; set; } = [];
     }
 
     /// <summary>The error page's display data.</summary>

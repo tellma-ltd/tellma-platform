@@ -1,0 +1,14 @@
+/*
+ * EDITOR, LINT AND TYPECHECK view of the package (no build uses it): every
+ * file, specs and the /e2e entry point included, with @tellma/core resolved to
+ * its sources through the workspace paths. The package build (tsconfig.lib.json)
+ * compiles against the built @tellma/core instead, as a consumer would.
+ */
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["**/*.ts"]
+}

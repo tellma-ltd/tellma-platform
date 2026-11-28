@@ -18,7 +18,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Discovery_document_advertises_the_expected_capabilities()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "iddisc");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "iddisc");
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.GetAsync(
                 new Uri("/.well-known/openid-configuration", UriKind.Relative),
@@ -53,6 +53,13 @@ namespace Tellma.Identity.IntegrationTests
             // RFC 9207: the authorization response carries `iss` to prevent mix-up attacks.
             Assert.True(root.GetProperty("authorization_response_iss_parameter_supported").GetBoolean());
 
+            // Client ID metadata documents: a hosted agent takes the document path only when the
+            // flag is set and `none` is among the token endpoint's methods.
+            Assert.True(root.GetProperty("client_id_metadata_document_supported").GetBoolean());
+            string[] authMethods = [.. root.GetProperty("token_endpoint_auth_methods_supported").EnumerateArray().Select(static e => e.GetString()!)];
+            Assert.Contains("none", authMethods);
+            Assert.Contains("private_key_jwt", authMethods);
+
             // Core endpoints advertised at the expected paths.
             Assert.Equal("http://localhost/connect/authorize", root.GetProperty("authorization_endpoint").GetString());
             Assert.Equal("http://localhost/connect/token", root.GetProperty("token_endpoint").GetString());
@@ -64,7 +71,7 @@ namespace Tellma.Identity.IntegrationTests
         [Fact]
         public async Task Jwks_publishes_only_asymmetric_signing_keys()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idjwks");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idjwks");
             using HttpClient client = factory.CreateClient();
             using HttpResponseMessage response = await client.GetAsync(
                 new Uri("/.well-known/jwks", UriKind.Relative),
@@ -82,6 +89,28 @@ namespace Tellma.Identity.IntegrationTests
                 string? type = key.GetProperty("kty").GetString();
                 Assert.True(type is "EC" or "RSA", $"Unexpected key type '{type}' in JWKS.");
             });
+        }
+
+        [Fact]
+        public async Task Discovery_does_not_advertise_document_clients_while_they_are_off()
+        {
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
+                fixture,
+                "iddiscoff",
+                new Dictionary<string, string?> { ["TellmaIdentity:ClientMetadata:Enabled"] = "false" });
+            using HttpClient client = factory.CreateClient();
+            using HttpResponseMessage response = await client.GetAsync(
+                new Uri("/.well-known/openid-configuration", UriKind.Relative),
+                TestContext.Current.CancellationToken);
+
+            response.EnsureSuccessStatusCode();
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            JsonElement root = document.RootElement;
+
+            Assert.False(root.TryGetProperty("client_id_metadata_document_supported", out _));
+            string[] authMethods = [.. root.GetProperty("token_endpoint_auth_methods_supported").EnumerateArray().Select(static e => e.GetString()!)];
+            Assert.DoesNotContain("none", authMethods);
         }
     }
 }

@@ -80,12 +80,11 @@ namespace Tellma.Identity.Services.Provisioning
         /// </summary>
         /// <param name="slug">The distribution slug.</param>
         /// <param name="origin">The distribution's browser origin.</param>
-        /// <param name="issuerOrigin">The authority's own origin (the management API audience).</param>
         /// <param name="secret">The generated client secret.</param>
         /// <param name="allowTokenExchange">Grant the token-exchange grant type.</param>
         /// <returns>The descriptor.</returns>
         public static OpenIddictApplicationDescriptor DistributionService(
-            string slug, Uri origin, string issuerOrigin, string secret, bool allowTokenExchange)
+            string slug, Uri origin, string secret, bool allowTokenExchange)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(slug);
             ArgumentNullException.ThrowIfNull(origin);
@@ -106,7 +105,7 @@ namespace Tellma.Identity.Services.Provisioning
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.ApiScope,
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope,
                     Permissions.Prefixes.Resource + originValue,
-                    Permissions.Prefixes.Resource + issuerOrigin,
+                    Permissions.Prefixes.Resource + TellmaIdentityConstants.IdentityAudience,
                 },
             };
 
@@ -173,8 +172,92 @@ namespace Tellma.Identity.Services.Provisioning
             return descriptor;
         }
 
+        /// <summary>
+        ///     A document client: a client whose id is the URL of its own metadata document. The
+        ///     document decides its name, redirect URIs and client type; everything else is fixed
+        ///     here. Authorization Code + PKCE (pushed or not) with refresh tokens, explicit consent,
+        ///     no device flow, no end-session, no stored resource permission — the distribution-origin
+        ///     list is evaluated at request time — and never the first-party marker. A loopback
+        ///     redirect is stored without its port and makes the client native, so any port matches
+        ///     it; a <c>private_key_jwt</c> client is confidential with the fetched key set and no
+        ///     secret.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="createdUtc">When the row was first created, kept across updates.</param>
+        /// <returns>The descriptor, stamped with the document's fetch time.</returns>
+        public static OpenIddictApplicationDescriptor DocumentClient(ClientMetadataDocument document, DateTimeOffset createdUtc)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            return DocumentClient(document, createdUtc, document.FetchedAt);
+        }
+
+        /// <summary>
+        ///     A document client, as <see cref="DocumentClient(ClientMetadataDocument, DateTimeOffset)" />,
+        ///     stamped with a given fetch time rather than the document's own: the stamp a stored
+        ///     row already carries, when deciding whether a copy fetched earlier differs from it.
+        /// </summary>
+        /// <param name="document">The validated document.</param>
+        /// <param name="createdUtc">When the row was first created, kept across updates.</param>
+        /// <param name="fetchedUtc">The fetch time the descriptor is stamped with.</param>
+        /// <returns>The descriptor.</returns>
+        public static OpenIddictApplicationDescriptor DocumentClient(
+            ClientMetadataDocument document, DateTimeOffset createdUtc, DateTimeOffset fetchedUtc)
+        {
+            ArgumentNullException.ThrowIfNull(document);
+
+            bool privateKeyJwt = string.Equals(
+                document.TokenEndpointAuthMethod,
+                ClientMetadata.ClientMetadataDocumentParser.AuthMethodPrivateKeyJwt,
+                StringComparison.Ordinal);
+            if (privateKeyJwt && document.Keys is null)
+            {
+                throw new ArgumentException("A private_key_jwt document client needs its fetched key set.", nameof(document));
+            }
+
+            OpenIddictApplicationDescriptor descriptor = new()
+            {
+                ClientId = document.ClientId.OriginalString,
+                DisplayName = document.ClientName ?? ClientMetadata.ClientIdUrl.DisplayHost(document.ClientId),
+                ClientType = privateKeyJwt ? ClientTypes.Confidential : ClientTypes.Public,
+                ApplicationType = document.RedirectUris.Any(ClientMetadata.DocumentClientRedirects.IsLoopback)
+                    ? ApplicationTypes.Native
+                    : ApplicationTypes.Web,
+                ConsentType = ConsentTypes.Explicit,
+                JsonWebKeySet = privateKeyJwt ? document.Keys : null,
+                Permissions =
+                {
+                    Permissions.Endpoints.Authorization,
+                    Permissions.Endpoints.PushedAuthorization,
+                    Permissions.Endpoints.Token,
+                    Permissions.Endpoints.Revocation,
+                    Permissions.GrantTypes.AuthorizationCode,
+                    Permissions.GrantTypes.RefreshToken,
+                    Permissions.ResponseTypes.Code,
+                    Permissions.Scopes.Email,
+                    Permissions.Scopes.Profile,
+                    Permissions.Prefixes.Scope + TellmaIdentityConstants.ApiScope,
+                },
+                Requirements =
+                {
+                    Requirements.Features.ProofKeyForCodeExchange,
+                },
+            };
+
+            foreach (Uri redirectUri in document.RedirectUris)
+            {
+                descriptor.RedirectUris.Add(new Uri(ClientMetadata.DocumentClientRedirects.ToStored(redirectUri), UriKind.Absolute));
+            }
+
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.DocumentClient, "true");
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.CreatedUtc, createdUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FetchedUtc, fetchedUtc.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+
+            return descriptor;
+        }
+
         /// <summary>Builds the descriptor for one seeded platform client.</summary>
-        /// <param name="options">The engine options (issuer origin, mode).</param>
+        /// <param name="options">The engine options.</param>
         /// <param name="seed">The seed definition.</param>
         /// <returns>The descriptor.</returns>
         public static OpenIddictApplicationDescriptor SeededClient(
@@ -184,12 +267,13 @@ namespace Tellma.Identity.Services.Provisioning
             ArgumentNullException.ThrowIfNull(seed);
             ArgumentException.ThrowIfNullOrWhiteSpace(seed.ClientId);
 
-            string issuerOrigin = options.Issuer!.GetLeftPart(UriPartial.Authority);
             OpenIddictApplicationDescriptor descriptor = seed.Kind switch
             {
-                TellmaIdentitySeedClientKind.Cli => PublicNativeClient(seed, includeIdentityScope: true),
-                TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed, includeIdentityScope: false),
-                TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed, issuerOrigin),
+                TellmaIdentitySeedClientKind.Cli or TellmaIdentitySeedClientKind.Native => PublicNativeClient(seed),
+                TellmaIdentitySeedClientKind.ControlPlane => ControlPlane(seed),
+                TellmaIdentitySeedClientKind.Distribution => throw new ArgumentException(
+                    $"Seed client '{seed.ClientId}' is a Distribution entry, which registers two clients; build it with SeededDistribution.",
+                    nameof(seed)),
                 _ => throw new InvalidOperationException($"Unknown seed client kind for '{seed.ClientId}'."),
             };
 
@@ -198,24 +282,77 @@ namespace Tellma.Identity.Services.Provisioning
                 descriptor.Permissions.Add(Permissions.Prefixes.Resource + resource);
             }
 
-            if (seed.RequireConsent)
+            // A third-party client is never trusted the way the platform's own are: its consent is
+            // explicit whatever RequireConsent says, and it carries no first-party marker, so no
+            // first-party treatment reaches it. Startup validation accepts the flag on Native
+            // entries only; it is refused here on any other kind as well, so a descriptor can never
+            // be built from an entry that slipped past it.
+            if (seed.ThirdParty && seed.Kind != TellmaIdentitySeedClientKind.Native)
+            {
+                throw new ArgumentException(
+                    $"Seed client '{seed.ClientId}' sets ThirdParty, which only a Native entry accepts.", nameof(seed));
+            }
+
+            if (seed.RequireConsent || seed.ThirdParty)
             {
                 descriptor.ConsentType = ConsentTypes.Explicit;
             }
 
-            TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
+            if (!seed.ThirdParty)
+            {
+                TellmaClientProperties.Set(descriptor.Properties, TellmaClientProperties.FirstParty, "true");
+            }
 
             return descriptor;
+        }
+
+        /// <summary>
+        ///     The registration a <see cref="TellmaIdentitySeedClientKind.Distribution" /> seed entry
+        ///     converges on: onboarding's two clients for the entry's slug and origin, with the
+        ///     entry's secrets in place of generated ones and token exchange off. The back-channel
+        ///     logout endpoint defaults to the BFF's own under the origin.
+        /// </summary>
+        /// <param name="seed">A validated Distribution seed entry.</param>
+        /// <returns>The registration.</returns>
+        /// <exception cref="InvalidOperationException">The entry has no secret for one of its clients.</exception>
+        public static DistributionClientRegistration SeededDistribution(TellmaIdentitySeedClientOptions seed)
+        {
+            ArgumentNullException.ThrowIfNull(seed);
+            ArgumentException.ThrowIfNullOrWhiteSpace(seed.ClientId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(seed.Origin);
+            if (seed.Kind != TellmaIdentitySeedClientKind.Distribution)
+            {
+                throw new ArgumentException($"Seed client '{seed.ClientId}' is not a Distribution entry.", nameof(seed));
+            }
+
+            // The seeder never invents a secret: in Development a host without one in its
+            // configuration supplies a per-boot secret before the entry reaches the engine, and
+            // outside Development startup validation has already refused the entry.
+            if (string.IsNullOrWhiteSpace(seed.ClientSecret) || string.IsNullOrWhiteSpace(seed.ServiceClientSecret))
+            {
+                throw new InvalidOperationException(
+                    $"Seeded distribution '{seed.ClientId}' requires both ClientSecret and ServiceClientSecret: its "
+                        + "clients are confidential, and the seeder never generates a secret.");
+            }
+
+            Uri origin = new(seed.Origin, UriKind.Absolute);
+            Uri backchannelLogoutUri = string.IsNullOrWhiteSpace(seed.BackchannelLogoutUri)
+                ? new Uri(origin.GetLeftPart(UriPartial.Authority) + TellmaIdentitySeedClientOptions.DefaultBackchannelLogoutPath)
+                : new Uri(seed.BackchannelLogoutUri, UriKind.Absolute);
+
+            return new DistributionClientRegistration(
+                seed.ClientId, origin, backchannelLogoutUri, seed.ClientSecret, seed.ServiceClientSecret, allowTokenExchange: false);
         }
 
         /// <summary>
         ///     A public native client (CLI / native app): Authorization Code + PKCE via the system
         ///     browser and the Device Authorization Grant. The native application type relaxes
         ///     loopback redirect matching, so a portless <c>http://127.0.0.1/...</c> registration
-        ///     accepts any ephemeral port at runtime.
+        ///     accepts any ephemeral port at runtime. It is never permitted the management scope:
+        ///     the management API is a machine-to-machine surface that refuses a person's token, so
+        ///     an interactive client asking for it is refused at the authorization request.
         /// </summary>
-        private static OpenIddictApplicationDescriptor PublicNativeClient(
-            TellmaIdentitySeedClientOptions seed, bool includeIdentityScope)
+        private static OpenIddictApplicationDescriptor PublicNativeClient(TellmaIdentitySeedClientOptions seed)
         {
             OpenIddictApplicationDescriptor descriptor = new()
             {
@@ -245,11 +382,6 @@ namespace Tellma.Identity.Services.Provisioning
                 },
             };
 
-            if (includeIdentityScope)
-            {
-                descriptor.Permissions.Add(Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope);
-            }
-
             foreach (string redirectUri in seed.RedirectUris)
             {
                 descriptor.RedirectUris.Add(new Uri(redirectUri, UriKind.Absolute));
@@ -261,9 +393,14 @@ namespace Tellma.Identity.Services.Provisioning
             return descriptor;
         }
 
-        /// <summary>The control plane: a confidential client-credentials caller.</summary>
+        /// <summary>
+        ///     The control plane: a confidential client-credentials caller. It stores no
+        ///     distribution grant: its resource permissions are the two platform audiences of the
+        ///     identity server's own APIs, and a distribution's origin is checked against the
+        ///     distribution-origin list when a request names it.
+        /// </summary>
         private static OpenIddictApplicationDescriptor ControlPlane(
-            TellmaIdentitySeedClientOptions seed, string issuerOrigin)
+            TellmaIdentitySeedClientOptions seed)
         {
             return string.IsNullOrWhiteSpace(seed.ClientSecret)
                 ? throw new InvalidOperationException(
@@ -283,7 +420,7 @@ namespace Tellma.Identity.Services.Provisioning
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.ControlPlaneScope,
                     Permissions.Prefixes.Scope + TellmaIdentityConstants.IdentityScope,
                     Permissions.Prefixes.Resource + TellmaIdentityConstants.ControlPlaneAudience,
-                    Permissions.Prefixes.Resource + issuerOrigin,
+                    Permissions.Prefixes.Resource + TellmaIdentityConstants.IdentityAudience,
                 },
                 };
         }

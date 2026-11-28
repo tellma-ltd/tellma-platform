@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Not an xunit project, and deliberately NOT in Tellma.slnx: a library holding one violation
+         of each platform analyzer rule, whose build must fail with all six errors. CI builds it on
+         Linux and Windows to prove the analyzers load in a project that reaches the contract only
+         transitively, through the runtime's project reference. -->
+    <TellmaTestAsset>true</TellmaTestAsset>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+  </ItemGroup>
+
+</Project>

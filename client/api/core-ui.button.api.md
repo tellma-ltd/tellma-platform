@@ -9,10 +9,14 @@ import * as _angular_core from '@angular/core';
 // @public
 export class TmButton {
     constructor();
+    readonly disabledReason: _angular_core.InputSignal<string | null | undefined>;
+    protected readonly isPending: _angular_core.Signal<boolean>;
     readonly pending: _angular_core.InputSignalWithTransform<boolean, unknown>;
-    readonly size: _angular_core.InputSignal<TmControlSize>;
+    protected readonly reason: _angular_core.Signal<string | null>;
+    protected readonly resolvedSize: _angular_core.Signal<TmControlSize>;
+    readonly size: _angular_core.InputSignal<TmControlSize | undefined>;
     readonly variant: _angular_core.InputSignal<TmButtonVariant>;
-    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmButton, "button[tmButton]", never, { "variant": { "alias": "variant"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
+    static ɵdir: _angular_core.ɵɵDirectiveDeclaration<TmButton, "button[tmButton], a[tmButton]", never, { "variant": { "alias": "variant"; "required": false; "isSignal": true; }; "size": { "alias": "size"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "disabledReason": { "alias": "disabledReason"; "required": false; "isSignal": true; }; }, {}, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmButton, never>;
 }
 
@@ -20,6 +24,6 @@ export class TmButton {
 export type TmButtonSize = TmControlSize;
 
 // @public
-export type TmButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type TmButtonVariant = 'danger' | 'ghost' | 'primary' | 'secondary';
 
 ```

@@ -159,6 +159,14 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>Whether this scope is usable. A default-constructed scope is not.</summary>
         internal bool IsActive => Sink is not null;
 
+        /// <summary>The scope of one item of a list this scope reports on.</summary>
+        /// <param name="index">The item's position.</param>
+        /// <returns>The scope, recording into the same sink.</returns>
+        internal DiagnosticScope Item(int index)
+        {
+            return new DiagnosticScope(Sink, Location.Item(index));
+        }
+
         /// <summary>Reports a diagnostic that needs no arguments.</summary>
         /// <param name="code">The stable diagnostic code.</param>
         /// <param name="span">The offending range.</param>

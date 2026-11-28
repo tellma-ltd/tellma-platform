@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Server-only text: what the server renders and the browser application never shows. -->
+  <!-- The email notification channel: the subject and bodies around a notification's text -->
+  <data name="Email_Notification_Subject" xml:space="preserve">
+    <value>{tenantName}: {text}</value>
+  </data>
+  <data name="Email_Notification_Text" xml:space="preserve">
+    <value>{text}
+
+Open: {link}
+
+You receive this email because email is on for this kind of notification in {tenantName}. You can turn it off in your notification settings.</value>
+  </data>
+  <data name="Email_Notification_Html" xml:space="preserve">
+    <value>&lt;div dir="ltr"&gt;&lt;p&gt;{text}&lt;/p&gt;&lt;p&gt;&lt;a href="{link}"&gt;Open in {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;You receive this email because email is on for this kind of notification in {tenantName}. You can turn it off in your notification settings.&lt;/p&gt;&lt;/div&gt;</value>
+  </data>
+  <!-- The welcome email: the subject and bodies a user receives when an invite adds them to the tenant -->
+  <data name="Email_UserAdded_Subject" xml:space="preserve">
+    <value>You have been added to {tenantName}</value>
+  </data>
+  <data name="Email_UserAdded_Text" xml:space="preserve">
+    <value>{actorName} added you to {tenantName}.
+
+{status, select, Invited {A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.
+
+} Reinvited {A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.
+
+} other {}}Open {tenantName}: {link}
+
+Keep this email: its link takes you back to {tenantName} whenever you need it.</value>
+  </data>
+  <data name="Email_UserAdded_Html" xml:space="preserve">
+    <value>&lt;div dir="ltr"&gt;&lt;p&gt;{actorName} added you to {tenantName}.&lt;/p&gt;{status, select, Invited {&lt;p&gt;A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.&lt;/p&gt;} Reinvited {&lt;p&gt;A separate email from the sign-in service carries a link that sets up how you sign in. Use that link before the one below.&lt;/p&gt;} other {}}&lt;p&gt;&lt;a href="{link}"&gt;Open {tenantName}&lt;/a&gt;&lt;/p&gt;&lt;p style="color:#6b7280;font-size:12px"&gt;Keep this email: its link takes you back to {tenantName} whenever you need it.&lt;/p&gt;&lt;/div&gt;</value>
+  </data>
+  <!-- The test notification: the message a user sends themselves from their notification settings -->
+  <data name="Email_TestNotification_Subject" xml:space="preserve">
+    <value>Test message from {tenantName}</value>
+  </data>
+  <data name="Email_TestNotification_Text" xml:space="preserve">
+    <value>This is a test message from {tenantName}, sent on {sentAt, date, long} at {sentAt, time, short}.
+
+Email notifications reach you at this address. You choose which notifications you receive by email in your notification settings.</value>
+  </data>
+</root>

@@ -15,27 +15,33 @@
  *   dev bundle's latency widens the grid's async post-click focus/render
  *   race, so a synthetic key press occasionally lands before focus settles
  *   and is dropped — a broad, flaky red across the keyboard/clipboard
- *   specs. The optimized build closes that window.
+ *   specs. The optimized build closes that window. A bundle that is newer
+ *   than every source file is reused rather than rebuilt (scripts/prod-build.mjs).
+ * - `--prod --no-build`: serves the bundle already in dist/ as it is, and
+ *   fails at once when there is none. The CI-mode e2e web server runs this:
+ *   scripts/e2e.mjs has built the bundle before Playwright starts the server,
+ *   so the server's startup timeout times the server alone and never a build.
  *
- * Usage: node scripts/serve.mjs [project] [--port <n>] [--prod]
+ * Usage: node scripts/serve.mjs [project] [--port <n>] [--prod [--no-build]]
  */
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { readdirSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getPort } from './ports.mjs';
+import { ensureProdBuild, prodBuildDir } from './prod-build.mjs';
 
 const clientDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const require = createRequire(import.meta.url);
-const ng = require.resolve('@angular/cli/bin/ng.js', { paths: [clientDir] });
 
+// --- Arguments ---
 const args = process.argv.slice(2);
 const portFlag = args.indexOf('--port');
 const prod = args.includes('--prod');
+const noBuild = args.includes('--no-build');
 // Positionals exclude flags AND flag values ('--port 4300' must not make
 // '4300' the project).
 const positionals = args.filter(
@@ -47,19 +53,16 @@ const port =
     ? Number(args[portFlag + 1])
     : await getPort(`CLIENT_${project.toUpperCase().replaceAll('-', '_')}`);
 
-/**
- * Everything the production build reads: the app compiles from SOURCE (the
- * workspace tsconfig maps every `@tellma/*` specifier at projects/), so dist/
- * is output, never input. Deletions count too — a folder's own mtime moves
- * when an entry disappears, hence directories are walked, not just files.
- */
-const BUILD_INPUTS = ['projects', 'angular.json', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json'];
-
-/** Folders inside the source tree that are build OUTPUT, not build input. */
-const NON_SOURCE_DIRS = new Set(['node_modules', 'dist', '.angular']);
-
+// --- Mode dispatch ---
+if (noBuild && !prod) {
+  console.error('[serve] --no-build applies to --prod only: the dev server always compiles');
+  process.exit(1);
+}
 if (!prod) {
   console.log(`[serve] ${project} on http://localhost:${port}/`);
+  const ng = createRequire(import.meta.url).resolve('@angular/cli/bin/ng.js', {
+    paths: [clientDir],
+  });
   const child = spawn(process.execPath, [ng, 'serve', project, '--port', String(port)], {
     cwd: clientDir,
     stdio: 'inherit',
@@ -69,69 +72,33 @@ if (!prod) {
   serveProd();
 }
 
-/** The newest mtime at or under a path (0 when it does not exist). */
-function newestMtime(path) {
-  const info = statSync(path, { throwIfNoEntry: false });
-  if (info === undefined) {
-    return 0;
-  }
-  if (!info.isDirectory()) {
-    return info.mtimeMs;
-  }
-  let newest = info.mtimeMs;
-  for (const entry of readdirSync(path, { withFileTypes: true })) {
-    if (entry.isDirectory() && NON_SOURCE_DIRS.has(entry.name)) {
-      continue;
-    }
-    newest = Math.max(newest, newestMtime(join(path, entry.name)));
-  }
-  return newest;
-}
-
 /**
- * Whether an already-built bundle still matches the sources. CI runs
- * `build:showcase` and only then the e2e suite, so rebuilding here would
- * repeat a multi-minute build for bytes that already exist. Errs toward
- * rebuilding: a stale reuse would test the wrong code, a needless rebuild
- * only costs time.
+ * Serves the production bundle as static files on the loopback interface,
+ * building it first unless `--no-build` was passed.
  */
-function isBuildFresh(indexHtml) {
-  const built = statSync(indexHtml, { throwIfNoEntry: false });
-  return (
-    built !== undefined &&
-    BUILD_INPUTS.every((input) => newestMtime(join(clientDir, input)) < built.mtimeMs)
-  );
-}
-
-/** Runs a build step in the client workspace, exiting on its failure. */
-function runStep(argv) {
-  const step = spawnSync(process.execPath, argv, { cwd: clientDir, stdio: 'inherit' });
-  if (step.status !== 0) {
-    process.exit(step.status ?? 1);
-  }
-}
-
 function serveProd() {
   // The application builder emits the browser bundle under dist/<project>/browser.
-  const root = join(clientDir, 'dist', project, 'browser');
+  const root = prodBuildDir(project);
   const rootPrefix = root + sep;
   const indexHtml = join(root, 'index.html');
 
-  if (isBuildFresh(indexHtml)) {
-    console.log(`[serve] reusing the existing ${project} build (newer than every source file)`);
+  // --- The bundle: built (or reused) here, or required to exist ---
+  if (noBuild) {
+    if (!existsSync(indexHtml)) {
+      console.error(
+        `[serve] no production build of ${project} in ${root}; build it first, or drop --no-build to let this script build it`,
+      );
+      process.exit(1);
+    }
+    console.log(`[serve] serving the existing ${project} build as it is (--no-build)`);
   } else {
-    console.log(`[serve] building ${project} (production)…`);
-    runStep([ng, 'build', project]);
+    const status = ensureProdBuild(project, { logPrefix: '[serve]' });
+    if (status !== 0) {
+      process.exit(status);
+    }
   }
-  // The page that SHIPS is the build plus its font preloads (`build:showcase`
-  // runs both), so e2e must serve that page and not a bare `ng build` output.
-  // The step is idempotent, hence unconditional: it also covers a reused
-  // bundle that was produced without it.
-  runStep([
-    join(clientDir, 'scripts', 'inject-font-preloads.mjs'),
-    join('dist', project, 'browser'),
-  ]);
 
+  // --- The static server ---
   const server = createServer((req, res) => {
     void respond(req.url ?? '/', res);
   });
@@ -141,6 +108,7 @@ function serveProd() {
     console.log(`[serve] ${project} (prod) on http://localhost:${port}/`),
   );
 
+  /** Answers one request with a file of the bundle, or the app shell for a client route. */
   async function respond(rawUrl, res) {
     try {
       const pathname = decodeURIComponent(rawUrl.split('?')[0].split('#')[0]);

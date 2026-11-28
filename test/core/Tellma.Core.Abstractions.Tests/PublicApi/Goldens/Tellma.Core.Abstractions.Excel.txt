@@ -1,0 +1,439 @@
+public static class ExcelErrorCodes
+    public const string ExportCellTooLong = "Excel.Export.CellTooLong"
+    public const string ExportRowLimitExceeded = "Excel.Export.RowLimitExceeded"
+    public const string ImportConcurrencyConflict = "Excel.Import.ConcurrencyConflict"
+    public const string ImportDuplicateColumn = "Excel.Import.DuplicateColumn"
+    public const string ImportDuplicateRowKey = "Excel.Import.DuplicateRowKey"
+    public const string ImportDuplicateSheet = "Excel.Import.DuplicateSheet"
+    public const string ImportFailed = "Excel.Import.Failed"
+    public const string ImportIdKeyRequiresSameTenant = "Excel.Import.IdKeyRequiresSameTenant"
+    public const string ImportIdentityColumnIgnored = "Excel.Import.IdentityColumnIgnored"
+    public const string ImportIncompleteChildSheet = "Excel.Import.IncompleteChildSheet"
+    public const string ImportInvalidCell = "Excel.Import.InvalidCell"
+    public const string ImportKeyTooLong = "Excel.Import.KeyTooLong"
+    public const string ImportMalformedWorkbook = "Excel.Import.MalformedWorkbook"
+    public const string ImportOrphanChildRow = "Excel.Import.OrphanChildRow"
+    public const string ImportOwnerSheetAbsent = "Excel.Import.OwnerSheetAbsent"
+    public const string ImportPackageTooLarge = "Excel.Import.PackageTooLarge"
+    public const string ImportParentCycle = "Excel.Import.ParentCycle"
+    public const string ImportReferenceAmbiguous = "Excel.Import.ReferenceAmbiguous"
+    public const string ImportReferenceNotFound = "Excel.Import.ReferenceNotFound"
+    public const string ImportResumeMismatch = "Excel.Import.ResumeMismatch"
+    public const string ImportRowNotFound = "Excel.Import.RowNotFound"
+    public const string ImportServerOwnedColumn = "Excel.Import.ServerOwnedColumn"
+    public const string ImportSurrogateReferenceFromOtherTenant = "Excel.Import.SurrogateReferenceFromOtherTenant"
+    public const string ImportTooLargeForAtomic = "Excel.Import.TooLargeForAtomic"
+    public const string ImportTooLargeForSynchronous = "Excel.Import.TooLargeForSynchronous"
+    public const string ImportTooManyChildren = "Excel.Import.TooManyChildren"
+    public const string ImportTooManyDescendants = "Excel.Import.TooManyDescendants"
+    public const string ImportTooManySharedStrings = "Excel.Import.TooManySharedStrings"
+    public const string ImportUnconfiguredLanguageColumn = "Excel.Import.UnconfiguredLanguageColumn"
+    public const string ImportUnknownColumn = "Excel.Import.UnknownColumn"
+    public const string ImportUnknownPath = "Excel.Import.UnknownPath"
+    public const string ImportUnknownSheet = "Excel.Import.UnknownSheet"
+    public const string ImportUnmappedColumn = "Excel.Import.UnmappedColumn"
+    public const string ImportWriteOnceChanged = "Excel.Import.WriteOnceChanged"
+    public const string ImportsJobActive = "Imports.JobActive"
+
+public sealed class ExcelOptions : IValidatableObject
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    public const int MaxWorksheetDataRows = 1048575
+    public const string SectionPath = "Tellma:Excel"
+    public ctor()
+    public int ExportFileRetentionDays { get; set; }
+    public int ImportChunkRows { get; set; }
+    public int ImportConcurrencyRetries { get; set; }
+    public int ImportFileRetentionDays { get; set; }
+    public int MaxAtomicImportRows { get; set; }
+    public int MaxExportRows { get; set; }
+    public int MaxReportedErrors { get; set; }
+    public int MaxSharedStringEntries { get; set; }
+    public int MaxSynchronousExportRows { get; set; }
+    public int MaxSynchronousImportRows { get; set; }
+    public long MaxImportFileBytes { get; set; }
+    public long MaxImportUncompressedBytes { get; set; }
+    public long MaxInMemorySharedStringBytes { get; set; }
+    public long MaxSynchronousImportFileBytes { get; set; }
+    public long MaxSynchronousImportUncompressedBytes { get; set; }
+
+public sealed record ExcelPage : IEquatable<ExcelPage>
+    public IReadOnlyList<ExcelPage> Dependents { get; init; }
+    public IReadOnlyList<IReadOnlyList<object?>> Rows { get; init; }
+    public bool Equals(ExcelPage? other)
+    public ctor(IReadOnlyList<IReadOnlyList<object?>> Rows, IReadOnlyList<ExcelPage> Dependents, int? Count)
+    public int? Count { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExcelPage? left, ExcelPage? right)
+    public static bool op_Inequality(ExcelPage? left, ExcelPage? right)
+    public void Deconstruct(out IReadOnlyList<IReadOnlyList<object?>> Rows, out IReadOnlyList<ExcelPage> Dependents, out int? Count)
+
+public sealed record ExcelQuery : IEquatable<ExcelQuery>
+    public IReadOnlyList<ExcelQuery>? Dependents { get; init; }
+    public IReadOnlyList<object>? RestrictionValues { get; init; }
+    public IReadOnlyList<string> SelectPaths { get; init; }
+    public KeySetRestriction? Restriction { get; init; }
+    public bool Equals(ExcelQuery? other)
+    public ctor(string RootEntity, IReadOnlyList<string> SelectPaths, string? OrderBy, KeySetRestriction? Restriction, IReadOnlyList<object>? RestrictionValues, int? Take, int? CountCap, IReadOnlyList<ExcelQuery>? Dependents)
+    public int? CountCap { get; init; }
+    public int? Take { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExcelQuery? left, ExcelQuery? right)
+    public static bool op_Inequality(ExcelQuery? left, ExcelQuery? right)
+    public string RootEntity { get; init; }
+    public string? OrderBy { get; init; }
+    public void Deconstruct(out string RootEntity, out IReadOnlyList<string> SelectPaths, out string? OrderBy, out KeySetRestriction? Restriction, out IReadOnlyList<object>? RestrictionValues, out int? Take, out int? CountCap, out IReadOnlyList<ExcelQuery>? Dependents)
+
+public static class ExcelTelemetryNames
+    public const string BackgroundTag = "background"
+    public const string CodeTag = "code"
+    public const string DisplayShape = "display"
+    public const string EntityTag = "entity"
+    public const string ExportDuration = "tellma.excel.export.duration"
+    public const string ExportRejected = "tellma.excel.export.rejected"
+    public const string ExportRows = "tellma.excel.export.rows"
+    public const string ForImportShape = "for-import"
+    public const string ImportChunks = "tellma.excel.import.chunks"
+    public const string ImportDuration = "tellma.excel.import.duration"
+    public const string ImportErrors = "tellma.excel.import.errors"
+    public const string ImportLookups = "tellma.excel.import.lookups"
+    public const string ImportResumed = "tellma.excel.import.resumed"
+    public const string ImportRetries = "tellma.excel.import.retries"
+    public const string ImportRows = "tellma.excel.import.rows"
+    public const string MeterName = "Tellma.Core"
+    public const string ModeTag = "mode"
+    public const string ReportShape = "report"
+    public const string ShapeTag = "shape"
+    public const string SharedStringsSpilled = "tellma.excel.sst.spilled"
+
+public sealed class Export : TopLevelEntity, IJobEntity
+    public DateTimeOffset ExpiresAt { get; set; }
+    public ExportKind Kind { get; set; }
+    public const int FileNameLength = 255
+    public const int ResourceLength = 128
+    public const string FileKind = "export-file"
+    public ctor()
+    public int? FileId { get; set; }
+    public int? JobId { get; set; }
+    public int? RowCount { get; set; }
+    public string Resource { get; set; }
+    public string? FileName { get; set; }
+    public string? RequestJson { get; set; }
+
+public sealed record ExportCollection : IEquatable<ExportCollection>
+    public IReadOnlyDictionary<string, string>? ReferenceKeys { get; init; }
+    public IReadOnlyList<ExportCollection>? Children { get; init; }
+    public IReadOnlyList<string>? Columns { get; init; }
+    public bool Equals(ExportCollection? other)
+    public ctor(string Collection, IReadOnlyList<string>? Columns, IReadOnlyDictionary<string, string>? ReferenceKeys, IReadOnlyList<ExportCollection>? Children)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExportCollection? left, ExportCollection? right)
+    public static bool op_Inequality(ExportCollection? left, ExportCollection? right)
+    public string Collection { get; init; }
+    public void Deconstruct(out string Collection, out IReadOnlyList<string>? Columns, out IReadOnlyDictionary<string, string>? ReferenceKeys, out IReadOnlyList<ExportCollection>? Children)
+
+public sealed record ExportColumn : IEquatable<ExportColumn>
+    public bool Equals(ExportColumn? other)
+    public const int MaxHeaderLength = 255
+    public ctor(string Expression, string? Header)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExportColumn? left, ExportColumn? right)
+    public static bool op_Inequality(ExportColumn? left, ExportColumn? right)
+    public string Expression { get; init; }
+    public string? Header { get; init; }
+    public void Deconstruct(out string Expression, out string? Header)
+
+public sealed class ExportForImportRequest : ExportSourceRequest
+    public IReadOnlyDictionary<string, string> ReferenceKeys { get; set; }
+    public IReadOnlyList<ExportCollection>? Children { get; set; }
+    public IReadOnlyList<string>? Columns { get; set; }
+    public ctor()
+
+public enum ExportKind : int
+    Display = 0
+    ForImport = 1
+    Report = 2
+
+public sealed record ExportOutcome : IAsyncDisposable, IDisposable, IEquatable<ExportOutcome>
+    public Stream Workbook { get; init; }
+    public ValueTask DisposeAsync()
+    public bool Equals(ExportOutcome? other)
+    public ctor(Stream Workbook, string FileName, int Rows)
+    public int Rows { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExportOutcome? left, ExportOutcome? right)
+    public static bool op_Inequality(ExportOutcome? left, ExportOutcome? right)
+    public string FileName { get; init; }
+    public void Deconstruct(out Stream Workbook, out string FileName, out int Rows)
+    public void Dispose()
+
+public sealed class ExportRequest : ExportSourceRequest
+    public IReadOnlyList<ExportColumn> Columns { get; set; }
+    public const int MaxColumns = 100
+    public ctor()
+
+public abstract record ExportSource : IEquatable<ExportSource>
+    protected ctor(ExportSource original)
+    protected virtual Type EqualityContract { get; }
+    protected virtual bool PrintMembers(StringBuilder builder)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ExportSource? left, ExportSource? right)
+    public static bool op_Inequality(ExportSource? left, ExportSource? right)
+    public virtual bool Equals(ExportSource? other)
+
+public sealed record ExportSource.All : ExportSource, IEquatable<ExportSource.All>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(ExportSource.All? other)
+    public ctor()
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.All? left, ExportSource.All? right)
+    public static bool op_Inequality(ExportSource.All? left, ExportSource.All? right)
+
+public sealed record ExportSource.ByIds : ExportSource, IEquatable<ExportSource.ByIds>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public IReadOnlyList<long> Ids { get; init; }
+    public bool Equals(ExportSource.ByIds? other)
+    public ctor(IReadOnlyList<long> Ids, string? OrderBy)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.ByIds? left, ExportSource.ByIds? right)
+    public static bool op_Inequality(ExportSource.ByIds? left, ExportSource.ByIds? right)
+    public string? OrderBy { get; init; }
+    public void Deconstruct(out IReadOnlyList<long> Ids, out string? OrderBy)
+
+public sealed record ExportSource.ByQuery : ExportSource, IEquatable<ExportSource.ByQuery>, IEquatable<ExportSource>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
+    public IReadOnlyList<string>? Filters { get; init; }
+    public IReadOnlyList<string>? NamedFilters { get; init; }
+    public bool Equals(ExportSource.ByQuery? other)
+    public bool IncludeInactive { get; init; }
+    public ctor(IReadOnlyList<string>? Filters, IReadOnlyList<string>? NamedFilters, string? Search, string? OrderBy, IReadOnlyDictionary<string, JsonElement>? Arguments, bool IncludeInactive)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(ExportSource? other)
+    public static bool op_Equality(ExportSource.ByQuery? left, ExportSource.ByQuery? right)
+    public static bool op_Inequality(ExportSource.ByQuery? left, ExportSource.ByQuery? right)
+    public string? OrderBy { get; init; }
+    public string? Search { get; init; }
+    public void Deconstruct(out IReadOnlyList<string>? Filters, out IReadOnlyList<string>? NamedFilters, out string? Search, out string? OrderBy, out IReadOnlyDictionary<string, JsonElement>? Arguments, out bool IncludeInactive)
+
+public class ExportSourceRequest
+    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; set; }
+    public IReadOnlyList<long>? Ids { get; set; }
+    public IReadOnlyList<string>? Filters { get; set; }
+    public IReadOnlyList<string>? NamedFilters { get; set; }
+    public bool IncludeInactive { get; set; }
+    public ctor()
+    public string? OrderBy { get; set; }
+    public string? Search { get; set; }
+
+public interface IExcelRowSource
+    public IAsyncEnumerable<ExcelPage> Pages(ExcelQuery query, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<IReadOnlyList<IReadOnlyList<object?>>>> ReadAsync(IReadOnlyList<ExcelQuery> queries, CancellationToken cancellationToken = default)
+
+public sealed class Import : TopLevelEntity, IJobEntity
+    public DateTimeOffset ExpiresAt { get; set; }
+    public ImportMode Mode { get; set; }
+    public const int ResourceLength = 128
+    public const string FileKind = "import-file"
+    public ctor()
+    public int? ErrorCount { get; set; }
+    public int? FileId { get; set; }
+    public int? JobId { get; set; }
+    public int? RowCount { get; set; }
+    public string Resource { get; set; }
+    public string? RequestJson { get; set; }
+    public string? ResultJson { get; set; }
+
+public sealed record ImportColumnMapping : IEquatable<ImportColumnMapping>
+    public bool Equals(ImportColumnMapping? other)
+    public ctor(string Sheet, string Column, string? Path)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportColumnMapping? left, ImportColumnMapping? right)
+    public static bool op_Inequality(ImportColumnMapping? left, ImportColumnMapping? right)
+    public string Column { get; init; }
+    public string Sheet { get; init; }
+    public string? Path { get; init; }
+    public void Deconstruct(out string Sheet, out string Column, out string? Path)
+
+public enum ImportColumnStatus : int
+    Duplicate = 3
+    Ignored = 2
+    Mapped = 0
+    ServerOwned = 4
+    Unmapped = 1
+
+public sealed record ImportError : CodedError, IEquatable<CodedError>, IEquatable<ImportError>
+    protected override Type EqualityContract { get; }
+    protected override bool PrintMembers(StringBuilder builder)
+    public bool Equals(ImportError? other)
+    public ctor(string? Sheet, int? Row, string? Column, string? Header, string? Property, string Code, IReadOnlyDictionary<string, object?> Arguments)
+    public int? Row { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public sealed override bool Equals(CodedError? other)
+    public static bool op_Equality(ImportError? left, ImportError? right)
+    public static bool op_Inequality(ImportError? left, ImportError? right)
+    public string? Column { get; init; }
+    public string? Header { get; init; }
+    public string? Property { get; init; }
+    public string? Sheet { get; init; }
+    public void Deconstruct(out string? Sheet, out int? Row, out string? Column, out string? Header, out string? Property, out string Code, out IReadOnlyDictionary<string, object?> Arguments)
+
+public sealed class ImportException : TellmaException, ISerializable
+    public IReadOnlyList<ImportError> Errors { get; }
+    public IReadOnlyList<RowRange> CommittedRowRanges { get; }
+    public ctor(IReadOnlyList<ImportError> errors, int totalErrors, IReadOnlyList<RowRange> committedRowRanges)
+    public int TotalErrors { get; }
+
+public enum ImportMode : int
+    Insert = 0
+    Update = 1
+    Upsert = 2
+
+public sealed record ImportOutcome : IEquatable<ImportOutcome>
+    public IReadOnlyList<ImportError> Warnings { get; init; }
+    public IReadOnlyList<RowRange> CommittedRowRanges { get; init; }
+    public bool Equals(ImportOutcome? other)
+    public bool Stopped { get; init; }
+    public ctor(int Inserted, int Updated, int ChildrenInserted, int ChildrenUpdated, int ChildrenDeleted, IReadOnlyList<RowRange> CommittedRowRanges, IReadOnlyList<ImportError> Warnings, bool Stopped = false)
+    public int ChildrenDeleted { get; init; }
+    public int ChildrenInserted { get; init; }
+    public int ChildrenUpdated { get; init; }
+    public int Inserted { get; init; }
+    public int Updated { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportOutcome? left, ImportOutcome? right)
+    public static bool op_Inequality(ImportOutcome? left, ImportOutcome? right)
+    public void Deconstruct(out int Inserted, out int Updated, out int ChildrenInserted, out int ChildrenUpdated, out int ChildrenDeleted, out IReadOnlyList<RowRange> CommittedRowRanges, out IReadOnlyList<ImportError> Warnings, out bool Stopped)
+
+public sealed record ImportPlan : IEquatable<ImportPlan>
+    public IReadOnlyList<ImportError> Warnings { get; init; }
+    public IReadOnlyList<ImportPlanSheet> Sheets { get; init; }
+    public IReadOnlyList<string> RowKeyCandidates { get; init; }
+    public bool AtomicAllowed { get; init; }
+    public bool Equals(ImportPlan? other)
+    public bool ManifestPresent { get; init; }
+    public bool RequiresBackground { get; init; }
+    public bool SameSource { get; init; }
+    public bool SchemaFingerprintMatches { get; init; }
+    public ctor(string? Entity, int ManifestVersion, bool ManifestPresent, bool SameSource, bool SchemaFingerprintMatches, IReadOnlyList<ImportPlanSheet> Sheets, IReadOnlyList<string> RowKeyCandidates, string? DefaultRowKey, long TotalRows, bool RequiresBackground, bool AtomicAllowed, IReadOnlyList<ImportError> Warnings)
+    public int ManifestVersion { get; init; }
+    public long TotalRows { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportPlan? left, ImportPlan? right)
+    public static bool op_Inequality(ImportPlan? left, ImportPlan? right)
+    public string? DefaultRowKey { get; init; }
+    public string? Entity { get; init; }
+    public void Deconstruct(out string? Entity, out int ManifestVersion, out bool ManifestPresent, out bool SameSource, out bool SchemaFingerprintMatches, out IReadOnlyList<ImportPlanSheet> Sheets, out IReadOnlyList<string> RowKeyCandidates, out string? DefaultRowKey, out long TotalRows, out bool RequiresBackground, out bool AtomicAllowed, out IReadOnlyList<ImportError> Warnings)
+
+public sealed record ImportPlanColumn : IEquatable<ImportPlanColumn>
+    public IReadOnlyList<string> Suggestions { get; init; }
+    public ImportColumnStatus Status { get; init; }
+    public bool Equals(ImportPlanColumn? other)
+    public ctor(string Column, string Header, string? Path, ImportColumnStatus Status, string? Language, IReadOnlyList<string> Suggestions)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportPlanColumn? left, ImportPlanColumn? right)
+    public static bool op_Inequality(ImportPlanColumn? left, ImportPlanColumn? right)
+    public string Column { get; init; }
+    public string Header { get; init; }
+    public string? Language { get; init; }
+    public string? Path { get; init; }
+    public void Deconstruct(out string Column, out string Header, out string? Path, out ImportColumnStatus Status, out string? Language, out IReadOnlyList<string> Suggestions)
+
+public sealed record ImportPlanSheet : IEquatable<ImportPlanSheet>
+    public IReadOnlyList<ImportPlanColumn> Columns { get; init; }
+    public ImportSheetStatus Status { get; init; }
+    public bool Equals(ImportPlanSheet? other)
+    public ctor(string Sheet, string? Collection, ImportSheetStatus Status, long Rows, IReadOnlyList<ImportPlanColumn> Columns)
+    public long Rows { get; init; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportPlanSheet? left, ImportPlanSheet? right)
+    public static bool op_Inequality(ImportPlanSheet? left, ImportPlanSheet? right)
+    public string Sheet { get; init; }
+    public string? Collection { get; init; }
+    public void Deconstruct(out string Sheet, out string? Collection, out ImportSheetStatus Status, out long Rows, out IReadOnlyList<ImportPlanColumn> Columns)
+
+public class ImportRequest
+    public IReadOnlyList<ImportColumnMapping> ColumnMappings { get; set; }
+    public IReadOnlyList<ImportSheetMapping> SheetMappings { get; set; }
+    public ImportMode Mode { get; set; }
+    public bool IgnoreSheetStamps { get; set; }
+    public bool IgnoreUnmappedColumns { get; set; }
+    public ctor()
+    public int FileId { get; set; }
+    public string? RowKey { get; set; }
+
+public sealed record ImportSheetMapping : IEquatable<ImportSheetMapping>
+    public bool Equals(ImportSheetMapping? other)
+    public ctor(string Sheet, string? Collection)
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(ImportSheetMapping? left, ImportSheetMapping? right)
+    public static bool op_Inequality(ImportSheetMapping? left, ImportSheetMapping? right)
+    public string Sheet { get; init; }
+    public string? Collection { get; init; }
+    public void Deconstruct(out string Sheet, out string? Collection)
+
+public enum ImportSheetStatus : int
+    Child = 1
+    Duplicate = 4
+    Ignored = 3
+    Manifest = 2
+    Parent = 0
+
+public sealed class InspectImportRequest
+    public IReadOnlyList<ImportColumnMapping> ColumnMappings { get; set; }
+    public IReadOnlyList<ImportSheetMapping> SheetMappings { get; set; }
+    public ctor()
+    public int FileId { get; set; }
+
+public sealed record RowRange : IEquatable<RowRange>
+    public bool Equals(RowRange? other)
+    public ctor(int From, int To)
+    public int From { get; }
+    public int To { get; }
+    public override bool Equals(object? obj)
+    public override int GetHashCode()
+    public override string ToString()
+    public static bool op_Equality(RowRange? left, RowRange? right)
+    public static bool op_Inequality(RowRange? left, RowRange? right)
+    public void Deconstruct(out int From, out int To)
+
+public sealed class StartImportRequest : ImportRequest
+    public bool Atomic { get; set; }
+    public ctor()
+

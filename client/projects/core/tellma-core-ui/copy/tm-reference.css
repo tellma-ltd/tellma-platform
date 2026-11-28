@@ -1,0 +1,43 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-reference — label, mono chip, copy button on one line. It sits in a
+   sentence or a detail line, so the host is inline-flex; it never grows
+   past its container, and only the chip gives way. */
+
+:host {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  vertical-align: middle;
+}
+
+.tm-reference__label {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+/* The value: mono, sunken, one line, cut short at the end. */
+.tm-reference__value {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-body);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-reference__copy {
+  flex: none;
+}

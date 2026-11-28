@@ -1,0 +1,12 @@
+// Catalog refresh failures, per instance.
+// Backs the "an instance cannot refresh its tenant snapshot" alert: every refresh an instance tried
+// in the window failed, so it serves a snapshot that ages towards the staleness bound, beyond which
+// every tenant request is refused as catalog_unavailable.
+customMetrics
+| where name == "tellma.tenancy.catalog.refresh.duration"
+| extend outcome = tostring(customDimensions["outcome"])
+| summarize
+    failed = sumif(valueCount, outcome == "failed"),
+    total = sum(valueCount)
+    by cloud_RoleInstance, bin(timestamp, 5m)
+| where failed > 0 and failed == total

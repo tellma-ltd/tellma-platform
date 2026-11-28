@@ -1,12 +1,19 @@
 /**
- * Public API Surface of @tellma/core-ui/l10n — locale-sensitive number and
- * date formatting/parsing as pure functions (no DOM, no dependency
- * injection, no components): the number codec, the numeric precision
- * helpers, and — as they land — the date engine and the calendar seam.
+ * Public API Surface of @tellma/core-ui/l10n — locale-sensitive number,
+ * date and instant formatting as pure functions (no DOM, no dependency
+ * injection, no components): the number and date formats, the calendar
+ * seam, the instant formats (date-time, time of day, relative time, zone
+ * offsets and names) and the month and weekday names. The input side
+ * (parsing typed numbers and dates, a date field's placeholder, the week's
+ * first day and wall-clock times in a zone) is `@tellma/core-ui/l10n-input`,
+ * so a page that only displays values never loads it.
  *
- * Everything here is deterministic per (input, locale, options): the
- * standalone path for read-only display formatting, and the machinery the
- * form controls and the data grid build their format/parse loops on.
+ * Everything here is deterministic per (input, locale, options) — the
+ * display time zone and "now" are arguments, never read from the device:
+ * the standalone path for read-only display formatting, and the machinery
+ * the form controls and the data grid build their format/parse loops on.
+ * Formatted text never carries a bidirectional control character; markup
+ * sets direction.
  *
  * @packageDocumentation
  */
@@ -15,14 +22,8 @@
 //
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
-export {
-  TM_NUMBER_MAX_DIGITS,
-  tmFormatNumber,
-  tmNumberDigitCount,
-  tmParseNumber,
-  type TmNumberFormatOptions,
-  type TmNumberParseOptions,
-} from './tm-number-codec';
+export { TM_BIDI_CONTROLS, tmStripBidiControls } from './tm-bidi';
+export { tmFormatNumber, type TmNumberFormatOptions } from './tm-number-codec';
 export {
   tmGregorianCalendar,
   ɵtmAdaptCalendar,
@@ -32,12 +33,27 @@ export {
   type TmCalendarParts,
 } from './tm-calendar';
 export {
-  tmDatePlaceholder,
   tmFormatDate,
-  tmParseDate,
+  ɵtmDateFormatter,
   ɵtmFormatWithoutEra,
+  ɵtmPlainText,
+  ɵtmUtcDateOf,
+  type ɵTmOwnDate,
   type TmDateFormatOptions,
-  type TmDateParseOptions,
   type TmDateStyle,
 } from './tm-date-engine';
-export { tmFirstDayOfWeek } from './tm-week-info';
+export { tmFormatMonthName, tmFormatWeekdayName } from './tm-date-names';
+export {
+  tmFormatDateTime,
+  tmFormatRelativeTime,
+  tmFormatTime,
+  tmFormatZoneName,
+  tmFormatZoneOffset,
+  ɵtmParseInstant,
+  ɵtmShowsZoneLabel,
+  ɵtmZoneOffset,
+  type TmDateTimeFormatOptions,
+  type TmRelativeTimeFormatOptions,
+  type TmTimeFormatOptions,
+  type TmTimeStyle,
+} from './tm-instant';

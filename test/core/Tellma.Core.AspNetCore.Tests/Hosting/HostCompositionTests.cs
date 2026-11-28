@@ -1,0 +1,200 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using System.Net;
+using Tellma.Core.Abstractions.Composition;
+using Tellma.Core.Abstractions.Email;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Access;
+using Tellma.Core.AspNetCore.Hosting;
+using Tellma.Core.Tenancy;
+using Tellma.Testing.WebHost;
+
+namespace Tellma.Core.AspNetCore.Tests.Hosting
+{
+    /// <summary>
+    ///     What the host checks at startup and reports when ready: the persisted key ring, the
+    ///     framework's forwarded-headers switch, the identity clients' secrets, and the readiness of
+    ///     the catalog; and the step-up bar the access evaluator takes from the session's options.
+    /// </summary>
+    public sealed class HostCompositionTests
+    {
+        [Fact]
+        public async Task Outside_Development_the_key_ring_must_be_persisted()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options => options.Settings.Remove("Tellma:DataProtection:KeyRingPath"));
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+                _ = Assert.Single(exception.Problems, static problem => problem.Source == DataProtectionCheck.CheckName);
+            }
+        }
+
+        [Fact]
+        public async Task A_standalone_host_without_its_client_secret_fails_startup()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options => options.Settings.Remove("Tellma:Identity:ClientSecret"));
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+                CompositionProblem problem = Assert.Single(exception.Problems, static problem => problem.Source == IdentityCheck.CheckName);
+                Assert.Contains("Tellma:Identity:ClientSecret", problem.Problem, StringComparison.Ordinal);
+            }
+        }
+
+        /// <summary>The identity check's verdicts: the mode, the secrets set, whether mail is composed, and the settings it names.</summary>
+        /// <returns>The cases.</returns>
+        public static TheoryData<string, bool, bool, bool, string[]> IdentityCases()
+        {
+            // The service client's secret is never this check's: the identity-server client's options
+            // validate it, so a missing one is named by the options check alone.
+            return new TheoryData<string, bool, bool, bool, string[]>
+            {
+                { "Standalone", true, false, false, [] },
+                { "Standalone", false, false, false, ["ClientSecret"] },
+                { "InProc", true, true, true, [] },
+                { "InProc", false, false, true, ["ClientSecret"] },
+                { "InProc", true, true, false, ["IEmailSender"] },
+                { "InProc", true, false, true, [] },
+            };
+        }
+
+        [Theory]
+        [MemberData(nameof(IdentityCases))]
+        public async Task The_identity_check_requires_the_sign_in_secret_and_in_proc_mail(
+            string mode, bool clientSecret, bool serviceSecret, bool mail, string[] named)
+        {
+            IConfiguration configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> { ["Tellma:Identity:Mode"] = mode })
+                .Build();
+            ServiceCollection services = new();
+            if (mail)
+            {
+                _ = services.AddSingleton<IEmailSender>(static _ => throw new InvalidOperationException("Never resolved."));
+            }
+
+            await using ServiceProvider provider = services.BuildServiceProvider();
+            IdentityCheck check = new(
+                new IdentityClientSecrets(clientSecret ? "secret" : null, serviceSecret ? "service-secret" : null),
+                configuration);
+
+            IReadOnlyList<CompositionProblem> problems = await check.CheckAsync(provider, TestContext.Current.CancellationToken);
+
+            Assert.Equal(named.Length, problems.Count);
+            foreach (string name in named)
+            {
+                _ = Assert.Single(problems, problem => problem.Problem.StartsWith("Tellma:Identity:" + name + " is not set", StringComparison.Ordinal) || problem.Problem.Contains("no " + name, StringComparison.Ordinal));
+            }
+        }
+
+        [Fact]
+        public async Task Development_runs_on_the_default_key_ring()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options =>
+            {
+                options.Environment = "Development";
+                options.Settings.Remove("Tellma:DataProtection:KeyRingPath");
+            });
+            using HttpResponseMessage response = await host.Client.GetAsync("/health/live", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        }
+
+        [Fact]
+        public async Task The_framework_forwarded_headers_switch_fails_startup()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options => options.Settings["ForwardedHeaders_Enabled"] = "true");
+            await using (app)
+            {
+                TellmaCompositionException exception = await Assert.ThrowsAsync<TellmaCompositionException>(
+                    () => app.StartAsync(TestContext.Current.CancellationToken));
+                _ = Assert.Single(exception.Problems, static problem => problem.Problem.Contains("ASPNETCORE_FORWARDEDHEADERS_ENABLED", StringComparison.Ordinal));
+            }
+        }
+
+        [Fact]
+        public async Task Readiness_follows_the_catalog()
+        {
+            // The first load fails: the host starts, alive but not ready.
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options => options.CatalogFailure = new TimeoutException("The catalog is unreachable."));
+            using HttpResponseMessage down = await host.Client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, down.StatusCode);
+            using HttpResponseMessage alive = await host.Client.GetAsync("/health/live", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, alive.StatusCode);
+
+            // The catalog comes back: ready.
+            host.Catalog.Failure = null;
+            await host.Services.GetRequiredService<ITenantRegistry>().RefreshAsync(force: true, TestContext.Current.CancellationToken);
+            using HttpResponseMessage up = await host.Client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, up.StatusCode);
+        }
+
+        [Fact]
+        public async Task The_access_evaluator_holds_a_sensitive_securable_to_the_configured_session_bar()
+        {
+            (WebApplication app, _, _) = TellmaTestHost.Build(static options =>
+            {
+                options.Settings["Tellma:Session:StepUp:Acr"] = "urn:example:acr:strong";
+                options.Settings["Tellma:Session:StepUp:MaxAge"] = "00:05:00";
+            });
+            await using (app)
+            {
+                RequireAssuranceMetadata bar = app.Services.GetRequiredService<StepUpBar>().Requirement;
+                Assert.Equal(("urn:example:acr:strong", TimeSpan.FromMinutes(5)), (bar.Acr, bar.MaxAge));
+            }
+        }
+
+        [Theory]
+        [InlineData("InProc", "urn:tellma:acr:aal2", true)]
+        [InlineData("InProc", "phrh", true)]
+        [InlineData("InProc", "urn:tellma:acr:mfa", false)]
+        [InlineData("Standalone", "urn:example:acr:strong", true)]
+        public void An_in_process_identity_server_must_be_able_to_satisfy_the_step_up_class(string mode, string acr, bool valid)
+        {
+            TellmaSessionOptionsValidator validator = new(Options.Create(new IdentityHostOptions { Mode = Enum.Parse<IdentityMode>(mode) }));
+
+            ValidateOptionsResult result = validator.Validate(null, new TellmaSessionOptions { StepUp = new StepUpOptions { Acr = acr } });
+
+            Assert.Equal(valid, result.Succeeded);
+            if (!valid)
+            {
+                Assert.Contains("Tellma:Session:StepUp:Acr is 'urn:tellma:acr:mfa'", result.FailureMessage, StringComparison.Ordinal);
+            }
+        }
+
+        [Fact]
+        public void The_default_step_up_class_is_one_the_identity_servers_tiers_rank()
+        {
+            Assert.Equal(2, AssuranceTiers.Rank(new StepUpOptions().Acr));
+        }
+
+        [Fact]
+        public async Task The_access_evaluator_holds_a_sensitive_securable_to_the_default_bar_when_the_session_names_none()
+        {
+            // The sound settings name no Tellma:Session:StepUp section.
+            (WebApplication app, _, _) = TellmaTestHost.Build();
+            await using (app)
+            {
+                RequireAssuranceMetadata bar = app.Services.GetRequiredService<StepUpBar>().Requirement;
+                Assert.Equal((StepUpBar.DefaultAcr, StepUpBar.DefaultMaxAge), (bar.Acr, bar.MaxAge));
+            }
+        }
+
+        [Fact]
+        public async Task The_readiness_answer_names_no_check()
+        {
+            await using TellmaTestHost host = await TellmaTestHost.StartAsync(static options => options.CatalogFailure = new TimeoutException("The catalog is unreachable."));
+            using HttpResponseMessage response = await host.Client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.DoesNotContain("catalog", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("unreachable", body, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+}

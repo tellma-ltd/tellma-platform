@@ -97,7 +97,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 new string('(', 200) + "1" + new string(')', 200),
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -124,7 +124,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 },
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 
@@ -158,7 +158,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -182,7 +182,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,

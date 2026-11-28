@@ -1,0 +1,196 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+// The entry points of @tellma/core and the one graph their static imports
+// follow (spec 0024 §1). The table lists every entry point the spec places,
+// including those whose owners have not shipped yet, so the graph never needs
+// to change shape when one arrives.
+
+/** How an entry point loads: with the app, on demand, or with whichever entry point imports it first. */
+export type TmEntryPointLoad = 'eager' | 'lazy' | 'shared';
+
+/** One entry point of `@tellma/core`. */
+export interface TmEntryPointRule {
+  /** How the entry point loads. */
+  readonly load: TmEntryPointLoad;
+  /** The entry points it may import statically, besides the ones its kind allows (see `allowedImports`). */
+  readonly imports: readonly string[];
+}
+
+/** The package whose entry points the table describes. */
+export const TM_CORE_PACKAGE = '@tellma/core';
+
+/**
+ * The entry points of `@tellma/core`, keyed `.` for the primary and
+ * `./<folder>` for a secondary one.
+ *
+ * - The primary imports no other entry point; `/attention` imports only the
+ *   primary; `/shell` the primary and `/attention`.
+ * - A shared entry point loads with whichever code imports it first: every
+ *   entry point but the primary and the shared ones may import it, so the
+ *   primary's first frame never carries it. `/private` is the package's own
+ *   wiring between its entry points and may import the primary;
+ *   `/search-normalize` is the text folding the launcher and the lazy pages
+ *   match with, and `/error-paths` the walk of the server's error paths
+ *   onto a form; neither imports any. `/attention-rows` is what the
+ *   attention surfaces render inside their rows, and imports the primary.
+ * - A lazy entry point may import every eager and shared one, plus the lazy
+ *   ones it lists. No eager entry point imports a lazy one.
+ */
+export const TM_CORE_ENTRY_POINTS: Readonly<Record<string, TmEntryPointRule>> = Object.freeze({
+  '.': { load: 'eager', imports: [] },
+  './attention': { load: 'eager', imports: ['.'] },
+  './shell': { load: 'eager', imports: ['.', './attention'] },
+  './private': { load: 'shared', imports: ['.'] },
+  // Spec 0027's search normalization, which spec 0027 §1 places in the
+  // primary; nothing on the first frame matches text, so it loads with the
+  // code that does. The eager entry points may import it, but the size gate's
+  // staticGraphExcludes keeps every one of them (`/shell` and `/attention`)
+  // from reaching it statically.
+  './search-normalize': { load: 'shared', imports: [] },
+  // Spec 0031 §8.5's server error paths: only `/entity`'s lazy action
+  // dialog and the details page's save land errors by them, so they load
+  // with whichever imports them first, not with `/entity`'s first frame.
+  './error-paths': { load: 'shared', imports: [] },
+  // What spec 0028's attention surfaces render inside their rows: the server
+  // text (TmAttentionText, which spec 0028 §1 places in /attention) and the
+  // assignment list. The bell's and the tray's panels, the arrival toasts
+  // and the attention pages load it, never the first frame; the size gate's
+  // staticGraphExcludes keeps `/attention` and `/shell` from reaching it
+  // statically.
+  './attention-rows': { load: 'shared', imports: ['.'] },
+  './realtime': { load: 'lazy', imports: [] },
+  // The support dump reads the page contexts' snapshots.
+  './support': { load: 'lazy', imports: ['./page-snapshot'] },
+  './entity': { load: 'lazy', imports: [] },
+  // The edit side of spec 0029's /entity (the value editor, the entity
+  // picker binding and fields, uploads, the editable grid columns), split
+  // off along the read/edit line as the component library splits its grid
+  // from its grid editing: a read-only page never reaches it, and a page
+  // or a dialog that edits loads it.
+  './entity-editing': { load: 'lazy', imports: ['./entity', './uploads'] },
+  // Spec 0029 §12.1's form uploads, which spec 0029 §1 places in /entity:
+  // the details page's record provides them in every mode and the edit
+  // side's value editor lists its uploads in them, so they are an entry
+  // point of their own, as the drafts are, and the search page, which
+  // imports /entity, never carries them.
+  './uploads': { load: 'lazy', imports: [] },
+  // Spec 0029 §13.3's column filter control, which spec 0029 §1 places in
+  // /entity; a column header's popover opens it, so the search page loads
+  // it then, and /entity's own measure never carries it. Its navigation
+  // filter picks rows with the entity list field.
+  './column-filter': { load: 'lazy', imports: ['./entity', './entity-editing'] },
+  // Spec 0029 §10's expression editor and §11's path picker, which spec 0029
+  // §1 places in /entity; the hosts that edit Queryex or choose fields (the
+  // search page's advanced filter and column chooser, the role editor's
+  // permission filters, the report studio and report parameters) load them,
+  // so /entity's own measure never carries them.
+  './expression-editor': { load: 'lazy', imports: ['./entity'] },
+  './path-picker': { load: 'lazy', imports: ['./entity'] },
+  './sharing': { load: 'lazy', imports: [] },
+  // The page hosts load the tab's memory with them: the search page's state
+  // and tree expansion, the details page's state, a report's state. The
+  // hosts that edit records load the drafts: the details page, the stock
+  // pages and the report studio. The home page, in `/dashboards`, lists the
+  // recent pages.
+  './search': { load: 'lazy', imports: ['./entity', './memory', './column-filter', './expression-editor', './path-picker'] },
+  './details': { load: 'lazy', imports: ['./entity', './memory', './drafts', './uploads'] },
+  './admin': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
+  './attention-pages': { load: 'lazy', imports: [] },
+  './reports': { load: 'lazy', imports: ['./memory', './expression-editor'] },
+  './report-studio': { load: 'lazy', imports: ['./drafts', './expression-editor', './path-picker'] },
+  './dashboards': { load: 'lazy', imports: ['./recents'] },
+  './config-check': { load: 'lazy', imports: [] },
+  // Spec 0025's tab memory, drafts, recent pages and leader election, which
+  // spec 0025 §1 places in the primary; they load with the page hosts and
+  // after first render instead. The drafts are an entry point apart from the
+  // rest of the memory, because an app's bundler places the code its routes
+  // use from one entry point in chunks that every route importing that entry
+  // point loads: one entry point would put the details page's drafts on the
+  // search route.
+  './memory': { load: 'lazy', imports: [] },
+  './drafts': { load: 'lazy', imports: [] },
+  './recents': { load: 'lazy', imports: [] },
+  './leader': { load: 'lazy', imports: [] },
+  // Spec 0026's page-context snapshot, which spec 0026 §1 places in the
+  // primary; nothing on the first frame reads it, so the support dump and a
+  // future assistant load it with import().
+  './page-snapshot': { load: 'lazy', imports: [] },
+  // Spec 0024's service worker updates and error presenter, which spec 0024
+  // §1 places in the primary; the worker registers after first render, and
+  // nothing on the first frame presents an API error.
+  './updates': { load: 'lazy', imports: [] },
+  './errors': { load: 'lazy', imports: [] },
+});
+
+/**
+ * The entry points `from` may import statically: those it lists, for a
+ * lazy entry point every eager one, and for any entry point other than the
+ * primary and the shared ones every shared one.
+ */
+export function tmAllowedImports(
+  table: Readonly<Record<string, TmEntryPointRule>>,
+  from: string,
+): ReadonlySet<string> {
+  const rule = table[from];
+  if (rule === undefined) {
+    return new Set();
+  }
+  const allowed = new Set(rule.imports);
+  // A shared entry point gets none of the others, so two shared ones can
+  // never import each other in a cycle.
+  const getsShared = from !== '.' && rule.load !== 'shared';
+  for (const [id, other] of Object.entries(table)) {
+    if ((rule.load === 'lazy' && other.load === 'eager') || (getsShared && other.load === 'shared')) {
+      allowed.add(id);
+    }
+  }
+  return allowed;
+}
+
+/**
+ * The problems of an entry-point table, empty when it is sound: an import of
+ * an entry point the table lacks, an eager or shared entry point that may
+ * import a lazy one, and any cycle the allowed imports would allow.
+ */
+export function tmCheckEntryPoints(table: Readonly<Record<string, TmEntryPointRule>>): string[] {
+  const problems: string[] = [];
+  const ids = Object.keys(table);
+
+  // Every edge must name a known entry point, and only lazy code may import lazy code.
+  for (const id of ids) {
+    for (const target of tmAllowedImports(table, id)) {
+      if (!(target in table)) {
+        problems.push(`'${id}' imports '${target}', which is not an entry point.`);
+      } else if (table[id]?.load !== 'lazy' && table[target]?.load === 'lazy') {
+        problems.push(`'${id}' loads with the app but imports the lazy '${target}'.`);
+      }
+    }
+  }
+
+  // Depth-first search for a cycle among the allowed edges.
+  const state = new Map<string, 'visiting' | 'done'>();
+  const path: string[] = [];
+  const visit = (id: string): void => {
+    if (state.get(id) === 'done') {
+      return;
+    }
+    if (state.get(id) === 'visiting') {
+      problems.push(`The imports form a cycle: ${[...path.slice(path.indexOf(id)), id].join(' → ')}.`);
+      return;
+    }
+    state.set(id, 'visiting');
+    path.push(id);
+    for (const target of tmAllowedImports(table, id)) {
+      if (target in table) {
+        visit(target);
+      }
+    }
+    path.pop();
+    state.set(id, 'done');
+  };
+  ids.forEach(visit);
+  return problems;
+}

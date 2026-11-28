@@ -23,8 +23,83 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="Locale">The user's preferred language.</param>
     /// <param name="Gender">How to address the user grammatically, when stated.</param>
     /// <param name="ReturnUrl">Where the accepted invitation returns the user.</param>
+    /// <param name="ExistingOnly">
+    ///     Whether the item is a lookup by email that never creates a user, never issues a link and
+    ///     never sends an email (see <see cref="ExistingOnlyResolution" />).
+    /// </param>
     public sealed record InvitationRequestItem(
-        string Email, string? DisplayName, string? Locale, string? ReturnUrl, UserGender? Gender = null);
+        string Email,
+        string? DisplayName,
+        string? Locale,
+        string? ReturnUrl,
+        UserGender? Gender = null,
+        bool ExistingOnly = false);
+
+    /// <summary>
+    ///     The stable per-user error codes of an <see cref="InvitationRequestItem.ExistingOnly" />
+    ///     item. They are codes rather than sentences because callers branch on them: a sandbox
+    ///     tenant maps both to one validation error of its own.
+    /// </summary>
+    public static class InvitationErrors
+    {
+        /// <summary>The address belongs to no user.</summary>
+        public const string UnknownEmail = "unknown_email";
+
+        /// <summary>The address belongs to a user who holds no credential yet.</summary>
+        public const string ExistingUserHasNoCredential = "existing_user_has_no_credential";
+    }
+
+    /// <summary>What an <see cref="InvitationRequestItem.ExistingOnly" /> lookup answers.</summary>
+    public enum ExistingOnlyOutcome
+    {
+        /// <summary>The user holds a credential: <c>Active</c> with their subject.</summary>
+        Active = 0,
+
+        /// <summary>No user has the address: <see cref="InvitationErrors.UnknownEmail" />.</summary>
+        UnknownEmail = 1,
+
+        /// <summary>
+        ///     The user holds no credential: <see cref="InvitationErrors.ExistingUserHasNoCredential" />,
+        ///     never <c>Reinvited</c>, because finishing their onboarding needs an email.
+        /// </summary>
+        NoCredential = 2,
+
+        /// <summary>The user is disabled or purged: the refusal an ordinary invite gives.</summary>
+        Refused = 3,
+    }
+
+    /// <summary>
+    ///     The outcome table of an <see cref="InvitationRequestItem.ExistingOnly" /> lookup, kept
+    ///     apart from the store so that the table itself is what the tests pin.
+    /// </summary>
+    public static class ExistingOnlyResolution
+    {
+        /// <summary>Decides what a lookup answers for the user an address belongs to.</summary>
+        /// <param name="state">The user's lifecycle state; null when no user has the address.</param>
+        /// <param name="hasCredential">Whether the user holds a passkey, a password or an external login.</param>
+        /// <returns>The outcome.</returns>
+        /// <remarks>
+        ///     An orphaned user who holds a credential answers <see cref="ExistingOnlyOutcome.Active" />:
+        ///     the caller is recording a membership, which is what ends the orphaned state, and the
+        ///     service restores it as an ordinary invite does, without a link or an email. A
+        ///     disabled or purged user is refused before the credential question is asked, and the
+        ///     refusal does not tell the two administrative states apart.
+        /// </remarks>
+        public static ExistingOnlyOutcome Resolve(UserLifecycleState? state, bool hasCredential)
+        {
+            return state switch
+            {
+                null => ExistingOnlyOutcome.UnknownEmail,
+                UserLifecycleState.Disabled or UserLifecycleState.Purged => ExistingOnlyOutcome.Refused,
+                UserLifecycleState.Active or UserLifecycleState.Orphaned => hasCredential
+                    ? ExistingOnlyOutcome.Active
+                    : ExistingOnlyOutcome.NoCredential,
+
+                // A state this table does not know is never answered Active by default.
+                _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unknown lifecycle state."),
+            };
+        }
+    }
 
     /// <summary>The per-user outcome of a bulk invitation.</summary>
     public enum InvitationStatus
@@ -58,7 +133,9 @@ namespace Tellma.Identity.Services.Invitations
     ///     and its emails still go out. The link — the email-ownership proof — is never returned in
     ///     any environment. Users are created through the Identity user manager (one persistence
     ///     operation each, so its validators and normalizers run), while the email delivery for the
-    ///     whole batch is a single hand-off to the background dispatcher.
+    ///     whole batch is a single hand-off to the background dispatcher. An
+    ///     <see cref="InvitationRequestItem.ExistingOnly" /> item is a lookup instead: it never
+    ///     creates a user, issues a link or queues an email, whatever the rest of the batch does.
     /// </summary>
     /// <param name="context">The identity store, shared across the batch.</param>
     /// <param name="userManager">The Identity user manager.</param>
@@ -94,6 +171,13 @@ namespace Tellma.Identity.Services.Invitations
         ///     the total — undercount whichever one its query forgot.
         /// </summary>
         private const string RefusedMetricStatus = "Refused";
+
+        /// <summary>
+        ///     The refusal for a disabled or purged user. It does not disclose which of the two
+        ///     administrative states the account is in.
+        /// </summary>
+        private const string AdministrativelyRefused =
+            "The user cannot be invited; an operator must re-enable the account first.";
 
         /// <summary>Invites a batch of users, returning per-user status and subject.</summary>
         /// <param name="items">The users to invite.</param>
@@ -241,6 +325,14 @@ namespace Tellma.Identity.Services.Invitations
             List<EmailMessage> emails,
             CancellationToken cancellationToken)
         {
+            // A lookup by email takes its own path, which never reaches the token issuance or the
+            // mail queue below: nothing it does can add a link or an email to the batch.
+            if (item.ExistingOnly)
+            {
+                await ResolveExistingOnlyAsync(item, createdByClientId, results);
+                return;
+            }
+
             // Checked before the user is created, so a destination this client may not send to is
             // refused outright rather than silently dropped — which is what happened before, and
             // left an invited user finishing on the authority's own page with no way onward.
@@ -255,27 +347,10 @@ namespace Tellma.Identity.Services.Invitations
                 return;
             }
 
-            (TellmaIdentityUser? user, InvitationStatus status, string? error) = await CreateOrGetAsync(item);
+            (TellmaIdentityUser? user, InvitationStatus status, string? error) = await CreateOrGetAsync(item, createdByClientId);
             if (error is not null || user is null)
             {
-                // A refused user never aborts the batch: earlier users are already persisted,
-                // their emails must still go out, and the caller needs every user's outcome to
-                // record membership.
-                results.Add(new InvitationResultItem(item.Email, null, null, error));
-                metrics.Invitation(RefusedMetricStatus);
-
-                // Audit writes carry no cancellation: the audit logger rethrows one, which would
-                // turn a recorded outcome into a thrown failure for a user whose fate is settled.
-                await auditLogger.LogAsync(
-                    new AuditEventEntry
-                    {
-                        Action = AuditActions.UserInvited,
-                        Subject = user?.Id,
-                        ClientId = createdByClientId,
-                        Outcome = "failure",
-                        DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { reason = error }),
-                    },
-                    CancellationToken.None);
+                await RefuseAsync(item, user?.Id, error, createdByClientId, results);
                 return;
             }
 
@@ -308,11 +383,150 @@ namespace Tellma.Identity.Services.Invitations
         }
 
         /// <summary>
+        ///     Answers an <see cref="InvitationRequestItem.ExistingOnly" /> item: a lookup by email
+        ///     that never creates a user, issues no link and queues no email. Its only write is the
+        ///     restore of an orphaned user who holds a credential, the one an ordinary invite makes.
+        /// </summary>
+        /// <param name="item">The item, whose return URL is ignored because no link carries it.</param>
+        /// <param name="createdByClientId">The calling client, for audit attribution.</param>
+        /// <param name="results">The batch's results so far.</param>
+        private async Task ResolveExistingOnlyAsync(
+            InvitationRequestItem item, string? createdByClientId, List<InvitationResultItem> results)
+        {
+            TellmaIdentityUser? existing = await userManager.FindByEmailAsync(item.Email);
+
+            // The credential question is asked only of a user who could answer Active: a disabled
+            // or purged user is refused whatever they hold.
+            bool hasCredential = existing is not null
+                && existing.LifecycleState is not (UserLifecycleState.Disabled or UserLifecycleState.Purged)
+                && await HasCredentialAsync(existing);
+
+            switch (ExistingOnlyResolution.Resolve(existing?.LifecycleState, hasCredential))
+            {
+                case ExistingOnlyOutcome.UnknownEmail:
+                    await RefuseAsync(item, null, InvitationErrors.UnknownEmail, createdByClientId, results);
+                    return;
+
+                case ExistingOnlyOutcome.Refused:
+                    await RefuseAsync(item, existing!.Id, AdministrativelyRefused, createdByClientId, results);
+                    return;
+
+                case ExistingOnlyOutcome.NoCredential:
+                    await RefuseAsync(
+                        item, existing!.Id, InvitationErrors.ExistingUserHasNoCredential, createdByClientId, results);
+                    return;
+
+                case ExistingOnlyOutcome.Active:
+                default:
+                    break;
+            }
+
+            // Active: the caller records a membership, which ends an orphaned state exactly as an
+            // ordinary invite ends it — but no link is issued and no email is queued.
+            if (existing!.LifecycleState == UserLifecycleState.Orphaned)
+            {
+                string? restoreError = await RestoreOrphanedAsync(existing, reason: "existing_only", createdByClientId);
+                if (restoreError is not null)
+                {
+                    await RefuseAsync(item, existing.Id, restoreError, createdByClientId, results);
+                    return;
+                }
+            }
+
+            results.Add(new InvitationResultItem(item.Email, existing.Id, InvitationStatus.Active, null));
+            metrics.Invitation(nameof(InvitationStatus.Active));
+        }
+
+        /// <summary>
+        ///     Records a refused user: an error result with no status and no subject, the refusal
+        ///     metric and a failure audit row. A refused user never aborts the batch: earlier users
+        ///     are already persisted, their emails must still go out, and the caller needs every
+        ///     user's outcome to record membership.
+        /// </summary>
+        /// <param name="item">The refused user.</param>
+        /// <param name="subject">The existing user's subject, for the audit row only.</param>
+        /// <param name="error">Why the user was refused.</param>
+        /// <param name="createdByClientId">The calling client.</param>
+        /// <param name="results">The batch's results so far.</param>
+        private async Task RefuseAsync(
+            InvitationRequestItem item,
+            string? subject,
+            string? error,
+            string? createdByClientId,
+            List<InvitationResultItem> results)
+        {
+            results.Add(new InvitationResultItem(item.Email, null, null, error));
+            metrics.Invitation(RefusedMetricStatus);
+
+            // Audit writes carry no cancellation: the audit logger rethrows one, which would turn
+            // a recorded outcome into a thrown failure for a user whose fate is settled.
+            await auditLogger.LogAsync(
+                new AuditEventEntry
+                {
+                    Action = AuditActions.UserInvited,
+                    Subject = subject,
+                    ClientId = createdByClientId,
+                    Outcome = "failure",
+                    DetailsJson = System.Text.Json.JsonSerializer.Serialize(
+                        new { reason = error, existingOnly = item.ExistingOnly }),
+                },
+                CancellationToken.None);
+        }
+
+        /// <summary>Whether a user holds any credential: a passkey, a password or an external login.</summary>
+        /// <param name="user">The user.</param>
+        /// <returns>Whether the user can sign in without an invitation link.</returns>
+        private async Task<bool> HasCredentialAsync(TellmaIdentityUser user)
+        {
+            return (await userManager.GetPasskeysAsync(user)).Count > 0
+                || await userManager.HasPasswordAsync(user)
+                || (await userManager.GetLoginsAsync(user)).Count > 0;
+        }
+
+        /// <summary>Restores an orphaned user to <c>Active</c> and audits the change.</summary>
+        /// <param name="user">The orphaned user, tracked by the shared store.</param>
+        /// <param name="reason">Why the user was restored, for the audit row.</param>
+        /// <param name="clientId">The calling client whose request caused the restore, for the audit row.</param>
+        /// <returns>Null on success, or the per-user error when the restore failed.</returns>
+        private async Task<string?> RestoreOrphanedAsync(TellmaIdentityUser user, string reason, string? clientId)
+        {
+            user.LifecycleState = UserLifecycleState.Active;
+            user.OrphanedUtc = null;
+            IdentityResult restored = await userManager.UpdateAsync(user);
+            if (!restored.Succeeded)
+            {
+                // Reporting success for a user still marked orphaned would be a lie the caller
+                // records as membership. Discard the in-memory mutation too: the store is shared
+                // across the batch, so a later user's save would otherwise commit the very restore
+                // this user was told had been refused. Only this user's entry is detached —
+                // clearing the tracker would take the rest of the request scope's pending changes
+                // with it.
+                context.Entry(user).State = EntityState.Detached;
+                return "The user could not be restored from the orphaned state.";
+            }
+
+            await auditLogger.LogAsync(new AuditEventEntry
+            {
+                Action = AuditActions.UserLifecycleChanged,
+                Subject = user.Id,
+
+                // The distribution whose request reactivated the account, so an operator can tell
+                // who made a retained identity able to obtain tokens again.
+                ClientId = clientId,
+                Outcome = "success",
+                DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { from = "Orphaned", to = "Active", reason }),
+            });
+            return null;
+        }
+
+        /// <summary>
         ///     Creates a new user or resolves the existing one, returning the outcome status — or a
         ///     per-user error when the user must be refused.
         /// </summary>
+        /// <param name="item">The user to invite.</param>
+        /// <param name="createdByClientId">The calling client, for audit attribution.</param>
         private async Task<(TellmaIdentityUser? User, InvitationStatus Status, string? Error)> CreateOrGetAsync(
-            InvitationRequestItem item)
+            InvitationRequestItem item, string? createdByClientId)
         {
             TellmaIdentityUser? existing = await userManager.FindByEmailAsync(item.Email);
             if (existing is not null)
@@ -323,14 +537,10 @@ namespace Tellma.Identity.Services.Invitations
                 // does not disclose which administrative state the account is in.
                 if (existing.LifecycleState is UserLifecycleState.Disabled or UserLifecycleState.Purged)
                 {
-                    return (existing, default, "The user cannot be invited; an operator must re-enable the account first.");
+                    return (existing, default, AdministrativelyRefused);
                 }
 
-                bool hasCredentials = (await userManager.GetPasskeysAsync(existing)).Count > 0
-                    || await userManager.HasPasswordAsync(existing)
-                    || (await userManager.GetLoginsAsync(existing)).Count > 0;
-
-                if (existing.LifecycleState == UserLifecycleState.Active && hasCredentials)
+                if (existing.LifecycleState == UserLifecycleState.Active && await HasCredentialAsync(existing))
                 {
                     return (existing, InvitationStatus.Active, null);
                 }
@@ -338,28 +548,11 @@ namespace Tellma.Identity.Services.Invitations
                 // Restore an orphaned user; a credential-less Active user is simply re-invited.
                 if (existing.LifecycleState == UserLifecycleState.Orphaned)
                 {
-                    existing.LifecycleState = UserLifecycleState.Active;
-                    existing.OrphanedUtc = null;
-                    IdentityResult restored = await userManager.UpdateAsync(existing);
-                    if (!restored.Succeeded)
+                    string? restoreError = await RestoreOrphanedAsync(existing, reason: "reinvited", createdByClientId);
+                    if (restoreError is not null)
                     {
-                        // Reporting Reinvited for a user still marked orphaned would be a lie the
-                        // caller records as membership. Discard the in-memory mutation too: the
-                        // store is shared across the batch, so a later user's save would otherwise
-                        // commit the very restore this user was told had been refused. Only this
-                        // user's entry is detached — clearing the tracker would take the rest of
-                        // the request scope's pending changes with it.
-                        context.Entry(existing).State = EntityState.Detached;
-                        return (existing, default, "The user could not be restored from the orphaned state.");
+                        return (existing, default, restoreError);
                     }
-
-                    await auditLogger.LogAsync(new AuditEventEntry
-                    {
-                        Action = AuditActions.UserLifecycleChanged,
-                        Subject = existing.Id,
-                        Outcome = "success",
-                        DetailsJson = System.Text.Json.JsonSerializer.Serialize(new { from = "Orphaned", to = "Active", reason = "reinvited" }),
-                    });
                 }
 
                 return (existing, InvitationStatus.Reinvited, null);

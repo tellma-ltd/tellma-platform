@@ -1,0 +1,276 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Composition;
+using Tellma.Core.Data.Batches;
+using Tellma.Core.Tenancy;
+
+namespace Tellma.Testing.Entities
+{
+    /// <summary>
+    ///     A fixture host bound to one fixture database as tenant <see cref="TenantId" />: the fixture
+    ///     composition with the tenant connection seams pointed at the database, and scopes whose
+    ///     request context binds the tenant for the platform's own principal, so a scope's
+    ///     <see cref="ITenantDatabase" /> runs batches against the fixture database. Its tenant
+    ///     registry holds the fixture tenant alone, so the tenant scope factory opens background scopes
+    ///     over it. The host maps no table to a stack, so a batch writes every table through its public
+    ///     members as the table's own stack would.
+    /// </summary>
+    public sealed class FixtureTenant : IAsyncDisposable
+    {
+        /// <summary>The fixture tenant's id.</summary>
+        public const int TenantId = 1;
+
+        /// <summary>The composed services.</summary>
+        private readonly ServiceProvider _provider;
+
+        /// <summary>The registry that holds the fixture tenant, whose state <see cref="State" /> moves.</summary>
+        private readonly FixtureTenantRegistry _registry;
+
+        /// <summary>Creates the host.</summary>
+        /// <param name="provider">The composed services.</param>
+        /// <param name="info">The tenant.</param>
+        /// <param name="registry">The registry that holds the tenant.</param>
+        private FixtureTenant(ServiceProvider provider, TenantInfo info, FixtureTenantRegistry registry)
+        {
+            _provider = provider;
+            Info = info;
+            _registry = registry;
+        }
+
+        /// <summary>The fixture database's connection string.</summary>
+        public string ConnectionString => Info.ConnectionString;
+
+        /// <summary>The running model's storage fingerprint.</summary>
+        public string Fingerprint => _provider.GetRequiredService<IEntityMetadataProvider>().StorageFingerprint;
+
+        /// <summary>The composed services.</summary>
+        public IServiceProvider Services => _provider;
+
+        /// <summary>The tenant, as the registry described it when the host was composed.</summary>
+        internal TenantInfo Info { get; }
+
+        /// <summary>
+        ///     The fixture tenant's state as its registry holds it; <see cref="TenantState.Active" />
+        ///     when the host is composed. Setting it moves the registry's tenant, so the tenant scope
+        ///     factory, the scopes <see cref="CreateScope" /> opens and <see cref="JobPollDriver" /> see
+        ///     the new state; the database is untouched.
+        /// </summary>
+        public TenantState State
+        {
+            get => _registry.Current.Descriptor.State;
+            set => _registry.Current = _registry.Current with { Descriptor = _registry.Current.Descriptor with { State = value } };
+        }
+
+        /// <summary>
+        ///     Composes a fixture host and creates its database: migrated, change-tracked, and listing
+        ///     the host's fingerprint.
+        /// </summary>
+        /// <param name="masterConnectionString">A connection string to the server's <c>master</c> database.</param>
+        /// <param name="databaseName">The new database's name; the caller drops it.</param>
+        /// <param name="configureServices">Adds services after the composition, such as batch contributors.</param>
+        /// <param name="audit">Whether every batch's writes are checked against change tracking.</param>
+        /// <param name="readCommittedSnapshot">Whether the database reads committed rows from row versions, as provisioning sets it.</param>
+        /// <param name="compose">
+        ///     Adds features to the fixture's composition, such as job handlers a suite runs; a feature
+        ///     added here must leave the model as the fixture migrations built it.
+        /// </param>
+        /// <param name="cancellationToken">Cancels the creation.</param>
+        /// <returns>The host.</returns>
+        public static async Task<FixtureTenant> CreateAsync(
+            string masterConnectionString,
+            string databaseName,
+            Action<IServiceCollection>? configureServices = null,
+            bool audit = true,
+            bool readCommittedSnapshot = true,
+            Action<TellmaBuilder>? compose = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(masterConnectionString);
+            ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
+
+            string connectionString = new SqlConnectionStringBuilder(masterConnectionString) { InitialCatalog = databaseName }.ConnectionString;
+            SqlConnectionStringBuilder server = new(masterConnectionString);
+            TenantInfo info = new(
+                new TenantDescriptor(TenantId, "Fixture", null, null, ["en"], TenantCategory.Live, TenantState.Active, null),
+                new TenantLocation(server.DataSource, databaseName, "default"),
+                connectionString,
+                null,
+                Guid.Empty);
+
+            // --- The composition, with the tenant connection seams on the fixture database ---
+            ServiceCollection services = [];
+            _ = services.AddLogging();
+            _ = FixtureComposition.Compose(services, compose: compose);
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantConnectionFactory>(new FixtureConnectionFactory(info)));
+            _ = services.Replace(ServiceDescriptor.Scoped<ITenantConnectionProvider>(_ => new FixtureConnectionProvider(info)));
+
+            // The registry holds the fixture tenant alone, so the tenant scope factory opens the
+            // background scopes the job machinery runs in without a catalog.
+            FixtureTenantRegistry registry = new(info);
+            _ = services.Replace(ServiceDescriptor.Singleton<ITenantRegistry>(registry));
+
+            // The data layer's suites append every statement the way a stack's own pipeline does, so
+            // no stack owns a table here; the refusal of a write to a stack's table from outside it
+            // belongs to the suites that run the pipeline over the full composition.
+            _ = services.Replace(ServiceDescriptor.Singleton<IStackTableOwners>(new NoStackTableOwners()));
+            if (audit)
+            {
+                _ = services.AddSingleton<IDataBatchAudit>(new ChangeTrackingAudit(connectionString));
+            }
+
+            configureServices?.Invoke(services);
+            ServiceProvider provider = services.BuildServiceProvider(validateScopes: true);
+
+            try
+            {
+                FixtureTenant tenant = new(provider, info, registry);
+                _ = await FixtureDatabase.CreateAsync(masterConnectionString, databaseName, tenant.Fingerprint, readCommittedSnapshot, cancellationToken).ConfigureAwait(false);
+                return tenant;
+            }
+            catch
+            {
+                await provider.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+        }
+
+        /// <summary>
+        ///     Creates a scope bound to the fixture tenant for the platform's own principal, as the
+        ///     tenant scope factory binds a system job's scope.
+        /// </summary>
+        /// <param name="userId">
+        ///     The user the scope's writes are stamped with, such as the system user; none by default,
+        ///     as a system job's scope has none until it names one.
+        /// </param>
+        /// <returns>The scope; the caller disposes it.</returns>
+        public AsyncServiceScope CreateScope(int? userId = null)
+        {
+            AsyncServiceScope scope = _provider.CreateAsyncScope();
+            IRequestContextHolder holder = scope.ServiceProvider.GetRequiredService<IRequestContextHolder>();
+            holder.Set(holder.Current with { Tenant = _registry.Current.Descriptor, Kind = PrincipalKind.System, Subject = "system", UserId = userId });
+            return scope;
+        }
+
+        /// <inheritdoc />
+        public ValueTask DisposeAsync()
+        {
+            return _provider.DisposeAsync();
+        }
+
+        /// <summary>Opens connections to the fixture database for the fixture tenant, outside any scope.</summary>
+        /// <param name="info">The tenant.</param>
+        private sealed class FixtureConnectionFactory(TenantInfo info) : ITenantConnectionFactory
+        {
+            /// <inheritdoc />
+            public string GetConnectionString(int tenantId)
+            {
+                return tenantId == info.Id
+                    ? info.ConnectionString
+                    : throw new InvalidOperationException($"The fixture host serves tenant {info.Id} only, not {tenantId}.");
+            }
+
+            /// <inheritdoc />
+            public async Task<SqlConnection> OpenAsync(int tenantId, CancellationToken cancellationToken = default)
+            {
+                SqlConnection connection = new(GetConnectionString(tenantId));
+                try
+                {
+                    await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                    return connection;
+                }
+                catch
+                {
+                    await connection.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
+
+            /// <inheritdoc />
+            public Task<SqlConnection> OpenCatalogAsync(CancellationToken cancellationToken = default)
+            {
+                throw new NotSupportedException("A fixture host has no catalog.");
+            }
+        }
+
+        /// <summary>A tenant registry that holds the fixture tenant alone, loaded once and never stale.</summary>
+        /// <param name="info">The tenant as composed.</param>
+        private sealed class FixtureTenantRegistry(TenantInfo info) : ITenantRegistry
+        {
+            /// <summary>When the snapshot was loaded: when the host was composed.</summary>
+            private readonly DateTimeOffset _loadedAt = DateTimeOffset.UtcNow;
+
+            /// <summary>The tenant the registry holds, replaced whole when a suite moves its state.</summary>
+            private volatile TenantInfo _current = info;
+
+            /// <summary>The tenant the registry holds now.</summary>
+            public TenantInfo Current
+            {
+                get => _current;
+                set => _current = value;
+            }
+
+            /// <inheritdoc />
+            public IReadOnlyList<TenantInfo> Tenants => [_current];
+
+            /// <inheritdoc />
+            public Guid SnapshotVersion => _current.Version;
+
+            /// <inheritdoc />
+            public DateTimeOffset? SnapshotLoadedAt => _loadedAt;
+
+            /// <inheritdoc />
+            public bool IsAvailable => true;
+
+            /// <inheritdoc />
+            public TenantInfo? Find(int tenantId)
+            {
+                TenantInfo current = _current;
+                return tenantId == current.Id ? current : null;
+            }
+
+            /// <inheritdoc />
+            public TenantInfo Get(int tenantId)
+            {
+                return Find(tenantId) ?? throw new TenantNotFoundException(tenantId);
+            }
+
+            /// <inheritdoc />
+            public Task RefreshAsync(bool force, CancellationToken cancellationToken = default)
+            {
+                return Task.CompletedTask;
+            }
+        }
+
+        /// <summary>Opens connections to the fixture database within a scope.</summary>
+        /// <param name="info">The tenant.</param>
+        private sealed class FixtureConnectionProvider(TenantInfo info) : ITenantConnectionProvider
+        {
+            /// <inheritdoc />
+            public TenantInfo Tenant => info;
+
+            /// <inheritdoc />
+            public async Task<SqlConnection> OpenAsync(CancellationToken cancellationToken = default)
+            {
+                SqlConnection connection = new(info.ConnectionString);
+                try
+                {
+                    await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                    return connection;
+                }
+                catch
+                {
+                    await connection.DisposeAsync().ConfigureAwait(false);
+                    throw;
+                }
+            }
+        }
+    }
+}

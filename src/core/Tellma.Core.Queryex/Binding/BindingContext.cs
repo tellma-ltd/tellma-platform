@@ -38,7 +38,7 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>The position the expression is being compiled for.</summary>
         internal required QueryexMode Mode { get; init; }
 
-        /// <summary>The language version the text is being compiled under.</summary>
+        /// <summary>The Queryex version the text is being compiled under.</summary>
         /// <remarks>
         ///     Part of the cache key rather than a constant read from <see cref="QueryexLanguage" />,
         ///     because an engine that compiles two versions compiles the same text to different
@@ -46,13 +46,23 @@ namespace Tellma.Core.Queryex.Binding
         ///     the other's request. It costs nothing while there is only one version, and is what
         ///     keeps the key correct on the day there are two.
         /// </remarks>
-        internal int LanguageVersion { get; init; } = QueryexLanguage.Version;
+        internal int QueryexVersion { get; init; } = QueryexLanguage.Version;
 
         /// <summary>Whether execution will have a signed-in user.</summary>
         internal bool HasUser { get; init; } = true;
 
         /// <summary>Whether the enclosing query groups by anything.</summary>
         internal bool HasGroupingKeys { get; init; }
+
+        /// <summary>
+        ///     Whether the items are measures a host evaluates over rolled-up groups rather than
+        ///     select items the backend computes.
+        /// </summary>
+        /// <remarks>
+        ///     A measure has to aggregate, and outside its aggregations it may use only what the
+        ///     host's evaluator computes exactly; both rules are checked only where this is set.
+        /// </remarks>
+        internal bool Measures { get; init; }
 
         /// <summary>The declared parameters, by name.</summary>
         internal FrozenDictionary<string, ParameterSymbol> Parameters { get; init; } =

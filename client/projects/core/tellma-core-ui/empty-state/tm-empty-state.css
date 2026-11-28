@@ -1,0 +1,76 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-empty-state — a centred column: icon, heading, detail, actions. The
+   page size fills the height its container has left and centres in it;
+   the panel size is the same column with less padding. */
+
+:host {
+  display: block;
+  box-sizing: border-box;
+  padding: var(--empty-state-padding-page);
+  text-align: center;
+}
+
+/* Page: grow into the remaining height (a flex parent's or a definite
+   one's) and centre the column in it. */
+:host([data-size='page']) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  block-size: 100%;
+  min-block-size: 0;
+}
+
+:host([data-size='panel']) {
+  padding: var(--empty-state-padding-panel);
+}
+
+.tm-empty-state__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--empty-state-gap);
+}
+
+.tm-empty-state__icon {
+  --icon-size: var(--empty-state-icon-size);
+
+  color: var(--empty-state-icon-color);
+}
+
+/* Error: the icon takes the error ink; the text stays neutral. */
+:host([data-tone='error']) .tm-empty-state__icon {
+  color: var(--error);
+}
+
+.tm-empty-state__heading {
+  margin: 0;
+  color: var(--empty-state-heading-color);
+  font-size: var(--empty-state-heading-font-size);
+  font-weight: var(--weight-semibold);
+}
+
+.tm-empty-state__detail {
+  max-inline-size: var(--empty-state-detail-max-width);
+  color: var(--empty-state-detail-color);
+  font-size: var(--empty-state-detail-font-size);
+}
+
+.tm-empty-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--empty-state-actions-gap);
+}
+
+/* Nothing projected: no empty box takes a gap. */
+.tm-empty-state__detail:empty,
+.tm-empty-state__actions:empty {
+  display: none;
+}

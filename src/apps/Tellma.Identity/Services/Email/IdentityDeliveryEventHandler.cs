@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
+using EmailDeliveryStatus = Tellma.Identity.Data.Entities.EmailDeliveryStatus;
 
 namespace Tellma.Identity.Services.Email
 {

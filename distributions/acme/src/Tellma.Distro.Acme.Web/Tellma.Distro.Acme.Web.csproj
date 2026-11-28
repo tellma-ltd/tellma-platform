@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <Description>The Acme reference distribution's web host: a three-call Program.cs over AcmeComposition and AcmeWebComposition, the Development configuration that runs the in-proc identity engine against a local catalog, and the Development provisioning trigger that runs the distribution's own migrator.</Description>
+    <!-- Framework-dependent, never single-file or self-contained: the PDF thumbnail worker runs
+         through dotnet exec on this host's runtimeconfig and deps.json, and the imaging startup
+         check refuses any other publish. -->
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+  <!-- The SPA proxy of Development: it starts the client dev server (tellma-client serve) and sends
+       the browser to it. The dev server listens on ACME_CLIENT from the worktree's .dev-ports.local,
+       else 4200, and the proxy waits for that same port; the web host's public origin follows it at
+       startup. The file is read as the web host and the dev server read it: the last ACME_CLIENT
+       line wins, and its value is digits, optionally in matching quotes; any other last value
+       leaves 4200. (The pattern is backtick-quoted and spells its quotes as \x22 and \x27, and its
+       end of line without a dollar sign, which MSBuild would read as a property.) -->
+  <PropertyGroup>
+    <SpaRoot>..\Tellma.Distro.Acme.Client\</SpaRoot>
+    <SpaProxyLaunchCommand>pnpm start</SpaProxyLaunchCommand>
+    <_AcmeDevPortsFile>$([MSBuild]::GetPathOfFileAbove('.dev-ports.local', '$(MSBuildProjectDirectory)'))</_AcmeDevPortsFile>
+    <_AcmeClientPort Condition="'$(_AcmeDevPortsFile)' != ''">$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(_AcmeDevPortsFile)')), `(?ms)^[ \t]*ACME_CLIENT[ \t]*=[ \t]*([\x22\x27]?)([0-9]+)\1[ \t]*(?=\r?\n|\z)(?!.*^[ \t]*ACME_CLIENT[ \t]*=)`).Groups[2].Value)</_AcmeClientPort>
+    <_AcmeClientPort Condition="'$(_AcmeClientPort)' == ''">4200</_AcmeClientPort>
+    <SpaProxyServerUrl>https://localhost:$(_AcmeClientPort)</SpaProxyServerUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Distro.Acme\Tellma.Distro.Acme.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core.Mcp\Tellma.Core.Mcp.csproj" />
+    <ProjectReference Include="..\..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
+    <!-- The in-proc identity engine, selected by Tellma:Identity:Mode. Never its migrations: the
+         engine's store check reads a constant, and the migrator migrates the store. -->
+    <ProjectReference Include="..\..\..\..\src\apps\Tellma.Identity\Tellma.Identity.csproj" />
+    <!-- The client app: no assembly, only its build, which publish copies into wwwroot. -->
+    <ProjectReference Include="..\Tellma.Distro.Acme.Client\Tellma.Distro.Acme.Client.esproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SpaProxy" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suites drive the provisioning trigger's command line without starting a process. -->
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.Web.Tests" />
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

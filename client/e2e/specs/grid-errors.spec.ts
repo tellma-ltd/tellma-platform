@@ -10,6 +10,7 @@ import {
   activeCell,
   cell,
   cellText,
+  expectCellText,
   gotoGrid,
   liveRegion,
   modelJson,
@@ -90,7 +91,7 @@ test.describe('error sources', () => {
     page,
   }) => {
     await makeInvalidQuantity(page, 2, 'abc');
-    expect(await cellText(page, 2, 1)).toBe('abc'); // the raw text stays visible in place
+    await expectCellText(page, 2, 1, 'abc'); // the raw text stays visible in place
     await expect.poll(async () => (await lineAt(page, 2)).quantity).toBeNull();
 
     // No overlay yet: the commit moved the active cell down.
@@ -163,7 +164,7 @@ test.describe('clearing rules', () => {
 
     await page.keyboard.press('Control+z');
     await expect(cell(page, 4, 1)).not.toHaveClass(/tm-grid__cell--error/);
-    expect(await cellText(page, 4, 1)).toBe(before);
+    await expectCellText(page, 4, 1, before);
     await expect(statusChip(page)).toHaveCount(0); // no errors → no chip
   });
 

@@ -1,0 +1,166 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* tm-pager — the status, previous and next, then the size select, on one
+   line at the resolved size. The status and the select reserve their widest
+   content, so nothing after them moves while the user pages. */
+
+:host {
+  /* The size ladder, re-pointed once per step: the select's height,
+     horizontal padding and text size, which the select's sizer and its
+     stand-in copy. */
+  --tm-pager-block-size: var(--field-height);
+  --tm-pager-padding-x: var(--field-padding-x);
+  --tm-pager-font-size: var(--field-font-size);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pager-gap);
+  font-family: var(--font-ui);
+  font-size: var(--tm-pager-font-size);
+  color: var(--pager-text);
+  vertical-align: middle;
+}
+
+:host([data-size='sm']) {
+  --tm-pager-block-size: var(--field-height-sm);
+  --tm-pager-padding-x: var(--field-padding-xsm);
+  --tm-pager-font-size: var(--field-font-size-sm);
+}
+
+:host([data-size='lg']) {
+  --tm-pager-block-size: var(--field-height-lg);
+  --tm-pager-padding-x: var(--field-padding-xlg);
+  --tm-pager-font-size: var(--field-font-size-lg);
+}
+
+/* ---- Status ---- */
+
+/* The reserved box: as wide as the widest status of the total (set inline
+   in ch), its text against the buttons, so a shorter status grows away
+   from them. It is the hidden sentence's containing block, so that text
+   sits inside the pager rather than at the page's corner. */
+.tm-pager__status {
+  position: relative;
+  display: inline-block;
+  text-align: end;
+  white-space: nowrap;
+}
+
+/* The fraction reads left to right in both directions, with digits of one
+   width so "1–20" and "21–40" take the same room. */
+.tm-pager__fraction {
+  font-variant-numeric: tabular-nums;
+  unicode-bidi: isolate;
+}
+
+/* The sentence a screen reader reads in place of the fraction. */
+.tm-pager__sentence {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- Previous and next ---- */
+
+/* Square icon buttons at the button's own height for the resolved size. */
+.tm-pager__button {
+  flex: none;
+  inline-size: var(--tm-button-block-size);
+  padding-inline: 0;
+}
+
+/* ---- Size select ---- */
+
+/* The select and a hidden copy of every option's text share one grid cell:
+   the cell is as wide as the widest of them, and the select fills it. */
+.tm-pager__size {
+  display: inline-grid;
+  margin-inline-start: var(--pager-select-gap);
+}
+
+.tm-pager__select,
+.tm-pager__size-sizer {
+  grid-area: 1 / 1;
+}
+
+.tm-pager__select {
+  min-inline-size: 0;
+}
+
+/* The sizer copies the trigger's chrome around its text: a border and the
+   padding on both sides, and the caret and its gap at the end. It takes no
+   height and draws nothing. */
+.tm-pager__size-sizer {
+  display: grid;
+  block-size: 0;
+  overflow: hidden;
+  visibility: hidden;
+  box-sizing: border-box;
+  padding-inline: calc(var(--tm-pager-padding-x) + var(--border-width))
+    calc(
+      var(--tm-pager-padding-x) + var(--border-width) + var(--space-2) + var(--select-check-size)
+    );
+  font-size: var(--tm-pager-font-size);
+  white-space: nowrap;
+}
+
+/* The select's stand-in until it loads: the trigger's chrome, box and text
+   at the same step, so the select lands in its exact place. */
+.tm-pager__proxy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  block-size: var(--tm-pager-block-size);
+  padding-inline: var(--tm-pager-padding-x);
+  background: var(--field-bg);
+  border: var(--border-width) solid var(--field-border);
+  border-radius: var(--field-radius);
+  color: var(--field-text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tm-pager__proxy:hover {
+  border-color: var(--field-border-hover);
+}
+
+/* The select's focus glow, with the transparent outline forced colors repaint. */
+.tm-pager__proxy:focus-visible {
+  border-color: var(--field-border-focus);
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: 0 0 0 var(--focus-ring-halo-width) var(--field-focus-halo);
+}
+
+.tm-pager__proxy--disabled {
+  background: var(--field-bg-disabled);
+  color: var(--field-text-disabled);
+  cursor: default;
+}
+
+.tm-pager__proxy-value {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+.tm-pager__proxy-caret {
+  --icon-size: var(--select-check-size);
+  color: var(--field-icon);
+}
+
+.tm-pager__proxy--disabled .tm-pager__proxy-caret {
+  color: var(--field-text-disabled);
+}

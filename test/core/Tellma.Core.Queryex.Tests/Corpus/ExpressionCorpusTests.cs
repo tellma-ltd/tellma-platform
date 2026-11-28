@@ -38,7 +38,7 @@ namespace Tellma.Core.Queryex.Tests.Corpus
                 entry.Text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Schema.FindEntity(entry.Root)!,
                     Mode = entry.Mode,

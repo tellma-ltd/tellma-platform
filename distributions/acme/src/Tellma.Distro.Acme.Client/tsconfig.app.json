@@ -1,0 +1,17 @@
+/* The application build's TypeScript configuration: the app from its entry file and the emitted entity types, without the specs. */
+{
+  /*
+   * Inside the platform's repository, the second base lists @tellma/core's
+   * lazily loaded entry points: the framework loads them with import()
+   * through a specifier the compiler does not follow, and a build from
+   * sources compiles only what the program holds. An installed package
+   * needs no such base.
+   */
+  "extends": ["./tsconfig.json", "../../../../client/projects/core/tellma-core/tsconfig.lazy-entry-points.json"],
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./out-tsc/app",
+    "types": []
+  },
+  "include": ["src/main.ts", "generated/*.d.ts"]
+}

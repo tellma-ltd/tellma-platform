@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Core.Testing.Email;
+using Tellma.Identity.TestSupport;
 using Tellma.Identity.Web;
 
 namespace Tellma.Identity.IntegrationTests.Infrastructure
@@ -30,6 +31,13 @@ namespace Tellma.Identity.IntegrationTests.Infrastructure
 
         /// <summary>The captured outbound email (codes, links).</summary>
         public CapturingEmailSender Emails { get; } = new CapturingEmailSender();
+
+        /// <summary>Creates a protocol driver over this host, with the engine at the root.</summary>
+        /// <returns>The driver; the caller disposes it.</returns>
+        public OidcFlowClient CreateFlowClient()
+        {
+            return new OidcFlowClient(CreateClient, Emails, string.Empty);
+        }
 
         /// <summary>Captures back-channel logout tokens delivered to distributions.</summary>
         public RecordingBackchannelHandler BackchannelLogouts { get; } = new RecordingBackchannelHandler();

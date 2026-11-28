@@ -1,16 +1,43 @@
 name: CI
 
+# Pull requests and pushes to main run the whole PR tier. A push to a `pc/**` working branch runs
+# it only when the branch's head commit is an integration commit, so the branch is verified once,
+# just before it merges onward, rather than on every implementation or fix-round push.
+# Integration commits are titled `<id>: integrate`, `<id>: integrate (merge platform-core)` or
+# `<id>: integrate (CI fixes)`.
+#
+# Every job's `if:` below carries that push gate beside its draft guard. For any other push to a
+# `pc/**` branch, GitHub still creates a run, but every job in it is skipped. The gate's
+# `contains` ignores case and reads the whole message, body included, so other commits keep that
+# phrase out of their messages. A push event carries no pull request, so the draft guards let
+# every push through. The gate lets every pull request and every push to main through. The gated
+# `if:` values are double-quoted because a plain YAML scalar cannot hold the phrase's colon and space.
 on:
   push:
-    branches: [main]
+    branches: [main, 'pc/**']
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# One group per branch or pull request and commit, never cancelled: every push gets its own
+# verdict, even when a later push to the same branch or pull request lands while it is still
+# running, and a run on one branch never waits behind or replaces a run on another, even at the
+# same commit. Only a second run of the same commit for the same ref (a reopen, or
+# ready-for-review) waits for the first. The event name keeps a push and a pull request at the
+# same commit from queueing behind each other.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+# This file is the PR tier. Every job below excludes the nightly tier: dotnet tests carrying
+# [Trait("Category", "Nightly")] and Playwright tests tagged @nightly, @perf or @quarantine, plus the
+# Firefox and WebKit runs of @cross-engine tests. Those run in nightly-tier.yml. CONTRIBUTING.md lists the
+# commands of both tiers; keep it in step with this file.
 jobs:
   # Build everything and run the unit suites (integration excluded) on both OSes.
   build-test:
-    if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 20
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    # Windows measured 12.4, 18.0, 18.0 and over 20.2 min (cut off mid-suite) on 2026-11-21, by runner speed.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -22,15 +49,60 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore Tellma.slnx
-      - run: dotnet build Tellma.slnx -c Release --no-restore
-      - run: dotnet test Tellma.slnx -c Release --no-build --filter "Category!=Integration&Category!=E2E&Live!=true"
+      # The build takes 3 to 4 minutes on either OS. On windows-latest it once stalled until the
+      # job's limit cancelled it, leaving no log. The script stops a build still running after 12
+      # minutes, reports in the step log what it was doing, and keeps its binary log, text log and
+      # compiler and node diagnostics (eng/dotnet-build/README.md); the step's own limit is only a
+      # backstop above the script's limit and grace. The next step uploads them when the build
+      # fails.
+      - name: Build
+        id: build
+        shell: bash
+        timeout-minutes: 14
+        run: bash eng/dotnet-build/build-with-evidence.sh --timeout 12m --evidence "$RUNNER_TEMP/build-evidence" -- Tellma.slnx -c Release --no-restore
+      - name: Upload the build evidence
+        if: always() && (steps.build.outcome == 'failure' || steps.build.outcome == 'cancelled')
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-evidence-${{ runner.os }}
+          path: ${{ runner.temp }}/build-evidence
+          if-no-files-found: ignore
+      # The platform analyzers load on this OS in a project that reaches the contract only through
+      # project references: the probe holds one violation of each rule, so its build must fail
+      # with exactly the six errors and no other. It is not in the solution, whose build stays clean.
+      - name: Analyzer probe
+        shell: bash
+        run: bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh test/core/assets/Tellma.Core.Analyzers.Probe analyzer-probe.log -c Release
+      # The Linux runner carries the ICU release the pinned culture data was generated from
+      # (eng/culture-data), so the test that regenerates the data must run there. The variable
+      # turns its skip on any other ICU release into a failure: a runner image that moves on is
+      # noticed here rather than silently dropping the guard. Its kernel offers Landlock, so the
+      # tests that probe a PDF worker's filesystem confinement must run there too: the second
+      # variable turns their skip on a kernel without Landlock into a failure.
+      # Every dotnet test step here logs at normal verbosity with xUnit's diagnostic messages on.
+      # The default verbosity prints a failed fixture cleanup as its exception type alone, and
+      # drops the lines a fixture writes outside a test (a database drop it had to retry, say):
+      # normal verbosity prints the cleanup's message and stack, and the diagnostic messages
+      # carry the fixture's own lines. CONTRIBUTING.md has the same flags for a local run.
+      # On Windows the step runs at most two test hosts at once (-m:2). Left unbounded, MSBuild
+      # launches one host per runner core, and each host runs its own tests in parallel. With
+      # Tellma.Core.Tests and Tellma.Core.AspNetCore.Tests running, a host that starts next can
+      # fail to answer its launcher in time: xUnit's "did not respond within 60 seconds" and
+      # vstest's "failed to connect to testhost" both hit windows-latest on 2026-11-21, with every
+      # test that ran passing. Two lanes keep the step inside the job's timeout. That day,
+      # Tellma.Core.AspNetCore.Tests alone took 16.8 min, the critical path, and every other
+      # assembly together 14.3 min. Linux has not starved, so it keeps MSBuild's default.
+      - run: dotnet test Tellma.slnx -c Release --no-build ${{ runner.os == 'Windows' && '-m:2' || '' }} --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
+        env:
+          TELLMA_REQUIRE_PINNED_ICU: ${{ runner.os == 'Linux' && '1' || '0' }}
+          TELLMA_REQUIRE_LANDLOCK: ${{ runner.os == 'Linux' && '1' || '0' }}
 
   # Code style and formatting: the full IDE code-style surface (whitespace, imports, IDE00xx) that
   # the compiler build does not run even with EnforceCodeStyleInBuild. Same analyzers and
   # .editorconfig the IDE uses — no per-rule enumeration. A dedicated job so a style failure reads
   # as a style failure, not an OS-specific one.
   format:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -46,17 +118,20 @@ jobs:
   # third-party credentials. Solution-wide rather than path-scoped, so a suite added later is gated
   # rather than silently never run. Suites marked Live=true talk to real external APIs and run in
   # the nightly workflow instead — they would put a third-party service on the merge path, and fork
-  # PRs cannot read the secrets they need anyway.
+  # PRs cannot read the secrets they need anyway. The PR tier runs the integration suites on Linux
+  # only: nightly-tier.yml runs the platform's and the reference distribution's suites on Windows
+  # too, against LocalDB.
   integration:
-    if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 25
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Live!=true"
+      # Normal verbosity and xUnit's diagnostic messages: see build-test.
+      - run: dotnet test Tellma.slnx -c Release --filter "Category=Integration&Category!=Nightly&Live!=true" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
 
   # Real `dotnet ef` end to end, in both DesignTimeServicesReference discovery flows:
   #   1. ProjectReference flow (Phase-1 in-repo): regenerate the MigrationsHost migration and
@@ -64,7 +139,7 @@ jobs:
   #   2. Package flow: pack both libraries to a local feed and repeat against the
   #      PackageReference variant of the host.
   design-e2e:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 25
     runs-on: ubuntu-latest
     env:
@@ -94,22 +169,47 @@ jobs:
         run: dotnet ef migrations bundle --project "$HOST" --startup-project "$HOST" -o artifacts/efbundle
 
       # --- Package flow ---
+      # Tellma.Core.Abstractions depends on Tellma.Core.Queryex, so the feed carries both.
       - name: Pack the libraries
         run: |
+          dotnet pack src/core/Tellma.Core.Queryex -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.Abstractions -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore -c Release -o artifacts/pkg
           dotnet pack src/core/Tellma.Core.EntityFrameworkCore.Design -c Release -o artifacts/pkg
+          dotnet pack src/core/Tellma.Core -c Release -o artifacts/pkg
+      # The contract package carries the platform analyzers and the parser they load, side by side.
+      - name: Verify the analyzer asset of the contract package
+        run: |
+          unzip -l artifacts/pkg/Tellma.Core.Abstractions.1.0.0.nupkg > artifacts/abstractions-nupkg.txt
+          grep -q "analyzers/dotnet/cs/Tellma.Core.Analyzers.dll" artifacts/abstractions-nupkg.txt
+          grep -q "analyzers/dotnet/cs/Microsoft.SqlServer.TransactSql.ScriptDom.dll" artifacts/abstractions-nupkg.txt
+          grep -q "buildTransitive/Tellma.Core.Abstractions.targets" artifacts/abstractions-nupkg.txt
+      # A project that gets the contract only through the runtime package runs every rule too:
+      # NuGet drops a dependency's analyzer assets, and the contract's buildTransitive targets
+      # add them back. Its build must fail with exactly the six errors, from one analyzer copy.
+      - name: Analyzer probe (package flow)
+        env:
+          PROBE: test/core/assets/Tellma.Core.Analyzers.Probe.Package
+        run: |
+          bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh "$PROBE" artifacts/analyzer-probe-package.log
+          dotnet msbuild "$PROBE" -t:ResolveAssemblyReferences -getItem:Analyzer > artifacts/probe-package-analyzers.json
+          test "$(grep -c '"Identity": .*Tellma.Core.Analyzers.dll' artifacts/probe-package-analyzers.json)" = 1
+          grep -q '"Identity": .*tellma.core.abstractions.1.0.0.analyzers.dotnet.cs.Tellma.Core.Analyzers.dll' artifacts/probe-package-analyzers.json
       - name: Scaffold against the packages (package flow)
         # The variant's own nuget.config routes Tellma.* to artifacts/pkg.
         run: |
           dotnet build "$PKG_HOST"
+          # The package consumer loads the analyzer once, from the package, not from the repository.
+          dotnet msbuild "$PKG_HOST" -t:ResolveAssemblyReferences -getItem:Analyzer > artifacts/pkg-host-analyzers.json
+          test "$(grep -c '"Identity": .*Tellma.Core.Analyzers.dll' artifacts/pkg-host-analyzers.json)" = 1
+          grep -q '"Identity": .*tellma.core.abstractions.1.0.0.analyzers.dotnet.cs.Tellma.Core.Analyzers.dll' artifacts/pkg-host-analyzers.json
           dotnet ef migrations add PackageProbe --project "$PKG_HOST" --startup-project "$PKG_HOST" --no-build
           grep -q "CreateTableType" "$PKG_HOST"/Migrations/*_PackageProbe.cs
 
   # Browser end-to-end scenarios (Playwright + Chromium) for the identity UI, including passkeys
   # via the CDP virtual authenticator. The browser download is cached on the package version.
   identity-e2e:
-    if: ${{ !github.event.pull_request.draft }}
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
@@ -123,10 +223,13 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ hashFiles('Directory.Packages.props') }}
+      # Not `install --with-deps`: the script installs the OS packages with bounded retries and, when
+      # the apt mirrors are down, lets the job go on with a warning as long as Chromium launches.
       - name: Install Chromium
         timeout-minutes: 10
-        run: pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
-      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E"
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- pwsh test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright.ps1
+      # Normal verbosity and xUnit's diagnostic messages: see build-test.
+      - run: dotnet test test/apps/Tellma.Identity.E2E -c Release --no-build --filter "Category=E2E&Category!=Nightly" --logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -135,53 +238,214 @@ jobs:
           path: test/apps/Tellma.Identity.E2E/bin/Release/net10.0/playwright-traces
           if-no-files-found: ignore
 
-  # The Angular workspace (spec 0002): lint (incl. the tm- rules), token
-  # gates (schema + missing-ref), build, the full unit suite, API
-  # goldens, docs/MCP generation + validation, bundle budgets, and the
-  # Playwright behavioral/a11y/RTL suite (incl. axe contrast) — all
-  # port-free (§1.3).
+  # The client (spec 0002, spec 0024 §12): lint (incl. the tm- rules, the
+  # @tellma/core boundary rule and the decimal rules), token gates (schema +
+  # missing-ref), build, the full unit suite, API goldens, docs/MCP generation
+  # + validation, bundle budgets, and the Playwright behavioral/a11y/RTL suite
+  # (incl. axe contrast) — all port-free (§1.3). Every step runs from the
+  # repository root, the root of the one pnpm workspace; the root scripts
+  # forward to client/. The e2e step runs the PR tier on the Chromium engine
+  # only: the desktop battery and the touch battery. Firefox and WebKit, and
+  # tests tagged @nightly, @perf or @quarantine, run in nightly-tier.yml.
   client:
-    if: ${{ !github.event.pull_request.draft }}
-    timeout-minutes: 30
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    timeout-minutes: 45
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: client
     steps:
       - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # version from client/package.json packageManager
-        with:
-          package_json_file: client/package.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: client/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Install browsers
+      # The unit suites (vitest browser mode) and the PR-tier e2e both run on Chromium alone. The
+      # script survives an apt-mirror outage as long as Chromium still launches (see identity-e2e).
+      # The CLI is the package's bin shim and not `pnpm exec`, because the script runs it as root to
+      # install the OS packages (eng/playwright-browsers/README.md).
+      - name: Install Chromium
         timeout-minutes: 15
-        run: pnpm exec playwright install chromium firefox webkit --with-deps
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- client/node_modules/.bin/playwright
       - run: pnpm run lint
       - run: pnpm run typecheck
+      # Core's sources once more, against the entity declarations the platform alone emits: the
+      # plain typecheck sees core's entity rows as open JSON objects, a distribution's build as
+      # their closed wire interfaces. The server's unit suite keeps the declarations current.
+      - run: pnpm run typecheck:emitted
       - run: pnpm run lint:test
       - run: pnpm run tokens:check
       - run: pnpm run build
-      - run: pnpm run test
+      # The unit suites take about 3 minutes. Each run's watchdog (vitest-base.config.mjs) ends a run
+      # with no progress for 5 minutes and writes what was pending; this limit is the backstop for a
+      # hang outside it, such as a build, well under the job's. The debug lines time the dependency
+      # optimizer and each session's page (about 210 lines over all the runs), so a hang in the
+      # browser server's start, which the watchdog sees only as a server not ready, names its phase.
+      - name: Unit suites
+        timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
+        run: pnpm run test
       - run: pnpm run api:check
       - run: pnpm run docs:build
       - run: pnpm run size:check
-      # Production showcase build + post-build font preload injection.
+      # Production showcase build + post-build font preload injection. The e2e script below finds
+      # this bundle newer than every source file and serves it as it is, without rebuilding.
       - run: pnpm run build:showcase
-      - run: pnpm run e2e
+      # Called directly rather than through `pnpm run e2e`, so the grep pattern reaches Playwright
+      # without a second round of shell parsing. The tokens CSS that the `pree2e` hook would
+      # generate already exists: the build step above writes it. No --pass-with-no-tests here: a
+      # pattern that matched nothing would be a broken gate, and must fail.
+      - name: PR-tier e2e (Chromium, nightly-tier tags excluded)
+        run: node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-e2e-report
+          path: client/.artifacts/e2e
+          if-no-files-found: ignore
+
+  # The client packages build, lint, test and match their goldens on Windows too (spec 0024 §12):
+  # every gate of the job above except the e2e suite, whose Linux run covers the browser
+  # behaviour. Path separators, line endings and shell differences surface here first.
+  client-windows:
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    timeout-minutes: 45
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The unit suites run in real Chromium (vitest browser mode).
+      - name: Install Chromium
+        timeout-minutes: 15
+        run: pnpm --dir client exec playwright install chromium
+      - run: pnpm run lint
+      - run: pnpm run typecheck
+      - run: pnpm run typecheck:emitted
+      - run: pnpm run lint:test
+      - run: pnpm run tokens:check
+      - run: pnpm run build
+      # The watchdog, the debug lines and the limit as in the client job.
+      - name: Unit suites
+        timeout-minutes: 15
+        env:
+          DEBUG: vite:deps,vitest:browser:playwright
+        run: pnpm run test
+      - run: pnpm run api:check
+      - run: pnpm run docs:build
+      - run: pnpm run size:check
+      - run: pnpm run build:showcase
+
+  # The reference distribution's client app, end to end through MSBuild on both OSes: publishing the
+  # web project builds the Migrator, then the Client esproj runs `tellma-client build` (the emit, the
+  # source checks, ng build, the worker and the output checks; any problem fails it) and copies the
+  # app into wwwroot. The served output must hold the hashed bundle and the worker.
+  acme-client:
+    if: "${{ !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@v6 # version from the root package.json packageManager
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The app's unit tests run in real Chromium (vitest browser mode); on Linux the script also
+      # installs the OS packages Chromium needs, surviving an apt-mirror outage (see identity-e2e).
+      # The CLI is the package's bin shim, as in the client job.
+      - name: Install Chromium (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 15
+        run: bash eng/playwright-browsers/install-browsers.sh chromium -- distributions/acme/src/Tellma.Distro.Acme.Client/node_modules/.bin/playwright
+      - name: Install Chromium (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 15
+        run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client exec playwright install chromium
+      - run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
+      # The browser suite's own sources, on both legs: Playwright transpiles them without a type
+      # check, and the client's lint does not reach them; then the e2e host's own unit tests.
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run typecheck
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run lint
+      - run: pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E run test
+      - run: dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o "${{ runner.temp }}/acme-web"
+      - name: The published wwwroot serves the hashed app and its worker
+        shell: bash
+        run: |
+          root="${{ runner.temp }}/acme-web/wwwroot"
+          for file in index.html tm-boot.js manifest.webmanifest ngsw-worker.js ngsw.json safety-worker.js brand/wordmark-on-light.svg; do
+            test -f "$root/$file" || { echo "wwwroot has no $file"; exit 1; }
+          done
+          ls "$root" | grep -Eq '^main-[A-Z0-9]{8}\.js$' || { echo "wwwroot has no hashed main bundle"; ls "$root"; exit 1; }
+          ls "$root/tm-metadata" | grep -Eq '^core-[0-9A-HJKMNP-TV-Z]{12}\.json$' || { echo "wwwroot has no hashed Core chunk"; exit 1; }
+      # The client app's build references the Migrator; nothing of it may ship with the web host:
+      # no Migrator file, and no identity migrations or design-time package in the host's manifest.
+      - name: The published web host carries nothing of the Migrator
+        shell: bash
+        run: |
+          publish="${{ runner.temp }}/acme-web"
+          if ls "$publish" | grep -E '^Tellma\.Distro\.Acme\.Migrator\.'; then
+            echo "The web host's publish output holds Migrator files"; exit 1
+          fi
+          if grep -Eo '"(Tellma\.Identity\.Migrations|[A-Za-z0-9.]+\.Design)/' "$publish/Tellma.Distro.Acme.Web.deps.json"; then
+            echo "The web host's dependency manifest lists a migrations or design-time package"; exit 1
+          fi
+      # The build above wrote generated/, which the app's configuration imports. The step takes under a
+      # minute. Its watchdog (the app's vitest-base.config.mjs) ends a run with no progress for 5
+      # minutes and writes what was pending, and the debug lines below time the browser's start, each
+      # session's page and the dependency optimizer, so a hang names the phase it stopped in. The limit
+      # is the backstop for a hang outside the watchdog, such as the build, well under the job's.
+      - name: Acme unit tests
+        timeout-minutes: 10
+        env:
+          DEBUG: vitest:browser*,vite:deps
+        run: pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+      # The browser suite on the Acme e2e host (spec 0024 §13), on Linux: a SQL Server container,
+      # the Migrator's migrate, and the web host in Development over the app the publish above
+      # built, so no second client build runs. Chromium is the one installed above (one catalog
+      # version of Playwright). Windows runs it in the nightly tier, against LocalDB. Playwright's
+      # global timeout (17 minutes, the host's start included) ends a run below the step's limit,
+      # so a run out of time still stops on its own and writes its report, traces and errors for
+      # the upload below; a step killed at its limit leaves none of them.
+      - name: Acme browser suite (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 20
+        env:
+          TELLMA_E2E_WEBROOT: ${{ runner.temp }}/acme-web/wwwroot
+          TELLMA_E2E_CONFIGURATION: Release
+        run: node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine" --global-timeout 1020000
+      - name: Upload the Acme Playwright report on failure
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: acme-e2e-report
+          path: distributions/acme/test/Tellma.Distro.Acme.E2E/.artifacts
+          if-no-files-found: ignore
+          # The report's folder is hidden, which the action skips unless told otherwise.
+          include-hidden-files: true
 
   # PR merge gate: the single status check required by branch protection. It fails if any job
   # below did not succeed, without making any individual job a required check (which would couple
-  # branch protection to job names / the OS matrix).
+  # branch protection to job names / the OS matrix). It skips with the others on a `pc/**` push
+  # that is not an integration push; nothing requires it there.
   all-checks-passed:
-    if: ${{ !cancelled() && !github.event.pull_request.draft }}
-    # Include all required job in this list — a job missing here is NOT gated.
+    if: "${{ !cancelled() && !github.event.pull_request.draft && (github.event_name != 'push' || github.ref == 'refs/heads/main' || contains(github.event.head_commit.message, ': integrate')) }}"
+    # Include every required job in this list — a job missing here is NOT gated.
     # Branch protection must require THIS job only.
-    needs: [build-test, format, integration, design-e2e, client, identity-e2e]
+    needs: [build-test, format, integration, design-e2e, client, client-windows, identity-e2e, acme-client]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:

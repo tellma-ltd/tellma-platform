@@ -8,11 +8,13 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { expectNoAxeViolations } from '../support/axe';
 import { pressUndo, syntheticPaste } from '../support/clipboard';
 import { useExclusiveClipboard } from '../support/clipboard-lock';
+import { heldResponses, holdResponses, releaseResponses } from '../support/held-responses';
 import {
   activateCell,
   activeCell,
   cell,
   cellText,
+  expectCellText,
   gotoGrid,
   gridScroller,
   liveRegion,
@@ -23,18 +25,24 @@ import {
   setScrollTop,
   syntheticCut,
 } from '../support/grid';
+import { appStable } from '../support/settle';
 
 /**
  * The tree grid (spec 0004 §13) against the accounts-tree story: DFS
  * flattening with the treegrid ARIA contract, expander + Alt+Arrow
- * expand/collapse, lazy child loading (reserved-slot spinner, re-collapse
- * during load, failure restore), insert-child and subtree delete through
- * the menu, full-row subtree moves with re-parenting, tree paste mapping,
- * expansion-state persistence across contentKey switches and remounts,
- * and the axe floor over both themes.
+ * expand/collapse, the lazy root loading at the bind of each content that
+ * expands it, insert-child
+ * and subtree delete through the menu, full-row subtree moves with
+ * re-parenting, tree paste mapping, expansion-state persistence across
+ * contentKey switches and remounts, each content's own lazy load (every
+ * switch binds a new rows array: the a/b records own theirs, a depth change
+ * copies the record's), and the axe floor over both themes.
+ * The lazy-loading gestures (spinner, re-collapse, failure) run against the
+ * expansion-restore story (tree-grid-restore.spec.ts).
  *
- * Story shape (fully expanded): 58 data rows + the new-row placeholder →
- * aria-rowcount 60; 8 roots (5 real + lazy + orphan + cycle-break).
+ * Story shape (fully expanded): 58 seeded data rows + the 3 children the
+ * lazy root loads at the bind + the new-row placeholder → aria-rowcount 63;
+ * 8 roots (5 real + lazy + orphan + cycle-break).
  */
 
 interface Account {
@@ -69,6 +77,8 @@ async function selectDepthZero(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await gotoGrid(page, 'tree-grid');
+  // Fully expanded at the bind, so the lazy root loads its children then.
+  await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
 });
 
 test.describe('rendering & ARIA', () => {
@@ -77,14 +87,14 @@ test.describe('rendering & ARIA', () => {
   }) => {
     const scroller = gridScroller(page);
     await expect(scroller).toHaveAttribute('role', 'treegrid');
-    await expect(scroller).toHaveAttribute('aria-rowcount', '60');
+    await expect(scroller).toHaveAttribute('aria-rowcount', '63');
 
     // Depth-first flattening: parents immediately followed by their kids.
-    expect(await cellText(page, 0, 0)).toBe('Assets');
-    expect(await cellText(page, 1, 0)).toBe('Current assets');
-    expect(await cellText(page, 2, 0)).toBe('Cash and equivalents');
-    expect(await cellText(page, 3, 0)).toBe('Petty cash');
-    expect(await cellText(page, 13, 0)).toBe('Non-current assets');
+    await expectCellText(page, 0, 0, 'Assets');
+    await expectCellText(page, 1, 0, 'Current assets');
+    await expectCellText(page, 2, 0, 'Cash and equivalents');
+    await expectCellText(page, 3, 0, 'Petty cash');
+    await expectCellText(page, 13, 0, 'Non-current assets');
 
     // aria-level is 1-based depth; posinset/setsize count SIBLINGS.
     await expect(row(page, 0)).toHaveAttribute('aria-level', '1');
@@ -131,7 +141,8 @@ test.describe('rendering & ARIA', () => {
   });
 
   test('@cross-engine virtualization stays windowed over the expanded tree', async ({ page }) => {
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
+    await appStable(page); // the window is counted, not asserted: let it settle
     const rendered = await renderedRows(page).count();
     expect(rendered).toBeGreaterThan(10);
     expect(rendered).toBeLessThan(30); // the window, never the model
@@ -141,7 +152,7 @@ test.describe('rendering & ARIA', () => {
     page,
   }) => {
     await page.getByTestId('toggle-readonly').check();
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '59'); // placeholder gone
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '62'); // placeholder gone
     const background = (locator: Locator): Promise<string> =>
       locator.evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(await background(cell(page, 0, 1))).toBe(await background(cell(page, 1, 1)));
@@ -154,18 +165,18 @@ test.describe('expand & collapse', () => {
     page,
   }) => {
     await expander(page, 0).click(); // collapse Assets (20-row subtree)
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
-    expect(await cellText(page, 1, 0)).toBe('Liabilities');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '43');
+    await expectCellText(page, 1, 0, 'Liabilities');
     await expect(row(page, 0)).toHaveAttribute('aria-expanded', 'false');
 
     // The expander press activated the row's hierarchy cell — Alt+Arrows
     // act on the active row from any column.
     await page.keyboard.press('Alt+ArrowRight');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
     await expect(row(page, 0)).toHaveAttribute('aria-expanded', 'true');
 
     await page.keyboard.press('Alt+ArrowLeft');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '43');
   });
 
   test('@cross-engine collapsing an ancestor of the active cell moves activation to it', async ({
@@ -182,90 +193,114 @@ test.describe('expand & collapse', () => {
     page,
   }) => {
     await expander(page, 0).click(); // content a: Assets collapsed
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '43');
 
     await page.getByTestId('switch-content').click(); // content b: fresh seed
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
+    // b is its own record: 63 once its lazy root has loaded b's children.
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
 
     await page.getByTestId('switch-content').click(); // back to a: restored
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '43');
     await expect(row(page, 0)).toHaveAttribute('aria-expanded', 'false');
 
     await page.getByTestId('toggle-mounted').uncheck(); // destroy…
     await expect(gridScroller(page)).toHaveCount(0);
     await page.getByTestId('toggle-mounted').check(); // …and remount
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '40');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '43');
     await expect(row(page, 0)).toHaveAttribute('aria-expanded', 'false');
   });
 });
 
 test.describe('lazy loading (§13.3)', () => {
-  test('@cross-engine expanding the lazy root shows the reserved-slot spinner without layout shift, then the children', async ({
+  test('@cross-engine the expanded lazy root loads its children at the bind, under the root', async ({
     page,
   }) => {
-    await selectDepthZero(page);
-    await page.getByTestId('lazy-delay').fill('800');
-
-    const textSpan = cell(page, 5, 0).locator('.tm-grid__text');
-    const before = await textSpan.boundingBox();
-    expect(before).not.toBeNull();
-
-    await expander(page, 5).click();
-    await expect(childSpinner(page, 5)).toBeVisible();
-    // The spinner filled RESERVED space: the cell content did not move.
-    expect(await textSpan.boundingBox()).toEqual(before);
-    // Not expanded while the load is in flight.
-    await expect(row(page, 5)).toHaveAttribute('aria-expanded', 'false');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '10');
-
-    // The load lands: children render, expanded, spinner gone.
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '13');
-    await expect(row(page, 5)).toHaveAttribute('aria-expanded', 'true');
-    await expect(childSpinner(page, 5)).toHaveCount(0);
-    expect(await cellText(page, 6, 0)).toBe('Lazy child one');
-    await expect(row(page, 6)).toHaveAttribute('aria-level', '2');
-    expect(await textSpan.boundingBox()).toEqual(before);
+    // The beforeEach waited for the three children; they sit under the root.
+    await setScrollTop(page, 5000); // clamped to the extent — the tree's end
+    await expect(row(page, 54)).toHaveAttribute('aria-expanded', 'true');
+    await expectCellText(page, 54, 0, 'Loaded lazily');
+    await expectCellText(page, 55, 0, 'Lazy child one');
+    await expect(row(page, 55)).toHaveAttribute('aria-level', '2');
+    await expect(childSpinner(page, 54)).toHaveCount(0);
   });
 
-  test('@cross-engine re-collapsing during the load wins; the next expand is instant', async ({
+  // Each content binds with its own rows array. A content switched to over
+  // the outgoing content's array would load nothing (spec 0010 §C.9) and
+  // show the outgoing content's lazy children instead, so these assert the
+  // incoming content's own load while it is held open.
+
+  test("@cross-engine a switched-to content loads its own lazy children, not the outgoing content's", async ({
     page,
   }) => {
-    await selectDepthZero(page);
-    await page.getByTestId('lazy-delay').fill('600');
+    await holdResponses(page, 'loader');
+    await page.getByTestId('switch-content').click(); // content b: its own record
+    await expect(heldResponses(page, 'loader')).toHaveText('1');
+    // b's lazy root is expanded, loading, and none of a's children show.
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
+    await setScrollTop(page, 5000); // clamped to the extent — the tree's end
+    await expectCellText(page, 54, 0, 'Loaded lazily');
+    await expect(row(page, 54)).toHaveAttribute('aria-expanded', 'true');
+    await expect(childSpinner(page, 54)).toBeVisible();
+    expect(
+      (await modelJson<Account[]>(page)).filter((account) => account.parentId === 800),
+    ).toEqual([]);
 
-    await expander(page, 5).click(); // expand → load starts
-    await expect(childSpinner(page, 5)).toBeVisible();
-    await expander(page, 5).click(); // re-collapse while loading
-
-    // The load continues and lands in the model…
-    await expect
-      .poll(async () =>
-        (await modelJson<Account[]>(page)).some((account) => account.name === 'Lazy child one'),
-      )
-      .toBe(true);
-    await expect(childSpinner(page, 5)).toHaveCount(0);
-    // …but the node honors the collapse: nothing rendered beneath.
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '10');
-    await expect(row(page, 5)).toHaveAttribute('aria-expanded', 'false');
-
-    // Children are loaded now — expanding again renders them instantly.
-    await expander(page, 5).click();
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '13');
-    expect(await cellText(page, 6, 0)).toBe('Lazy child one');
+    await releaseResponses(page, 'loader');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
+    await expect(childSpinner(page, 54)).toHaveCount(0);
+    await expectCellText(page, 55, 0, 'Lazy child one');
   });
 
-  test('@cross-engine a failed load announces and restores the collapsed state', async ({
+  test('@cross-engine a depth switch re-binds its content with a fresh array, so the lazy root loads again', async ({
     page,
   }) => {
-    await selectDepthZero(page);
-    await page.getByTestId('lazy-delay').fill('100');
-    await page.getByTestId('lazy-fail-toggle').check();
+    await holdResponses(page, 'loader');
+    await page.getByTestId('switch-content').click(); // content b: its load held
+    await expect(heldResponses(page, 'loader')).toHaveText('1');
 
-    await expander(page, 5).click();
-    await expect(liveRegion(page)).toContainText('Could not load child rows');
-    await expect(childSpinner(page, 5)).toHaveCount(0);
-    await expect(row(page, 5)).toHaveAttribute('aria-expanded', 'false');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '10');
+    // b:1 expands the roots, the lazy root among them: its bind loads it
+    // again (the held b:all load no longer counts for the grid).
+    await page.getByTestId('depth-select').selectOption('1');
+    await expect(heldResponses(page, 'loader')).toHaveText('2');
+    // 20 rows at depth 1 (8 roots, 12 children) + placeholder + header.
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '22');
+    await setScrollTop(page, 5000);
+    await expectCellText(page, 16, 0, 'Loaded lazily');
+    await expect(childSpinner(page, 16)).toBeVisible();
+
+    await releaseResponses(page, 'loader');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '25');
+    await expect(childSpinner(page, 16)).toHaveCount(0);
+    await expectCellText(page, 17, 0, 'Lazy child one');
+    // Both loads resolved; the record took the children once.
+    expect(
+      (await modelJson<Account[]>(page)).filter((account) => account.parentId === 800),
+    ).toHaveLength(3);
+  });
+
+  test('@cross-engine a load that settles after its content switched away lands in that content', async ({
+    page,
+  }) => {
+    await holdResponses(page, 'loader');
+    await page.getByTestId('switch-content').click(); // content b: its load held
+    await expect(heldResponses(page, 'loader')).toHaveText('1');
+    await page.getByTestId('switch-content').click(); // back to a: already loaded
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
+
+    await releaseResponses(page, 'loader'); // b's load settles while a is bound
+
+    // b kept its children: binding it needs no load (the gate still holds).
+    // Wait for the switch to render before scrolling: a still shows 63
+    // rows too, so the row count alone cannot tell the switch has landed,
+    // and the switch's restore of b's remembered scroll (the top) would
+    // undo a scroll made ahead of it.
+    await page.getByTestId('switch-content').click();
+    await expect(page.getByTestId('switch-content')).toHaveText('Content: b');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '63');
+    await setScrollTop(page, 5000);
+    await expectCellText(page, 55, 0, 'Lazy child one');
+    await expect(childSpinner(page, 54)).toHaveCount(0);
+    await expect(heldResponses(page, 'loader')).toHaveText('0');
   });
 });
 
@@ -277,7 +312,7 @@ test.describe('tree row operations', () => {
     await page.keyboard.press('Shift+F10');
     await page.getByRole('menuitem', { name: 'Insert child row', exact: true }).click();
 
-    await expect.poll(async () => (await modelJson<Account[]>(page)).length).toBe(59);
+    await expect.poll(async () => (await modelJson<Account[]>(page)).length).toBe(62);
     const accounts = await modelJson<Account[]>(page);
     const created = accounts[accounts.length - 1];
     expect(created.id).toBeLessThan(0); // minted temp id…
@@ -303,15 +338,15 @@ test.describe('tree row operations', () => {
     await page.keyboard.press('Shift+F10');
     await page.getByRole('menuitem', { name: 'Delete 1 row', exact: true }).click();
 
-    await expect.poll(async () => (await modelJson<Account[]>(page)).length).toBe(
-      before.length - 3,
-    );
+    await expect
+      .poll(async () => (await modelJson<Account[]>(page)).length)
+      .toBe(before.length - 3);
     const remaining = new Set((await modelJson<Account[]>(page)).map((account) => account.id));
     expect(remaining.has(200)).toBe(false);
     expect(remaining.has(2000)).toBe(false);
     expect(remaining.has(2001)).toBe(false);
     await expect(liveRegion(page)).toContainText('3 rows deleted');
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '57');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '60');
   });
 });
 
@@ -395,10 +430,10 @@ test.describe('tree paste (synthetic events)', () => {
     page,
   }) => {
     await setScrollTop(page, 5000); // clamped to the extent — the tree's end
-    await activateCell(page, 57, 0); // Cycle account B (id 911, child of 910)
+    await activateCell(page, 60, 0); // Cycle account B (id 911, child of 910)
     await syntheticPaste(page, { text: 'S1\r\nS2\r\nS3' });
 
-    await expect.poll(async () => (await modelJson<Account[]>(page)).length).toBe(60);
+    await expect.poll(async () => (await modelJson<Account[]>(page)).length).toBe(63);
     const accounts = await modelJson<Account[]>(page);
     expect(accounts.find((account) => account.id === 911)?.name).toBe('S1');
     const s2 = accounts.find((account) => account.name === 'S2');
@@ -408,7 +443,7 @@ test.describe('tree paste (synthetic events)', () => {
     expect(s2?.parentId).toBe(910);
     expect(s3?.parentId).toBe(910);
     expect(s2!.id).toBeLessThan(0);
-    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '62');
+    await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '65');
   });
 });
 

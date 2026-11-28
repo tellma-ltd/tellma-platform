@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Using Include="Tellma.Testing.Support.Sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The platform-owned catalog migrations, applied to every fresh catalog the suite creates,
+         and their design-time factory. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Migrator\Tellma.Core.Migrator.csproj" />
+    <!-- A distribution's migrator project in miniature: the composition and tenant migrations the
+         migrator's commands are driven with. -->
+    <ProjectReference Include="..\assets\Tellma.Core.Migrator.TestDistribution\Tellma.Core.Migrator.TestDistribution.csproj" />
+    <!-- The web host's tracing configuration, run against a real SQL Server. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+    <!-- The email pipeline the outbox's sending jobs send through, its router and its sandbox policy. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Email\Tellma.Core.Email.csproj" />
+    <!-- The data layer's shared SQL fixture: the fixture schema, its migrations, and the host that
+         opens a tenant database over a fixture database. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Entities\Tellma.Testing.Entities.csproj" />
+    <!-- The SQL Server every integration suite shares: a container, or the server TELLMA_TEST_SQL names. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.Support\Tellma.Testing.Support.csproj" />
+    <!-- The fixed tenant settings the catalog hosts' tenant scopes are completed with, since their
+         tenant databases are created empty. -->
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Testing\Tellma.Core.Testing.csproj" />
+    <!-- In-memory configuration for the compositions the suite builds over its catalogs. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <!-- FakeLogger and MetricCollector, for the best-effort membership writes. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <!-- FakeTimeProvider, for an instance whose clock a test moves past the access windows. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The edits a user makes to an exported workbook, shared with the core suite's import tests. -->
+    <Compile Include="..\Tellma.Core.Tests\Excel\WorkbookEdits.cs" Link="Excel\WorkbookEdits.cs" />
+  </ItemGroup>
+
+</Project>

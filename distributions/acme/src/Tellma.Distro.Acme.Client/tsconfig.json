@@ -1,0 +1,49 @@
+/*
+ * Acme's TypeScript configuration: the preset every Tellma Angular project
+ * extends (strict type checking, strict templates). It is the editor and
+ * lint view, so every source file and spec is in it; the build and the tests
+ * each narrow it (tsconfig.app.json, tsconfig.spec.json).
+ */
+{
+  "extends": "@tellma/core-tools/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals"],
+    /*
+     * Inside the platform's repository the @tellma packages are not
+     * installed: these mappings resolve each one to its sources in the
+     * platform's client workspace, as that workspace's own tsconfig.json
+     * does. A distribution in a repository of its own installs the packages
+     * instead and has no mappings.
+     */
+    "paths": {
+      "@tellma/core": ["../../../../client/projects/core/tellma-core/public-api.ts"],
+      "@tellma/core/*": ["../../../../client/projects/core/tellma-core/*/public-api.ts"],
+      "@tellma/core-testing": ["../../../../client/projects/core/tellma-core-testing/public-api.ts"],
+      "@tellma/core-testing/*": ["../../../../client/projects/core/tellma-core-testing/*/public-api.ts"],
+      "@tellma/core-ui": ["../../../../client/projects/core/tellma-core-ui/public-api.ts"],
+      "@tellma/core-ui/*": ["../../../../client/projects/core/tellma-core-ui/*/public-api.ts"],
+      "@tellma/core-ui-tokens": ["../../../../client/projects/core/tellma-core-ui-tokens/public-api.ts"],
+      "@tellma/core-ui-testing": ["../../../../client/projects/core/tellma-core-ui-testing/public-api.ts"],
+      "@tellma/locale-ar": ["../../../../client/projects/locale/tellma-locale-ar/public-api.ts"],
+      "@tellma/locale-ar/attention-strings": ["../../../../client/projects/locale/tellma-locale-ar/attention-strings/public-api.ts"],
+      "@tellma/locale-ar/dashboards-strings": ["../../../../client/projects/locale/tellma-locale-ar/dashboards-strings/public-api.ts"],
+      "@tellma/locale-ar/platform-strings": ["../../../../client/projects/locale/tellma-locale-ar/platform-strings/public-api.ts"],
+      "@tellma/locale-ar/details-strings": ["../../../../client/projects/locale/tellma-locale-ar/details-strings/public-api.ts"],
+      "@tellma/locale-ar/queryex-strings": ["../../../../client/projects/locale/tellma-locale-ar/queryex-strings/public-api.ts"],
+      "@tellma/locale-ar/shell-strings": ["../../../../client/projects/locale/tellma-locale-ar/shell-strings/public-api.ts"],
+      "@tellma/locale-ar/pins-strings": ["../../../../client/projects/locale/tellma-locale-ar/pins-strings/public-api.ts"],
+      "@tellma/locale-ar/support-strings": ["../../../../client/projects/locale/tellma-locale-ar/support-strings/public-api.ts"],
+      "@tellma/locale-ar/strings": ["../../../../client/projects/locale/tellma-locale-ar/strings/public-api.ts"],
+      /* The stylesheets src/styles.css imports by package name, which the build's CSS bundler resolves here too. */
+      "@tellma/core/styles.css": ["../../../../client/projects/core/tellma-core/styles.css"],
+      "@tellma/core-ui/fonts/*": ["../../../../client/projects/core/tellma-core-ui/fonts/*"],
+      "@tellma/core-ui/styles/*": ["../../../../client/projects/core/tellma-core-ui/styles/*"],
+      "@tellma/core-ui-tokens/css/*": ["../../../../client/projects/core/tellma-core-ui-tokens/css/*"],
+      "@tellma/locale-ar/fonts/*": ["../../../../client/projects/locale/tellma-locale-ar/fonts/*"],
+      "@tellma/locale-ar/styles.css": ["../../../../client/projects/locale/tellma-locale-ar/styles.css"]
+    }
+  },
+  /* The emitted entity types (generated/tellma-entities.d.ts) type the declarations' rows and paths. */
+  "include": ["src/**/*.ts", "generated/*.d.ts"]
+}

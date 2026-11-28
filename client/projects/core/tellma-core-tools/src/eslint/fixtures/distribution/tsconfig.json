@@ -1,0 +1,15 @@
+/*
+ * The TypeScript project of the ESLint preset's tests: a miniature
+ * distribution client whose sources the preset lints with type information.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "preserve",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

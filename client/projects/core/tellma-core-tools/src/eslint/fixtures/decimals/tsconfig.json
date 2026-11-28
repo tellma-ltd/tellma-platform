@@ -1,0 +1,15 @@
+/*
+ * The TypeScript project of the decimal rule's test cases, whose code is
+ * inline and imports the real TmDecimal type from @tellma/core's sources.
+ */
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2022",
+    "module": "preserve",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": []
+  },
+  "files": ["brand.ts"]
+}

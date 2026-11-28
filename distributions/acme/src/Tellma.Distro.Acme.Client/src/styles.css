@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/*
+ * Acme's global styles: the platform's stylesheets (the tokens, the Latin
+ * fonts, the directive and boot-page styles), Arabic's fonts, then Acme's
+ * deltas, each in the theme layer so it wins over the tokens whatever the
+ * order of the rules.
+ */
+
+@import '@tellma/core/styles.css';
+@import '@tellma/locale-ar/styles.css';
+
+/* The page: the platform's surface, text colour and face. */
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-strong);
+  font-family: var(--font-ui);
+}
+
+/* Acme's one theme delta: a deeper teal as the light theme's primary colour.
+   The dark theme keeps the platform's lighter teal, which its dark button
+   text needs: the theme layer wins over the tokens whatever the selector, so
+   a delta on every :root would reach the dark theme too. */
+@layer tm.theme {
+  :root:not([data-theme='dark']) {
+    --color-primary: var(--teal-700);
+  }
+}

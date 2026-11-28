@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The Windows interop that starts PDF workers in their Job Objects builds its structures
+         natively. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Tellma's image processor: SkiaImageProcessor normalises uploaded images and renders thumbnails on SkiaSharp, with PDF first-page thumbnails rendered by PDFium in a disposable, memory-capped worker process (Tellma.Core.Imaging.PdfWorker), so PDFium never runs in the host. The platform's only package carrying native binaries; composed explicitly by a host through AddTellmaSkia, and never referenced by Tellma.Core.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tellma.Core.Abstractions\Tellma.Core.Abstractions.csproj" />
+    <!-- The PDF worker: an assembly the processor starts as a process of its own with the host's
+         runtime configuration and dependency manifest, which therefore must list it and its
+         natives. A plain reference does exactly that, in a build, a publish and, as a package
+         dependency, for package consumers. It also shares the worker's protocol with the host. -->
+    <ProjectReference Include="..\Tellma.Core.Imaging.PdfWorker\Tellma.Core.Imaging.PdfWorker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The imaging library. SkiaSharp's managed package brings the Windows and macOS natives;
+         the Linux natives are the NoDependencies build, so no fontconfig is needed on a server.
+         PDFium (PDFtoImage and the bblanchon.PDFium natives) comes with the worker, pinned
+         centrally, and is never loaded in this process. -->
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!-- AddMetrics(), which registers the IMeterFactory the image instruments are created from. -->
+    <PackageReference Include="Microsoft.Extensions.Diagnostics" />
+    <!-- IHostEnvironment: PDF thumbnails render on Windows and macOS only in Development. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <!-- Referenced directly for its [LoggerMessage] source generator. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <!-- Binds the processor's options from configuration. -->
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Keeps SkiaSharp's Windows native symbol files (about 100 MB per runtime) out of every
+         consumer's build and publish output; imported for in-repo consumers by the repository's
+         Directory.Build.targets, and packed for package consumers. -->
+    <None Include="build\**" Pack="true" PackagePath="build;buildTransitive" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The suite inspects slots, workers and native-handle bookkeeping through internal seams,
+         which keeps them out of the public surface. -->
+    <InternalsVisibleTo Include="Tellma.Core.Imaging.Tests" />
+    <!-- The suite's host-shaped asset, which reports its workers' process ids. -->
+    <InternalsVisibleTo Include="Tellma.Core.Imaging.SmokeHost" />
+  </ItemGroup>
+
+</Project>

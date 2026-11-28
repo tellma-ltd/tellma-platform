@@ -202,7 +202,7 @@ namespace Tellma.Core.Queryex.Tests.Emit
                 spec,
                 new QueryCompilationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                 });
 

@@ -1,0 +1,2707 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Calendars: the names of the calendar value set (core.Calendar) -->
+  <data name="Calendar_gc" xml:space="preserve">
+    <value>الميلادي</value>
+  </data>
+  <data name="Calendar_uq" xml:space="preserve">
+    <value>أم القرى</value>
+  </data>
+  <data name="Calendar_et" xml:space="preserve">
+    <value>الإثيوبي</value>
+  </data>
+  <!-- Calendars: month names of the calendars the framework knows no names for -->
+  <data name="Calendar_uq_Month1" xml:space="preserve">
+    <value>محرم</value>
+  </data>
+  <data name="Calendar_uq_Month2" xml:space="preserve">
+    <value>صفر</value>
+  </data>
+  <data name="Calendar_uq_Month3" xml:space="preserve">
+    <value>ربيع الأول</value>
+  </data>
+  <data name="Calendar_uq_Month4" xml:space="preserve">
+    <value>ربيع الآخر</value>
+  </data>
+  <data name="Calendar_uq_Month5" xml:space="preserve">
+    <value>جمادى الأولى</value>
+  </data>
+  <data name="Calendar_uq_Month6" xml:space="preserve">
+    <value>جمادى الآخرة</value>
+  </data>
+  <data name="Calendar_uq_Month7" xml:space="preserve">
+    <value>رجب</value>
+  </data>
+  <data name="Calendar_uq_Month8" xml:space="preserve">
+    <value>شعبان</value>
+  </data>
+  <data name="Calendar_uq_Month9" xml:space="preserve">
+    <value>رمضان</value>
+  </data>
+  <data name="Calendar_uq_Month10" xml:space="preserve">
+    <value>شوال</value>
+  </data>
+  <data name="Calendar_uq_Month11" xml:space="preserve">
+    <value>ذو القعدة</value>
+  </data>
+  <data name="Calendar_uq_Month12" xml:space="preserve">
+    <value>ذو الحجة</value>
+  </data>
+  <data name="Calendar_et_Month1" xml:space="preserve">
+    <value>مسكريم</value>
+  </data>
+  <data name="Calendar_et_Month2" xml:space="preserve">
+    <value>تكمت</value>
+  </data>
+  <data name="Calendar_et_Month3" xml:space="preserve">
+    <value>هدار</value>
+  </data>
+  <data name="Calendar_et_Month4" xml:space="preserve">
+    <value>تهساس</value>
+  </data>
+  <data name="Calendar_et_Month5" xml:space="preserve">
+    <value>تر</value>
+  </data>
+  <data name="Calendar_et_Month6" xml:space="preserve">
+    <value>يكتت</value>
+  </data>
+  <data name="Calendar_et_Month7" xml:space="preserve">
+    <value>مجابيت</value>
+  </data>
+  <data name="Calendar_et_Month8" xml:space="preserve">
+    <value>ميازيا</value>
+  </data>
+  <data name="Calendar_et_Month9" xml:space="preserve">
+    <value>جنبت</value>
+  </data>
+  <data name="Calendar_et_Month10" xml:space="preserve">
+    <value>سين</value>
+  </data>
+  <data name="Calendar_et_Month11" xml:space="preserve">
+    <value>هامل</value>
+  </data>
+  <data name="Calendar_et_Month12" xml:space="preserve">
+    <value>نهاس</value>
+  </data>
+  <data name="Calendar_et_Month13" xml:space="preserve">
+    <value>باجمن</value>
+  </data>
+  <!-- Shared labels: the fallback of every entity property and navigation of these names -->
+  <data name="Name" xml:space="preserve">
+    <value>الاسم</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>الرمز</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>الوصف</value>
+  </data>
+  <data name="IsActive" xml:space="preserve">
+    <value>نشط</value>
+  </data>
+  <data name="CreatedAt" xml:space="preserve">
+    <value>تاريخ الإنشاء</value>
+  </data>
+  <data name="CreatedBy" xml:space="preserve">
+    <value>أنشأه</value>
+  </data>
+  <data name="ModifiedAt" xml:space="preserve">
+    <value>تاريخ التعديل</value>
+  </data>
+  <data name="ModifiedBy" xml:space="preserve">
+    <value>عدّله</value>
+  </data>
+  <data name="Parent" xml:space="preserve">
+    <value>الأصل</value>
+  </data>
+  <data name="Id" xml:space="preserve">
+    <value>المعرّف</value>
+  </data>
+  <data name="CreatedById" xml:space="preserve">
+    <value>أنشأه</value>
+  </data>
+  <data name="ModifiedById" xml:space="preserve">
+    <value>عدّله</value>
+  </data>
+  <data name="SubtreeCount" xml:space="preserve">
+    <value>حجم الفرع</value>
+  </data>
+  <data name="ActiveSubtreeCount" xml:space="preserve">
+    <value>حجم الفرع النشط</value>
+  </data>
+  <!-- Actions: the labels of the access actions, and the fallback label of every entity action of these names -->
+  <data name="Action_Read" xml:space="preserve">
+    <value>قراءة</value>
+  </data>
+  <data name="Action_Save" xml:space="preserve">
+    <value>إنشاء وتعديل</value>
+  </data>
+  <data name="Action_Delete" xml:space="preserve">
+    <value>حذف</value>
+  </data>
+  <data name="Action_Activate" xml:space="preserve">
+    <value>تفعيل</value>
+  </data>
+  <data name="Action_Deactivate" xml:space="preserve">
+    <value>إلغاء التفعيل</value>
+  </data>
+  <data name="Action_Invite" xml:space="preserve">
+    <value>دعوة</value>
+  </data>
+  <data name="Action_Credentials" xml:space="preserve">
+    <value>بيانات الاعتماد</value>
+  </data>
+  <data name="Action_Preferences" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
+  <data name="Action_Share" xml:space="preserve">
+    <value>مشاركة</value>
+  </data>
+  <data name="Action_Publish" xml:space="preserve">
+    <value>نشر</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>نقل الملكية</value>
+  </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>إعادة المحاولة</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>إيقاف</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>استئناف</value>
+  </data>
+  <!-- Workbook actions: the labels of the platform's exports and imports on every stack, and of their request's fields -->
+  <data name="Action_Export" xml:space="preserve">
+    <value>تصدير</value>
+  </data>
+  <data name="Action_ExportForImport" xml:space="preserve">
+    <value>تصدير للاستيراد</value>
+  </data>
+  <data name="Arguments" xml:space="preserve">
+    <value>المعاملات</value>
+  </data>
+  <data name="Children" xml:space="preserve">
+    <value>المجموعات</value>
+  </data>
+  <data name="Columns" xml:space="preserve">
+    <value>الأعمدة</value>
+  </data>
+  <data name="Filters" xml:space="preserve">
+    <value>عوامل التصفية</value>
+  </data>
+  <data name="Ids" xml:space="preserve">
+    <value>السجلات</value>
+  </data>
+  <data name="IncludeInactive" xml:space="preserve">
+    <value>تضمين غير النشط</value>
+  </data>
+  <data name="NamedFilters" xml:space="preserve">
+    <value>عوامل التصفية المسماة</value>
+  </data>
+  <data name="OrderBy" xml:space="preserve">
+    <value>الترتيب حسب</value>
+  </data>
+  <data name="ReferenceKeys" xml:space="preserve">
+    <value>مفاتيح المراجع</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>بحث</value>
+  </data>
+  <data name="Action_InspectImport" xml:space="preserve">
+    <value>فحص الاستيراد</value>
+  </data>
+  <data name="ColumnMappings" xml:space="preserve">
+    <value>مطابقة الأعمدة</value>
+  </data>
+  <data name="FileId" xml:space="preserve">
+    <value>الملف</value>
+  </data>
+  <data name="SheetMappings" xml:space="preserve">
+    <value>مطابقة الأوراق</value>
+  </data>
+  <data name="Action_Import" xml:space="preserve">
+    <value>استيراد</value>
+  </data>
+  <data name="Mode" xml:space="preserve">
+    <value>الوضع</value>
+  </data>
+  <data name="RowKey" xml:space="preserve">
+    <value>مفتاح الصف</value>
+  </data>
+  <data name="IgnoreUnmappedColumns" xml:space="preserve">
+    <value>تجاهل الأعمدة غير المطابقة</value>
+  </data>
+  <data name="IgnoreSheetStamps" xml:space="preserve">
+    <value>تجاهل أوقات التعديل في الملف</value>
+  </data>
+  <!-- Entities: the create label and the display name of a record without one -->
+  <data name="Entity_New" xml:space="preserve">
+    <value>جديد</value>
+  </data>
+  <data name="Entity_DisplayNameFallback" xml:space="preserve">
+    <value>#{id}</value>
+  </data>
+  <!-- Files, the typed settings, the setting values and the users' activity stamps -->
+  <data name="Core_Blob" xml:space="preserve">
+    <value>ملف</value>
+  </data>
+  <data name="Core_Blob_Plural" xml:space="preserve">
+    <value>الملفات</value>
+  </data>
+  <data name="Core_Blob_Kind" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Core_Blob_State" xml:space="preserve">
+    <value>الحالة</value>
+  </data>
+  <data name="Core_Blob_ContentType" xml:space="preserve">
+    <value>نوع المحتوى</value>
+  </data>
+  <data name="Core_Blob_FileName" xml:space="preserve">
+    <value>اسم الملف</value>
+  </data>
+  <data name="Core_Blob_Size" xml:space="preserve">
+    <value>الحجم</value>
+  </data>
+  <data name="Core_Blob_Width" xml:space="preserve">
+    <value>العرض</value>
+  </data>
+  <data name="Core_Blob_Height" xml:space="preserve">
+    <value>الارتفاع</value>
+  </data>
+  <data name="Core_Blob_Variants" xml:space="preserve">
+    <value>النسخ</value>
+  </data>
+  <data name="Core_Blob_CommittedAt" xml:space="preserve">
+    <value>تاريخ الإرفاق</value>
+  </data>
+  <data name="Core_Blob_ExpiresAt" xml:space="preserve">
+    <value>تاريخ الانتهاء</value>
+  </data>
+  <data name="Core_BlobState_Staged" xml:space="preserve">
+    <value>مرفوع</value>
+  </data>
+  <data name="Core_BlobState_Committed" xml:space="preserve">
+    <value>مرفق</value>
+  </data>
+  <data name="Core_BlobState_Released" xml:space="preserve">
+    <value>مُفرَج عنه</value>
+  </data>
+  <data name="Core_BlobState_Deleting" xml:space="preserve">
+    <value>قيد الحذف</value>
+  </data>
+  <data name="Core_Settings" xml:space="preserve">
+    <value>الإعدادات</value>
+  </data>
+  <data name="Core_Settings_TenantId" xml:space="preserve">
+    <value>معرّف المنشأة</value>
+  </data>
+  <data name="Core_Settings_PrimaryLanguage" xml:space="preserve">
+    <value>اللغة الأساسية</value>
+  </data>
+  <data name="Core_Settings_SecondaryLanguage" xml:space="preserve">
+    <value>اللغة الثانية</value>
+  </data>
+  <data name="Core_Settings_TertiaryLanguage" xml:space="preserve">
+    <value>اللغة الثالثة</value>
+  </data>
+  <data name="Core_Settings_PrimaryCalendar" xml:space="preserve">
+    <value>التقويم الأساسي</value>
+  </data>
+  <data name="Core_Settings_SecondaryCalendar" xml:space="preserve">
+    <value>التقويم الثانوي</value>
+  </data>
+  <data name="Core_Settings_TimeZone" xml:space="preserve">
+    <value>المنطقة الزمنية</value>
+  </data>
+  <data name="Core_Settings_Region" xml:space="preserve">
+    <value>المنطقة</value>
+  </data>
+  <data name="Core_Settings_Digits" xml:space="preserve">
+    <value>الأرقام</value>
+  </data>
+  <data name="Core_SettingEntry" xml:space="preserve">
+    <value>قيمة إعداد</value>
+  </data>
+  <data name="Core_SettingEntry_Plural" xml:space="preserve">
+    <value>قيم الإعدادات</value>
+  </data>
+  <data name="Core_SettingEntry_Key" xml:space="preserve">
+    <value>الإعداد</value>
+  </data>
+  <data name="Core_SettingEntry_Value" xml:space="preserve">
+    <value>القيمة</value>
+  </data>
+  <data name="Core_UserStamp" xml:space="preserve">
+    <value>نشاط المستخدم</value>
+  </data>
+  <data name="Core_UserStamp_UserId" xml:space="preserve">
+    <value>المستخدم</value>
+  </data>
+  <data name="Core_UserStamp_LastActiveAt" xml:space="preserve">
+    <value>آخر نشاط</value>
+  </data>
+  <data name="Core_UserStamp_InboxSeenAt" xml:space="preserve">
+    <value>تاريخ مشاهدة صندوق الوارد</value>
+  </data>
+  <data name="Core_UserStamp_InboxVersion" xml:space="preserve">
+    <value>إصدار صندوق الوارد</value>
+  </data>
+  <data name="Core_UserStamp_AssignmentsSeenAt" xml:space="preserve">
+    <value>تاريخ مشاهدة المهام المسندة</value>
+  </data>
+  <!-- Settings and access -->
+  <data name="SettingCategory_general" xml:space="preserve">
+    <value>عام</value>
+  </data>
+  <data name="Access_Reason_self" xml:space="preserve">
+    <value>سجلاتهم الخاصة</value>
+  </data>
+  <data name="Access_Reason_share" xml:space="preserve">
+    <value>السجلات المشتركة معهم</value>
+  </data>
+  <data name="Core_User" xml:space="preserve">
+    <value>مستخدم</value>
+  </data>
+  <data name="Core_User_Plural" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
+  <data name="Core_User_Kind" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Core_User_Subject" xml:space="preserve">
+    <value>معرّف تسجيل الدخول</value>
+  </data>
+  <data name="Core_User_Email" xml:space="preserve">
+    <value>البريد الإلكتروني</value>
+  </data>
+  <data name="Core_User_State" xml:space="preserve">
+    <value>الحالة</value>
+  </data>
+  <data name="Core_User_InvitedAt" xml:space="preserve">
+    <value>تاريخ الدعوة</value>
+  </data>
+  <data name="Core_User_InviteStatus" xml:space="preserve">
+    <value>حالة الدعوة</value>
+  </data>
+  <data name="Core_User_LastInviteError" xml:space="preserve">
+    <value>خطأ آخر دعوة</value>
+  </data>
+  <data name="Core_User_JoinedAt" xml:space="preserve">
+    <value>تاريخ الانضمام</value>
+  </data>
+  <data name="Core_User_ImageId" xml:space="preserve">
+    <value>الصورة</value>
+  </data>
+  <data name="Core_User_SignatureId" xml:space="preserve">
+    <value>التوقيع</value>
+  </data>
+  <data name="Core_User_PreferredLanguage" xml:space="preserve">
+    <value>اللغة المفضلة</value>
+  </data>
+  <data name="Core_User_PreferredCalendar" xml:space="preserve">
+    <value>التقويم المفضل</value>
+  </data>
+  <data name="Core_User_PreferredTimeZone" xml:space="preserve">
+    <value>المنطقة الزمنية المفضلة</value>
+  </data>
+  <data name="Core_User_PreferredRegion" xml:space="preserve">
+    <value>المنطقة المفضلة</value>
+  </data>
+  <data name="Core_User_PreferredDigits" xml:space="preserve">
+    <value>الأرقام المفضلة</value>
+  </data>
+  <data name="Core_User_Gender" xml:space="preserve">
+    <value>الجنس</value>
+  </data>
+  <data name="Core_User_ContactEmail" xml:space="preserve">
+    <value>البريد الإلكتروني للتواصل</value>
+  </data>
+  <data name="Core_User_ContactMobile" xml:space="preserve">
+    <value>رقم الجوال</value>
+  </data>
+  <data name="Core_UserKind_Individual" xml:space="preserve">
+    <value>فرد</value>
+  </data>
+  <data name="Core_UserKind_Service" xml:space="preserve">
+    <value>حساب خدمة</value>
+  </data>
+  <data name="Core_UserKind_System" xml:space="preserve">
+    <value>النظام</value>
+  </data>
+  <data name="Core_UserState_New" xml:space="preserve">
+    <value>جديد</value>
+  </data>
+  <data name="Core_UserState_Invited" xml:space="preserve">
+    <value>مدعو</value>
+  </data>
+  <data name="Core_UserState_Joined" xml:space="preserve">
+    <value>منضم</value>
+  </data>
+  <data name="Core_InviteStatus_Invited" xml:space="preserve">
+    <value>مدعو</value>
+  </data>
+  <data name="Core_InviteStatus_Reinvited" xml:space="preserve">
+    <value>أعيدت دعوته</value>
+  </data>
+  <data name="Core_InviteStatus_Active" xml:space="preserve">
+    <value>لديه حساب بالفعل</value>
+  </data>
+  <data name="Core_Gender_Female" xml:space="preserve">
+    <value>أنثى</value>
+  </data>
+  <data name="Core_Gender_Male" xml:space="preserve">
+    <value>ذكر</value>
+  </data>
+  <data name="Core_DigitStyle_Latin" xml:space="preserve">
+    <value>لاتينية</value>
+  </data>
+  <data name="Core_DigitStyle_Native" xml:space="preserve">
+    <value>محلية</value>
+  </data>
+  <data name="Core_MeLocaleMember_Language" xml:space="preserve">
+    <value>اللغة</value>
+  </data>
+  <data name="Core_MeLocaleMember_Calendar" xml:space="preserve">
+    <value>التقويم</value>
+  </data>
+  <data name="Core_MeLocaleMember_TimeZone" xml:space="preserve">
+    <value>المنطقة الزمنية</value>
+  </data>
+  <data name="Core_MeLocaleMember_Region" xml:space="preserve">
+    <value>المنطقة</value>
+  </data>
+  <data name="Core_MeLocaleMember_Digits" xml:space="preserve">
+    <value>الأرقام</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Check" xml:space="preserve">
+    <value>التحقق من التغييرات</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Override" xml:space="preserve">
+    <value>الكتابة فوق التغييرات</value>
+  </data>
+  <data name="Core_User_Action_Invite" xml:space="preserve">
+    <value>دعوة</value>
+  </data>
+  <data name="Core_User_Action_IssueCredentials" xml:space="preserve">
+    <value>إصدار بيانات الاعتماد</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus" xml:space="preserve">
+    <value>حالة الدعوة</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
+  <data name="Core_User_Action_Me" xml:space="preserve">
+    <value>ملفي الشخصي</value>
+  </data>
+  <data name="Core_User_Action_MeSave" xml:space="preserve">
+    <value>حفظ ملفي الشخصي</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name2" xml:space="preserve">
+    <value>الاسم باللغة الثانية</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name3" xml:space="preserve">
+    <value>الاسم باللغة الثالثة</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Concurrency" xml:space="preserve">
+    <value>التغييرات التي جرت في الأثناء</value>
+  </data>
+  <data name="Core_User_Action_MeLocale" xml:space="preserve">
+    <value>تغيير لغتي ومنطقتي</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Language" xml:space="preserve">
+    <value>اللغة</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Calendar" xml:space="preserve">
+    <value>التقويم</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_TimeZone" xml:space="preserve">
+    <value>المنطقة الزمنية</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Region" xml:space="preserve">
+    <value>المنطقة</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Digits" xml:space="preserve">
+    <value>الأرقام</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Reset" xml:space="preserve">
+    <value>إعادة إلى الافتراضي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet" xml:space="preserve">
+    <value>حفظ تفضيلاتي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet_Items" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete" xml:space="preserve">
+    <value>مسح تفضيلاتي</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete_Keys" xml:space="preserve">
+    <value>أسماء التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet" xml:space="preserve">
+    <value>عرض التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet_UserId" xml:space="preserve">
+    <value>المستخدم</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet" xml:space="preserve">
+    <value>تغيير التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet_Items" xml:space="preserve">
+    <value>التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete" xml:space="preserve">
+    <value>مسح التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete_Keys" xml:space="preserve">
+    <value>أسماء التفضيلات</value>
+  </data>
+  <data name="Core_User_Action_MeTestNotification" xml:space="preserve">
+    <value>إرسال إشعار تجريبي إليّ</value>
+  </data>
+  <data name="Core_User_Action_MeTestNotification_Channel" xml:space="preserve">
+    <value>القناة</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet" xml:space="preserve">
+    <value>عرض إعدادات الإشعارات</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet_UserId" xml:space="preserve">
+    <value>المستخدم</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave" xml:space="preserve">
+    <value>تغيير إعدادات الإشعارات</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave_Preferences" xml:space="preserve">
+    <value>إعدادات الإشعارات</value>
+  </data>
+  <data name="Core_Role" xml:space="preserve">
+    <value>دور</value>
+  </data>
+  <data name="Core_Role_Plural" xml:space="preserve">
+    <value>الأدوار</value>
+  </data>
+  <data name="Core_Role_IsPublic" xml:space="preserve">
+    <value>عام</value>
+  </data>
+  <data name="Core_RoleMembership" xml:space="preserve">
+    <value>عضوية دور</value>
+  </data>
+  <data name="Core_RoleMembership_Plural" xml:space="preserve">
+    <value>عضويات الأدوار</value>
+  </data>
+  <data name="Core_RoleMembership_UserId" xml:space="preserve">
+    <value>المستخدم</value>
+  </data>
+  <data name="Core_RoleMembership_RoleId" xml:space="preserve">
+    <value>الدور</value>
+  </data>
+  <data name="Core_RoleMembership_StartsAt" xml:space="preserve">
+    <value>تاريخ البدء</value>
+  </data>
+  <data name="Core_RoleMembership_EndsAt" xml:space="preserve">
+    <value>تاريخ الانتهاء</value>
+  </data>
+  <data name="Core_RoleMembership_Notes" xml:space="preserve">
+    <value>ملاحظات</value>
+  </data>
+  <data name="Core_Permission" xml:space="preserve">
+    <value>إذن</value>
+  </data>
+  <data name="Core_Permission_Plural" xml:space="preserve">
+    <value>الأذونات</value>
+  </data>
+  <data name="Core_Permission_RoleId" xml:space="preserve">
+    <value>الدور</value>
+  </data>
+  <data name="Core_Permission_Resource" xml:space="preserve">
+    <value>المورد</value>
+  </data>
+  <data name="Core_Permission_Action" xml:space="preserve">
+    <value>الإجراء</value>
+  </data>
+  <data name="Core_Permission_Filter" xml:space="preserve">
+    <value>عامل التصفية</value>
+  </data>
+  <data name="Core_Permission_FilterQueryexVersion" xml:space="preserve">
+    <value>إصدار عامل التصفية</value>
+  </data>
+  <data name="Core_Permission_Notes" xml:space="preserve">
+    <value>ملاحظات</value>
+  </data>
+  <data name="Core_Job" xml:space="preserve">
+    <value>مهمة</value>
+  </data>
+  <data name="Core_Job_Plural" xml:space="preserve">
+    <value>المهام</value>
+  </data>
+  <data name="Core_Job_HandlerKey" xml:space="preserve">
+    <value>نوع المهمة</value>
+  </data>
+  <data name="Core_Job_LabelKey" xml:space="preserve">
+    <value>التسمية</value>
+  </data>
+  <data name="Core_Job_LabelArgumentsJson" xml:space="preserve">
+    <value>معاملات التسمية</value>
+  </data>
+  <data name="Core_Job_Status" xml:space="preserve">
+    <value>الحالة</value>
+  </data>
+  <data name="Core_Job_DueAt" xml:space="preserve">
+    <value>موعد التشغيل</value>
+  </data>
+  <data name="Core_Job_Attempts" xml:space="preserve">
+    <value>المحاولات</value>
+  </data>
+  <data name="Core_Job_LeaseExpiresAt" xml:space="preserve">
+    <value>تاريخ انتهاء الحجز</value>
+  </data>
+  <data name="Core_Job_LeaseOwner" xml:space="preserve">
+    <value>تعمل على</value>
+  </data>
+  <data name="Core_Job_StartedAt" xml:space="preserve">
+    <value>تاريخ البدء</value>
+  </data>
+  <data name="Core_Job_CompletedAt" xml:space="preserve">
+    <value>تاريخ الاكتمال</value>
+  </data>
+  <data name="Core_Job_CancelRequestedAt" xml:space="preserve">
+    <value>تاريخ طلب الإيقاف</value>
+  </data>
+  <data name="Core_Job_ArgumentsJson" xml:space="preserve">
+    <value>المعاملات</value>
+  </data>
+  <data name="Core_Job_ProgressPercent" xml:space="preserve">
+    <value>التقدم</value>
+  </data>
+  <data name="Core_Job_ProgressKey" xml:space="preserve">
+    <value>رسالة التقدم</value>
+  </data>
+  <data name="Core_Job_ProgressArgumentsJson" xml:space="preserve">
+    <value>معاملات التقدم</value>
+  </data>
+  <data name="Core_Job_ErrorCode" xml:space="preserve">
+    <value>رمز الخطأ</value>
+  </data>
+  <data name="Core_Job_ErrorArgumentsJson" xml:space="preserve">
+    <value>معاملات الخطأ</value>
+  </data>
+  <data name="Core_Job_ErrorTraceId" xml:space="preserve">
+    <value>معرّف التتبع</value>
+  </data>
+  <data name="Core_Job_PendingConfirmationsJson" xml:space="preserve">
+    <value>التحذيرات بانتظار التأكيد</value>
+  </data>
+  <data name="Core_Job_TraceParent" xml:space="preserve">
+    <value>سياق التتبع</value>
+  </data>
+  <data name="Core_Job_RunAsUserId" xml:space="preserve">
+    <value>تعمل باسم</value>
+  </data>
+  <data name="Core_Job_RequestedById" xml:space="preserve">
+    <value>طلبها</value>
+  </data>
+  <data name="Core_Job_ScheduleId" xml:space="preserve">
+    <value>الجدول الزمني</value>
+  </data>
+  <data name="Core_Job_ScheduledFor" xml:space="preserve">
+    <value>الموعد المجدول</value>
+  </data>
+  <data name="Core_JobStatus_Pending" xml:space="preserve">
+    <value>قيد الانتظار</value>
+  </data>
+  <data name="Core_JobStatus_Running" xml:space="preserve">
+    <value>قيد التشغيل</value>
+  </data>
+  <data name="Core_JobStatus_PendingConfirmation" xml:space="preserve">
+    <value>بانتظار التأكيد</value>
+  </data>
+  <data name="Core_JobStatus_Held" xml:space="preserve">
+    <value>متوقفة مؤقتًا</value>
+  </data>
+  <data name="Core_JobStatus_Succeeded" xml:space="preserve">
+    <value>نجحت</value>
+  </data>
+  <data name="Core_JobStatus_Failed" xml:space="preserve">
+    <value>فشلت</value>
+  </data>
+  <data name="Core_JobStatus_Cancelled" xml:space="preserve">
+    <value>أُلغيت</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>التأكيد والمتابعة</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>التحذيرات المؤكدة</value>
+  </data>
+  <data name="Core_Schedule" xml:space="preserve">
+    <value>جدول زمني</value>
+  </data>
+  <data name="Core_Schedule_Plural" xml:space="preserve">
+    <value>الجداول الزمنية</value>
+  </data>
+  <data name="Core_Schedule_HandlerKey" xml:space="preserve">
+    <value>نوع المهمة</value>
+  </data>
+  <data name="Core_Schedule_ArgumentsJson" xml:space="preserve">
+    <value>المعاملات</value>
+  </data>
+  <data name="Core_Schedule_CronExpression" xml:space="preserve">
+    <value>تعبير cron</value>
+  </data>
+  <data name="Core_Schedule_TimeZoneId" xml:space="preserve">
+    <value>المنطقة الزمنية</value>
+  </data>
+  <data name="Core_Schedule_MissedPolicy" xml:space="preserve">
+    <value>المرات الفائتة</value>
+  </data>
+  <data name="Core_Schedule_OverlapPolicy" xml:space="preserve">
+    <value>التشغيل المتداخل</value>
+  </data>
+  <data name="Core_Schedule_CatchUpWindowMinutes" xml:space="preserve">
+    <value>مدة التعويض (بالدقائق)</value>
+  </data>
+  <data name="Core_Schedule_RunAsUserId" xml:space="preserve">
+    <value>يعمل باسم</value>
+  </data>
+  <data name="Core_Schedule_PausedReason" xml:space="preserve">
+    <value>سبب الإيقاف المؤقت</value>
+  </data>
+  <data name="Core_MissedPolicy_Coalesce" xml:space="preserve">
+    <value>تشغيل مرة واحدة</value>
+  </data>
+  <data name="Core_MissedPolicy_ReplayAll" xml:space="preserve">
+    <value>تشغيل كل مرة فائتة</value>
+  </data>
+  <data name="Core_MissedPolicy_Skip" xml:space="preserve">
+    <value>تخطي</value>
+  </data>
+  <data name="Core_OverlapPolicy_Allow" xml:space="preserve">
+    <value>السماح</value>
+  </data>
+  <data name="Core_OverlapPolicy_Skip" xml:space="preserve">
+    <value>تخطي</value>
+  </data>
+  <data name="Core_SchedulePausedReason_OwnerInactive" xml:space="preserve">
+    <value>مستخدمه غير نشط</value>
+  </data>
+  <data name="Core_SchedulePausedReason_Exhausted" xml:space="preserve">
+    <value>لا مزيد من مرات التشغيل</value>
+  </data>
+  <data name="Core_SchedulePausedReason_HandlerRetired" xml:space="preserve">
+    <value>نوع المهمة لم يعد متاحًا</value>
+  </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>تولي الجدول</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>تشغيل الآن</value>
+  </data>
+  <data name="Core_Notification" xml:space="preserve">
+    <value>إشعار</value>
+  </data>
+  <data name="Core_Notification_Plural" xml:space="preserve">
+    <value>الإشعارات</value>
+  </data>
+  <data name="Core_Notification_UserId" xml:space="preserve">
+    <value>المستلم</value>
+  </data>
+  <data name="Core_Notification_Type" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Core_Notification_Severity" xml:space="preserve">
+    <value>مستوى الأهمية</value>
+  </data>
+  <data name="Core_Notification_ArgumentsJson" xml:space="preserve">
+    <value>المعاملات</value>
+  </data>
+  <data name="Core_Notification_TargetResource" xml:space="preserve">
+    <value>مورد الهدف</value>
+  </data>
+  <data name="Core_Notification_TargetId" xml:space="preserve">
+    <value>معرّف الهدف</value>
+  </data>
+  <data name="Core_Notification_ActorUserId" xml:space="preserve">
+    <value>تسبب فيه</value>
+  </data>
+  <data name="Core_Notification_DedupKey" xml:space="preserve">
+    <value>مفتاح التجميع</value>
+  </data>
+  <data name="Core_Notification_ReadAt" xml:space="preserve">
+    <value>تاريخ القراءة</value>
+  </data>
+  <data name="Core_NotificationSeverity_Info" xml:space="preserve">
+    <value>معلومات</value>
+  </data>
+  <data name="Core_NotificationSeverity_Success" xml:space="preserve">
+    <value>نجاح</value>
+  </data>
+  <data name="Core_NotificationSeverity_Warning" xml:space="preserve">
+    <value>تحذير</value>
+  </data>
+  <data name="Core_NotificationSeverity_Error" xml:space="preserve">
+    <value>خطأ</value>
+  </data>
+  <data name="Securable_core_UserStamp" xml:space="preserve">
+    <value>نشاط المستخدمين</value>
+  </data>
+  <data name="Feature_core" xml:space="preserve">
+    <value>المنصة</value>
+  </data>
+  <!-- The boot page of the browser application -->
+  <data name="Boot_Title" xml:space="preserve">
+    <value>تعذّر تشغيل {displayName}</value>
+  </data>
+  <data name="Boot_Unsupported" xml:space="preserve">
+    <value>حدّث متصفحك إلى إصدار حديث من Chrome أو Edge أو Firefox أو Safari.</value>
+  </data>
+  <data name="Boot_Cookies" xml:space="preserve">
+    <value>فعّل ملفات تعريف الارتباط لهذا الموقع، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Boot_SignInFailed" xml:space="preserve">
+    <value>تعذّر تسجيل دخولك. حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Boot_LoadFailed" xml:space="preserve">
+    <value>تحقّق من اتصالك وحاول مرة أخرى.</value>
+  </data>
+  <data name="Boot_TryAgain" xml:space="preserve">
+    <value>حاول مرة أخرى</value>
+  </data>
+  <!-- Problems: the title and detail of each problem code the platform answers with -->
+  <data name="Problem_bad_request" xml:space="preserve">
+    <value>تعذّر إتمام ذلك</value>
+  </data>
+  <data name="Problem_bad_request_Detail" xml:space="preserve">
+    <value>الطلب غير صالح.</value>
+  </data>
+  <data name="Problem_query_invalid" xml:space="preserve">
+    <value>عامل التصفية غير صالح</value>
+  </data>
+  <data name="Problem_query_invalid_Detail" xml:space="preserve">
+    <value>تحقّق من عامل التصفية وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_step_up_required" xml:space="preserve">
+    <value>أكّد هويتك</value>
+  </data>
+  <data name="Problem_step_up_required_Detail" xml:space="preserve">
+    <value>سجّل الدخول مرة أخرى للمتابعة.</value>
+  </data>
+  <data name="Problem_forbidden" xml:space="preserve">
+    <value>ليست لديك صلاحية لذلك</value>
+  </data>
+  <data name="Problem_forbidden_Detail" xml:space="preserve">
+    <value>{reason, select, no-grant {يتطلب ذلك صلاحية «{resource}: {action}». اطلب من المسؤول منحك إياها.} outside-filter {صلاحيتك «{resource}: {action}» تشمل بعض السجلات فقط. اطلب من المسؤول ذلك إن كنت تحتاج إلى هذا السجل.} restricted-path {لا يمكنك رؤية {path} هنا. اطلب من المسؤول ذلك إن كنت تحتاج إليه.} other {اطلب من المسؤول منحك الوصول.}}</value>
+  </data>
+  <data name="Problem_individual_required" xml:space="preserve">
+    <value>لا يقوم بذلك إلا شخص</value>
+  </data>
+  <data name="Problem_individual_required_Detail" xml:space="preserve">
+    <value>لا يمكن لحسابات الخدمة القيام بذلك. سجّل الدخول بحسابك.</value>
+  </data>
+  <data name="Problem_tenant_not_found" xml:space="preserve">
+    <value>هذه المنشأة غير موجودة أو لا يمكنك فتحها</value>
+  </data>
+  <data name="Problem_tenant_not_found_Detail" xml:space="preserve">
+    <value>اختر منشأة أخرى، أو اطلب من المسؤول منحك الوصول.</value>
+  </data>
+  <data name="Problem_tenant_suspended" xml:space="preserve">
+    <value>هذه المنشأة موقوفة</value>
+  </data>
+  <data name="Problem_tenant_suspended_Detail" xml:space="preserve">
+    <value>تواصل مع المسؤول.</value>
+  </data>
+  <data name="Problem_tenant_read_only" xml:space="preserve">
+    <value>هذه المنشأة للقراءة فقط</value>
+  </data>
+  <data name="Problem_tenant_read_only_Detail" xml:space="preserve">
+    <value>يمكنك عرض البيانات دون تغييرها. تواصل مع المسؤول.</value>
+  </data>
+  <data name="Problem_tenant_frozen" xml:space="preserve">
+    <value>هذه المنشأة قيد الصيانة</value>
+  </data>
+  <data name="Problem_tenant_frozen_Detail" xml:space="preserve">
+    <value>يمكنك عرض البيانات دون تغييرها حتى تنتهي الصيانة.</value>
+  </data>
+  <data name="Problem_tenant_schema_behind" xml:space="preserve">
+    <value>يجري تحديث هذه المنشأة</value>
+  </data>
+  <data name="Problem_tenant_schema_behind_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد دقيقة.</value>
+  </data>
+  <data name="Problem_tenant_registration_refused" xml:space="preserve">
+    <value>تعذّر تسجيل المنشأة</value>
+  </data>
+  <data name="Problem_tenant_illegal_transition" xml:space="preserve">
+    <value>لا يمكن نقل المنشأة إلى تلك الحالة</value>
+  </data>
+  <data name="Problem_tenant_location_refused" xml:space="preserve">
+    <value>تعذّر نقل المنشأة</value>
+  </data>
+  <data name="Problem_catalog_unavailable" xml:space="preserve">
+    <value>الخدمة مشغولة</value>
+  </data>
+  <data name="Problem_catalog_unavailable_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_not_found" xml:space="preserve">
+    <value>هذا السجل غير موجود أو لا يمكنك رؤيته</value>
+  </data>
+  <data name="Problem_not_found_Detail" xml:space="preserve">
+    <value>ربما حُذف، أو لا تشمله صلاحياتك.</value>
+  </data>
+  <data name="Problem_concurrency_conflict" xml:space="preserve">
+    <value>غيّر شخص آخر هذا السجل</value>
+  </data>
+  <data name="Problem_concurrency_conflict_Detail" xml:space="preserve">
+    <value>أعد التحميل لترى التغييرات، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_confirmation_required" xml:space="preserve">
+    <value>أكّد للمتابعة</value>
+  </data>
+  <data name="Problem_confirmation_required_Detail" xml:space="preserve">
+    <value>راجع التحذيرات وأكّد للمتابعة.</value>
+  </data>
+  <data name="Problem_count_mismatch" xml:space="preserve">
+    <value>تغيّرت السجلات قبل حذفها</value>
+  </data>
+  <data name="Problem_count_mismatch_Detail" xml:space="preserve">
+    <value>كنت تتوقع {expected, plural, zero {عدم وجود سجلات} one {سجلًا واحدًا} two {سجلين} few {# سجلات} many {# سجلًا} other {# سجل}}، لكن عدد السجلات المطابقة الآن {actual, number}. لم يُحذف شيء.</value>
+  </data>
+  <data name="Problem_limit_exceeded" xml:space="preserve">
+    <value>هذا الطلب كبير جدًا</value>
+  </data>
+  <data name="Problem_limit_exceeded_Detail" xml:space="preserve">
+    <value>يحتوي على {actual, number}، والحد الأقصى المسموح به {maximum, number}.</value>
+  </data>
+  <data name="Problem_validation" xml:space="preserve">
+    <value>فشل التحقق من القيم</value>
+  </data>
+  <data name="Problem_validation_Detail" xml:space="preserve">
+    <value>صحّح القيم المشار إليها وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_blob_rejected" xml:space="preserve">
+    <value>رُفض الملف</value>
+  </data>
+  <data name="Problem_blob_rejected_Detail" xml:space="preserve">
+    <value>تحقّق من الملف وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_partial_failure" xml:space="preserve">
+    <value>لم يكتمل جزء من ذلك</value>
+  </data>
+  <data name="Problem_partial_failure_Detail" xml:space="preserve">
+    <value>اكتملت بعض السجلات ولم يكتمل غيرها. حاول مرة أخرى للبقية.</value>
+  </data>
+  <data name="Problem_stale_context" xml:space="preserve">
+    <value>تغيّرت الإعدادات أثناء التنفيذ</value>
+  </data>
+  <data name="Problem_stale_context_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_dependency_unavailable" xml:space="preserve">
+    <value>الخدمة مشغولة</value>
+  </data>
+  <data name="Problem_dependency_unavailable_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_csrf_rejected" xml:space="preserve">
+    <value>حُظر الطلب</value>
+  </data>
+  <data name="Problem_csrf_rejected_Detail" xml:space="preserve">
+    <value>أعد تحميل الصفحة وحاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_client_outdated" xml:space="preserve">
+    <value>حُدّث التطبيق</value>
+  </data>
+  <data name="Problem_client_outdated_Detail" xml:space="preserve">
+    <value>أعد التحميل للمتابعة.</value>
+  </data>
+  <data name="Problem_internal" xml:space="preserve">
+    <value>حدث خطأ ما</value>
+  </data>
+  <data name="Problem_internal_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى. إن تكرر ذلك، أرسل هذا المرجع إلى الدعم.</value>
+  </data>
+  <data name="Problem_unauthenticated" xml:space="preserve">
+    <value>انتهت جلستك</value>
+  </data>
+  <data name="Problem_unauthenticated_Detail" xml:space="preserve">
+    <value>سجّل الدخول للمتابعة.</value>
+  </data>
+  <data name="Problem_unsupported_credential" xml:space="preserve">
+    <value>لا يمكن استخدام تسجيل الدخول هذا هنا</value>
+  </data>
+  <data name="Problem_route_not_found" xml:space="preserve">
+    <value>هذا العنوان غير موجود</value>
+  </data>
+  <data name="Problem_method_not_allowed" xml:space="preserve">
+    <value>هذا العنوان لا يقبل هذا الطلب</value>
+  </data>
+  <data name="Problem_unsupported_media" xml:space="preserve">
+    <value>نوع المحتوى هذا غير مقبول</value>
+  </data>
+  <data name="Problem_rate_limited" xml:space="preserve">
+    <value>طلبات كثيرة جدًا</value>
+  </data>
+  <data name="Problem_rate_limited_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى بعد قليل.</value>
+  </data>
+  <data name="Problem_timeout" xml:space="preserve">
+    <value>استغرق ذلك وقتًا طويلًا</value>
+  </data>
+  <data name="Problem_timeout_Detail" xml:space="preserve">
+    <value>حاول مرة أخرى.</value>
+  </data>
+  <data name="Problem_provisioning_not_configured" xml:space="preserve">
+    <value>لا يمكن إنشاء المنشآت هنا</value>
+  </data>
+  <!-- Validation codes of the settings service -->
+  <data name="Settings_FieldUnknown" xml:space="preserve">
+    <value>لا يوجد إعداد بهذا الاسم.</value>
+  </data>
+  <data name="Settings_LanguageNotOffered" xml:space="preserve">
+    <value>هذه اللغة غير متاحة.</value>
+  </data>
+  <data name="Settings_LanguagesNotDistinct" xml:space="preserve">
+    <value>لا يمكن اختيار اللغة نفسها أكثر من مرة.</value>
+  </data>
+  <data name="Settings_TertiaryRequiresSecondary" xml:space="preserve">
+    <value>اختر لغة ثانية قبل اختيار لغة ثالثة.</value>
+  </data>
+  <data name="Settings_CalendarNotRegistered" xml:space="preserve">
+    <value>هذا التقويم غير متاح.</value>
+  </data>
+  <data name="Settings_CalendarsNotDistinct" xml:space="preserve">
+    <value>يجب أن يختلف التقويم الثانوي عن التقويم الأساسي.</value>
+  </data>
+  <data name="Settings_TimeZoneUnknown" xml:space="preserve">
+    <value>هذه المنطقة الزمنية غير معروفة.</value>
+  </data>
+  <data name="Settings_RegionNotOffered" xml:space="preserve">
+    <value>هذه المنطقة غير متاحة.</value>
+  </data>
+  <data name="Settings_KeyUndeclared" xml:space="preserve">
+    <value>لا يوجد إعداد بهذا الاسم.</value>
+  </data>
+  <data name="Settings_EntryTypeMismatch" xml:space="preserve">
+    <value>نوع هذه القيمة لا يناسب الإعداد.</value>
+  </data>
+  <!-- Validation and guard codes of users, roles, memberships and permissions -->
+  <data name="Users_SystemUserImmutable" xml:space="preserve">
+    <value>لا يمكن تغيير مستخدم النظام.</value>
+  </data>
+  <data name="Users_CannotDeactivateSelf" xml:space="preserve">
+    <value>لا يمكنك إلغاء تنشيط حسابك.</value>
+  </data>
+  <data name="Users_CannotDeleteSelf" xml:space="preserve">
+    <value>لا يمكنك حذف حسابك.</value>
+  </data>
+  <data name="Users_CannotRemoveOwnAdministratorMembership" xml:space="preserve">
+    <value>لا يمكنك إزالة دور المسؤول عن نفسك أو تقييده.</value>
+  </data>
+  <data name="Users_EmailLockedAfterInvite" xml:space="preserve">
+    <value>لا يمكن تغيير البريد الإلكتروني بعد دعوة المستخدم.</value>
+  </data>
+  <data name="Users_OnlyNewUsersDeletable" xml:space="preserve">
+    <value>لا يمكن حذف إلا المستخدمين الذين لم تتم دعوتهم. ألغِ تنشيط هذا المستخدم بدلًا من ذلك.</value>
+  </data>
+  <data name="Users_KindNotAllowed" xml:space="preserve">
+    <value>لا يمكن استخدام هذا النوع من المستخدمين هنا.</value>
+  </data>
+  <data name="Users_EmailNotAllowed" xml:space="preserve">
+    <value>البريد الإلكتروني متاح للأفراد فقط.</value>
+  </data>
+  <data name="Users_TooManyRoles" xml:space="preserve">
+    <value>يمكن أن يكون للمستخدم {max, plural, zero {# دور} one {دور واحد} two {دوران} few {# أدوار} many {# دورًا} other {# دور}} على الأكثر.</value>
+  </data>
+  <data name="Users_MembershipEscalation" xml:space="preserve">
+    <value>لا يمكنك منح هذا الدور: فهو يتضمن “{resource}: {action}” التي لا تملكها دون قيود.</value>
+  </data>
+  <data name="Users_TooManyPreferenceKeys" xml:space="preserve">
+    <value>عدد التفضيلات المحفوظة كبير جدًا.</value>
+  </data>
+  <data name="Users_PreferenceValueTooLarge" xml:space="preserve">
+    <value>هذا التفضيل كبير جدًا. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Users_PreferenceKeyInvalid" xml:space="preserve">
+    <value>اسم هذا التفضيل غير صالح.</value>
+  </data>
+  <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
+    <value>هذا التفضيل مكرر.</value>
+  </data>
+  <data name="Users_LanguageNotOffered" xml:space="preserve">
+    <value>هذه اللغة غير متاحة.</value>
+  </data>
+  <data name="Users_CalendarUnknown" xml:space="preserve">
+    <value>هذا التقويم غير معروف.</value>
+  </data>
+  <data name="Users_TimeZoneUnknown" xml:space="preserve">
+    <value>هذه المنطقة الزمنية غير معروفة.</value>
+  </data>
+  <data name="Users_RegionNotOffered" xml:space="preserve">
+    <value>هذه المنطقة غير متاحة.</value>
+  </data>
+  <data name="Users_LocaleEmpty" xml:space="preserve">
+    <value>اختر إعدادًا واحدًا على الأقل من إعدادات اللغة أو المنطقة لتغييره.</value>
+  </data>
+  <data name="Users_LocaleResetConflict" xml:space="preserve">
+    <value>لا يمكن تغيير إعداد وإعادة تعيينه في الوقت نفسه.</value>
+  </data>
+  <data name="Users_ContactEmailInvalid" xml:space="preserve">
+    <value>أدخل عنوان بريد إلكتروني صالحًا.</value>
+  </data>
+  <data name="Users_MobileInvalid" xml:space="preserve">
+    <value>أدخل رقم الجوال بالصيغة الدولية، مثل ‎+971501234567.</value>
+  </data>
+  <data name="Users_NotIndividual" xml:space="preserve">
+    <value>ينطبق هذا على المستخدمين الأفراد فقط، لا على حسابات الخدمة.</value>
+  </data>
+  <data name="Users_ChannelNotTestable" xml:space="preserve">
+    <value>لا يمكن إرسال رسالة تجريبية إلى صندوق الوارد. اختر قناة أخرى.</value>
+  </data>
+  <data name="Users_NotService" xml:space="preserve">
+    <value>لا يمكن إصدار بيانات الاعتماد إلا لحسابات الخدمة.</value>
+  </data>
+  <data name="Users_Inactive" xml:space="preserve">
+    <value>هذا المستخدم غير نشط.</value>
+  </data>
+  <data name="Users_AlreadyJoined" xml:space="preserve">
+    <value>انضم هذا المستخدم بالفعل.</value>
+  </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>غيّر طلب آخر بيانات اعتماد حساب الخدمة هذا في الوقت نفسه، لذا أُلغيت البيانات الجديدة. أصدرها مرة أخرى.</value>
+  </data>
+  <data name="Users_SubjectMismatch" xml:space="preserve">
+    <value>أصبح هذا البريد الإلكتروني تابعًا لحساب تسجيل دخول آخر، لذا لم يُعدَّل المستخدم.</value>
+  </data>
+  <data name="Users_SandboxRequiresExistingIdentity" xml:space="preserve">
+    <value>لا يمكن لبيئة الاختبار إضافة إلا من أعدّوا تسجيل الدخول الخاص بهم مسبقًا.</value>
+  </data>
+  <data name="RoleMemberships_Overlap" xml:space="preserve">
+    <value>تتداخل هذه العضوية مع عضوية أخرى في الدور نفسه.</value>
+  </data>
+  <data name="RoleMemberships_EndsBeforeStart" xml:space="preserve">
+    <value>يجب أن تكون النهاية بعد البداية.</value>
+  </data>
+  <data name="RoleMemberships_EndsInPast" xml:space="preserve">
+    <value>النهاية قد مضت بالفعل.</value>
+  </data>
+  <data name="Roles_PublicRoleHasMembers" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام أعضاء. أزل أعضاءه أولًا.</value>
+  </data>
+  <data name="Roles_AdministratorImmutable" xml:space="preserve">
+    <value>لا يمكن جعل دور المسؤول عامًا أو إلغاء تنشيطه أو حذفه أو تقييده.</value>
+  </data>
+  <data name="Roles_HasMembers" xml:space="preserve">
+    <value>لا يمكن حذف دور له أعضاء. أزل أعضاءه أولًا.</value>
+  </data>
+  <data name="Roles_TooManyPermissions" xml:space="preserve">
+    <value>يمكن أن يكون للدور {max, plural, zero {# صلاحية} one {صلاحية واحدة} two {صلاحيتان} few {# صلاحيات} many {# صلاحية} other {# صلاحية}} على الأكثر.</value>
+  </data>
+  <data name="Permissions_UnknownSecurable" xml:space="preserve">
+    <value>“{resource}: {action}” ليست صلاحية موجودة.</value>
+  </data>
+  <data name="Permissions_FilterNotSupported" xml:space="preserve">
+    <value>لا يمكن أن يكون لهذه الصلاحية عامل تصفية.</value>
+  </data>
+  <data name="Permissions_FilterInvalid" xml:space="preserve">
+    <value>عامل التصفية هذا غير صالح.</value>
+  </data>
+  <data name="Permissions_FilterTooLong" xml:space="preserve">
+    <value>أدخل {maxLength, plural, zero {# حرفًا} one {حرفًا واحدًا} two {حرفين} few {# أحرف} many {# حرفًا} other {# حرف}} على الأكثر.</value>
+  </data>
+  <data name="Permissions_FilterVersionUnsupported" xml:space="preserve">
+    <value>كُتب عامل التصفية هذا لإصدار أقدم. أدخله مرة أخرى.</value>
+  </data>
+  <data name="Permissions_WildcardResourceOnPublicRole" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام صلاحية على كل شيء.</value>
+  </data>
+  <data name="Permissions_EscalationBeyondSelf" xml:space="preserve">
+    <value>لا يمكنك منح “{resource}: {action}” لأنك لا تملكها دون قيود.</value>
+  </data>
+  <data name="Access_LastAdministrator" xml:space="preserve">
+    <value>يجب أن يبقى مستخدم نشط واحد على الأقل مسؤولًا.</value>
+  </data>
+  <data name="Access_PublicRoleHasMembers" xml:space="preserve">
+    <value>لا يمكن أن يكون للدور العام أعضاء.</value>
+  </data>
+  <data name="Access_AdministratorRoleDamaged" xml:space="preserve">
+    <value>يجب أن يبقى دور المسؤول نشطًا وخاصًا ودون قيود.</value>
+  </data>
+  <data name="Access_LockTimeout" xml:space="preserve">
+    <value>شخص آخر يغيّر إعدادات الأمان. حاول مرة أخرى.</value>
+  </data>
+  <data name="Access_LockDeadlock" xml:space="preserve">
+    <value>شخص آخر يغيّر إعدادات الأمان. حاول مرة أخرى.</value>
+  </data>
+  <!-- Validation codes of the save and query pipeline -->
+  <data name="Required" xml:space="preserve">
+    <value>أدخل قيمة.</value>
+  </data>
+  <data name="MaxLength" xml:space="preserve">
+    <value>أدخل {maxLength, plural, zero {# حرفًا} one {حرفًا واحدًا} two {حرفين} few {# أحرف} many {# حرفًا} other {# حرف}} على الأكثر.</value>
+  </data>
+  <data name="Range" xml:space="preserve">
+    <value>هذه القيمة خارج النطاق المسموح به.</value>
+  </data>
+  <data name="Unique" xml:space="preserve">
+    <value>هذه القيمة مستخدمة في سجل آخر.</value>
+  </data>
+  <data name="WriteOnce" xml:space="preserve">
+    <value>لا يمكن تغيير هذه القيمة بعد تعيينها.</value>
+  </data>
+  <data name="Precision" xml:space="preserve">
+    <value>أدخل {precision, number} من الأرقام على الأكثر، منها {scale, number} بعد الفاصلة العشرية.</value>
+  </data>
+  <data name="Validation_ValueNotInSet" xml:space="preserve">
+    <value>هذه القيمة ليست من القيم المسموح بها.</value>
+  </data>
+  <data name="Validation_Invalid" xml:space="preserve">
+    <value>هذه القيمة غير صالحة.</value>
+  </data>
+  <data name="Entity_NotFound" xml:space="preserve">
+    <value>هذا السجل غير موجود أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Entity_DuplicateId" xml:space="preserve">
+    <value>السجل نفسه مكرر أكثر من مرة.</value>
+  </data>
+  <data name="Fk_NotFound" xml:space="preserve">
+    <value>السجل المختار غير موجود أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Fk_InUse" xml:space="preserve">
+    <value>هذا السجل مستخدم، لذا لا يمكن حذفه.</value>
+  </data>
+  <data name="Tree_Cycle" xml:space="preserve">
+    <value>لا يمكن وضع سجل تحت نفسه أو تحت أحد فروعه.</value>
+  </data>
+  <data name="Tree_TooDeep" xml:space="preserve">
+    <value>التسلسل الهرمي عميق جدًا.</value>
+  </data>
+  <data name="Blob_NotAttachable" xml:space="preserve">
+    <value>{reason, select, expired {انتهت صلاحية هذا الملف. اختره مرة أخرى.} missing {انتهت صلاحية هذا الملف. اختره مرة أخرى.} other {لا يمكن إرفاق هذا الملف. ارفعه مرة أخرى.}}</value>
+  </data>
+  <data name="Blob_DuplicateReference" xml:space="preserve">
+    <value>الملف نفسه مرفق أكثر من مرة.</value>
+  </data>
+  <data name="Blob_UnknownKind" xml:space="preserve">
+    <value>لا يمكن رفع هذا النوع من الملفات هنا.</value>
+  </data>
+  <data name="Blob_LengthRequired" xml:space="preserve">
+    <value>لم يُحدَّد حجم الملف المرفوع، أو انقطع الملف قبل اكتماله. ارفعه مرة أخرى.</value>
+  </data>
+  <data name="Blob_TooLarge" xml:space="preserve">
+    <value>الملف كبير جدًا. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Blob_UnsupportedType" xml:space="preserve">
+    <value>لا يمكن رفع الملفات من النوع ”{contentType}“ هنا.</value>
+  </data>
+  <data name="Blob_StagingQuotaExceeded" xml:space="preserve">
+    <value>لديك عدد كبير من الملفات المرفوعة غير المحفوظة: الحد الأقصى {maxCount, number} ملفًا أو {maxBytes, number} بايت. احفظ تغييراتك أو تجاهلها، ثم ارفع الملف مرة أخرى.</value>
+  </data>
+  <data name="Blob_ImageRejected" xml:space="preserve">
+    <value>{reason, select, format {صيغة هذه الصورة غير مدعومة. استخدم صورة JPEG أو PNG أو WebP أو GIF.} too-many-pixels {الصورة كبيرة جدًا. استخدم صورة أصغر.} timeout {استغرقت معالجة الصورة وقتًا طويلًا. جرّب صورة أصغر.} other {تعذّرت قراءة الصورة. قد تكون تالفة.}}</value>
+  </data>
+  <data name="Concurrency_StampRequired" xml:space="preserve">
+    <value>أعد تحميل السجل، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Import_LanguageNotConfigured" xml:space="preserve">
+    <value>لغة هذا العمود ليست من لغات المنشأة.</value>
+  </data>
+  <data name="Query_GeographyNotSelectable" xml:space="preserve">
+    <value>لا يمكن اختيار قيمة جغرافية.</value>
+  </data>
+  <data name="Query_PathNotReachable" xml:space="preserve">
+    <value>لا يمكنك رؤية {path}.</value>
+  </data>
+  <data name="Query_UnknownNamedFilter" xml:space="preserve">
+    <value>لا يوجد عامل تصفية باسم {name}.</value>
+  </data>
+  <data name="Query_ArithmeticFailed" xml:space="preserve">
+    <value>{reason, select, divide-by-zero {قسم الاستعلام على صفر.} other {أحد الأرقام في الاستعلام كبير جدًا.}}</value>
+  </data>
+  <data name="DisplayName_PrefixSeparator" xml:space="preserve">
+    <value>لا يمكن أن تحتوي هذه القيمة على «{separator}».</value>
+  </data>
+  <!-- Reports and dashboards -->
+  <data name="Core_ReportKind_List" xml:space="preserve">
+    <value>قائمة</value>
+  </data>
+  <data name="Core_ReportKind_Summary" xml:space="preserve">
+    <value>ملخص</value>
+  </data>
+  <data name="Core_ReportKind_Pivot" xml:space="preserve">
+    <value>جدول محوري</value>
+  </data>
+  <data name="Core_ReportKind_Chart" xml:space="preserve">
+    <value>مخطط</value>
+  </data>
+  <data name="Core_ShareAccess_View" xml:space="preserve">
+    <value>عرض</value>
+  </data>
+  <data name="Core_ShareAccess_Edit" xml:space="preserve">
+    <value>تعديل</value>
+  </data>
+  <data name="Notification_core_report_shared" xml:space="preserve">
+    <value>شارك {actorName} معك {title}</value>
+  </data>
+  <data name="Notification_core_dashboard_shared" xml:space="preserve">
+    <value>شارك {actorName} معك لوحة المعلومات {title}</value>
+  </data>
+  <data name="Notification_core_user_added" xml:space="preserve">
+    <value>أضافك {actorName} إلى {tenantName}</value>
+  </data>
+  <data name="Core_Report_Synonyms" xml:space="preserve">
+    <value>تقرير، تحليل، قائمة، ملخص، جدول محوري، مخطط</value>
+  </data>
+  <data name="Core_Dashboard_Synonyms" xml:space="preserve">
+    <value>لوحة معلومات، نظرة عامة، مؤشرات الأداء</value>
+  </data>
+  <data name="Core_Report_DefaultTitle" xml:space="preserve">
+    <value>{entity} – {kind, select, List {قائمة} Summary {ملخص} Pivot {جدول محوري} other {مخطط}}</value>
+  </data>
+  <data name="Core_Report" xml:space="preserve">
+    <value>تقرير</value>
+  </data>
+  <data name="Core_Report_Plural" xml:space="preserve">
+    <value>التقارير</value>
+  </data>
+  <data name="Core_Report_Title" xml:space="preserve">
+    <value>العنوان</value>
+  </data>
+  <data name="Core_Report_Root" xml:space="preserve">
+    <value>المصدر</value>
+  </data>
+  <data name="Core_Report_Kind" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Core_Report_DefinitionJson" xml:space="preserve">
+    <value>التعريف</value>
+  </data>
+  <data name="Core_Report_QueryexVersion" xml:space="preserve">
+    <value>إصدار لغة الاستعلام</value>
+  </data>
+  <data name="Core_Report_OwnerId" xml:space="preserve">
+    <value>المالك</value>
+  </data>
+  <data name="Core_Report_BasedOnId" xml:space="preserve">
+    <value>مبني على</value>
+  </data>
+  <data name="Core_Report_Action_Share_Set" xml:space="preserve">
+    <value>الأشخاص المراد إضافتهم أو تغييرهم</value>
+  </data>
+  <data name="Core_Report_Action_Share_Remove" xml:space="preserve">
+    <value>الأشخاص المراد إزالتهم</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Set" xml:space="preserve">
+    <value>الأدوار المراد إضافتها أو تغييرها</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Remove" xml:space="preserve">
+    <value>الأدوار المراد إزالتها</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Everyone" xml:space="preserve">
+    <value>الجميع</value>
+  </data>
+  <data name="Core_Report_Action_Transfer_Owner" xml:space="preserve">
+    <value>المالك الجديد</value>
+  </data>
+  <data name="Report_UnknownMember" xml:space="preserve">
+    <value>يحتوي تعريف التقرير على عنصر غير معروف أو بشكل غير صحيح، في {pointer}.</value>
+  </data>
+  <data name="Report_CodeReserved" xml:space="preserve">
+    <value>الرموز التي تبدأ بـ «{prefix}» محجوزة للتقارير القياسية.</value>
+  </data>
+  <data name="Report_InUse" xml:space="preserve">
+    <value>{named, plural, =0 {يظهر هذا التقرير في {others, plural, one {لوحة معلومات} two {لوحتي معلومات} few {# لوحات معلومات} many {# لوحة معلومات} other {# لوحة معلومات}}؛ أزله منها قبل حذفه.} other {يظهر هذا التقرير في {dashboards}{others, plural, =0 {} one { ولوحة معلومات أخرى} two { ولوحتي معلومات أخريين} few { و# لوحات معلومات أخرى} many { و# لوحة معلومات أخرى} other { و# لوحة معلومات أخرى}}؛ أزله منها قبل حذفه.}}</value>
+  </data>
+  <data name="Sharing_StandardReadOnly" xml:space="preserve">
+    <value>يمكن مشاركة السجلات القياسية ونشرها، لكن لا يمكن تغييرها أو حذفها أو نقل ملكيتها.</value>
+  </data>
+  <data name="Sharing_BasedOnInvisible" xml:space="preserve">
+    <value>السجل الذي يستند إليه هذا السجل غير موجود، أو لا يمكنك رؤيته.</value>
+  </data>
+  <data name="Sharing_UserInvalid" xml:space="preserve">
+    <value>لا يمكن المشاركة إلا مع الأعضاء الأفراد النشطين.</value>
+  </data>
+  <data name="Sharing_RoleInvalid" xml:space="preserve">
+    <value>لا يمكن النشر إلا للأدوار النشطة.</value>
+  </data>
+  <data name="Sharing_OwnerIsImplicit" xml:space="preserve">
+    <value>يملك المالك وصولًا كاملًا بالفعل.</value>
+  </data>
+  <data name="Sharing_TooManyGrants" xml:space="preserve">
+    <value>{kind, select, user {يمكن مشاركة السجل مع {max} مستخدم على الأكثر.} other {يمكن نشر السجل إلى {max} دور على الأكثر.}}</value>
+  </data>
+  <data name="Sharing_OwnerInvalid" xml:space="preserve">
+    <value>يجب أن يكون المالك الجديد عضوًا فرديًا نشطًا.</value>
+  </data>
+  <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
+    <value>لوحة معلومات بلا عنوان</value>
+  </data>
+  <data name="Core_Job_ExportReport" xml:space="preserve">
+    <value>تصدير {title}</value>
+  </data>
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
+  <data name="Jobs_Internal" xml:space="preserve">
+    <value>حدث خطأ غير متوقع أثناء تشغيل المهمة.</value>
+  </data>
+  <data name="Jobs_Cancelled" xml:space="preserve">
+    <value>أُلغيت المهمة.</value>
+  </data>
+  <data name="Jobs_EntityMissing" xml:space="preserve">
+    <value>لم يعد السجل الذي تعمل عليه المهمة موجودًا.</value>
+  </data>
+  <data name="Jobs_AttemptsExhausted" xml:space="preserve">
+    <value>فشلت المهمة بعد استنفاد كل محاولاتها.</value>
+  </data>
+  <data name="Jobs_UserInactive" xml:space="preserve">
+    <value>لم يعد المستخدم الذي تعمل المهمة باسمه عضوًا نشطًا.</value>
+  </data>
+  <data name="Jobs_TooManyConfirmations" xml:space="preserve">
+    <value>أثارت المهمة {count, plural, zero {# نوع من التحذيرات} one {نوعًا واحدًا من التحذيرات} two {نوعين من التحذيرات} few {# أنواع من التحذيرات} many {# نوعًا من التحذيرات} other {# نوع من التحذيرات}}، وهذا أكثر مما يمكن تأكيده دفعة واحدة.</value>
+  </data>
+  <data name="Jobs_HeldAfterGap" xml:space="preserve">
+    <value>أُوقفت المهمة مؤقتًا بعد انقطاع في الخدمة.</value>
+  </data>
+  <data name="Jobs_HandlerRetired" xml:space="preserve">
+    <value>أُوقفت المهمة لأن هذا النوع من المهام لم يعد متاحًا.</value>
+  </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة تشغيل إلا المهمة الفاشلة.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>انتهت المهمة بالفعل.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>المهمة ليست متوقفة مؤقتًا.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>المهمة لا تنتظر تأكيد هذه التحذيرات.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>لا يؤكد تحذيرات المهمة إلا المستخدم الذي بدأها.</value>
+  </data>
+  <data name="Jobs_OwnerUnavailable" xml:space="preserve">
+    <value>لهذا العنصر مهمة قيد التنفيذ بالفعل. انتظر حتى تنتهي، ثم حاول مرة أخرى.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>أُوقفت {stopped, plural, zero {# مهمة} one {مهمة واحدة} two {مهمتان} few {# مهام} many {# مهمة} other {# مهمة}}، وحُذفت {succeeded, plural, zero {# مهمة ناجحة} one {مهمة ناجحة واحدة} two {مهمتان ناجحتان} few {# مهام ناجحة} many {# مهمة ناجحة} other {# مهمة ناجحة}} و{ended, plural, zero {# مهمة فاشلة أو ملغاة} one {مهمة واحدة فاشلة أو ملغاة} two {مهمتان فاشلتان أو ملغاتان} few {# مهام فاشلة أو ملغاة} many {# مهمة فاشلة أو ملغاة} other {# مهمة فاشلة أو ملغاة}}.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>فُحصت {verified} من {total} من الأشجار، وأُصلح {repaired, plural, zero {# صف} one {صف واحد} two {صفان} few {# صفوف} many {# صفًا} other {# صف}}.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>تنظيف المهام القديمة</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>فحص الأشجار</value>
+  </data>
+  <data name="JobHandler_core_blob-sweep" xml:space="preserve">
+    <value>حذف الملفات غير المستخدمة</value>
+  </data>
+  <data name="JobHandler_core_blob-reconcile" xml:space="preserve">
+    <value>تحرير الملفات غير المرتبطة</value>
+  </data>
+  <data name="Blob_SweepProgress" xml:space="preserve">
+    <value>جُمع {claimed, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}، وحُذف {deleted, plural, zero {# كائن مخزَّن} one {كائن مخزَّن واحد} two {كائنان مخزَّنان} few {# كائنات مخزَّنة} many {# كائنًا مخزَّنًا} other {# كائن مخزَّن}}.</value>
+  </data>
+  <data name="Blob_ReconcileProgress" xml:space="preserve">
+    <value>فُحص {reconciled} من {total} من أنواع الملفات، وحُرِّر {released, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}.</value>
+  </data>
+  <data name="Notification_core_job_failed" xml:space="preserve">
+    <value>فشلت المهمة {handlerKey}.</value>
+  </data>
+  <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
+    <value>{count, plural, zero {مهمة بانتظار تأكيدك.} one {مهمة بانتظار تأكيدك لتحذير واحد.} two {مهمة بانتظار تأكيدك لتحذيرين.} few {مهمة بانتظار تأكيدك لـ# تحذيرات.} many {مهمة بانتظار تأكيدك لـ# تحذيرًا.} other {مهمة بانتظار تأكيدك لـ# تحذير.}}</value>
+  </data>
+  <data name="Notification_core_job_held" xml:space="preserve">
+    <value>{count, plural, zero {لا توجد مهام بدأتها متوقفة مؤقتًا.} one {أُوقفت مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} two {أُوقفت مهمتان بدأتهما مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافهما، ويمكنك إيقافهما.} few {أُوقفت # مهام بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} many {أُوقفت # مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.} other {أُوقفت # مهمة بدأتها مؤقتًا بعد انقطاع في الخدمة. يمكن للمسؤول استئنافها، ويمكنك إيقافها.}}</value>
+  </data>
+  <data name="Notification_core_scheduler_gap" xml:space="preserve">
+    <value>لم تعمل المهام في الخلفية من {previousTickAt, date, medium} {previousTickAt, time, short} حتى {now, date, medium} {now, time, short}. {heldCount, plural, =0 {لم تُوقف أي مهمة متأخرة.} one {أُوقفت مهمة متأخرة واحدة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} two {أُوقفت مهمتان متأخرتان مؤقتًا حتى يستأنفهما المسؤول أو يوقفهما.} few {أُوقفت # مهام متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} many {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.} other {أُوقفت # مهمة متأخرة مؤقتًا حتى يستأنفها المسؤول أو يوقفها.}}</value>
+  </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>لا يوجد نوع إشعار بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>لا توجد قناة توصيل بهذا الاسم.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>هذا النوع من الإشعارات مع هذه القناة مُدرج أكثر من مرة.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>لا يمكن إيقاف إشعارات هذا النوع في صندوق الوارد.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>حُذفت إشعارات مقروءة: {read}، وغير مقروءة: {unread}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>توصيل الإشعارات</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>حذف الإشعارات القديمة</value>
+  </data>
+  <!-- Notification settings: the categories' labels, the channels' labels and the types' labels -->
+  <data name="NotificationCategory_jobs" xml:space="preserve">
+    <value>المهام في الخلفية</value>
+  </data>
+  <data name="NotificationCategory_users" xml:space="preserve">
+    <value>المستخدمون</value>
+  </data>
+  <data name="NotificationCategory_reports" xml:space="preserve">
+    <value>التقارير</value>
+  </data>
+  <data name="NotificationChannel_inbox" xml:space="preserve">
+    <value>داخل التطبيق</value>
+  </data>
+  <data name="NotificationChannel_email" xml:space="preserve">
+    <value>البريد الإلكتروني</value>
+  </data>
+  <data name="NotificationType_core_user_added" xml:space="preserve">
+    <value>أُضفت إلى شركة</value>
+  </data>
+  <data name="NotificationType_core_job_failed" xml:space="preserve">
+    <value>فشل مهمة</value>
+  </data>
+  <data name="NotificationType_core_job_pending-confirmation" xml:space="preserve">
+    <value>مهمة تنتظر تأكيدك لتحذيراتها</value>
+  </data>
+  <data name="NotificationType_core_job_held" xml:space="preserve">
+    <value>إيقاف مهامك مؤقتًا بعد انقطاع في الخدمة</value>
+  </data>
+  <data name="NotificationType_core_scheduler_gap" xml:space="preserve">
+    <value>توقف المهام في الخلفية لفترة</value>
+  </data>
+  <data name="NotificationType_core_schedule_paused" xml:space="preserve">
+    <value>إيقاف جدول مؤقتًا</value>
+  </data>
+  <data name="NotificationType_core_report_shared" xml:space="preserve">
+    <value>مشاركة تقرير معك</value>
+  </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
+  <data name="Core_OutgoingEmail" xml:space="preserve">
+    <value>بريد صادر</value>
+  </data>
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>رسائل البريد الصادرة</value>
+  </data>
+  <data name="Core_OutgoingEmail_JobId" xml:space="preserve">
+    <value>المهمة</value>
+  </data>
+  <data name="Core_OutgoingEmail_State" xml:space="preserve">
+    <value>الحالة</value>
+  </data>
+  <data name="Core_OutgoingEmail_Audience" xml:space="preserve">
+    <value>الجمهور</value>
+  </data>
+  <data name="Core_OutgoingEmail_From" xml:space="preserve">
+    <value>من</value>
+  </data>
+  <data name="Core_OutgoingEmail_ReplyTo" xml:space="preserve">
+    <value>الرد إلى</value>
+  </data>
+  <data name="Core_OutgoingEmail_To" xml:space="preserve">
+    <value>إلى</value>
+  </data>
+  <data name="Core_OutgoingEmail_Cc" xml:space="preserve">
+    <value>نسخة</value>
+  </data>
+  <data name="Core_OutgoingEmail_Bcc" xml:space="preserve">
+    <value>نسخة مخفية</value>
+  </data>
+  <data name="Core_OutgoingEmail_Subject" xml:space="preserve">
+    <value>الموضوع</value>
+  </data>
+  <data name="Core_OutgoingEmail_TextBody" xml:space="preserve">
+    <value>النص العادي</value>
+  </data>
+  <data name="Core_OutgoingEmail_HtmlBody" xml:space="preserve">
+    <value>نص HTML</value>
+  </data>
+  <data name="Core_OutgoingEmail_RecipientUserId" xml:space="preserve">
+    <value>المستلم</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingEntity" xml:space="preserve">
+    <value>بخصوص</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingId" xml:space="preserve">
+    <value>معرّف السجل المعني</value>
+  </data>
+  <data name="Core_OutgoingEmail_SendAfter" xml:space="preserve">
+    <value>الإرسال بعد</value>
+  </data>
+  <data name="Core_OutgoingEmail_AttemptCount" xml:space="preserve">
+    <value>المحاولات</value>
+  </data>
+  <data name="Core_OutgoingEmail_SentAt" xml:space="preserve">
+    <value>تاريخ الإرسال</value>
+  </data>
+  <data name="Core_OutgoingEmail_ProviderMessageId" xml:space="preserve">
+    <value>معرّف الرسالة لدى المزوّد</value>
+  </data>
+  <data name="Core_OutgoingEmail_ExpectsDeliveryEvents" xml:space="preserve">
+    <value>يتتبع التسليم</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorCode" xml:space="preserve">
+    <value>رمز الخطأ</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorDetail" xml:space="preserve">
+    <value>تفاصيل الخطأ</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryStatus" xml:space="preserve">
+    <value>حالة التسليم</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryAt" xml:space="preserve">
+    <value>تاريخ حالة التسليم</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryRecipient" xml:space="preserve">
+    <value>مستلم حالة التسليم</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryReason" xml:space="preserve">
+    <value>سبب حالة التسليم</value>
+  </data>
+  <data name="Core_OutgoingEmail_LastProviderEventId" xml:space="preserve">
+    <value>معرّف آخر حدث من المزوّد</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Pending" xml:space="preserve">
+    <value>قيد الانتظار</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sending" xml:space="preserve">
+    <value>قيد الإرسال</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sent" xml:space="preserve">
+    <value>أُرسل</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sandboxed" xml:space="preserve">
+    <value>محجوز في بيئة الاختبار</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Rejected" xml:space="preserve">
+    <value>مرفوض</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Failed" xml:space="preserve">
+    <value>فشل</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Cancelled" xml:space="preserve">
+    <value>أُلغي</value>
+  </data>
+  <data name="Core_EmailAudience_Internal" xml:space="preserve">
+    <value>داخلي</value>
+  </data>
+  <data name="Core_EmailAudience_External" xml:space="preserve">
+    <value>خارجي</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Deferred" xml:space="preserve">
+    <value>مؤجل</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Delivered" xml:space="preserve">
+    <value>تم التسليم</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Bounced" xml:space="preserve">
+    <value>مرتد</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Dropped" xml:space="preserve">
+    <value>أسقطه المزوّد</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Failed" xml:space="preserve">
+    <value>فشل</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_SpamReported" xml:space="preserve">
+    <value>أُبلغ عنه كرسالة مزعجة</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment" xml:space="preserve">
+    <value>مرفق بريد</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>مرفقات البريد</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_OutgoingEmailId" xml:space="preserve">
+    <value>البريد</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_FileName" xml:space="preserve">
+    <value>اسم الملف</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_ContentId" xml:space="preserve">
+    <value>معرّف المحتوى</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>لا يمكن إرسال هذا البريد كما هو. يلزم مستلم واحد على الأقل، وعناوين صحيحة، وموضوع في سطر واحد لا يتجاوز 500 حرف، ونص للرسالة، و20 مرفقًا على الأكثر.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>عدد مستلمي هذا البريد {count, number}، والحد الأقصى المسموح به {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>هذا البريد كبير جدًا: {size, number} بايت. الحد الأقصى المسموح به {maxBytes, number} بايت.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>رفض مزوّد البريد هذه الرسالة.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>كان ملف أحد المرفقات مفقودًا عند الإرسال، فلم تُرسل الرسالة.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>تعذّر إرسال البريد هذه المرة، وستُعاد المحاولة.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>تعذّر إرسال البريد بعد محاولات متكررة. أعد إرساله بعد حل المشكلة.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>انقطع إرسال هذا البريد وربما وصل إلى المستلمين، فلم يُعَد إرساله تلقائيًا.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>لا يمكن إعادة الإرسال إلا لبريد فشل، أو لم تعد مهمة إرساله قيد التشغيل.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>لا يمكن إلغاء إلا البريد الذي ينتظر الإرسال.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>قد يُرسل هذا البريد بعد. ألغِه أو انتظر حتى يُرسل قبل حذفه.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>إرسال بريد إلكتروني</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email-retention" xml:space="preserve">
+    <value>حذف رسائل البريد الصادرة القديمة</value>
+  </data>
+  <data name="Outbox_RetentionProgress" xml:space="preserve">
+    <value>حُذفت رسائل بريد صادرة: {deleted}.</value>
+  </data>
+  <data name="Notification_core_email_failed" xml:space="preserve">
+    <value>{count, plural, zero {لم يتعذّر إرسال أي بريد صادر.} one {تعذّر إرسال رسالة بريد صادرة.} two {تعذّر إرسال رسالتَي بريد صادرتين.} few {تعذّر إرسال # رسائل بريد صادرة.} many {تعذّر إرسال # رسالة بريد صادرة.} other {تعذّر إرسال # رسالة بريد صادرة.}}</value>
+  </data>
+  <data name="NotificationType_core_email_failed" xml:space="preserve">
+    <value>رسائل البريد التي تعذّر إرسالها</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>تعبير cron {expression} غير صالح. أدخل الدقيقة والساعة واليوم من الشهر والشهر واليوم من الأسبوع، مثل 0 3 * * * للساعة الثالثة صباح كل يوم.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>تعبير cron {expression} لن يتكرر مرة أخرى، فلن يعمل الجدول أبدًا.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>المنطقة الزمنية {timeZone} ليست من المناطق الزمنية المدعومة.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>لا يوجد نوع من المهام باسم {handlerKey}.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>لا يمكن جدولة المهام من نوع {handlerKey}.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>إعادة تشغيل كل مرة فائتة تتطلب السماح بتداخل مرات التشغيل.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>المعطيات كبيرة جدًا؛ تحمل المهمة {maxBytes, number} بايت على الأكثر.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم آخر. تولَّ ملكيته قبل تغيير ما يشغّله أو موعده.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>يعمل هذا الجدول باسم مستخدم لم يعد نشطًا. تولَّ ملكيته قبل تفعيله.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>هذا الجدول مدمج: لا يتغير منه إلا أسماؤه وتعبير cron والمنطقة الزمنية، ولا يمكن حذفه أو تولي ملكيته.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>هذا الجدول مدمج ويبقى نشطًا دائمًا.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>لم ينتهِ تشغيل سابق لهذا الجدول بعد.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>أُوقف الجدول {name} مؤقتًا: {reason, select, OwnerInactive {لم يعد المستخدم الذي يعمل باسمه نشطًا} Exhausted {لن يتكرر تعبير cron الخاص به مرة أخرى} other {لم يعد نوع مهمته متاحًا}}. يعمل مجددًا بعد تفعيله.</value>
+  </data>
+  <!-- Excel exports and imports: the export and import records' labels, the import records' guard, and the import's codes with their arguments -->
+  <data name="Core_Export" xml:space="preserve">
+    <value>عملية تصدير</value>
+  </data>
+  <data name="Core_Export_Plural" xml:space="preserve">
+    <value>عمليات التصدير</value>
+  </data>
+  <data name="Core_Export_JobId" xml:space="preserve">
+    <value>المهمة</value>
+  </data>
+  <data name="Core_Export_Resource" xml:space="preserve">
+    <value>المورد</value>
+  </data>
+  <data name="Core_Export_Kind" xml:space="preserve">
+    <value>النوع</value>
+  </data>
+  <data name="Core_Export_RequestJson" xml:space="preserve">
+    <value>الطلب</value>
+  </data>
+  <data name="Core_Export_FileName" xml:space="preserve">
+    <value>اسم الملف</value>
+  </data>
+  <data name="Core_Export_RowCount" xml:space="preserve">
+    <value>عدد الصفوف</value>
+  </data>
+  <data name="Core_Export_ExpiresAt" xml:space="preserve">
+    <value>تاريخ الانتهاء</value>
+  </data>
+  <data name="Core_ExportKind_Display" xml:space="preserve">
+    <value>للقراءة</value>
+  </data>
+  <data name="Core_ExportKind_ForImport" xml:space="preserve">
+    <value>للاستيراد</value>
+  </data>
+  <data name="Core_ExportKind_Report" xml:space="preserve">
+    <value>تقرير</value>
+  </data>
+  <data name="Core_Import" xml:space="preserve">
+    <value>عملية استيراد</value>
+  </data>
+  <data name="Core_Import_Plural" xml:space="preserve">
+    <value>عمليات الاستيراد</value>
+  </data>
+  <data name="Core_Import_JobId" xml:space="preserve">
+    <value>المهمة</value>
+  </data>
+  <data name="Core_Import_Resource" xml:space="preserve">
+    <value>المورد</value>
+  </data>
+  <data name="Core_Import_RequestJson" xml:space="preserve">
+    <value>الطلب</value>
+  </data>
+  <data name="Core_Import_ResultJson" xml:space="preserve">
+    <value>النتيجة</value>
+  </data>
+  <data name="Core_Import_RowCount" xml:space="preserve">
+    <value>عدد الصفوف</value>
+  </data>
+  <data name="Core_Import_ErrorCount" xml:space="preserve">
+    <value>عدد الأخطاء</value>
+  </data>
+  <data name="Core_Import_ExpiresAt" xml:space="preserve">
+    <value>تاريخ الانتهاء</value>
+  </data>
+  <data name="Core_ImportMode_Insert" xml:space="preserve">
+    <value>إضافة جديد</value>
+  </data>
+  <data name="Core_ImportMode_Update" xml:space="preserve">
+    <value>تحديث الموجود</value>
+  </data>
+  <data name="Core_ImportMode_Upsert" xml:space="preserve">
+    <value>إضافة أو تحديث</value>
+  </data>
+  <data name="Imports_JobActive" xml:space="preserve">
+    <value>لم ينتهِ هذا الاستيراد بعد. انتظر حتى ينتهي أو ألغِ مهمته قبل حذفه.</value>
+  </data>
+  <data name="Excel_Import_PackageTooLarge" xml:space="preserve">
+    <value>الملف كبير جدًا: {bytes, number} بايت. الحد الأقصى المسموح به {max, number} بايت.</value>
+  </data>
+  <data name="Excel_Import_TooManySharedStrings" xml:space="preserve">
+    <value>يحتوي المصنف على {entries, number} نصًا مختلفًا. الحد الأقصى المسموح به {max, number}.</value>
+  </data>
+  <data name="Excel_Import_MalformedWorkbook" xml:space="preserve">
+    <value>{reason, select, entity {صُدِّر هذا المصنف من نوع آخر من السجلات، لذا لا يمكن استيراده هنا.} other {لا يمكن قراءة هذا الملف كمصنف Excel. احفظه مرة أخرى بصيغة xlsx ثم ارفعه من جديد.}}</value>
+  </data>
+  <data name="Excel_Import_UnknownSheet" xml:space="preserve">
+    <value>لا توجد في المصنف ورقة بهذا الاسم.</value>
+  </data>
+  <data name="Excel_Import_DuplicateSheet" xml:space="preserve">
+    <value>تحتوي ورقة أخرى في المصنف على السجلات نفسها. أبقِ إحداهما، أو اختر أيهما تتجاهل.</value>
+  </data>
+  <data name="Excel_Import_UnmappedColumn" xml:space="preserve">
+    <value>العمود «{header}» لا يطابق أي حقل. اختر الحقل الذي يحتويه، أو تجاهله.</value>
+  </data>
+  <data name="Excel_Import_UnknownColumn" xml:space="preserve">
+    <value>لا يوجد في صف عناوين هذه الورقة عمود بهذا الحرف.</value>
+  </data>
+  <data name="Excel_Import_UnknownPath" xml:space="preserve">
+    <value>«{path}» ليس حقلًا من حقول هذه السجلات.</value>
+  </data>
+  <data name="Excel_Import_DuplicateColumn" xml:space="preserve">
+    <value>يحتوي عمود آخر في هذه الورقة على الحقل نفسه ({path}). أبقِ أحدهما.</value>
+  </data>
+  <data name="Excel_Import_ServerOwnedColumn" xml:space="preserve">
+    <value>يحتوي هذا العمود على حقل يضبطه النظام ({path})، لذا لا يمكن استيراده. تجاهله.</value>
+  </data>
+  <data name="Excel_Import_UnconfiguredLanguageColumn" xml:space="preserve">
+    <value>لغة هذا العمود ({language}) ليست من لغات المنشأة، لذا يُتجاهل العمود.</value>
+  </data>
+  <data name="Excel_Import_IdentityColumnIgnored" xml:space="preserve">
+    <value>{reason, select, InsertMode {تُضاف سجلات جديدة، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} NoManifest {لم يُصدَّر هذا الملف للاستيراد، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.} other {صُدِّر هذا الملف من منشأة أخرى، لذا لا يُستخدم العمود {path} للعثور على السجلات الموجودة.}}</value>
+  </data>
+  <data name="Excel_Import_TooLargeForSynchronous" xml:space="preserve">
+    <value>هذا الملف أكبر من أن يُستورد أثناء انتظارك: {rows, number} صفًا و{bytes, number} بايت، والحد الأقصى {maxRows, number} صفًا و{maxBytes, number} بايت. استورده في الخلفية بدلًا من ذلك (import/start).</value>
+  </data>
+  <data name="Excel_Import_OwnerSheetAbsent" xml:space="preserve">
+    <value>تتبع صفوف هذه الورقة صفوفَ ورقة أخرى مفقودة من المصنف أو ليس فيها عمود المعرّف.</value>
+  </data>
+  <data name="Excel_Import_WriteOnceChanged" xml:space="preserve">
+    <value>لا يمكن تغيير هذه القيمة بعد حفظ السجل ({path}). أبقِ القيمة المحفوظة.</value>
+  </data>
+  <data name="Excel_Import_RowNotFound" xml:space="preserve">
+    <value>لا يوجد سجل قائم قيمة {key} فيه «{value}».</value>
+  </data>
+  <data name="Excel_Import_DuplicateRowKey" xml:space="preserve">
+    <value>صف آخر في هذه الورقة يشير إلى السجل نفسه («{value}»). أبقِ أحدهما.</value>
+  </data>
+  <data name="Excel_Import_IdKeyRequiresSameTenant" xml:space="preserve">
+    <value>صُدِّر هذا الملف من منشأة أخرى، لذا لا يمكن لعمود المعرّف فيه العثور على السجلات هنا. اختر مفتاح صف آخر.</value>
+  </data>
+  <data name="Excel_Import_SurrogateReferenceFromOtherTenant" xml:space="preserve">
+    <value>صُدِّر هذا الملف من منشأة أخرى، لذا لا تشير المعرّفات في هذا العمود إلى سجلات هنا. طابق العمود مع مفتاح آخر للسجلات التي يشير إليها.</value>
+  </data>
+  <data name="Excel_Import_ReferenceNotFound" xml:space="preserve">
+    <value>{collation, select, true {لا يطابق أي سجل «{value}» تمامًا في {key}، مع أن سجلًا يطابقه عند تجاهل حالة الأحرف أو التشكيل. اكتب القيمة كما هي محفوظة.} other {لا يوجد سجل يمكنك استخدامه قيمة {key} فيه «{value}».}}</value>
+  </data>
+  <data name="Excel_Import_ReferenceAmbiguous" xml:space="preserve">
+    <value>{count, number} سجلات قيمة {key} فيها «{value}»، لذا لا يمكن تحديد السجل المقصود. استخدم مفتاحًا يشير إلى سجل واحد.</value>
+  </data>
+  <data name="Excel_Import_KeyTooLong" xml:space="preserve">
+    <value>هذا المفتاح أطول من {max, number} حرفًا، لذا لا يمكن العثور على أي سجل به.</value>
+  </data>
+  <data name="Excel_Import_OrphanChildRow" xml:space="preserve">
+    <value>يتبع هذا الصف «{value}»، ولا يحمله أي صف في الورقة المالكة.</value>
+  </data>
+  <data name="Excel_Import_IncompleteChildSheet" xml:space="preserve">
+    <value>تُغفل هذه الورقة أعمدة أو أوراقًا موجودة في الصفوف القائمة، لذا سيؤدي استيرادها إلى مسحها. صدِّر السجلات للاستيراد مرة أخرى، أو أضف ما ينقص.</value>
+  </data>
+  <data name="Excel_Import_ParentCycle" xml:space="preserve">
+    <value>تشير هذه الصفوف بعضها إلى بعض في حلقة عبر {path}، لذا لا يمكن حفظ أي منها أولًا.</value>
+  </data>
+  <data name="Excel_Import_TooManyChildren" xml:space="preserve">
+    <value>لهذا السجل {count, number} صفًا في هذه الورقة. والحد الأقصى {max, number}.</value>
+  </data>
+  <data name="Excel_Import_TooManyDescendants" xml:space="preserve">
+    <value>يبلغ هذا السجل والصفوف التابعة له {rows, number} صفًا. والحد الأقصى للسجل الواحد {max, number}.</value>
+  </data>
+  <data name="Excel_Import_InvalidCell" xml:space="preserve">
+    <value>{expected, select, Bool {«{value}» ليست نعم أو لا.} Integer {«{value}» ليس عددًا صحيحًا.} Numeric {«{value}» ليس رقمًا.} Choice {«{value}» ليس أحد الخيارات.} Date {«{value}» ليس تاريخًا.} DateTime {«{value}» ليس تاريخًا ووقتًا.} DateTimeOffset {«{value}» ليس تاريخًا ووقتًا.} Time {«{value}» ليس وقتًا.} Guid {«{value}» ليس معرّفًا.} other {لا يمكن قراءة «{value}» هنا.}}</value>
+  </data>
+  <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
+    <value>{exported, select, true {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) بعد تصدير الملف. صدِّره مرة أخرى وأعد تعديلاتك.} other {غيّر أحدهم هذا السجل ({modifiedBy}، {modifiedAt}) أثناء استيراده. استورد الملف مرة أخرى.}}</value>
+  </data>
+  <!-- Queryex diagnostics, with the arguments the engine gives each -->
+  <data name="Queryex_QX1001" xml:space="preserve">
+    <value>نص حرفي غير مغلق.</value>
+  </data>
+  <data name="Queryex_QX1002" xml:space="preserve">
+    <value>اسم بين أقواس معقوفة غير مغلق.</value>
+  </data>
+  <data name="Queryex_QX1003" xml:space="preserve">
+    <value>رقم غير صحيح الصيغة.</value>
+  </data>
+  <data name="Queryex_QX1004" xml:space="preserve">
+    <value>يحتوي الرقم على أرقام أكثر من المدعوم.</value>
+  </data>
+  <data name="Queryex_QX1005" xml:space="preserve">
+    <value>حرف غير متوقع.</value>
+  </data>
+  <data name="Queryex_QX2001" xml:space="preserve">
+    <value>لم يُتوقع {actual}؛ المتوقع أحد ما يلي: {expected}.</value>
+  </data>
+  <data name="Queryex_QX2002" xml:space="preserve">
+    <value>قوس غير متوازن.</value>
+  </data>
+  <data name="Queryex_QX2003" xml:space="preserve">
+    <value>عنصر قائمة فارغ.</value>
+  </data>
+  <data name="Queryex_QX2004" xml:space="preserve">
+    <value>وسيط فارغ.</value>
+  </data>
+  <data name="Queryex_QX2005" xml:space="preserve">
+    <value>قوسان فارغان.</value>
+  </data>
+  <data name="Queryex_QX2006" xml:space="preserve">
+    <value>لا يمكن تسلسل المقارنات.</value>
+  </data>
+  <data name="Queryex_QX2007" xml:space="preserve">
+    <value>الاتجاه (asc أو desc) غير مسموح به هنا.</value>
+  </data>
+  <data name="Queryex_QX2008" xml:space="preserve">
+    <value>يجب أن يأتي الاتجاه (asc أو desc) في نهاية عنصره.</value>
+  </data>
+  <data name="Queryex_QX2009" xml:space="preserve">
+    <value>الشرط تعبير واحد وليس قائمة.</value>
+  </data>
+  <data name="Queryex_QX3001" xml:space="preserve">
+    <value>خاصية غير معروفة {name} في {entity}.</value>
+  </data>
+  <data name="Queryex_QX3002" xml:space="preserve">
+    <value>{name} في {entity} رابط إلى سجل آخر؛ يجب أن ينتهي المسار بخاصية.</value>
+  </data>
+  <data name="Queryex_QX3003" xml:space="preserve">
+    <value>دالة غير معروفة {function}.</value>
+  </data>
+  <data name="Queryex_QX3004" xml:space="preserve">
+    <value>الدالة {function} لا تقبل {actual} من الوسائط. تقبل: {expected}.</value>
+  </data>
+  <data name="Queryex_QX3005" xml:space="preserve">
+    <value>لا توجد صيغة للدالة {function} تقبل أنواع الوسائط هذه. صيغها: {signatures}.</value>
+  </data>
+  <data name="Queryex_QX3006" xml:space="preserve">
+    <value>استدعاء الدالة {function} ملتبس.</value>
+  </data>
+  <data name="Queryex_QX3007" xml:space="preserve">
+    <value>معامل غير معرّف @{name}.</value>
+  </data>
+  <data name="Queryex_QX3100" xml:space="preserve">
+    <value>يجب أن يكون هذا الوسيط للدالة {function} قيمة حرفية.</value>
+  </data>
+  <data name="Queryex_QX3101" xml:space="preserve">
+    <value>الدالة {function} لا تقبل القيمة {name}.</value>
+  </data>
+  <data name="Queryex_QX3102" xml:space="preserve">
+    <value>لا يمكن تحويل {type} إلى {otherType}.</value>
+  </data>
+  <data name="Queryex_QX3103" xml:space="preserve">
+    <value>الدالة {function} تحتاج إلى قيمة في منطقة زمنية؛ ضع الوسيط داخل local.</value>
+  </data>
+  <data name="Queryex_QX3200" xml:space="preserve">
+    <value>المعامَل من النوع {type} غير متوافق هنا.</value>
+  </data>
+  <data name="Queryex_QX3201" xml:space="preserve">
+    <value>النوع {type} غير صالح لهذا العامل أو الموضع.</value>
+  </data>
+  <data name="Queryex_QX3202" xml:space="preserve">
+    <value>ليس للتعبير نوع؛ حوّل القيمة الفارغة (null) إلى نوع.</value>
+  </data>
+  <data name="Queryex_QX3203" xml:space="preserve">
+    <value>تحمل هذه الأعمدة نصوصًا بترتيبات مقارنة (collation) مختلفة، فلا يمكن مقارنتها أو دمجها.</value>
+  </data>
+  <data name="Queryex_QX3300" xml:space="preserve">
+    <value>يجب أن يكون الوسيط الأول للدالة {function} مسارًا.</value>
+  </data>
+  <data name="Queryex_QX3301" xml:space="preserve">
+    <value>{function}: الكيان ليس تسلسلًا هرميًا.</value>
+  </data>
+  <data name="Queryex_QX3302" xml:space="preserve">
+    <value>{function}: الخاصية ليست فريدة.</value>
+  </data>
+  <data name="Queryex_QX3303" xml:space="preserve">
+    <value>{function}: لا يمكن أن يحتوي وسيط المفتاح على مسار.</value>
+  </data>
+  <data name="Queryex_QX3400" xml:space="preserve">
+    <value>المعامل @{name} مستخدم بأنواع متعارضة (هنا بالنوع {type}).</value>
+  </data>
+  <data name="Queryex_QX4001" xml:space="preserve">
+    <value>يجب أن يكون التعبير شرطًا هنا، لكنه من النوع {type}.</value>
+  </data>
+  <data name="Queryex_QX4002" xml:space="preserve">
+    <value>التجميعات غير مسموح بها هنا.</value>
+  </data>
+  <data name="Queryex_QX4003" xml:space="preserve">
+    <value>لا يمكن أن يظهر تجميع داخل تجميع آخر.</value>
+  </data>
+  <data name="Queryex_QX4004" xml:space="preserve">
+    <value>المسار خارج التجميع غير مسموح به في عامل تصفية التجميع.</value>
+  </data>
+  <data name="Queryex_QX4005" xml:space="preserve">
+    <value>مصطلح الترتيب هذا سيغيّر التجميع.</value>
+  </data>
+  <data name="Queryex_QX4006" xml:space="preserve">
+    <value>يتطلب تقسيم الصفحات ترتيبًا صريحًا.</value>
+  </data>
+  <data name="Queryex_QX4007" xml:space="preserve">
+    <value>لا يمكن أن يجمع عنصر بين مسارات داخل التجميعات وخارجها.</value>
+  </data>
+  <data name="Queryex_QX4008" xml:space="preserve">
+    <value>مصطلح ترتيب مكرر.</value>
+  </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>لا يمكن استخدام المسار {name} هنا: لا يوجد صف لقراءته منه.</value>
+  </data>
+  <data name="Queryex_QX4010" xml:space="preserve">
+    <value>لا يمكن حساب {construct} على القيم المجمّعة.</value>
+  </data>
+  <data name="Queryex_QX4011" xml:space="preserve">
+    <value>يجب أن يجمّع المقياس، وأن يكون كل مسار يقرؤه داخل تجميع.</value>
+  </data>
+  <data name="Queryex_QX5001" xml:space="preserve">
+    <value>التعبير أطول من {limit} حرفًا.</value>
+  </data>
+  <data name="Queryex_QX5002" xml:space="preserve">
+    <value>يحتوي التعبير على أكثر من {limit} رمزًا.</value>
+  </data>
+  <data name="Queryex_QX5003" xml:space="preserve">
+    <value>يتداخل التعبير بأكثر من {limit} مستوى.</value>
+  </data>
+  <data name="Queryex_QX5004" xml:space="preserve">
+    <value>يحتوي الاستعلام على أكثر من {limit} عقدة.</value>
+  </data>
+  <data name="Queryex_QX5005" xml:space="preserve">
+    <value>تحتوي القائمة على أكثر من {limit} عنصرًا.</value>
+  </data>
+  <data name="Queryex_QX5006" xml:space="preserve">
+    <value>يحتاج الاستعلام إلى أكثر من {limit} ربط.</value>
+  </data>
+  <data name="Queryex_QX5007" xml:space="preserve">
+    <value>يحتاج الاستعلام إلى أكثر من {limit} معاملًا.</value>
+  </data>
+  <!-- Region_ names: generated by eng/region-names from CLDR 48.0; regenerate them, never edit by hand -->
+  <data name="Region_AE" xml:space="preserve">
+    <value>الإمارات العربية المتحدة</value>
+  </data>
+  <data name="Region_AG" xml:space="preserve">
+    <value>أنتيغوا وبربودا</value>
+  </data>
+  <data name="Region_AI" xml:space="preserve">
+    <value>أنغويلا</value>
+  </data>
+  <data name="Region_AO" xml:space="preserve">
+    <value>أنغولا</value>
+  </data>
+  <data name="Region_AR" xml:space="preserve">
+    <value>الأرجنتين</value>
+  </data>
+  <data name="Region_AS" xml:space="preserve">
+    <value>ساموا الأمريكية</value>
+  </data>
+  <data name="Region_AT" xml:space="preserve">
+    <value>النمسا</value>
+  </data>
+  <data name="Region_AU" xml:space="preserve">
+    <value>أستراليا</value>
+  </data>
+  <data name="Region_BB" xml:space="preserve">
+    <value>بربادوس</value>
+  </data>
+  <data name="Region_BE" xml:space="preserve">
+    <value>بلجيكا</value>
+  </data>
+  <data name="Region_BF" xml:space="preserve">
+    <value>بوركينا فاسو</value>
+  </data>
+  <data name="Region_BH" xml:space="preserve">
+    <value>البحرين</value>
+  </data>
+  <data name="Region_BI" xml:space="preserve">
+    <value>بوروندي</value>
+  </data>
+  <data name="Region_BJ" xml:space="preserve">
+    <value>بنين</value>
+  </data>
+  <data name="Region_BL" xml:space="preserve">
+    <value>سان بارتليمي</value>
+  </data>
+  <data name="Region_BM" xml:space="preserve">
+    <value>برمودا</value>
+  </data>
+  <data name="Region_BO" xml:space="preserve">
+    <value>بوليفيا</value>
+  </data>
+  <data name="Region_BR" xml:space="preserve">
+    <value>البرازيل</value>
+  </data>
+  <data name="Region_BS" xml:space="preserve">
+    <value>جزر البهاما</value>
+  </data>
+  <data name="Region_BW" xml:space="preserve">
+    <value>بوتسوانا</value>
+  </data>
+  <data name="Region_BZ" xml:space="preserve">
+    <value>بليز</value>
+  </data>
+  <data name="Region_CA" xml:space="preserve">
+    <value>كندا</value>
+  </data>
+  <data name="Region_CC" xml:space="preserve">
+    <value>جزر كوكوس (كيلينغ)</value>
+  </data>
+  <data name="Region_CD" xml:space="preserve">
+    <value>الكونغو - كينشاسا</value>
+  </data>
+  <data name="Region_CF" xml:space="preserve">
+    <value>جمهورية أفريقيا الوسطى</value>
+  </data>
+  <data name="Region_CG" xml:space="preserve">
+    <value>الكونغو - برازافيل</value>
+  </data>
+  <data name="Region_CH" xml:space="preserve">
+    <value>سويسرا</value>
+  </data>
+  <data name="Region_CI" xml:space="preserve">
+    <value>ساحل العاج</value>
+  </data>
+  <data name="Region_CK" xml:space="preserve">
+    <value>جزر كوك</value>
+  </data>
+  <data name="Region_CL" xml:space="preserve">
+    <value>تشيلي</value>
+  </data>
+  <data name="Region_CM" xml:space="preserve">
+    <value>الكاميرون</value>
+  </data>
+  <data name="Region_CN" xml:space="preserve">
+    <value>الصين</value>
+  </data>
+  <data name="Region_CO" xml:space="preserve">
+    <value>كولومبيا</value>
+  </data>
+  <data name="Region_CR" xml:space="preserve">
+    <value>كوستاريكا</value>
+  </data>
+  <data name="Region_CU" xml:space="preserve">
+    <value>كوبا</value>
+  </data>
+  <data name="Region_CV" xml:space="preserve">
+    <value>الرأس الأخضر</value>
+  </data>
+  <data name="Region_CX" xml:space="preserve">
+    <value>جزيرة كريسماس</value>
+  </data>
+  <data name="Region_CY" xml:space="preserve">
+    <value>قبرص</value>
+  </data>
+  <data name="Region_DE" xml:space="preserve">
+    <value>ألمانيا</value>
+  </data>
+  <data name="Region_DJ" xml:space="preserve">
+    <value>جيبوتي</value>
+  </data>
+  <data name="Region_DK" xml:space="preserve">
+    <value>الدانمرك</value>
+  </data>
+  <data name="Region_DM" xml:space="preserve">
+    <value>دومينيكا</value>
+  </data>
+  <data name="Region_DO" xml:space="preserve">
+    <value>جمهورية الدومينيكان</value>
+  </data>
+  <data name="Region_DZ" xml:space="preserve">
+    <value>الجزائر</value>
+  </data>
+  <data name="Region_EC" xml:space="preserve">
+    <value>الإكوادور</value>
+  </data>
+  <data name="Region_EG" xml:space="preserve">
+    <value>مصر</value>
+  </data>
+  <data name="Region_ER" xml:space="preserve">
+    <value>إريتريا</value>
+  </data>
+  <data name="Region_ES" xml:space="preserve">
+    <value>إسبانيا</value>
+  </data>
+  <data name="Region_ET" xml:space="preserve">
+    <value>إثيوبيا</value>
+  </data>
+  <data name="Region_FI" xml:space="preserve">
+    <value>فنلندا</value>
+  </data>
+  <data name="Region_FJ" xml:space="preserve">
+    <value>فيجي</value>
+  </data>
+  <data name="Region_FK" xml:space="preserve">
+    <value>جزر فوكلاند</value>
+  </data>
+  <data name="Region_FM" xml:space="preserve">
+    <value>ميكرونيزيا</value>
+  </data>
+  <data name="Region_FR" xml:space="preserve">
+    <value>فرنسا</value>
+  </data>
+  <data name="Region_GA" xml:space="preserve">
+    <value>الغابون</value>
+  </data>
+  <data name="Region_GB" xml:space="preserve">
+    <value>المملكة المتحدة</value>
+  </data>
+  <data name="Region_GD" xml:space="preserve">
+    <value>غرينادا</value>
+  </data>
+  <data name="Region_GF" xml:space="preserve">
+    <value>غويانا الفرنسية</value>
+  </data>
+  <data name="Region_GG" xml:space="preserve">
+    <value>غيرنزي</value>
+  </data>
+  <data name="Region_GH" xml:space="preserve">
+    <value>غانا</value>
+  </data>
+  <data name="Region_GI" xml:space="preserve">
+    <value>جبل طارق</value>
+  </data>
+  <data name="Region_GM" xml:space="preserve">
+    <value>غامبيا</value>
+  </data>
+  <data name="Region_GN" xml:space="preserve">
+    <value>غينيا</value>
+  </data>
+  <data name="Region_GP" xml:space="preserve">
+    <value>غوادلوب</value>
+  </data>
+  <data name="Region_GQ" xml:space="preserve">
+    <value>غينيا الاستوائية</value>
+  </data>
+  <data name="Region_GT" xml:space="preserve">
+    <value>غواتيمالا</value>
+  </data>
+  <data name="Region_GU" xml:space="preserve">
+    <value>غوام</value>
+  </data>
+  <data name="Region_GW" xml:space="preserve">
+    <value>غينيا بيساو</value>
+  </data>
+  <data name="Region_GY" xml:space="preserve">
+    <value>غيانا</value>
+  </data>
+  <data name="Region_HK" xml:space="preserve">
+    <value>هونغ كونغ الصينية (منطقة إدارية خاصة)</value>
+  </data>
+  <data name="Region_HN" xml:space="preserve">
+    <value>هندوراس</value>
+  </data>
+  <data name="Region_HT" xml:space="preserve">
+    <value>هايتي</value>
+  </data>
+  <data name="Region_ID" xml:space="preserve">
+    <value>إندونيسيا</value>
+  </data>
+  <data name="Region_IE" xml:space="preserve">
+    <value>أيرلندا</value>
+  </data>
+  <data name="Region_IL" xml:space="preserve">
+    <value>إسرائيل</value>
+  </data>
+  <data name="Region_IM" xml:space="preserve">
+    <value>جزيرة مان</value>
+  </data>
+  <data name="Region_IN" xml:space="preserve">
+    <value>الهند</value>
+  </data>
+  <data name="Region_IO" xml:space="preserve">
+    <value>الإقليم البريطاني في المحيط الهندي</value>
+  </data>
+  <data name="Region_IQ" xml:space="preserve">
+    <value>العراق</value>
+  </data>
+  <data name="Region_IT" xml:space="preserve">
+    <value>إيطاليا</value>
+  </data>
+  <data name="Region_JE" xml:space="preserve">
+    <value>جيرسي</value>
+  </data>
+  <data name="Region_JM" xml:space="preserve">
+    <value>جامايكا</value>
+  </data>
+  <data name="Region_JO" xml:space="preserve">
+    <value>الأردن</value>
+  </data>
+  <data name="Region_KE" xml:space="preserve">
+    <value>كينيا</value>
+  </data>
+  <data name="Region_KI" xml:space="preserve">
+    <value>كيريباتي</value>
+  </data>
+  <data name="Region_KM" xml:space="preserve">
+    <value>جزر القمر</value>
+  </data>
+  <data name="Region_KN" xml:space="preserve">
+    <value>سانت كيتس ونيفيس</value>
+  </data>
+  <data name="Region_KW" xml:space="preserve">
+    <value>الكويت</value>
+  </data>
+  <data name="Region_KY" xml:space="preserve">
+    <value>جزر كايمان</value>
+  </data>
+  <data name="Region_LB" xml:space="preserve">
+    <value>لبنان</value>
+  </data>
+  <data name="Region_LC" xml:space="preserve">
+    <value>سانت لوسيا</value>
+  </data>
+  <data name="Region_LI" xml:space="preserve">
+    <value>ليختنشتاين</value>
+  </data>
+  <data name="Region_LR" xml:space="preserve">
+    <value>ليبيريا</value>
+  </data>
+  <data name="Region_LS" xml:space="preserve">
+    <value>ليسوتو</value>
+  </data>
+  <data name="Region_LU" xml:space="preserve">
+    <value>لوكسمبورغ</value>
+  </data>
+  <data name="Region_LY" xml:space="preserve">
+    <value>ليبيا</value>
+  </data>
+  <data name="Region_MA" xml:space="preserve">
+    <value>المغرب</value>
+  </data>
+  <data name="Region_MC" xml:space="preserve">
+    <value>موناكو</value>
+  </data>
+  <data name="Region_MF" xml:space="preserve">
+    <value>سان مارتن</value>
+  </data>
+  <data name="Region_MG" xml:space="preserve">
+    <value>مدغشقر</value>
+  </data>
+  <data name="Region_MH" xml:space="preserve">
+    <value>جزر مارشال</value>
+  </data>
+  <data name="Region_ML" xml:space="preserve">
+    <value>مالي</value>
+  </data>
+  <data name="Region_MO" xml:space="preserve">
+    <value>منطقة ماكاو الإدارية الخاصة</value>
+  </data>
+  <data name="Region_MP" xml:space="preserve">
+    <value>جزر ماريانا الشمالية</value>
+  </data>
+  <data name="Region_MQ" xml:space="preserve">
+    <value>جزر المارتينيك</value>
+  </data>
+  <data name="Region_MR" xml:space="preserve">
+    <value>موريتانيا</value>
+  </data>
+  <data name="Region_MS" xml:space="preserve">
+    <value>مونتسرات</value>
+  </data>
+  <data name="Region_MT" xml:space="preserve">
+    <value>مالطا</value>
+  </data>
+  <data name="Region_MU" xml:space="preserve">
+    <value>موريشيوس</value>
+  </data>
+  <data name="Region_MV" xml:space="preserve">
+    <value>جزر المالديف</value>
+  </data>
+  <data name="Region_MW" xml:space="preserve">
+    <value>ملاوي</value>
+  </data>
+  <data name="Region_MX" xml:space="preserve">
+    <value>المكسيك</value>
+  </data>
+  <data name="Region_MY" xml:space="preserve">
+    <value>ماليزيا</value>
+  </data>
+  <data name="Region_MZ" xml:space="preserve">
+    <value>موزمبيق</value>
+  </data>
+  <data name="Region_NA" xml:space="preserve">
+    <value>ناميبيا</value>
+  </data>
+  <data name="Region_NC" xml:space="preserve">
+    <value>كاليدونيا الجديدة</value>
+  </data>
+  <data name="Region_NE" xml:space="preserve">
+    <value>النيجر</value>
+  </data>
+  <data name="Region_NF" xml:space="preserve">
+    <value>جزيرة نورفولك</value>
+  </data>
+  <data name="Region_NG" xml:space="preserve">
+    <value>نيجيريا</value>
+  </data>
+  <data name="Region_NI" xml:space="preserve">
+    <value>نيكاراغوا</value>
+  </data>
+  <data name="Region_NL" xml:space="preserve">
+    <value>هولندا</value>
+  </data>
+  <data name="Region_NR" xml:space="preserve">
+    <value>ناورو</value>
+  </data>
+  <data name="Region_NU" xml:space="preserve">
+    <value>نيوي</value>
+  </data>
+  <data name="Region_NZ" xml:space="preserve">
+    <value>نيوزيلندا</value>
+  </data>
+  <data name="Region_OM" xml:space="preserve">
+    <value>عُمان</value>
+  </data>
+  <data name="Region_PA" xml:space="preserve">
+    <value>بنما</value>
+  </data>
+  <data name="Region_PE" xml:space="preserve">
+    <value>بيرو</value>
+  </data>
+  <data name="Region_PF" xml:space="preserve">
+    <value>بولينيزيا الفرنسية</value>
+  </data>
+  <data name="Region_PG" xml:space="preserve">
+    <value>بابوا غينيا الجديدة</value>
+  </data>
+  <data name="Region_PH" xml:space="preserve">
+    <value>الفلبين</value>
+  </data>
+  <data name="Region_PK" xml:space="preserve">
+    <value>باكستان</value>
+  </data>
+  <data name="Region_PM" xml:space="preserve">
+    <value>سان بيير ومكويلون</value>
+  </data>
+  <data name="Region_PN" xml:space="preserve">
+    <value>جزر بيتكيرن</value>
+  </data>
+  <data name="Region_PR" xml:space="preserve">
+    <value>بورتوريكو</value>
+  </data>
+  <data name="Region_PS" xml:space="preserve">
+    <value>الأراضي الفلسطينية</value>
+  </data>
+  <data name="Region_PT" xml:space="preserve">
+    <value>البرتغال</value>
+  </data>
+  <data name="Region_PW" xml:space="preserve">
+    <value>بالاو</value>
+  </data>
+  <data name="Region_PY" xml:space="preserve">
+    <value>باراغواي</value>
+  </data>
+  <data name="Region_QA" xml:space="preserve">
+    <value>قطر</value>
+  </data>
+  <data name="Region_RE" xml:space="preserve">
+    <value>روينيون</value>
+  </data>
+  <data name="Region_RW" xml:space="preserve">
+    <value>رواندا</value>
+  </data>
+  <data name="Region_SA" xml:space="preserve">
+    <value>المملكة العربية السعودية</value>
+  </data>
+  <data name="Region_SB" xml:space="preserve">
+    <value>جزر سليمان</value>
+  </data>
+  <data name="Region_SC" xml:space="preserve">
+    <value>سيشل</value>
+  </data>
+  <data name="Region_SD" xml:space="preserve">
+    <value>السودان</value>
+  </data>
+  <data name="Region_SE" xml:space="preserve">
+    <value>السويد</value>
+  </data>
+  <data name="Region_SG" xml:space="preserve">
+    <value>سنغافورة</value>
+  </data>
+  <data name="Region_SH" xml:space="preserve">
+    <value>سانت هيلينا</value>
+  </data>
+  <data name="Region_SI" xml:space="preserve">
+    <value>سلوفينيا</value>
+  </data>
+  <data name="Region_SL" xml:space="preserve">
+    <value>سيراليون</value>
+  </data>
+  <data name="Region_SN" xml:space="preserve">
+    <value>السنغال</value>
+  </data>
+  <data name="Region_SO" xml:space="preserve">
+    <value>الصومال</value>
+  </data>
+  <data name="Region_SS" xml:space="preserve">
+    <value>جنوب السودان</value>
+  </data>
+  <data name="Region_ST" xml:space="preserve">
+    <value>ساو تومي وبرينسيبي</value>
+  </data>
+  <data name="Region_SV" xml:space="preserve">
+    <value>السلفادور</value>
+  </data>
+  <data name="Region_SX" xml:space="preserve">
+    <value>سانت مارتن</value>
+  </data>
+  <data name="Region_SY" xml:space="preserve">
+    <value>سوريا</value>
+  </data>
+  <data name="Region_SZ" xml:space="preserve">
+    <value>إسواتيني</value>
+  </data>
+  <data name="Region_TC" xml:space="preserve">
+    <value>جزر توركس وكايكوس</value>
+  </data>
+  <data name="Region_TD" xml:space="preserve">
+    <value>تشاد</value>
+  </data>
+  <data name="Region_TG" xml:space="preserve">
+    <value>توغو</value>
+  </data>
+  <data name="Region_TK" xml:space="preserve">
+    <value>توكيلاو</value>
+  </data>
+  <data name="Region_TL" xml:space="preserve">
+    <value>تيمور - ليشتي</value>
+  </data>
+  <data name="Region_TN" xml:space="preserve">
+    <value>تونس</value>
+  </data>
+  <data name="Region_TO" xml:space="preserve">
+    <value>تونغا</value>
+  </data>
+  <data name="Region_TR" xml:space="preserve">
+    <value>تركيا</value>
+  </data>
+  <data name="Region_TT" xml:space="preserve">
+    <value>ترينيداد وتوباغو</value>
+  </data>
+  <data name="Region_TV" xml:space="preserve">
+    <value>توفالو</value>
+  </data>
+  <data name="Region_TW" xml:space="preserve">
+    <value>تايوان</value>
+  </data>
+  <data name="Region_TZ" xml:space="preserve">
+    <value>تنزانيا</value>
+  </data>
+  <data name="Region_UG" xml:space="preserve">
+    <value>أوغندا</value>
+  </data>
+  <data name="Region_UM" xml:space="preserve">
+    <value>جزر الولايات المتحدة النائية</value>
+  </data>
+  <data name="Region_US" xml:space="preserve">
+    <value>الولايات المتحدة</value>
+  </data>
+  <data name="Region_UY" xml:space="preserve">
+    <value>أورغواي</value>
+  </data>
+  <data name="Region_VC" xml:space="preserve">
+    <value>سانت فنسنت وجزر غرينادين</value>
+  </data>
+  <data name="Region_VE" xml:space="preserve">
+    <value>فنزويلا</value>
+  </data>
+  <data name="Region_VG" xml:space="preserve">
+    <value>جزر فيرجن البريطانية</value>
+  </data>
+  <data name="Region_VI" xml:space="preserve">
+    <value>جزر فيرجن الأمريكية</value>
+  </data>
+  <data name="Region_VU" xml:space="preserve">
+    <value>فانواتو</value>
+  </data>
+  <data name="Region_WF" xml:space="preserve">
+    <value>جزر والس وفوتونا</value>
+  </data>
+  <data name="Region_WS" xml:space="preserve">
+    <value>ساموا</value>
+  </data>
+  <data name="Region_YE" xml:space="preserve">
+    <value>اليمن</value>
+  </data>
+  <data name="Region_YT" xml:space="preserve">
+    <value>مايوت</value>
+  </data>
+  <data name="Region_ZA" xml:space="preserve">
+    <value>جنوب أفريقيا</value>
+  </data>
+  <data name="Region_ZM" xml:space="preserve">
+    <value>زامبيا</value>
+  </data>
+  <data name="Region_ZW" xml:space="preserve">
+    <value>زيمبابوي</value>
+  </data>
+  <!-- End of Region_ names -->
+</root>

@@ -27,6 +27,20 @@ export class TmPopoverHarness extends ComponentHarness {
     return (await this.host()).getAttribute('aria-label');
   }
 
+  /**
+   * The panel's size: `'auto'` for a content-width panel, else the fixed
+   * `'sm'`, `'md'` or `'lg'`.
+   */
+  async getSize(): Promise<'auto' | 'sm' | 'md' | 'lg'> {
+    const host = await this.host();
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      if (await host.hasClass(`tm-popover__panel--${size}`)) {
+        return size;
+      }
+    }
+    return 'auto';
+  }
+
   /** Whether focus currently sits inside the panel. */
   async isFocused(): Promise<boolean> {
     if (await (await this.host()).isFocused()) {

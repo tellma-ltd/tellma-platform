@@ -1,0 +1,497 @@
+/**
+ * Public API Surface of @tellma/core — the Tellma app framework, the runtime
+ * a distribution's single-page app imports. This primary entry point loads
+ * with the app; each lazy boundary of the framework is a secondary entry
+ * point of its own.
+ *
+ * It holds the distribution API (`bootstrapTellma`, `provideTellma`,
+ * `tmFeature` and the declaration functions), the app's root component, its
+ * routes' data, title strategy and URLs with the search query codec, the
+ * types of what the search and details pages keep between visits, the
+ * entity registry (summaries, and descriptors once the entity model loads),
+ * display names and client permissions, the client metadata's types and loaders, the
+ * HTTP layer with its error and plain-JSON value types, the exact decimal
+ * helpers, the client store, the tab bus and the leader tab, the app-level
+ * keyboard shortcut registry, the navigation registry with the pins model's
+ * keys and the launcher's provider seam, the shell frame's seams (immersive
+ * mode and what the tenant shell's `main` shows), the page-context registry
+ * with the page actions and their dispatcher, the banners with the
+ * input-idle clock, the attention documents and the toast durations, and the
+ * seams through which telemetry and the request log are provided.
+ *
+ * @packageDocumentation
+ */
+
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+// Plain JSON and exact decimals.
+export type { TmDecimal, TmId, TmJson, TmJsonObject, TmJsonSchema } from './src/json/tm-json';
+export { TmDecimals } from './src/json/tm-decimals';
+
+// Telemetry and error logging.
+export {
+  TmTelemetry,
+  type TmTelemetryItem,
+  type TmTelemetryOptions,
+  type TmTelemetryProps,
+} from './src/observe/tm-telemetry';
+export { TmErrorHandler, type TmErrorRecord, type TmErrorSource } from './src/observe/tm-error-handler';
+
+// The HTTP layer.
+export {
+  TmApi,
+  type TmBlobDescriptor,
+  type TmDownload,
+  type TmDownloadOptions,
+  type TmReadOptions,
+  type TmSendOptions,
+  type TmUploadOptions,
+  type TmWriteOptions,
+} from './src/api/tm-api';
+export {
+  TmApiError,
+  type TmApiErrorInit,
+  type TmApiErrorKind,
+  type TmProblem,
+  type TmProblemError,
+} from './src/api/tm-api-error';
+
+// The request log with Copy diagnostics, and the UI version's identity.
+export {
+  TmRequestLog,
+  type TmDiagnosticsTrigger,
+  type TmRequestEnd,
+  type TmRequestHandle,
+  type TmRequestOutcome,
+  type TmRequestRecord,
+  type TmRequestStart,
+} from './src/requests/tm-request-log';
+export { TmAppVersion, type TmFeatureVersion } from './src/requests/tm-app-version';
+
+// Support: Report a problem, Copy diagnostics, the diagnostic file and the
+// support dump's contributed sections. The dump's builder, the Diagnostics
+// panel and the support dialog are @tellma/core/support's.
+export { TmSupport } from './src/support/tm-support';
+// What @tellma/core/support and the About dialog build on, and the loaders
+// @tellma/core-testing replaces: the snapshot the facade takes and the request
+// line the panel copies. The offline line stays off this list: only the
+// support host chunk imports it, which keeps it off the first frame. Not for
+// app code.
+export {
+  TM_SUPPORT_LOAD as ɵTM_SUPPORT_LOAD,
+  TM_SUPPORT_TOOLS_LOAD as ɵTM_SUPPORT_TOOLS_LOAD,
+  type TmPageSnapshotModule as ɵTmPageSnapshotModule,
+  type TmSupportContexts as ɵTmSupportContexts,
+  type TmSupportDumpBuild as ɵTmSupportDumpBuild,
+  type TmSupportHostChunk as ɵTmSupportHostChunk,
+  type TmSupportModule as ɵTmSupportModule,
+  type TmSupportReported as ɵTmSupportReported,
+  type TmSupportSection as ɵTmSupportSection,
+  type TmSupportSnapshot as ɵTmSupportSnapshot,
+  type TmSupportTools as ɵTmSupportTools,
+} from './src/support/tm-support';
+export { tmDiagnosticsLine as ɵtmDiagnosticsLine } from './src/requests/tm-diagnostics';
+
+// The page context and the page actions: the registry, page scopes, the
+// dispatcher and the help seam. The snapshot is @tellma/core/page-snapshot.
+export type {
+  TmContextError,
+  TmFormContext,
+  TmFormField,
+  TmPageContext,
+  TmVisibleColumn,
+  TmVisibleData,
+  TmVisibleRow,
+} from './src/context/tm-page-context';
+export type { TmActionOrigin, TmActionResult, TmPageAction, TmPageActionInput } from './src/context/tm-page-action';
+export { TmPageContexts } from './src/context/tm-page-contexts';
+export { TmPageActions } from './src/context/tm-page-actions';
+export { provideTmPageScope } from './src/context/tm-page-scope';
+export { TM_HELP_ARTICLES } from './src/context/tm-help-articles';
+
+// The distribution API: the app configuration and its providers.
+export type {
+  TmAppConfig,
+  TmCalendarDefinition,
+  TmLanguageDefinition,
+  TmStringTable,
+  TmStringTree,
+} from './src/app/tm-app-config';
+export { provideTellma, tmAppConfigOf } from './src/app/provide-tellma';
+export { bootstrapTellma } from './src/app/bootstrap-tellma';
+export { TmApp } from './src/app/tm-app';
+export { TM_APP_DECLARATIONS, type TmAppDeclarations } from './src/app/tm-app-declarations';
+export type { TmRouteData, TmRouteSkeleton } from './src/app/tm-route-data';
+export type { TmPageKind } from './src/context/tm-page-kind';
+
+// Localization: the language, the regional formats, the calendar and the zones, server text and English.
+export { TmLocalization, type TmLocaleChange } from './src/l10n/tm-localization';
+export type { TmLocaleSave } from './src/l10n/tm-locale-write';
+export { TmServerText, type TmProblemText } from './src/l10n/tm-server-text';
+export { tmEnglish } from './src/l10n/tm-english';
+// The device's time zone: the per-device option and the check that offers
+// to follow a change. The check and its prompt are lazily loaded chunks of
+// this entry point, whose loader the state testing providers replace.
+export { TmDeviceZone, type TmZoneDoc, type TmZoneUser } from './src/l10n/tm-device-zone';
+export { TM_ZONE_CHECK_LOAD as ɵTM_ZONE_CHECK_LOAD, type TmZoneCheckModule as ɵTmZoneCheckModule } from './src/l10n/tm-device-zone';
+
+// Routes and URLs: the title strategy, the app's URLs and the search query codec.
+export { TmTitleStrategy } from './src/routes/tm-title-strategy';
+export { TmUrls, type TmRouteMatch, type TmTenantUrls } from './src/urls/tm-urls';
+export type { TmListPayload, TmSearchQuery } from './src/urls/tm-search-query';
+// The leave checks of a routed page, which the page frameworks register; not for app code.
+export { TmLeaveChecks as ɵTmLeaveChecks, type TmLeaveCheck as ɵTmLeaveCheck } from './src/routes/tm-leave-checks';
+// The contract of the components the primary loads from the shell entry point; not for app code.
+export type { TmShellComponents as ɵTmShellComponents } from './src/routes/tm-route-hosts';
+// The route host's page skeletons, which a family's host draws again while its own chunk loads; not for app code.
+export { TmPageSkeleton as ɵTmPageSkeleton } from './src/routes/tm-page-skeleton';
+// The arrival focus, which a family's host holds while its own page loads; not for app code.
+export { TmPageFocus as ɵTmPageFocus } from './src/routes/tm-page-focus';
+// Where the shown page's route started and whether its entry was cold, which a host's render timing reads; not for app code.
+export { TmLaunchTimer as ɵTmLaunchTimer } from './src/routes/tm-route-host';
+
+// The entity registry: summaries, descriptors and paths, display names, permissions.
+export { TmEntities } from './src/entity/tm-entities';
+export type {
+  TmChildDescriptor,
+  TmEntityActionDescriptor,
+  TmEntityDescriptor,
+  TmEnumDescriptor,
+  TmNavigationDescriptor,
+  TmPathEnd,
+  TmPathResolution,
+  TmPropertyDescriptor,
+} from './src/entity/tm-entity-descriptors';
+export { TmDisplayNames, type TmDisplayNameParts } from './src/entity/tm-display-names';
+export { TmDisplayName } from './src/entity/tm-display-name';
+export { TmPermissions, type TmPermissionOperation } from './src/entity/tm-permissions';
+export { tmRowsToObjects, type TmQueryRowSet, type TmQueryRowSetColumn } from './src/entity/tm-rows-to-objects';
+export type {
+  TmColumnKind,
+  TmColumnPlan,
+  TmColumnSource,
+  TmDroppedKey,
+  TmDroppedReason,
+  TmFilterKind,
+  TmSelectPlan,
+} from './src/entity/tm-select-plan-types';
+
+// What a details page keeps between visits: its drafts and its snapshots (types only).
+export type { TmDetailsDraft, TmDetailsSnapshot } from './src/details/tm-details-types';
+
+// What a search page keeps between visits and in the user's column preference (types only).
+export type { TmColumnPreference, TmSearchContext, TmSearchSnapshot } from './src/search/tm-search-types';
+
+// Features and the declaration functions.
+export type { TmDeclarationKey, TmLazyComponent, TmSecurableRef } from './src/declarations/tm-declaration-types';
+export { tmFeature, type TmFeature, type TmFeatureDefinition } from './src/declarations/tm-feature';
+export { tmOverride, type TmDeclarationPatch, type TmOverride } from './src/declarations/tm-override';
+export { tmPage, type TmPageDeclaration, type TmPageDefinition } from './src/declarations/tm-page';
+export {
+  tmEntity,
+  type TmActionConfirmation,
+  type TmColumnInput,
+  type TmCustomFilterDeclaration,
+  type TmDetailsDeclaration,
+  type TmEntityActionDeclaration,
+  type TmEntityDeclaration,
+  type TmEntityDeclarationInput,
+  type TmEntityRules,
+  type TmFilterSource,
+  type TmOrderInput,
+  type TmPickerDeclaration,
+  type TmPlanRow,
+  type TmSearchPageActionDeclaration,
+  type TmTabDeclaration,
+  type TmTileDeclaration,
+} from './src/entity/tm-entity-declaration';
+export type { TmEntityShapes, TmEntityType, TmEntityTypes, TmPath } from './src/entity/tm-entity-types';
+export {
+  tmCodedReport,
+  type TmCodedReportDeclaration,
+  type TmCodedReportMetadata,
+  type TmCodedReportPatch,
+  type TmCodedReportRun,
+  type TmReportArgs,
+  type TmReportChoice,
+  type TmReportDisplay,
+  type TmReportFormat,
+  type TmReportKind,
+  type TmReportParameter,
+  type TmReportParameterType,
+} from './src/reports/tm-coded-report';
+export {
+  tmWidget,
+  type TmDashboardWidgetModel,
+  type TmTextSlots,
+  type TmWidgetDefinition,
+  type TmWidgetSize,
+  type TmWidgetTypeDeclaration,
+} from './src/dashboards/tm-widget';
+export type { TmSettingsTabDeclaration } from './src/admin/tm-settings-tab';
+export type { TmNavContext, TmNavEntry, TmNavSection } from './src/nav/tm-nav-declarations';
+export type { TmShellSlot } from './src/nav/tm-shell-slot';
+
+// The navigation registry, the pins model's keys and the launcher's provider
+// seam. The icon of a recently visited page by its family is library wiring
+// the shell and the home page share.
+export { TmNavigation, type TmNavItem, type TmNavSectionView } from './src/nav/tm-navigation';
+export { tmPinnedBarVisibleKey, tmPinsKey, type TmPin, type TmPinFolder, type TmPinItem, type TmPinsDoc } from './src/nav/tm-pins';
+export {
+  TM_LAUNCHER_PROVIDERS,
+  type TmLauncherItem,
+  type TmLauncherProvider,
+  type TmLauncherSearchContext,
+} from './src/nav/tm-launcher-providers';
+export { tmRecentPageIcon as ɵtmRecentPageIcon } from './src/nav/tm-recent-icon';
+
+// App-level keyboard shortcuts and the shell frame's seams.
+export {
+  TM_BROWSER_KEYS,
+  TM_RESERVED_SHORTCUTS,
+  TmShortcutConflictError,
+  type TmReservedShortcut,
+  type TmShortcut,
+  type TmShortcutRefusal,
+} from './src/nav/tm-shortcut';
+export { TmShortcuts } from './src/nav/tm-shortcuts';
+export { TM_SHELL_LAYOUT, TmShell } from './src/nav/tm-shell';
+export { TmShellMain, type TmShellMainOverride } from './src/nav/tm-shell-main';
+export type {
+  TmDistributionIdentityInfo,
+  TmDistributionInfo,
+  TmDistributionLinks,
+  TmDistributionSessionInfo,
+  TmDistributionSupportInfo,
+  TmDistributionTelemetryInfo,
+} from './src/state/tm-distribution-info';
+
+// The merge rule, shared with the config check; not for app code.
+export {
+  ɵtmMergeAppDeclarations,
+  type ɵTmMergeProblem,
+  type ɵTmMergeProblemCode,
+  type ɵTmMergeResult,
+} from './src/declarations/tm-merge';
+
+// The app's clock.
+export { TM_NOW } from './src/app/tm-now';
+
+// The boot script's result, and the boot record it keeps.
+export type {
+  TmBootConfig,
+  TmBootLanguage,
+  TmBootPageReason,
+  TmBootResult,
+  TmBootState,
+  TmBootStrings,
+} from './src/boot/tm-boot-types';
+export type { TmBootRecord, TmBootTheme } from './src/state/tm-boot-record';
+
+// The session: the profile cookie, sign-in and step-up, and the guard.
+export { tmParseProfileCookie, type TmProfile } from './src/session/tm-profile';
+export type { TmLoginMark } from './src/session/tm-login-mark';
+export {
+  TmSession,
+  type TmSessionCheck,
+  type TmSignInOptions,
+  type TmStepUpChallenge,
+} from './src/session/tm-session';
+export type { TmSessionState } from './src/session/tm-session-paths';
+// The session's paths, which the leader tab runs a session ended elsewhere through; not for app code.
+export { TmSessionPaths as ɵTmSessionPaths } from './src/session/tm-session-paths';
+export { tmSessionGuard } from './src/session/tm-session-guard';
+
+// The client state: the store of cached documents and the boot record, and
+// the tab bus with its message catalogue.
+export {
+  TmClientStore,
+  TmStoreRefusedError,
+  type TmBootRecordAccess,
+  type TmStoredDoc,
+  type TmStoreRefusedReason,
+  type TmSweepRule,
+} from './src/state/store/tm-client-store';
+export type { TmPartition } from './src/state/store/tm-store-layout';
+export { TM_DOC_FORMATS } from './src/state/store/tm-doc-formats';
+export { TmTabBus } from './src/state/bus/tm-tab-bus';
+export type {
+  TmBusEnvelope,
+  TmBusMessage,
+  TmDraftsQueryMessage,
+  TmDraftsReplyMessage,
+  TmHubEventMessage,
+  TmHubStatusMessage,
+  TmLanguageSwitchedMessage,
+  TmLeaderProbeMessage,
+  TmPrefsChangedMessage,
+  TmSessionMessage,
+  TmStoreChangedMessage,
+} from './src/state/bus/tm-bus-messages';
+export type {
+  TmClientEvent,
+  TmHubConnection,
+  TmHubSink,
+  TmHubState,
+  TmHubStatus,
+} from './src/state/leader/tm-hub-types';
+
+// The leader tab: whether this tab leads the routed tenant, the leader's
+// realtime connection and the tenant's hub events, and the documents only the
+// leader refreshes. The election itself is @tellma/core/leader's, which the
+// startup loads after the first render; the state testing providers replace
+// its loader.
+export { TmLeader } from './src/state/leader/tm-leader';
+export { TM_LEADER_DOCUMENTS, type TmLeaderDocument, ɵTM_UNIQUE_LEADER_DOCUMENTS } from './src/state/leader/tm-leader-documents';
+export { TM_LEADER_LOAD as ɵTM_LEADER_LOAD, type TmLeaderModule as ɵTmLeaderModule } from './src/app/tm-app-init';
+
+// The launch documents and their cache: the routed tenant's settings,
+// envelope and facts, the cacheable lists, and the one path that syncs them.
+export { TmLaunchCache } from './src/state/launch/tm-launch-cache';
+export type {
+  TmAccessProblem,
+  TmAccessSummary,
+  TmCachedEntitySet,
+  TmDigitStyle,
+  TmLanguageInfo,
+  TmLaunchDocs,
+  TmMeLocaleResult,
+  TmMeResult,
+  TmPreferencesResult,
+  TmSecurableSummary,
+  TmTenantFacts,
+  TmTenantSettingsForClient,
+  TmUserProfileView,
+} from './src/state/launch/tm-launch-docs';
+export {
+  TmCacheRefresher,
+  type TmAdoptedDocs,
+  type TmCacheChangedEvent,
+  type TmSyncTrigger,
+} from './src/state/sync/tm-cache-refresher';
+
+// The user's preferences. The tab's memory (page state and tree expansion)
+// is @tellma/core/memory's, its drafts are @tellma/core/drafts', and
+// recently visited pages are @tellma/core/recents'.
+export { tmPreferenceKey, type TmPreferenceKey, type TmPreferenceKind } from './src/state/prefs/tm-preference-key';
+export { TmPreferences } from './src/state/prefs/tm-preferences';
+
+// The client metadata's holder, which @tellma/core-testing loads, and the
+// client store's browser, which it replaces; not for app code.
+export { TmClientMetadataStore as ɵTmClientMetadataStore } from './src/metadata/tm-client-metadata';
+export { TM_STORE_HOST as ɵTM_STORE_HOST, type TmStoreHost as ɵTmStoreHost } from './src/state/store/tm-store-host';
+export type { TmDocUpdate as ɵTmDocUpdate } from './src/state/store/tm-client-store';
+export type { TmSyncDoc as ɵTmSyncDoc } from './src/state/launch/tm-launch-docs';
+// The browser's locks, which @tellma/core-testing replaces, and the sync's
+// error presenter, which the app's error presenter provides; not for app code.
+export { TmLocks as ɵTmLocks } from './src/state/sync/tm-locks';
+export { TM_SYNC_ERRORS as ɵTM_SYNC_ERRORS, type TmSyncErrors as ɵTmSyncErrors } from './src/state/sync/tm-cache-refresher';
+// What @tellma/core/memory, @tellma/core/drafts and @tellma/core/recents
+// build on: the browser seams, the routed tenant of a URL, the route data the
+// route table adds, the drafts' storage (which @tellma/core-testing replaces)
+// and keys (which the session's sign-in sweep shares), and the state's
+// section of the support dump with the parts the services report to it. Not
+// for app code.
+export { TM_API_HOST as ɵTM_API_HOST, type TmApiHost as ɵTmApiHost } from './src/api/tm-api-host';
+// The worker's update check, and the update service's loader, which the
+// error views' Reload uses and @tellma/core-testing replaces; not for app code.
+export {
+  TM_API_UPDATES as ɵTM_API_UPDATES,
+  TM_UPDATES_LOAD as ɵTM_UPDATES_LOAD,
+  type TmApiUpdateCheck as ɵTmApiUpdateCheck,
+  type TmApiUpdates as ɵTmApiUpdates,
+  type TmUpdatesModule as ɵTmUpdatesModule,
+  type TmWorkerUpdates as ɵTmWorkerUpdates,
+} from './src/api/tm-api-seams';
+export { tmRoutedTenant as ɵtmRoutedTenant } from './src/launch/tm-routed-tenant';
+// The inline view a lazy body shows when its chunk does not load
+// (client-outdated or offline, after the worker's update check), which the
+// entry points' shells share with the route host; not for app code.
+export {
+  TM_ROUTE_ERROR_VIEWS as ɵTM_ROUTE_ERROR_VIEWS,
+  TmRouteError as ɵTmRouteError,
+  type TmRouteErrorKind as ɵTmRouteErrorKind,
+  type TmRouteErrorView as ɵTmRouteErrorView,
+} from './src/routes/tm-route-error';
+export type { TmRouteDataInternal as ɵTmRouteDataInternal } from './src/routes/tm-routes';
+export {
+  TM_DRAFT_KEY_PREFIX as ɵTM_DRAFT_KEY_PREFIX,
+  TM_DRAFTS_STORAGE as ɵTM_DRAFTS_STORAGE,
+  tmDraftKeyTail as ɵtmDraftKeyTail,
+  tmDraftPrefix as ɵtmDraftPrefix,
+  tmRemoveDrafts as ɵtmRemoveDrafts,
+  tmStorageKeys as ɵtmStorageKeys,
+} from './src/state/memory/tm-draft-keys';
+// The client state's dump section, as a type: its builder is the support host chunk's alone, so the
+// first frame does not carry it.
+export type { TmStateDumpSection as ɵTmStateDumpSection } from './src/state/tm-state-dump';
+export { TM_STATE_PARTS as ɵTM_STATE_PARTS, type TmStateParts as ɵTmStateParts } from './src/state/tm-state-parts';
+export type { TmStoredDocInfo as ɵTmStoredDocInfo } from './src/state/store/tm-client-store';
+
+// The launch: the single-membership rule and the automatic-entry mark.
+export { tmSingleLiveTenant } from './src/launch/tm-single-live-tenant';
+export type { TmMembership, TmTenantCategory, TmTenantState } from './src/launch/tm-membership';
+export { TmLaunch } from './src/launch/tm-launch';
+
+// The client metadata: its chunks, their loaders and the loaded Core chunk.
+export {
+  TM_CLIENT_METADATA,
+  type TmClientMetadata,
+  type TmContracts,
+  type TmDistributionMetadata,
+  type TmEntitiesChunk,
+  type TmFeatureMetadata,
+  type TmLanguageMetadata,
+  type TmNotificationChannelMetadata,
+  type TmRoutingMetadata,
+} from './src/metadata/tm-client-metadata';
+export {
+  tmMetadataLoaders,
+  type TmMetadataLoaders,
+  type TmMetadataPaths,
+  type TmStringPack,
+} from './src/metadata/tm-metadata-loaders';
+export type {
+  TmActionField,
+  TmActionMetadata,
+  TmBlobKindPolicy,
+  TmChildMetadata,
+  TmDataType,
+  TmDisplayNameRule,
+  TmEntityMetadata,
+  TmEntityOperation,
+  TmEntitySummary,
+  TmEnumMetadata,
+  TmEnumValueMetadata,
+  TmNavigationMetadata,
+  TmPropertyMetadata,
+  TmValueDescriptor,
+} from './src/entity/tm-entity-metadata';
+export type {
+  TmJobHandlerMetadata,
+  TmJobResultMetadata,
+  TmSecurableMetadata,
+  TmSecurableOwnerMetadata,
+  TmSettingCategoryMetadata,
+  TmSettingKeyMetadata,
+  TmSettingValueType,
+  TmSettingVisibility,
+} from './src/admin/tm-admin-metadata';
+export type { TmNotificationSeverity, TmNotificationTypeMetadata } from './src/attention/tm-notification-metadata';
+
+// Attention: the banners and the input-idle clock their row waits for, the
+// attention documents the leader tab keeps fresh, and the toast policy's
+// durations.
+export { TmBanners, type TmBannerLevel, type TmBannerOptions, type TmBannerRef, type TmBannerView } from './src/attention/tm-banners';
+export { TmInputIdle } from './src/attention/tm-input-idle';
+export {
+  TM_ATTENTION_DOCUMENTS,
+  type TmAssignmentsSummary,
+  type TmInboxRunningJob,
+  type TmInboxSummary,
+  type TmInboxVerbResult,
+} from './src/attention/tm-attention-documents';
+export { TM_TOAST_ARRIVAL_MS, TM_TOAST_FEEDBACK_MS } from './src/attention/tm-toast-durations';

@@ -7,12 +7,12 @@ LEFT JOIN [dbo].[Agents] AS [P1] ON [P1].[AgentId] = [T].[AgentFk]
 INNER JOIN [gl].[Segments] AS [P2] ON [P2].[SegmentId] = [T].[SegmentId]
 GROUP BY [P1].[AgentName], [P2].[SegmentName]
 ORDER BY [c2] DESC, [c0] ASC, [c1] ASC
-OFFSET @qx0_p0 ROWS FETCH NEXT @qx0_p1 ROWS ONLY
+OFFSET @qx0_skip ROWS FETCH NEXT @qx0_take ROWS ONLY
 ;
 
 -- parameters
---   @qx0_p0 : QxNumeric QxInt Literal = 0
---   @qx0_p1 : QxNumeric QxInt Literal = 25
+--   @qx0_skip : QxNumeric QxInt Literal = 0
+--   @qx0_take : QxNumeric QxInt Literal = 25
 -- columns
 --   0 : QxString Nullable key path=Customer.Name Customer.Name
 --   1 : QxString NotNull key path=Centre.Name Centre.Name

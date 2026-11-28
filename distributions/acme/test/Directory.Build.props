@@ -1,0 +1,5 @@
+<Project>
+  <!-- The repository's test conventions (no doc-comment coverage, xunit naming, the global using),
+       applied to the distribution's suites as to the platform's. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\..\test\Directory.Build.props" />
+</Project>

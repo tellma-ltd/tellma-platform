@@ -7,6 +7,7 @@ using System.Data.SqlTypes;
 using System.Globalization;
 using Tellma.Core.Queryex;
 using Tellma.Core.Queryex.Binding;
+using Tellma.Core.Queryex.Emit;
 
 namespace Tellma.Queryex.Testing.Semantics
 {
@@ -30,7 +31,7 @@ namespace Tellma.Queryex.Testing.Semantics
             [
                 "year", "quarter", "month", "day", "week", "weekday",
                 "hour", "minute", "second",
-                "startOfYear", "startOfMonth", "startOfWeek", "startOfDay",
+                "startOfYear", "startOfQuarter", "startOfMonth", "startOfWeek", "startOfDay",
                 "addYears", "addMonths", "addDays", "addHours", "addMinutes", "addSeconds",
                 "diffYears", "diffMonths", "diffDays", "diffHours", "diffMinutes", "diffSeconds",
                 "local", "today", "now", "me",
@@ -38,7 +39,7 @@ namespace Tellma.Queryex.Testing.Semantics
                 "abs", "floor", "ceiling", "round",
                 "length", "trim", "upper", "lower", "left", "right", "substring", "replace",
                 "contains", "startsWith", "endsWith",
-                "descendantOf", "ancestorOf",
+                "descendantOf", "ancestorOf", "level",
                 "sum", "avg", "min", "max", "count",
             ],
             StringComparer.OrdinalIgnoreCase);
@@ -68,8 +69,8 @@ namespace Tellma.Queryex.Testing.Semantics
                 "COALESCE" => FirstPresent(call, result),
                 "CAST" => Convert(Evaluate(call.Arguments[0]), result),
                 "SUM" or "AVG" or "MIN" or "MAX" or "COUNT" => Aggregate(call, name, result),
-                "DESCENDANTOF" => QxValue.Flag(Related(call, descending: true)),
-                "ANCESTOROF" => QxValue.Flag(Related(call, descending: false)),
+                "DESCENDANTOF" => QxValue.Flag(Related(call, descending: true, skipOmitted: false)),
+                "ANCESTOROF" => QxValue.Flag(Related(call, descending: false, skipOmitted: false)),
                 _ => Scalar(call, name, result),
             };
         }
@@ -98,53 +99,73 @@ namespace Tellma.Queryex.Testing.Semantics
                     : QxValue.Absent(result);
             }
 
-            return name.ToUpperInvariant() switch
-            {
-                "YEAR" => QxValue.Number(Calendar(arguments[0]).Year),
-                "QUARTER" => QxValue.Number(((Calendar(arguments[0]).Month - 1) / 3) + 1),
-                "MONTH" => QxValue.Number(Calendar(arguments[0]).Month),
-                "DAY" => QxValue.Number(Calendar(arguments[0]).Day),
-                "WEEK" => QxValue.Number(IsoWeek(Calendar(arguments[0]))),
-                "WEEKDAY" => QxValue.Number(((Calendar(arguments[0]).DayNumber - Epoch.DayNumber) % 7) + 1),
-                "HOUR" => QxValue.Number(TimeOf(arguments[0]).Hour),
-                "MINUTE" => QxValue.Number(TimeOf(arguments[0]).Minute),
-                "SECOND" => QxValue.Number(TimeOf(arguments[0]).Second),
-                "STARTOFYEAR" => QxValue.Date(new DateOnly(Calendar(arguments[0]).Year, 1, 1)),
-                "STARTOFMONTH" => QxValue.Date(
-                    new DateOnly(Calendar(arguments[0]).Year, Calendar(arguments[0]).Month, 1)),
-                "STARTOFWEEK" => QxValue.Date(StartOfWeek(Calendar(arguments[0]))),
-                "STARTOFDAY" => QxValue.Date(Calendar(arguments[0])),
-                "ADDYEARS" => Shifted(arguments[0], Whole(arguments[1]), years: true),
-                "ADDMONTHS" => Shifted(arguments[0], Whole(arguments[1]), years: false),
-                "ADDDAYS" => Elapsed(arguments[0], TimeSpan.FromDays(Whole(arguments[1]))),
-                "ADDHOURS" => Elapsed(arguments[0], TimeSpan.FromHours(Whole(arguments[1]))),
-                "ADDMINUTES" => Elapsed(arguments[0], TimeSpan.FromMinutes(Whole(arguments[1]))),
-                "ADDSECONDS" => Elapsed(arguments[0], TimeSpan.FromSeconds(Whole(arguments[1]))),
-                "DIFFYEARS" => QxValue.Number(CompletedUnits(arguments[0], arguments[1], years: true)),
-                "DIFFMONTHS" => QxValue.Number(CompletedUnits(arguments[0], arguments[1], years: false)),
-                "DIFFDAYS" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 3600), 24)),
-                "DIFFHOURS" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 60), 60)),
-                "DIFFMINUTES" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 1), 60)),
-                "DIFFSECONDS" => QxValue.Number(Boundaries(arguments[0], arguments[1], 1)),
-                "LOCAL" => QxValue.Moment(Local(arguments[0], call)),
-                "ABS" => QxValue.Number(SqlDecimal.Abs(arguments[0].AsNumber)),
-                "FLOOR" => QxValue.Number(SqlDecimal.Floor(arguments[0].AsNumber)),
-                "CEILING" => QxValue.Number(SqlDecimal.Ceiling(arguments[0].AsNumber)),
-                "ROUND" => QxValue.Number(SqlDecimal.Round(arguments[0].AsNumber, Whole(arguments[1]))),
-                "LENGTH" => QxValue.Number(Collation.Length(arguments[0].AsText)),
-                "TRIM" => QxValue.Text(arguments[0].AsText.Trim(' ')),
-                "UPPER" => QxValue.Text(arguments[0].AsText.ToUpperInvariant()),
-                "LOWER" => QxValue.Text(arguments[0].AsText.ToLowerInvariant()),
-                "LEFT" => QxValue.Text(Left(arguments[0].AsText, Whole(arguments[1]))),
-                "RIGHT" => QxValue.Text(Right(arguments[0].AsText, Whole(arguments[1]))),
-                "SUBSTRING" => QxValue.Text(Substring(arguments)),
-                "REPLACE" => QxValue.Text(Replace(arguments[0].AsText, arguments[1].AsText, arguments[2].AsText)),
-                "CONTAINS" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) > 0),
-                "STARTSWITH" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) == 1),
-                "ENDSWITH" => QxValue.Flag(EndsWith(arguments[0].AsText, arguments[1].AsText)),
-                _ => throw new NotSupportedException(
-                    "The reference reading of the language does not cover '" + name + "'."),
-            };
+            // A calendar function counted in a calendar other than the Gregorian is read off that
+            // calendar's dates rather than the Gregorian ones below.
+            return call.Signature.Emit is CalendarStrategy strategy
+                && CalendarReckoning.For(strategy.CalendarOf(call.Selectors)) is CalendarReckoning calendar
+                ? Reckoned(calendar, name, arguments, result)
+                : name.ToUpperInvariant() switch
+                {
+                    "YEAR" => QxValue.Number(Calendar(arguments[0]).Year),
+                    "QUARTER" => QxValue.Number(((Calendar(arguments[0]).Month - 1) / 3) + 1),
+                    "MONTH" => QxValue.Number(Calendar(arguments[0]).Month),
+                    "DAY" => QxValue.Number(Calendar(arguments[0]).Day),
+                    "WEEK" => QxValue.Number(IsoWeek(Calendar(arguments[0]))),
+                    "WEEKDAY" => QxValue.Number(((Calendar(arguments[0]).DayNumber - Epoch.DayNumber) % 7) + 1),
+                    "HOUR" => QxValue.Number(TimeOf(arguments[0]).Hour),
+                    "MINUTE" => QxValue.Number(TimeOf(arguments[0]).Minute),
+                    "SECOND" => QxValue.Number(TimeOf(arguments[0]).Second),
+                    "STARTOFYEAR" => QxValue.Date(new DateOnly(Calendar(arguments[0]).Year, 1, 1)),
+                    "STARTOFQUARTER" => QxValue.Date(
+                        new DateOnly(Calendar(arguments[0]).Year, ((Calendar(arguments[0]).Month - 1) / 3 * 3) + 1, 1)),
+                    "STARTOFMONTH" => QxValue.Date(
+                        new DateOnly(Calendar(arguments[0]).Year, Calendar(arguments[0]).Month, 1)),
+                    "STARTOFWEEK" => QxValue.Date(StartOfWeek(Calendar(arguments[0]))),
+                    "STARTOFDAY" => QxValue.Date(Calendar(arguments[0])),
+                    "ADDYEARS" => Shifted(arguments[0], Whole(arguments[1]), years: true),
+                    "ADDMONTHS" => Shifted(arguments[0], Whole(arguments[1]), years: false),
+                    "ADDDAYS" => Elapsed(arguments[0], TimeSpan.FromDays(Whole(arguments[1]))),
+                    "ADDHOURS" => Elapsed(arguments[0], TimeSpan.FromHours(Whole(arguments[1]))),
+                    "ADDMINUTES" => Elapsed(arguments[0], TimeSpan.FromMinutes(Whole(arguments[1]))),
+                    "ADDSECONDS" => Elapsed(arguments[0], TimeSpan.FromSeconds(Whole(arguments[1]))),
+                    "DIFFYEARS" => QxValue.Number(CompletedUnits(arguments[0], arguments[1], years: true)),
+                    "DIFFMONTHS" => QxValue.Number(CompletedUnits(arguments[0], arguments[1], years: false)),
+                    "DIFFDAYS" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 3600), 24)),
+                    "DIFFHOURS" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 60), 60)),
+                    "DIFFMINUTES" => QxValue.Number(Quotient(Boundaries(arguments[0], arguments[1], 1), 60)),
+                    "DIFFSECONDS" => QxValue.Number(Boundaries(arguments[0], arguments[1], 1)),
+                    "LOCAL" => QxValue.Moment(Local(arguments[0], call)),
+                    "ABS" => QxValue.Number(SqlDecimal.Abs(arguments[0].AsNumber)),
+                    "FLOOR" => QxValue.Number(SqlDecimal.Floor(arguments[0].AsNumber)),
+                    "CEILING" => QxValue.Number(SqlDecimal.Ceiling(arguments[0].AsNumber)),
+                    "ROUND" => QxValue.Number(SqlDecimal.Round(arguments[0].AsNumber, Whole(arguments[1]))),
+                    "LENGTH" => QxValue.Number(Collation.Length(arguments[0].AsText)),
+                    "TRIM" => QxValue.Text(arguments[0].AsText.Trim(' ')),
+                    "UPPER" => QxValue.Text(arguments[0].AsText.ToUpperInvariant()),
+                    "LOWER" => QxValue.Text(arguments[0].AsText.ToLowerInvariant()),
+                    "LEFT" => QxValue.Text(Left(arguments[0].AsText, Whole(arguments[1]))),
+                    "RIGHT" => QxValue.Text(Right(arguments[0].AsText, Whole(arguments[1]))),
+                    "SUBSTRING" => QxValue.Text(Substring(arguments)),
+                    "REPLACE" => QxValue.Text(Replace(arguments[0].AsText, arguments[1].AsText, arguments[2].AsText)),
+                    "CONTAINS" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) > 0),
+                    "STARTSWITH" => QxValue.Flag(Collation.IndexOf(arguments[0].AsText, arguments[1].AsText) == 1),
+                    "ENDSWITH" => QxValue.Flag(EndsWith(arguments[0].AsText, arguments[1].AsText)),
+                    "LEVEL" => QxValue.Number(Depth(arguments[0].AsNode)),
+                    _ => throw new NotSupportedException(
+                        "The reference reading of the language does not cover '" + name + "'."),
+                };
+        }
+
+        /// <summary>How deep a position sits in its hierarchy.</summary>
+        /// <param name="path">The position, written as its path: <c>/</c> for the root, <c>/1/2/</c> below it.</param>
+        /// <returns>The number of steps from the root, which is the number of segments the path names.</returns>
+        /// <remarks>
+        ///     Counted from the written path rather than from any stored depth or numbering scheme,
+        ///     because the language promises only what the backend's own depth reports.
+        /// </remarks>
+        private static int Depth(string path)
+        {
+            return path.Count(character => character == '/') - 1;
         }
 
         /// <summary>The first argument that has a value.</summary>
@@ -174,6 +195,137 @@ namespace Tellma.Queryex.Testing.Semantics
         private static DateOnly Calendar(QxValue value)
         {
             return value.Type == QueryexType.QxDate ? value.AsDate : DateOnly.FromDateTime(value.AsMoment);
+        }
+
+        /// <summary>Evaluates a calendar function counted in a calendar other than the Gregorian.</summary>
+        /// <param name="calendar">The calendar.</param>
+        /// <param name="name">The function's name.</param>
+        /// <param name="arguments">The arguments, all present.</param>
+        /// <param name="result">The result type.</param>
+        /// <returns>Its value, or absence where the calendar does not reach a date involved.</returns>
+        /// <remarks>
+        ///     Every function is worked out from the calendar's own dates. A year is so many months,
+        ///     so a year later is that many months later, and a month later keeps the day of the
+        ///     month where the target month is long enough and takes its last day where it is not.
+        /// </remarks>
+        private static QxValue Reckoned(CalendarReckoning calendar, string name, QxValue[] arguments, QueryexType result)
+        {
+            if (!calendar.TryParts(Calendar(arguments[0]), out CalendarDate date))
+            {
+                return QxValue.Absent(result);
+            }
+
+            int firstOfQuarter = ((calendar.QuarterOf(date.Month) - 1) * 3) + 1;
+            return name.ToUpperInvariant() switch
+            {
+                "YEAR" => QxValue.Number(date.Year),
+                "QUARTER" => QxValue.Number(calendar.QuarterOf(date.Month)),
+                "MONTH" => QxValue.Number(date.Month),
+                "DAY" => QxValue.Number(date.Day),
+                "WEEK" => Boundary(calendar, date.Year, 1) is DateOnly first
+                    ? QxValue.Number(((Calendar(arguments[0]).DayNumber - first.DayNumber) / 7) + 1)
+                    : QxValue.Absent(result),
+                "STARTOFYEAR" => Present(Boundary(calendar, date.Year, 1), result),
+                "STARTOFQUARTER" => Present(Boundary(calendar, date.Year, firstOfQuarter), result),
+                "STARTOFMONTH" => Present(Boundary(calendar, date.Year, date.Month), result),
+                "ADDYEARS" => Moved(calendar, arguments[0], date, (long)Whole(arguments[1]) * calendar.MonthsInYear, result),
+                "ADDMONTHS" => Moved(calendar, arguments[0], date, Whole(arguments[1]), result),
+                "DIFFYEARS" => Completed(calendar, arguments[0], arguments[1], years: true, result),
+                "DIFFMONTHS" => Completed(calendar, arguments[0], arguments[1], years: false, result),
+                _ => throw new NotSupportedException(
+                    "The reference reading of the language does not count '" + name + "' in another calendar."),
+            };
+        }
+
+        /// <summary>The first day of a month of another calendar.</summary>
+        /// <param name="calendar">The calendar.</param>
+        /// <param name="year">The year.</param>
+        /// <param name="month">The month.</param>
+        /// <returns>The Gregorian date, or null where the calendar does not reach it.</returns>
+        private static DateOnly? Boundary(CalendarReckoning calendar, int year, int month)
+        {
+            return calendar.TryDate(new CalendarDate(year, month, 1), out DateOnly date) ? date : null;
+        }
+
+        /// <summary>A date that may be missing, as a value.</summary>
+        /// <param name="date">The date.</param>
+        /// <param name="result">The result type, for absence.</param>
+        /// <returns>The value.</returns>
+        private static QxValue Present(DateOnly? date, QueryexType result)
+        {
+            return date is DateOnly present ? QxValue.Date(present) : QxValue.Absent(result);
+        }
+
+        /// <summary>Moves a calendar value by whole months of another calendar.</summary>
+        /// <param name="calendar">The calendar.</param>
+        /// <param name="value">The value, which keeps its time of day.</param>
+        /// <param name="date">The value's date in that calendar.</param>
+        /// <param name="months">How many months.</param>
+        /// <param name="result">The result type, for absence.</param>
+        /// <returns>The moved value, or absence where the calendar does not reach the target.</returns>
+        private static QxValue Moved(CalendarReckoning calendar, QxValue value, CalendarDate date, long months, QueryexType result)
+        {
+            long total = ((long)date.Year * calendar.MonthsInYear) + date.Month - 1 + months;
+            long year = Math.DivRem(total, calendar.MonthsInYear, out long remainder);
+            if (remainder < 0)
+            {
+                // Months are counted from the first month of year 0, so a count below it borrows a
+                // year rather than leaving a negative month.
+                year--;
+                remainder += calendar.MonthsInYear;
+            }
+
+            // The day of the month is kept where the target month is long enough, and is that
+            // month's last day where it is not.
+            return year is >= int.MinValue and <= int.MaxValue
+                && calendar.DaysInMonth((int)year, (int)remainder + 1) is int days
+                && calendar.TryDate(new CalendarDate((int)year, (int)remainder + 1, Math.Min(date.Day, days)), out DateOnly target)
+                ? value.Type == QueryexType.QxDate
+                    ? QxValue.Date(target)
+                    : QxValue.Moment(target.ToDateTime(TimeOf(value)))
+                : QxValue.Absent(result);
+        }
+
+        /// <summary>How many whole years or months of another calendar separate two values.</summary>
+        /// <param name="calendar">The calendar.</param>
+        /// <param name="from">The earlier value.</param>
+        /// <param name="to">The later value.</param>
+        /// <param name="years">Whether the unit is a year.</param>
+        /// <param name="result">The result type, for absence.</param>
+        /// <returns>The count, or absence where the calendar does not reach a date involved.</returns>
+        /// <remarks>The Gregorian rule: the boundaries crossed, less one where the last unit is not complete.</remarks>
+        private static QxValue Completed(CalendarReckoning calendar, QxValue from, QxValue to, bool years, QueryexType result)
+        {
+            if (!calendar.TryParts(Calendar(from), out CalendarDate start)
+                || !calendar.TryParts(Calendar(to), out CalendarDate end))
+            {
+                return QxValue.Absent(result);
+            }
+
+            int crossings = years
+                ? end.Year - start.Year
+                : ((end.Year - start.Year) * calendar.MonthsInYear) + end.Month - start.Month;
+
+            QxValue reached = Moved(
+                calendar,
+                from,
+                start,
+                years ? (long)crossings * calendar.MonthsInYear : crossings,
+                QueryexType.QxDateTime);
+
+            if (reached.IsAbsent)
+            {
+                return QxValue.Absent(result);
+            }
+
+            DateTime moved = AsMoment(reached);
+            DateTime target = AsMoment(to);
+            return QxValue.Number(crossings switch
+            {
+                > 0 when moved > target => crossings - 1,
+                < 0 when moved < target => crossings + 1,
+                _ => crossings,
+            });
         }
 
         /// <summary>The time of day a value sits at.</summary>
@@ -431,15 +583,19 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <summary>Whether a row is at, above, or below one of a set of keyed rows.</summary>
         /// <param name="call">The call.</param>
         /// <param name="descending">Whether the test looks downward.</param>
+        /// <param name="skipOmitted">
+        ///     Whether the keys that are parameters left out have left the list, which they have
+        ///     where the predicate is an atom of a filter.
+        /// </param>
         /// <returns>True when it is.</returns>
-        private bool Related(TypedCall call, bool descending)
+        private bool Related(TypedCall call, bool descending, bool skipOmitted)
         {
             if (call.Arguments[0] is not TypedPath keyPath)
             {
                 return false;
             }
 
-            LedgerRow? current = _row;
+            LedgerRow? current = Row();
             foreach (NavigationDescriptor navigation in keyPath.Navigations)
             {
                 current = LedgerData.Find(navigation.Target, current[navigation.ForeignKey.Name]);
@@ -463,6 +619,11 @@ namespace Tellma.Queryex.Testing.Semantics
 
             for (int index = 1; index < call.Arguments.Length; index++)
             {
+                if (skipOmitted && IsOmittedParameter(call.Arguments[index]))
+                {
+                    continue;
+                }
+
                 QxValue key = Evaluate(call.Arguments[index]);
                 LedgerRow? keyed = Keyed(entity, keyPath.Property, key);
                 if (keyed is null)
@@ -522,14 +683,16 @@ namespace Tellma.Queryex.Testing.Semantics
         /// <returns>Its value.</returns>
         private QxValue Aggregate(TypedCall call, string name, QueryexType result)
         {
-            IReadOnlyList<LedgerRow> rows = Group ?? [_row];
+            IReadOnlyList<LedgerRow> rows = Group ?? [Row()];
             List<QxValue> values = [];
             long counted = 0;
 
             foreach (LedgerRow row in rows)
             {
                 Interpreter reading = new(row, _context) { Group = null };
-                if (call.Arguments.Length > 1 && !reading.Truth(call.Arguments[1]))
+                // The condition is a predicate of its own, so a parameter left out of it lifts the
+                // restriction on which rows are read, wherever the aggregation itself sits.
+                if (call.Arguments.Length > 1 && !reading.Decides(call.Arguments[1]))
                 {
                     continue;
                 }
@@ -644,12 +807,26 @@ namespace Tellma.Queryex.Testing.Semantics
                 QueryexType.QxBool => QxValue.Flag((value.AsNumber != 0).IsTrue),
                 QueryexType.QxGuid => QxValue.Identifier(Guid.Parse(value.AsText, CultureInfo.InvariantCulture)),
                 QueryexType.QxDate => QxValue.Date(AsDate(value)),
-                QueryexType.QxDateTime => QxValue.Moment(AsMoment(value)),
+                QueryexType.QxDateTime => QxValue.Moment(value.Type == QueryexType.QxString
+                    ? ParseMoment(value.AsText)
+                    : AsMoment(value)),
                 QueryexType.QxDateTimeOffset => QxValue.Instant(
                     DateTimeOffset.Parse(value.AsText, CultureInfo.InvariantCulture)),
                 QueryexType.QxHierarchyId or QueryexType.QxGeography => QxValue.Absent(target),
                 _ => QxValue.Absent(target),
             };
+        }
+
+        /// <summary>Text read as a date and time, the way the backend reads its ISO 8601 form.</summary>
+        /// <param name="text">The text: a date, then a time to the minute or to the second with up to seven fractional digits.</param>
+        /// <returns>The date and time.</returns>
+        private static DateTime ParseMoment(string text)
+        {
+            return DateTime.ParseExact(
+                text,
+                ["yyyy-MM-dd'T'HH:mm:ss.FFFFFFF", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None);
         }
 
         /// <summary>A value read as a date.</summary>

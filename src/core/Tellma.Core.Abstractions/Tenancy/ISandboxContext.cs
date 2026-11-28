@@ -12,11 +12,18 @@ namespace Tellma.Core.Abstractions.Tenancy
     ///     sandbox channels.
     /// </summary>
     /// <remarks>
-    ///     Distributions implement this over their tenant context and must ensure it is resolvable
-    ///     wherever sends happen — request scopes and background-worker scopes alike. Hosts without
-    ///     tenants (identity, landing) register <see cref="SandboxContext.Never" />. There is no
-    ///     default registration: a composition that forgot to decide fails at startup rather than
-    ///     silently treating sandbox tenants as live.
+    ///     <para>
+    ///         A host composed with <c>AddTellma</c> gets the platform's implementation over the
+    ///         scope's request context: it answers the bound tenant's category in request scopes and
+    ///         background tenant scopes alike, and throws <see cref="InvalidOperationException" />
+    ///         when no tenant is bound, so a connector called outside a tenant fails on its first
+    ///         call instead of treating the work as live or as sandbox by guess.
+    ///     </para>
+    ///     <para>
+    ///         Hosts without tenants (identity, landing) register <see cref="SandboxContext.Never" />.
+    ///         No other package registers a default: a composition that forgot to decide fails at
+    ///         startup rather than silently treating sandbox tenants as live.
+    ///     </para>
     /// </remarks>
     public interface ISandboxContext
     {

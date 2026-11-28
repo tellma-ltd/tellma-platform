@@ -497,7 +497,14 @@ namespace Tellma.Core.Queryex.Binding
                         return FailConstraint(DiagnosticCodes.ArgumentMustBeLiteral, argument.Span, definition);
                     }
 
-                    if (!parameter.Constraint.Values!.Contains(text.Value))
+                    // A calendar argument's set depends on the schema: a table calendar is offered only
+                    // where the host mapped its month table, and refused elsewhere exactly as an
+                    // unknown code is, accepted list included.
+                    IEnumerable<string> accepted = parameter.Constraint.NamesCalendar
+                        ? CalendarCodes.AcceptedBy(_context.Schema)
+                        : parameter.Constraint.Values!;
+
+                    if (!accepted.Contains(text.Value, StringComparer.OrdinalIgnoreCase))
                     {
                         Report(
                             DiagnosticCodes.ArgumentValueNotAccepted,
@@ -507,7 +514,7 @@ namespace Tellma.Core.Queryex.Binding
                             new KeyValuePair<string, string>(DiagnosticArgumentNames.Name, text.Value),
                             new KeyValuePair<string, string>(
                                 DiagnosticArgumentNames.Accepted,
-                                string.Join(", ", parameter.Constraint.Values!.Order(StringComparer.Ordinal))));
+                                string.Join(", ", accepted.Order(StringComparer.Ordinal))));
 
                         return false;
                     }

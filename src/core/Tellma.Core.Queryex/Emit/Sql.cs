@@ -41,11 +41,15 @@ namespace Tellma.Core.Queryex.Emit
         /// <summary>A value held in whatever type one of its arguments is held in.</summary>
         /// <param name="pattern">The emission pattern.</param>
         /// <param name="argument">The argument whose type the result takes.</param>
+        /// <param name="following">How the result's type follows that argument's.</param>
         /// <returns>The strategy.</returns>
-        internal static EmitStrategy ValueLike(string pattern, int argument)
+        internal static EmitStrategy ValueLike(
+            string pattern,
+            int argument,
+            ResultFollowing following = ResultFollowing.Same)
         {
             return new TemplateStrategy(
-                EmitTemplate.Parse(pattern, result: null, follows: argument),
+                EmitTemplate.Parse(pattern, result: null, follows: argument, following),
                 EmitShape.Value);
         }
 
@@ -57,22 +61,15 @@ namespace Tellma.Core.Queryex.Emit
             return new TemplateStrategy(EmitTemplate.Parse(pattern), EmitShape.Predicate);
         }
 
-        /// <summary>One of several templates, chosen by a literal selector argument.</summary>
-        /// <param name="selectorIndex">Which argument chooses.</param>
-        /// <param name="cases">The patterns, by the selector value that chooses each.</param>
+        /// <summary>A calendar function, one template per algorithmic calendar.</summary>
+        /// <param name="selectorIndex">Which argument names the calendar.</param>
+        /// <param name="operation">What the function computes, for the calendars that read a table.</param>
+        /// <param name="result">The type the result is held in, when every template fixes it.</param>
+        /// <param name="cases">The patterns, by the calendar code that chooses each.</param>
         /// <returns>The strategy.</returns>
-        internal static EmitStrategy Selected(int selectorIndex, params (string Value, string Pattern)[] cases)
-        {
-            return Selected(selectorIndex, null, cases);
-        }
-
-        /// <summary>One of several templates, all of which fix the same result type.</summary>
-        /// <param name="selectorIndex">Which argument chooses.</param>
-        /// <param name="result">The type the result is held in.</param>
-        /// <param name="cases">The patterns, by the selector value that chooses each.</param>
-        /// <returns>The strategy.</returns>
-        internal static EmitStrategy Selected(
+        internal static EmitStrategy Calendar(
             int selectorIndex,
+            CalendarOperation operation,
             QueryexStoreType? result,
             params (string Value, string Pattern)[] cases)
         {
@@ -82,10 +79,10 @@ namespace Tellma.Core.Queryex.Emit
                 templates[value] = EmitTemplate.Parse(pattern, result);
             }
 
-            return new SelectedStrategy(
+            return new CalendarStrategy(
                 selectorIndex,
-                templates.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
-                EmitShape.Value);
+                operation,
+                templates.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase));
         }
 
         /// <summary>A value the host supplies at execution.</summary>

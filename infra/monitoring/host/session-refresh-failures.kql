@@ -1,0 +1,13 @@
+// Session refreshes the identity authority refused or could not answer.
+// Backs two alerts: deferrals mean the authority is unreachable from the web host, so sessions live
+// on their last access tokens; a rise in rejections means the authority is ending sessions, through
+// a revocation, a key rollover or a misconfigured client.
+customMetrics
+| where name == "tellma.session.refreshes"
+| extend outcome = tostring(customDimensions["outcome"])
+| summarize
+    deferred = sumif(valueSum, outcome == "deferred"),
+    rejected = sumif(valueSum, outcome == "rejected"),
+    total = sum(valueSum)
+    by bin(timestamp, 5m)
+| where deferred > 0 or (total > 20 and todouble(rejected) / todouble(total) > 0.2)

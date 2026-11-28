@@ -10,6 +10,28 @@
  * a test target but no specs — e.g. a harness-only package exercised through
  * its consumers — is skipped, since its runner would fail on zero tests.)
  *
+ * A project may also declare `test-<name>` targets: each runs as a run of
+ * its own after `test`, in declaration order among themselves. The unit
+ * runner shares one browser page between the files of a run, so a suite
+ * that changes the page irreversibly — `test-csp` installs a Content
+ * Security Policy, which can never be lifted — must not share a run with
+ * anything else. A `test-<name>` target whose `include` names one file suffix
+ * at any depth (the CSP target's `*.csp.spec.ts`) is skipped when the project
+ * holds no such file.
+ *
+ * The CSP convention checks itself: a project that holds a `*.csp.spec.ts`
+ * must exclude it from `test` and run it in `test-csp`, or the run fails —
+ * so such a spec can neither leak its policy into the shared run nor be
+ * silently skipped.
+ *
+ * Every target it runs must name `vitest-base.config.mjs` as its
+ * `runnerConfig`, or the run fails: that file adds the watchdog that ends a
+ * run with no progress and writes what was pending, so a target without it
+ * could hang silently until its CI job is cancelled. For the same reason a
+ * target must not set the builder's `reporters` option, in its options or in
+ * any configuration (the builder then drops the file's reporters, watchdog
+ * included), and no configuration may name another `runnerConfig`.
+ *
  * Usage: node scripts/test.mjs
  */
 import { spawnSync } from 'node:child_process';
@@ -22,19 +44,59 @@ const clientDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const ng = require.resolve('@angular/cli/bin/ng.js', { paths: [clientDir] });
 
-function hasSpecs(dir) {
+/** Whether `dir` holds, at any depth, a file whose name ends in `suffix`. */
+function hasSpecs(dir, suffix = '.spec.ts') {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name === 'node_modules' || entry.name.startsWith('.')) {
       continue;
     }
-    if (entry.isFile() && entry.name.endsWith('.spec.ts')) {
+    if (entry.isFile() && entry.name.endsWith(suffix)) {
       return true;
     }
-    if (entry.isDirectory() && hasSpecs(join(dir, entry.name))) {
+    if (entry.isDirectory() && hasSpecs(join(dir, entry.name), suffix)) {
       return true;
     }
   }
   return false;
+}
+
+/** The file suffix a target's one any-depth `include` glob names (`.csp.spec.ts`), or null. */
+function includedSuffix(target) {
+  const include = target.options?.include;
+  if (!Array.isArray(include) || include.length !== 1) {
+    return null;
+  }
+  const match = /^\*\*\/\*(\.[\w.]+)$/.exec(include[0]);
+  return match === null ? null : match[1];
+}
+
+const CSP_SPEC = '**/*.csp.spec.ts';
+
+/** The runner configuration every unit-test target names, relative to the workspace root. */
+const RUNNER_CONFIG = 'vitest-base.config.mjs';
+
+/**
+ * Why a unit-test target would run without the runner configuration's
+ * reporters, or null when it runs with them. The builder's own `reporters`
+ * option, wherever it is set, replaces the whole reporter list, watchdog
+ * included, and a configuration may name another runnerConfig.
+ */
+function runnerConfigProblem(target) {
+  if (target.options?.runnerConfig !== RUNNER_CONFIG) {
+    return `it must name '${RUNNER_CONFIG}' as its runnerConfig in angular.json.`;
+  }
+  if (target.options.reporters !== undefined) {
+    return `it must not set reporters in angular.json: they would replace the reporters of '${RUNNER_CONFIG}', its watchdog included.`;
+  }
+  for (const [configuration, options] of Object.entries(target.configurations ?? {})) {
+    if (options.reporters !== undefined) {
+      return `its '${configuration}' configuration must not set reporters: they would replace the reporters of '${RUNNER_CONFIG}', its watchdog included.`;
+    }
+    if (options.runnerConfig !== undefined && options.runnerConfig !== RUNNER_CONFIG) {
+      return `its '${configuration}' configuration must not name a runnerConfig other than '${RUNNER_CONFIG}'.`;
+    }
+  }
+  return null;
 }
 
 const { projects } = JSON.parse(readFileSync(join(clientDir, 'angular.json'), 'utf8'));
@@ -46,12 +108,41 @@ for (const [name, project] of Object.entries(projects)) {
     console.log(`[test] ${name}: no spec files — skipped`);
     continue;
   }
-  console.log(`[test] ${name}`);
-  const result = spawnSync(process.execPath, [ng, 'test', name, '--watch=false'], {
-    cwd: clientDir,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+  if (hasSpecs(join(clientDir, project.root), '.csp.spec.ts')) {
+    const excluded = project.architect.test.options?.exclude ?? [];
+    if (!excluded.includes(CSP_SPEC) || includedSuffix(project.architect['test-csp'] ?? {}) !== '.csp.spec.ts') {
+      console.error(
+        `[test] ${name} holds a *.csp.spec.ts, so its test target must exclude '${CSP_SPEC}' ` +
+          `and a test-csp target must include exactly '${CSP_SPEC}'.`,
+      );
+      process.exit(1);
+    }
+  }
+  // `test` first, then every `test-<name>` target in declaration order, each
+  // in a run of its own.
+  const targets = [
+    'test',
+    ...Object.keys(project.architect).filter((target) => target.startsWith('test-')),
+  ];
+  for (const target of targets) {
+    const label = target === 'test' ? name : `${name}:${target}`;
+    const suffix = target === 'test' ? null : includedSuffix(project.architect[target]);
+    if (suffix !== null && !hasSpecs(join(clientDir, project.root), suffix)) {
+      console.log(`[test] ${label}: no *${suffix} files — skipped`);
+      continue;
+    }
+    const problem = runnerConfigProblem(project.architect[target]);
+    if (problem !== null) {
+      console.error(`[test] ${label}: ${problem}`);
+      process.exit(1);
+    }
+    console.log(`[test] ${label}`);
+    const result = spawnSync(process.execPath, [ng, 'run', `${name}:${target}`, '--watch=false'], {
+      cwd: clientDir,
+      stdio: 'inherit',
+    });
+    if (result.status !== 0) {
+      process.exit(result.status ?? 1);
+    }
   }
 }

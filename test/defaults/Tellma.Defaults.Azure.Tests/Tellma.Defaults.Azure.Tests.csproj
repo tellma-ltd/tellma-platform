@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- Both Azure bundles, composed into plain service collections. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\..\src\defaults\Tellma.Defaults.Azure\Tellma.Defaults.Azure.csproj" />
+    <ProjectReference Include="..\..\..\src\defaults\Tellma.Defaults.Azure.AspNetCore\Tellma.Defaults.Azure.AspNetCore.csproj" />
+    <!-- The shared web test host, for the realtime line composed into a full web host offline. -->
+    <ProjectReference Include="..\..\shared\Tellma.Testing.WebHost\Tellma.Testing.WebHost.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The live suite's host, shared with it rather than copied: the offline test composes the
+         same line over a service that resolves to nothing. -->
+    <Compile Include="..\Tellma.Defaults.Azure.AspNetCore.IntegrationTests\AzureSignalRTestHost.cs" Link="AzureSignalRTestHost.cs" />
+  </ItemGroup>
+
+</Project>

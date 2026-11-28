@@ -206,16 +206,21 @@ namespace Tellma.Core.Queryex.Functions
 
         /// <summary>The calendar operations.</summary>
         /// <returns>The definitions.</returns>
+        /// <remarks>
+        ///     Each operation that depends on the calendar has a second overload taking the calendar
+        ///     code. The Gregorian and Ethiopian calendars are inline arithmetic; Umm al-Qura is read
+        ///     from the host's month table, where the schema maps one, and has no pattern here.
+        /// </remarks>
         private static IEnumerable<FunctionDefinition> CalendarOperations()
         {
-            yield return DatePart("year", "YEAR");
-            yield return DatePart("quarter", "QUARTER");
-            yield return DatePart("month", "MONTH");
-            yield return DatePart("day", "DAY");
+            yield return DatePart("year", "YEAR", CalendarOperation.Year, EthiopianArithmetic.Year);
+            yield return DatePart("quarter", "QUARTER", CalendarOperation.Quarter, EthiopianArithmetic.Quarter);
+            yield return DatePart("month", "MONTH", CalendarOperation.Month, EthiopianArithmetic.Month);
+            yield return DatePart("day", "DAY", CalendarOperation.Day, EthiopianArithmetic.Day);
 
             // The week of the year, counted the way the international standard does, which no
-            // session setting can move.
-            yield return DatePart("week", "ISO_WEEK");
+            // session setting can move. The other calendars count sevens from the year's first day.
+            yield return DatePart("week", "ISO_WEEK", CalendarOperation.Week, EthiopianArithmetic.Week);
 
             // Counted from a Monday epoch rather than read off the backend's own weekday part,
             // which follows a session setting and would make the same expression mean different
@@ -235,11 +240,22 @@ namespace Tellma.Core.Queryex.Functions
 
             yield return Truncation(
                 "startOfYear",
-                $"DATEADD(YEAR, DATEDIFF(YEAR, {Epoch}, {{0}}), {Epoch})");
+                CalendarOperation.StartOfYear,
+                $"DATEADD(YEAR, DATEDIFF(YEAR, {Epoch}, {{0}}), {Epoch})",
+                EthiopianArithmetic.StartOfYear);
+
+            // Whole quarters since the epoch, which mentions the argument once.
+            yield return Truncation(
+                "startOfQuarter",
+                CalendarOperation.StartOfQuarter,
+                $"DATEADD(QUARTER, DATEDIFF(QUARTER, {Epoch}, {{0}}), {Epoch})",
+                EthiopianArithmetic.StartOfQuarter);
 
             yield return Truncation(
                 "startOfMonth",
-                $"DATEADD(MONTH, DATEDIFF(MONTH, {Epoch}, {{0}}), {Epoch})");
+                CalendarOperation.StartOfMonth,
+                $"DATEADD(MONTH, DATEDIFF(MONTH, {Epoch}, {{0}}), {Epoch})",
+                EthiopianArithmetic.StartOfMonth);
 
             // Whole weeks since a Monday epoch, which lands on the same or preceding Monday and
             // mentions the argument once, where the obvious subtract-the-weekday form mentions it
@@ -262,18 +278,33 @@ namespace Tellma.Core.Queryex.Functions
                     NullityRule.Propagate(0),
                     Sql.Value("CAST({0} AS date)")));
 
-            yield return CalendarAdd("addYears", "YEAR");
-            yield return CalendarAdd("addMonths", "MONTH");
-            yield return CalendarDifference("diffYears", "YEAR");
-            yield return CalendarDifference("diffMonths", "MONTH");
+            yield return CalendarAdd("addYears", "YEAR", CalendarOperation.AddYears, EthiopianArithmetic.AddYears);
+            yield return CalendarAdd("addMonths", "MONTH", CalendarOperation.AddMonths, EthiopianArithmetic.AddMonths);
+            yield return CalendarDifference(
+                "diffYears",
+                "YEAR",
+                CalendarOperation.DiffYears,
+                EthiopianArithmetic.DiffYears);
+            yield return CalendarDifference(
+                "diffMonths",
+                "MONTH",
+                CalendarOperation.DiffMonths,
+                EthiopianArithmetic.DiffMonths);
         }
 
         /// <summary>A component read out of a zone-resolved date.</summary>
         /// <param name="name">The function name.</param>
         /// <param name="part">The backend's name for the component.</param>
+        /// <param name="operation">What the function computes, for a table calendar.</param>
+        /// <param name="ethiopian">The Ethiopian calendar's pattern.</param>
         /// <returns>The definition.</returns>
-        private static FunctionDefinition DatePart(string name, string part)
+        private static FunctionDefinition DatePart(
+            string name,
+            string part,
+            CalendarOperation operation,
+            string ethiopian)
         {
+            string gregorian = $"DATEPART({part}, {{0}})";
             return Define(
                 name,
                 FunctionCategory.Scalar,
@@ -281,12 +312,17 @@ namespace Tellma.Core.Queryex.Functions
                     [Parameter("d", TypeSpecs.Calendar("T"))],
                     TypeSpecs.Numeric,
                     NullityRule.Propagate(0),
-                    Sql.Value($"DATEPART({part}, {{0}})", QueryexStoreType.QxInt)),
+                    Sql.Value(gregorian, QueryexStoreType.QxInt)),
                 Signature(
                     [Parameter("d", TypeSpecs.Calendar("T")), CalendarParameter()],
                     TypeSpecs.Numeric,
-                    NullityRule.Propagate(0),
-                    Sql.Selected(1, QueryexStoreType.QxInt, (CalendarCodes.Gregorian, $"DATEPART({part}, {{0}})"))));
+                    NullityRule.Propagate(0).UnlessTableCalendar(1),
+                    Sql.Calendar(
+                        1,
+                        operation,
+                        QueryexStoreType.QxInt,
+                        (CalendarCodes.Gregorian, gregorian),
+                        (CalendarCodes.Ethiopian, ethiopian))));
         }
 
         /// <summary>A component read out of a clock reading.</summary>
@@ -307,9 +343,15 @@ namespace Tellma.Core.Queryex.Functions
 
         /// <summary>A truncation to a period boundary.</summary>
         /// <param name="name">The function name.</param>
-        /// <param name="pattern">The emission pattern.</param>
+        /// <param name="operation">What the function computes, for a table calendar.</param>
+        /// <param name="gregorian">The Gregorian calendar's pattern.</param>
+        /// <param name="ethiopian">The Ethiopian calendar's pattern.</param>
         /// <returns>The definition.</returns>
-        private static FunctionDefinition Truncation(string name, string pattern)
+        private static FunctionDefinition Truncation(
+            string name,
+            CalendarOperation operation,
+            string gregorian,
+            string ethiopian)
         {
             return Define(
                 name,
@@ -318,20 +360,32 @@ namespace Tellma.Core.Queryex.Functions
                     [Parameter("d", TypeSpecs.Calendar("T"))],
                     TypeSpecs.Date,
                     NullityRule.Propagate(0),
-                    Sql.Value(pattern)),
+                    Sql.Value(gregorian)),
                 Signature(
                     [Parameter("d", TypeSpecs.Calendar("T")), CalendarParameter()],
                     TypeSpecs.Date,
-                    NullityRule.Propagate(0),
-                    Sql.Selected(1, (CalendarCodes.Gregorian, pattern))));
+                    NullityRule.Propagate(0).UnlessTableCalendar(1),
+                    Sql.Calendar(
+                        1,
+                        operation,
+                        null,
+                        (CalendarCodes.Gregorian, gregorian),
+                        (CalendarCodes.Ethiopian, ethiopian))));
         }
 
         /// <summary>Adding a variable-length unit, which is calendar-dependent.</summary>
         /// <param name="name">The function name.</param>
         /// <param name="unit">The backend's name for the unit.</param>
+        /// <param name="operation">What the function computes, for a table calendar.</param>
+        /// <param name="ethiopian">The Ethiopian calendar's pattern.</param>
         /// <returns>The definition.</returns>
-        private static FunctionDefinition CalendarAdd(string name, string unit)
+        private static FunctionDefinition CalendarAdd(
+            string name,
+            string unit,
+            CalendarOperation operation,
+            string ethiopian)
         {
+            string gregorian = $"DATEADD({unit}, {{1}}, {{0}})";
             return Define(
                 name,
                 FunctionCategory.Scalar,
@@ -339,7 +393,7 @@ namespace Tellma.Core.Queryex.Functions
                     [Parameter("d", TypeSpecs.Calendar("T")), Parameter("n", TypeSpecs.Numeric)],
                     TypeSpecs.Calendar("T"),
                     NullityRule.Union(0, 1),
-                    Sql.Value($"DATEADD({unit}, {{1}}, {{0}})")),
+                    Sql.Value(gregorian)),
                 Signature(
                     [
                         Parameter("d", TypeSpecs.Calendar("T")),
@@ -347,13 +401,20 @@ namespace Tellma.Core.Queryex.Functions
                         CalendarParameter(),
                     ],
                     TypeSpecs.Calendar("T"),
-                    NullityRule.Union(0, 1),
-                    Sql.Selected(2, (CalendarCodes.Gregorian, $"DATEADD({unit}, {{1}}, {{0}})"))));
+                    NullityRule.Union(0, 1).UnlessTableCalendar(2),
+                    Sql.Calendar(
+                        2,
+                        operation,
+                        null,
+                        (CalendarCodes.Gregorian, gregorian),
+                        (CalendarCodes.Ethiopian, ethiopian))));
         }
 
         /// <summary>Counting whole elapsed calendar units between two dates.</summary>
         /// <param name="name">The function name.</param>
         /// <param name="unit">The backend's name for the unit.</param>
+        /// <param name="operation">What the function computes, for a table calendar.</param>
+        /// <param name="ethiopian">The Ethiopian calendar's pattern.</param>
         /// <returns>The definition.</returns>
         /// <remarks>
         ///     Whole units, not boundary crossings: the last day of one year to the first of the
@@ -361,10 +422,14 @@ namespace Tellma.Core.Queryex.Functions
         ///     who has not had their birthday yet. The backend counts boundaries, so the count is
         ///     corrected by checking whether the unit actually completed.
         /// </remarks>
-        private static FunctionDefinition CalendarDifference(string name, string unit)
+        private static FunctionDefinition CalendarDifference(
+            string name,
+            string unit,
+            CalendarOperation operation,
+            string ethiopian)
         {
             string crossings = $"DATEDIFF({unit}, {{0}}, {{1}})";
-            string pattern =
+            string gregorian =
                 $"({crossings} + CASE"
                 + $" WHEN {crossings} > 0 AND DATEADD({unit}, {crossings}, {{0}}) > {{1}} THEN -1"
                 + $" WHEN {crossings} < 0 AND DATEADD({unit}, {crossings}, {{0}}) < {{1}} THEN 1"
@@ -377,7 +442,7 @@ namespace Tellma.Core.Queryex.Functions
                     [Parameter("d1", TypeSpecs.Calendar("T")), Parameter("d2", TypeSpecs.Calendar("T"))],
                     TypeSpecs.Numeric,
                     NullityRule.Union(0, 1),
-                    Sql.Value(pattern, QueryexStoreType.QxInt)),
+                    Sql.Value(gregorian, QueryexStoreType.QxInt)),
                 Signature(
                     [
                         Parameter("d1", TypeSpecs.Calendar("T")),
@@ -385,8 +450,13 @@ namespace Tellma.Core.Queryex.Functions
                         CalendarParameter(),
                     ],
                     TypeSpecs.Numeric,
-                    NullityRule.Union(0, 1),
-                    Sql.Selected(2, QueryexStoreType.QxInt, (CalendarCodes.Gregorian, pattern))));
+                    NullityRule.Union(0, 1).UnlessTableCalendar(2),
+                    Sql.Calendar(
+                        2,
+                        operation,
+                        QueryexStoreType.QxInt,
+                        (CalendarCodes.Gregorian, gregorian),
+                        (CalendarCodes.Ethiopian, ethiopian))));
         }
 
         /// <summary>The elapsed-time operations, which need no zone.</summary>
@@ -545,9 +615,11 @@ namespace Tellma.Core.Queryex.Functions
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> NumericOperations()
         {
-            yield return Unary("abs", "ABS({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
-            yield return Unary("floor", "FLOOR({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
-            yield return Unary("ceiling", "CEILING({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0);
+            // The backend returns a narrow whole number from each of these as an int, and floor and
+            // ceiling return a decimal without its fractional digits.
+            yield return Unary("abs", "ABS({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Numeric);
+            yield return Unary("floor", "FLOOR({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Integral);
+            yield return Unary("ceiling", "CEILING({0})", TypeSpecs.Numeric, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Integral);
 
             yield return Define(
                 "round",
@@ -565,14 +637,17 @@ namespace Tellma.Core.Queryex.Functions
                     ],
                     TypeSpecs.Numeric,
                     NullityRule.Propagate(0),
-                    Sql.ValueLike("ROUND({0}, {1})", 0)));
+                    Sql.ValueLike("ROUND({0}, {1})", 0, ResultFollowing.Numeric)));
         }
 
         /// <summary>Operations on text.</summary>
         /// <returns>The definitions.</returns>
         private static IEnumerable<FunctionDefinition> StringOperations()
         {
-            yield return Unary("length", "LEN({0})", TypeSpecs.Text, TypeSpecs.Numeric, store: QueryexStoreType.QxBigInt);
+            // The backend counts an unbounded text in a bigint, and a bound parameter is unbounded
+            // only when its value is long, so the count is cast to the int every count fits in and
+            // its type no longer depends on the value bound.
+            yield return Unary("length", "CAST(LEN({0}) AS int)", TypeSpecs.Text, TypeSpecs.Numeric, follows: 0, following: ResultFollowing.Length);
             yield return Unary("trim", "TRIM({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("upper", "UPPER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
             yield return Unary("lower", "LOWER({0})", TypeSpecs.Text, TypeSpecs.Text, follows: 0);
@@ -662,18 +737,28 @@ namespace Tellma.Core.Queryex.Functions
                     Sql.Predicate(pattern)));
         }
 
-        /// <summary>The hierarchy predicates.</summary>
+        /// <summary>The hierarchy functions: the two predicates, and the depth of a position.</summary>
         /// <returns>The definitions.</returns>
         /// <remarks>
-        ///     Both are reflexive — a row is its own ancestor and its own descendant — and both take
-        ///     any number of keys, matching a row that relates to any of them. A key that identifies
-        ///     no row contributes nothing, so with every key unmatched the answer is false; there is
-        ///     no key value that makes either predicate universally true.
+        ///     Both predicates are reflexive — a row is its own ancestor and its own descendant — and
+        ///     both take any number of keys, matching a row that relates to any of them. A key that
+        ///     identifies no row contributes nothing, so with every key unmatched the answer is
+        ///     false; there is no key value that makes either predicate universally true.
         /// </remarks>
         private static IEnumerable<FunctionDefinition> Hierarchy()
         {
             yield return HierarchyPredicate("descendantOf", HierarchyStrategy.Descendant);
             yield return HierarchyPredicate("ancestorOf", HierarchyStrategy.Ancestor);
+
+            // The depth of a position, as the backend counts it: no numbering scheme is assumed,
+            // so a root-level row's depth is whatever its stored path makes it. Held in the type
+            // the backend's own method returns.
+            yield return Unary(
+                "level",
+                "{0}.GetLevel()",
+                TypeSpecs.Node,
+                TypeSpecs.Numeric,
+                store: QueryexStoreType.QxSmallInt);
         }
 
         /// <summary>One hierarchy predicate.</summary>
@@ -706,6 +791,7 @@ namespace Tellma.Core.Queryex.Functions
         /// <param name="result">The result type.</param>
         /// <param name="store">The type the backend holds the result in, when the SQL fixes it.</param>
         /// <param name="follows">The argument whose stored type the result takes, when it takes one.</param>
+        /// <param name="following">How the result's stored type follows that argument's.</param>
         /// <returns>The definition.</returns>
         private static FunctionDefinition Unary(
             string name,
@@ -713,11 +799,12 @@ namespace Tellma.Core.Queryex.Functions
             TypeSpec argument,
             TypeSpec result,
             QueryexStoreType? store = null,
-            int? follows = null)
+            int? follows = null,
+            ResultFollowing following = ResultFollowing.Same)
         {
             EmitStrategy emit = store is QueryexStoreType fixedStore
                 ? Sql.Value(pattern, fixedStore)
-                : follows is int source ? Sql.ValueLike(pattern, source) : Sql.Value(pattern);
+                : follows is int source ? Sql.ValueLike(pattern, source, following) : Sql.Value(pattern);
 
             return Define(
                 name,
@@ -732,7 +819,7 @@ namespace Tellma.Core.Queryex.Functions
             return Parameter(
                 "calendar",
                 TypeSpecs.Selector,
-                constraint: ParameterConstraint.MemberOf(CalendarCodes.Accepted));
+                constraint: ParameterConstraint.CalendarCode(CalendarCodes.Known));
         }
 
         /// <summary>Builds a parameter.</summary>

@@ -1,0 +1,182 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+namespace Tellma.Core.Composition.Checks
+{
+    /// <summary>The names of the platform's built-in startup checks.</summary>
+    internal static class CoreCheckNames
+    {
+        /// <summary>Every bound options type passes validation.</summary>
+        public const string Options = "core.options";
+
+        /// <summary>The registered deployment identity names this distribution, and a sandbox context resolves.</summary>
+        public const string DeploymentIdentity = "core.deployment-identity";
+
+        /// <summary>Every provisioning step can be created and has a valid, unique name, an order and a version.</summary>
+        public const string ProvisioningSteps = "core.provisioning-steps";
+
+        /// <summary>The process runs ICU globalization.</summary>
+        public const string Globalization = "core.globalization";
+
+        /// <summary>No configuration value under <c>Tellma:</c> is an unresolved Key Vault reference.</summary>
+        public const string KeyVaultLiterals = "core.key-vault-literals";
+
+        /// <summary>The credential profiles and the catalog connection follow the connection rules, and the allowed servers are set.</summary>
+        public const string SqlProfiles = "core.sql-profiles";
+
+        /// <summary><c>Tellma:PublicOrigin</c> is an absolute, path-less origin, https outside Development.</summary>
+        public const string PublicOrigin = "core.public-origin";
+
+        /// <summary>In Development, the repository's <c>taxonomy.json</c> lists the slug.</summary>
+        public const string Taxonomy = "core.taxonomy";
+
+        /// <summary>Every leaf carries the shapes other features require of its entity.</summary>
+        public const string EntityShapes = "core.entity-shapes";
+
+        /// <summary>Every model configuration Core contributes is an entity type configuration the model can apply.</summary>
+        public const string ModelContributors = "core.model-contributors";
+
+        /// <summary>The tenant model builds, and every entity leaf in it satisfies the entity contract.</summary>
+        public const string EntityMetadata = "core.entity-metadata";
+
+        /// <summary>
+        ///     Every version tag the entities declare is well formed, entity tags come from cacheable
+        ///     entities alone, every user-level tag names an int property, and no two names share a row.
+        /// </summary>
+        public const string VersionTags = "core.version-tags";
+
+        /// <summary>The declared languages are described, their regions are theirs, their strings ship, and symbols are unique.</summary>
+        public const string Languages = "core.languages";
+
+        /// <summary>No shared string resource key is declared by two composed assemblies.</summary>
+        public const string StringPack = "core.string-pack";
+
+        /// <summary>Calendar codes are well formed and unique, and the platform's three calendars are composed.</summary>
+        public const string Calendars = "core.calendars";
+
+        /// <summary>Value sets are well formed and uniquely named, and every property that draws from one names a composed set.</summary>
+        public const string ValueSets = "core.value-sets";
+
+        /// <summary>
+        ///     Every setting key is well declared (its name, type, default, category, group, reference
+        ///     and visibility) and uniquely named.
+        /// </summary>
+        public const string SettingKeys = "core.setting-keys";
+
+        /// <summary>
+        ///     Notification type keys and categories are well formed, keys are unique, every target
+        ///     names a routable entity with an integer key or a registered securable resource, and
+        ///     channel-only types follow their rule.
+        /// </summary>
+        public const string NotificationTypes = "core.notification-types";
+
+        /// <summary>
+        ///     Channel keys are well formed and unique, the two baseline channels are composed, and every
+        ///     channel sender names a registered channel other than the inbox, at most one per channel.
+        /// </summary>
+        public const string NotificationChannels = "core.notification-channels";
+
+        /// <summary>Client event names are well formed and unique.</summary>
+        public const string ClientEvents = "core.client-events";
+
+        /// <summary>
+        ///     Dashboard widget type keys are well formed, start with their feature's name and are
+        ///     unique, and every settings type is a concrete, closed class.
+        /// </summary>
+        public const string WidgetTypes = "core.widget-types";
+
+        /// <summary>
+        ///     The securables compose without conflict, their names follow the grammar, their filter
+        ///     roots are query entities, a child's owner is reached through its navigation, owner
+        ///     chains end, and every securable belongs to a composed feature.
+        /// </summary>
+        public const string Securables = "core.securables";
+
+        /// <summary>
+        ///     Each entity is one stack with a service that fits its leaf, every service class is some
+        ///     stack's, operation sets are coherent, ceilings are positive, and route segments are well
+        ///     formed and unique.
+        /// </summary>
+        public const string Stacks = "core.stacks";
+
+        /// <summary>
+        ///     Every entity action, routed action and companion is declared where it may be, with a
+        ///     conforming signature and a free name, and every entity reference in an action's
+        ///     arguments names a queryable stack.
+        /// </summary>
+        public const string StackActions = "core.stack-actions";
+
+        /// <summary>
+        ///     Every component closes over the leaves it applies to, details extras are declared once
+        ///     and never as the platform's own, and named filters are well named and unique per stack.
+        /// </summary>
+        public const string StackComponents = "core.stack-components";
+
+        /// <summary>
+        ///     Every stack's projection texts and named filters validate against the tenant-independent
+        ///     query schema.
+        /// </summary>
+        public const string StackProjections = "core.stack-projections";
+
+        /// <summary>Confirmation keys are well formed, declared once, and rendered by a neutral string resource.</summary>
+        public const string Confirmations = "core.confirmations";
+
+        /// <summary>No registration replaces the platform's pipeline factory or pipelines.</summary>
+        public const string EntityPipeline = "core.entity-pipeline";
+
+        /// <summary>Every enlistment pair targets a stack that accepts enlisted writes, and the pairs form no cycle but self-pairs.</summary>
+        public const string Enlistments = "core.enlistments";
+
+        /// <summary>Every securable the stacks and routed services project is registered.</summary>
+        public const string StackSecurables = "core.stack-securables";
+
+        /// <summary>
+        ///     Every cacheable entity is a top-level entity with an int key and no child collection, its
+        ///     resolved row limit is within the ceiling, and its read securable has no row filter.
+        /// </summary>
+        public const string CacheableEntities = "core.cacheable-entities";
+
+        /// <summary>Warns about each zone a user can pick that this host's time-zone data cannot resolve.</summary>
+        public const string TimeZones = "core.time-zones";
+
+        /// <summary>
+        ///     Every entity-backed job handler processes an entity the model maps as a job entity, and a
+        ///     warning for each built-in schedule whose key no handler on this host registers.
+        /// </summary>
+        public const string JobHandlers = "jobs.handlers";
+
+        /// <summary>Every built-in schedule's cron expression parses and has a next occurrence.</summary>
+        public const string JobSchedules = "jobs.schedules";
+
+        /// <summary>
+        ///     At most one image processor is registered, one when a kind normalises images; every
+        ///     blob-kind transform names a declared kind; and every kind's final policy is sound.
+        /// </summary>
+        public const string Blobs = "blobs";
+
+        /// <summary>A host whose job worker runs registers an email sender for the outgoing emails' sending jobs.</summary>
+        public const string OutboxSender = "outbox.sender";
+
+        /// <summary>
+        ///     Every shareable entity's pair is whole: its share entity references it once and is
+        ///     neither a stack nor a child collection, and its stack's service derives from the
+        ///     shareable service.
+        /// </summary>
+        public const string Shareables = "core.shareables";
+
+        /// <summary>
+        ///     Exactly one blob store is registered; the blob options are positive and the upload
+        ///     ceiling covers every kind; and the file-system store's root and the scratch directory
+        ///     are usable.
+        /// </summary>
+        public const string BlobsDeployment = "blobs.deployment";
+
+        /// <summary>A warning for each property excluded from Excel that the server already owns.</summary>
+        public const string Excel = "excel";
+
+        /// <summary>The scratch directory every workbook spools to exists and takes a file.</summary>
+        public const string ExcelDeployment = "excel.deployment";
+    }
+}

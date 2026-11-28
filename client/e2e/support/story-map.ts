@@ -10,7 +10,7 @@
  */
 export interface StoryUrlOptions {
   readonly dir?: 'ltr' | 'rtl';
-  readonly theme?: 'light' | 'dark';
+  readonly theme?: 'light' | 'dark' | 'system';
 }
 
 export function storyUrl(id: string, options: StoryUrlOptions = {}): string {

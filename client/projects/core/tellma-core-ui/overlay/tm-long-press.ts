@@ -1,0 +1,217 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+/** Options of {@link tmObserveLongPress}. */
+export interface TmLongPressOptions {
+  /** Press duration before the gesture fires. Defaults to 500ms. */
+  readonly delayMs?: number;
+  /** Movement tolerance before the press cancels. Defaults to 8px. */
+  readonly slopPx?: number;
+  /**
+   * Consulted with the press's `pointerdown` when it starts (and again when
+   * its timer elapses). While it returns `false` the press starts no timer
+   * and arms no suppression, so the platform's own long-press behavior — a
+   * link's menu, say — is left intact. Defaults to always-enabled.
+   */
+  readonly enabled?: (press: PointerEvent) => boolean;
+}
+
+/**
+ * Pointer ids whose CURRENT gesture already fired a long-press somewhere —
+ * nested observers (a tooltip host inside a context-menu area) each run
+ * their own timer for the same press, and only the innermost (whose
+ * pointerdown listener ran first) may fire.
+ */
+const firedGestures = new Set<number>();
+
+/**
+ * Whether `ancestor` is `node` or one of its ancestors in the composed tree:
+ * the walk steps from a shadow root to its host, which `Node.contains` does
+ * not, so a light-DOM scroller around a shadow-hosted element counts.
+ */
+function composedContains(ancestor: Node, node: Node): boolean {
+  let current: Node | null = node;
+  while (current !== null && current !== ancestor) {
+    current = current instanceof ShadowRoot ? current.host : current.parentNode;
+  }
+  return current !== null;
+}
+
+/**
+ * Observes touch/pen long-presses on an element (mouse presses never
+ * qualify — right-click owns that path). The press cancels on movement
+ * beyond the slop, on release, on cancellation, and on a scroll that moves
+ * the pressed content: a scroll of the document, of the element or one of
+ * its ancestors, or of a scroller inside the element that holds the pressed
+ * node. A scroll anywhere else (an auto-scrolling log or a carousel beside
+ * the element) leaves the press alive. When the press fires, the single
+ * trailing synthetic `click` or native `contextmenu` it spawns is suppressed
+ * once so the page doesn't double-react. Returns the cleanup function.
+ */
+export function tmObserveLongPress(
+  element: HTMLElement,
+  onLongPress: (point: { x: number; y: number }) => void,
+  options?: TmLongPressOptions,
+): () => void {
+  const delay = options?.delayMs ?? 500;
+  const slop = options?.slopPx ?? 8;
+  const enabled = options?.enabled ?? (() => true);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let startX = 0;
+  let startY = 0;
+  let pointerId: number | null = null;
+  /** The pointerdown of the press being timed, re-checked when its timer elapses. */
+  let press: PointerEvent | null = null;
+  /** The node the press being timed landed on; a scroll that moves it cancels the press. */
+  let pressNode: Node | null = null;
+  /** Armed between a fired press and the single trailing event it spawns. */
+  let suppressArmed = false;
+  /** The node the firing press landed on; the trailing burst targets it, its subtree, or an ancestor. */
+  let pressedTarget: Node | null = null;
+  /** Safety net: disarms suppression if the trailing burst never arrives. */
+  let disarmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const cancel = (): void => {
+    clearTimeout(timer);
+    timer = undefined;
+    pointerId = null;
+    press = null;
+    pressNode = null;
+  };
+
+  const disarm = (): void => {
+    suppressArmed = false;
+    pressedTarget = null;
+    clearTimeout(disarmTimer);
+    disarmTimer = undefined;
+  };
+
+  const onPointerDown = (event: PointerEvent): void => {
+    if (event.pointerType === 'mouse' || !event.isPrimary || !enabled(event)) {
+      return;
+    }
+    // A fresh press with a (reused) pointer id starts a NEW gesture — the
+    // stale latch must not suppress it. Safe for nested observers: every
+    // observer's pointerdown runs before ANY timer can fire, so the
+    // deletes land while the latch is still unset.
+    firedGestures.delete(event.pointerId);
+    // A fresh press supersedes any suppression still armed from a prior one.
+    disarm();
+    startX = event.clientX;
+    startY = event.clientY;
+    pointerId = event.pointerId;
+    press = event;
+    pressNode = event.target instanceof Node ? event.target : element;
+    pressedTarget = pressNode;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      if (pointerId === null || press === null || !enabled(press)) {
+        cancel();
+        return;
+      }
+      if (firedGestures.has(pointerId)) {
+        cancel();
+        return; // an inner observer already consumed this gesture
+      }
+      firedGestures.add(pointerId);
+      // The browser may fire contextmenu and/or a synthetic click after the
+      // press releases (engine-dependent); arm a one-shot swallow of that
+      // trailing burst so the page doesn't double-react.
+      suppressArmed = true;
+      onLongPress({ x: startX, y: startY });
+      cancel();
+    }, delay);
+  };
+
+  const onPointerMove = (event: PointerEvent): void => {
+    if (
+      pointerId === event.pointerId &&
+      (Math.abs(event.clientX - startX) > slop || Math.abs(event.clientY - startY) > slop)
+    ) {
+      cancel();
+    }
+  };
+
+  const onPointerEnd = (event: PointerEvent): void => {
+    firedGestures.delete(event.pointerId); // the gesture ends with the lift
+    if (pointerId === event.pointerId) {
+      cancel();
+    }
+    // Release of the pressing pointer: if a long-press already fired, give its
+    // trailing burst a brief window to land, then disarm so a later, unrelated
+    // tap is never swallowed.
+    if (suppressArmed && disarmTimer === undefined) {
+      disarmTimer = setTimeout(disarm, 700);
+    }
+  };
+
+  const onScroll = (event: Event): void => {
+    if (pressNode === null) {
+      return; // no press is being timed
+    }
+    // Window capture sees every scroll in the document, element scrolls
+    // included. Only one that moves the pressed content cancels: when the
+    // timer fires, the press's start point would then lie over something
+    // else. That is a scroll of the document (or of the window, for a
+    // non-node target), of the element or an ancestor of it, or of a
+    // scroller inside the element that holds the pressed node. Any other
+    // scroller, such as an auto-scrolling log or a carousel beside the
+    // element, leaves the press alive. The document needs no test of its
+    // own: it is a composed ancestor of every connected element. The
+    // element test still holds once the pressed node is detached (a
+    // re-rendered row), and both tests walk out of shadow roots to their
+    // hosts.
+    const scrolled = event.target;
+    if (
+      !(scrolled instanceof Node) ||
+      composedContains(scrolled, element) ||
+      composedContains(scrolled, pressNode)
+    ) {
+      cancel();
+    }
+  };
+
+  /** Suppresses the single event trailing a fired long-press. */
+  const suppress = (event: Event): void => {
+    if (!suppressArmed) {
+      return;
+    }
+    const target = event.target;
+    // Only the trailing burst from THIS press — the pressed node, its subtree,
+    // or an ancestor up to the document — never a tap on the overlay panel the
+    // press just opened (it portals outside the pressed element's subtree).
+    if (
+      target instanceof Node &&
+      (element.contains(target) || (pressedTarget !== null && target.contains(pressedTarget)))
+    ) {
+      disarm(); // one-shot: the first trailing event consumes the suppression
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  element.addEventListener('pointerdown', onPointerDown);
+  element.addEventListener('pointermove', onPointerMove);
+  element.addEventListener('pointerup', onPointerEnd);
+  element.addEventListener('pointercancel', onPointerEnd);
+  window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+  // Suppression sits at DOCUMENT capture: the trailing synthetic click must
+  // die before overlay outside-click dispatchers (body capture) can treat
+  // it as an outside press and close the menu the long-press just opened.
+  document.addEventListener('click', suppress, true);
+  document.addEventListener('contextmenu', suppress, true);
+
+  return () => {
+    cancel();
+    disarm();
+    element.removeEventListener('pointerdown', onPointerDown);
+    element.removeEventListener('pointermove', onPointerMove);
+    element.removeEventListener('pointerup', onPointerEnd);
+    element.removeEventListener('pointercancel', onPointerEnd);
+    window.removeEventListener('scroll', onScroll, { capture: true });
+    document.removeEventListener('click', suppress, true);
+    document.removeEventListener('contextmenu', suppress, true);
+  };
+}

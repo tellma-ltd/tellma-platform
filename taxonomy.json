@@ -1,0 +1,33 @@
+{
+  "modules": [
+    "Gl"
+  ],
+  "compliance": [],
+  "reservedSlugs": [
+    "core",
+    "landing",
+    "identity",
+    "platform",
+    "tellma",
+    "www",
+    "app",
+    "api",
+    "admin",
+    "auth",
+    "login",
+    "secure",
+    "support",
+    "help",
+    "training",
+    "status",
+    "demo",
+    "test",
+    "staging",
+    "sample",
+    "dev",
+    "acme"
+  ],
+  "distributions": [
+    "acme"
+  ]
+}

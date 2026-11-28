@@ -135,7 +135,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                 }
 
                 findings.AddRange(ProbePlan
-                    .Duplicated(entry.Spec, LedgerFixture.Schema, entry.Parameters)
+                    .Duplicated(entry.Spec, LedgerFixture.Schema, entry.Parameters, entry.OmittedParameters)
                     .Select(finding => entry.Id + ": " + finding));
             }
 
@@ -183,7 +183,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                     text,
                     new ValidationOptions
                     {
-                        LanguageVersion = QueryexLanguage.Version,
+                        QueryexVersion = QueryexLanguage.Version,
                         Schema = LedgerFixture.Schema,
                         Root = LedgerFixture.Invoice,
                         Mode = QueryexMode.Filter,
@@ -224,7 +224,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
                 text,
                 new ValidationOptions
                 {
-                    LanguageVersion = QueryexLanguage.Version,
+                    QueryexVersion = QueryexLanguage.Version,
                     Schema = LedgerFixture.Schema,
                     Root = LedgerFixture.Invoice,
                     Mode = QueryexMode.Value,
@@ -243,15 +243,7 @@ namespace Tellma.Core.Queryex.Tests.Properties
         {
             QueryexResult<CompiledQuery> result = engine.CompileQuery(
                 entry.Spec,
-                new QueryCompilationOptions
-                {
-                    LanguageVersion = QueryexLanguage.Version,
-                    Schema = LedgerFixture.Schema,
-                    Parameters = entry.Parameters,
-                    HasUser = entry.HasUser,
-                    Limits = entry.Limits,
-                    BatchOrdinal = ordinal,
-                });
+                entry.Options(LedgerFixture.Schema, ordinal));
 
             Assert.True(result.Succeeded, entry.Id);
             return result.Value.Sql

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Acme reference distribution's composition library: AcmeComposition (the slug and the composition method both hosts run), the acme feature with its currencies, customers and sales invoices, their actions and related-documents extra, Acme's settings, the center leaf over GL's centers, the development tenants' sample data, and Acme's English and Arabic strings. Referenced by the Web and Migrator projects; never references an ASP.NET Core package, a Design package or the client.</Description>
+    <!-- Resources/Strings.resx is English, so an English lookup never probes for a satellite. -->
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\src\core\Tellma.Core\Tellma.Core.csproj" />
+    <!-- The Azure deployment's common composition: email, blobs and imaging. -->
+    <ProjectReference Include="..\..\..\..\src\defaults\Tellma.Defaults.Azure\Tellma.Defaults.Azure.csproj" />
+    <!-- The general ledger, whose centers the invoice lines are analysed by. -->
+    <ProjectReference Include="..\..\..\..\src\module\gl\Tellma.Module.Gl\Tellma.Module.Gl.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The unit tests drive the sample step's name slots and key filters directly. -->
+    <InternalsVisibleTo Include="Tellma.Distro.Acme.Web.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -68,6 +68,9 @@ namespace Tellma.Core.Queryex.Binding
                 TypedIn membership => SameIn(membership, (TypedIn)second),
                 TypedLogical logical => SameLogical(logical, (TypedLogical)second),
                 TypedCall call => SameCall(call, (TypedCall)second),
+                TypedFilterLeaf leaf => AreEquivalent(leaf.Expression, ((TypedFilterLeaf)second).Expression),
+                TypedVia via => SameVia(via, (TypedVia)second),
+                TypedExists exists => SameExists(exists, (TypedExists)second),
                 _ => false,
             };
         }
@@ -210,15 +213,51 @@ namespace Tellma.Core.Queryex.Binding
                 }
             }
 
+            // A selector was compared above by the value it resolved to, so 'UQ' and 'uq' are the
+            // same calendar; every other argument is compared as written.
             for (int index = 0; index < first.Arguments.Length; index++)
             {
-                if (!AreEquivalent(first.Arguments[index], second.Arguments[index]))
+                bool selector = index < first.Selectors.Length && first.Selectors[index] is not null;
+                if (!selector && !AreEquivalent(first.Arguments[index], second.Arguments[index]))
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        /// <summary>Whether two rebased criteria take the same route to the same criterion.</summary>
+        /// <param name="first">One node.</param>
+        /// <param name="second">The other.</param>
+        /// <returns>True when they do.</returns>
+        private static bool SameVia(TypedVia first, TypedVia second)
+        {
+            if (first.Navigations.Length != second.Navigations.Length)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < first.Navigations.Length; index++)
+            {
+                if (!ReferenceEquals(first.Navigations[index], second.Navigations[index]))
+                {
+                    return false;
+                }
+            }
+
+            return AreEquivalent(first.Inner, second.Inner);
+        }
+
+        /// <summary>Whether two semi-joins search the same rows for the same criterion.</summary>
+        /// <param name="first">One node.</param>
+        /// <param name="second">The other.</param>
+        /// <returns>True when they do.</returns>
+        private static bool SameExists(TypedExists first, TypedExists second)
+        {
+            return ReferenceEquals(first.Entity, second.Entity)
+                && ReferenceEquals(first.Navigation, second.Navigation)
+                && AreEquivalent(first.Inner, second.Inner);
         }
 
         /// <summary>Whether a bound expression contains an aggregation anywhere.</summary>

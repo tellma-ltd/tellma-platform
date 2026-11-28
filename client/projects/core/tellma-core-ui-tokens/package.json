@@ -8,6 +8,11 @@
   },
   "sideEffects": false,
   "type": "module",
+  "exports": {
+    "./css/*": {
+      "default": "./css/*"
+    }
+  },
   "tellma": {
     "budgetsInKb": {
       ".": 8

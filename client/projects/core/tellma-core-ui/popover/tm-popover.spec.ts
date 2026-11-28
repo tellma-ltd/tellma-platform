@@ -3,12 +3,13 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, signal, type OnDestroy } from '@angular/core';
+import { Component, inject, signal, type OnDestroy } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { TestbedHarnessEnvironment } from '@angular/cdk/testing/testbed';
 
 import { provideTellmaUi } from '@tellma/core-ui';
+import { TmModal, type TmModalRef } from '@tellma/core-ui/modal';
 import { TmPopoverHarness } from '@tellma/core-ui-testing';
 
 import { TmPopover, TmPopoverContent } from './tm-popover';
@@ -77,6 +78,115 @@ class NoContentHost {}
   `,
 })
 class SharedTriggerHost {}
+
+/** A modal's content: one button. */
+@Component({
+  selector: 'tm-test-modal-content',
+  template: `<button type="button" class="in-modal">Confirm</button>`,
+})
+class ModalContent {}
+
+/** A popover whose content opens a modal above it, as a confirmation does. */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button class="trigger" [tmPopoverTriggerFor]="popover">Filters</button>
+    <tm-popover #popover aria-label="Filters">
+      <ng-template tmPopoverContent>
+        <button type="button" class="ask" (click)="ask()">Clear</button>
+      </ng-template>
+    </tm-popover>
+    <input class="outside-field" />
+  `,
+})
+class AskingHost {
+  readonly #modal = inject(TmModal);
+  ref: TmModalRef<void> | null = null;
+
+  ask(): void {
+    this.ref = this.#modal.open(ModalContent, { title: 'Clear?' });
+  }
+}
+
+/** A popover beside a modal the page opens on its own, with focus outside the panel. */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button class="trigger" [tmPopoverTriggerFor]="popover">Filters</button>
+    <tm-popover #popover aria-label="Filters">
+      <ng-template tmPopoverContent>
+        <button type="button" class="inside-button">Apply</button>
+      </ng-template>
+    </tm-popover>
+  `,
+})
+class PageModalHost {
+  readonly #modal = inject(TmModal);
+  ref: TmModalRef<void> | null = null;
+
+  open(): void {
+    this.ref = this.#modal.open(ModalContent, { title: 'Elsewhere' });
+  }
+}
+
+/** A popover nested in another's content, whose own content asks through a modal. */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button class="trigger" [tmPopoverTriggerFor]="outer">Outer</button>
+    <tm-popover #outer aria-label="Outer">
+      <ng-template tmPopoverContent>
+        <button type="button" class="inner-trigger" [tmPopoverTriggerFor]="inner">Inner</button>
+        <tm-popover #inner aria-label="Inner">
+          <ng-template tmPopoverContent>
+            <button type="button" class="ask" (click)="ask()">Clear</button>
+          </ng-template>
+        </tm-popover>
+      </ng-template>
+    </tm-popover>
+  `,
+})
+class NestedHost {
+  readonly #modal = inject(TmModal);
+  ref: TmModalRef<void> | null = null;
+
+  ask(): void {
+    this.ref = this.#modal.open(ModalContent, { title: 'Clear?' });
+  }
+}
+
+/** A modal's content holding a popover, as a page dialog's filter does. */
+@Component({
+  selector: 'tm-test-modal-popover',
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <button type="button" class="trigger" [tmPopoverTriggerFor]="popover">Filters</button>
+    <input class="modal-field" />
+    <tm-popover #popover aria-label="Filters">
+      <ng-template tmPopoverContent>
+        <button type="button" class="ask" (click)="ask()">Clear</button>
+      </ng-template>
+    </tm-popover>
+  `,
+})
+class ModalPopover {
+  readonly #modal = inject(TmModal);
+  ref: TmModalRef<void> | null = null;
+
+  ask(): void {
+    this.ref = this.#modal.open(ModalContent, { title: 'Clear?' });
+  }
+}
+
+/** Opens the modal that holds the popover. */
+@Component({ template: `` })
+class ModalPopoverHost {
+  readonly #modal = inject(TmModal);
+
+  open(): TmModalRef<void> {
+    return this.#modal.open(ModalPopover, { title: 'Dialog' });
+  }
+}
 
 /** Two independent popovers — the second attaches on top of the first. */
 @Component({
@@ -308,6 +418,104 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     }
   });
 
+  it('stays open beneath a modal its content opens, and closes on a later tab-out', async () => {
+    const { fixture, host, root } = await setup(AskingHost);
+    (root.querySelector('.trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    const ask = document.querySelector('.ask') as HTMLButtonElement;
+    ask.focus();
+    ask.click();
+    await settle(fixture);
+    // Focus moved into the modal, and a click inside it is the modal's.
+    const inModal = document.querySelector('.in-modal') as HTMLButtonElement;
+    expect(inModal.closest('[role="dialog"]')?.contains(document.activeElement)).toBe(true);
+    expect(panel()).not.toBeNull();
+    inModal.click();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+
+    // The modal gives focus back to the panel when it closes.
+    host.ref?.close();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.ask'));
+
+    (root.querySelector('.outside-field') as HTMLInputElement).focus();
+    await settle(fixture);
+    expect(panel()).toBeNull();
+  });
+
+  it('a modal the page opens while focus is outside the panel does not hold the popover open', async () => {
+    const { fixture, host, root } = await setup(PageModalHost);
+    const trigger = root.querySelector('.trigger') as HTMLButtonElement;
+    trigger.click();
+    await settle(fixture);
+    // Focus rests on the anchor, outside the panel, when the page opens its modal.
+    trigger.focus();
+    host.open();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+    // Focus that then leaves the panel for that modal leaves the popover.
+    (document.querySelector('.inside-button') as HTMLButtonElement).focus();
+    await settle(fixture);
+    (document.querySelector('.in-modal') as HTMLButtonElement).focus();
+    await settle(fixture);
+    expect(panel()).toBeNull();
+    host.ref?.close();
+    await settle(fixture);
+  });
+
+  it('a nested popover stays open beneath the modal its own content opens', async () => {
+    const { fixture, host, root } = await setup(NestedHost);
+    (root.querySelector('.trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    (document.querySelector('.inner-trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    const inner = (): HTMLElement | null => document.querySelector('.tm-popover__panel[aria-label="Inner"]');
+    expect(inner()).not.toBeNull();
+    const ask = document.querySelector('.ask') as HTMLButtonElement;
+    ask.focus();
+    ask.click();
+    await settle(fixture);
+    const inModal = document.querySelector('.in-modal') as HTMLButtonElement;
+    inModal.click();
+    await settle(fixture);
+    expect(inner()).not.toBeNull();
+    host.ref?.close();
+    await settle(fixture);
+    expect(inner()).not.toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.ask'));
+  });
+
+  it('a popover inside a modal closes on focus elsewhere in that modal, and stays beneath its own confirmation', async () => {
+    const { fixture, host } = await setup(ModalPopoverHost);
+    const dialog = host.open();
+    await settle(fixture);
+    (document.querySelector('tm-test-modal-popover .trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+
+    // The modal holding the popover was open before it, so its fields are outside the popover.
+    (document.querySelector('.modal-field') as HTMLInputElement).focus();
+    await settle(fixture);
+    expect(panel()).toBeNull();
+
+    // Opened again, the popover's own confirmation leaves it open beneath.
+    (document.querySelector('tm-test-modal-popover .trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    const ask = document.querySelector('.ask') as HTMLButtonElement;
+    ask.focus();
+    ask.click();
+    await settle(fixture);
+    expect(document.querySelectorAll('.in-modal')).toHaveLength(1);
+    expect(panel()).not.toBeNull();
+    (document.querySelector('.in-modal') as HTMLButtonElement).click();
+    await settle(fixture);
+    expect(panel()).not.toBeNull();
+    dialog.close();
+    await settle(fixture);
+  });
+
   it('drives the open panel through TmPopoverHarness', async () => {
     const { fixture, root } = await setup(Host);
     (root.querySelector('.trigger') as HTMLButtonElement).click();
@@ -318,5 +526,177 @@ describe('tm-popover + tmPopoverTriggerFor', () => {
     expect(await harness.getAriaLabel()).toBe('Filters');
     expect(await harness.getText()).toContain('probe');
     expect(await harness.isFocused()).toBe(true);
+  });
+});
+
+/**
+ * Popovers of each size, anchored to triggers with controllable placement.
+ * The unit page loads no token stylesheet, so the wrapper supplies the
+ * popover's size tokens at the preset's values.
+ */
+@Component({
+  imports: [TmPopover, TmPopoverContent, TmPopoverTrigger],
+  template: `
+    <div
+      class="tokens"
+      style="--popover-width-sm: 320px; --popover-width-md: 440px; --popover-width-lg: 640px; --popover-viewport-margin: 8px; --popover-max-inline-size: 346px"
+    >
+    <div class="bar" [style.padding-inline-start.px]="inset()">
+      <button class="sized-trigger" [tmPopoverTriggerFor]="sized">Open</button>
+    </div>
+    <tm-popover #sized aria-label="Sized" [size]="size()" [panelClass]="extraClass()">
+      <ng-template tmPopoverContent>
+        <p class="sized-content">Short</p>
+        @for (line of lines(); track $index) {
+          <p class="sized-line">A longer line of content that loads later {{ line }}</p>
+        }
+      </ng-template>
+    </tm-popover>
+    <div [style.block-size.px]="spacer()"></div>
+    </div>
+  `,
+})
+class SizedHost {
+  readonly size = signal<'auto' | 'sm' | 'md' | 'lg'>('md');
+  readonly extraClass = signal<string | undefined>(undefined);
+  readonly inset = signal(16);
+  readonly lines = signal<readonly number[]>([]);
+  readonly spacer = signal(0);
+}
+
+describe('tm-popover sizes', () => {
+  /** Opens the sized popover and returns its panel. */
+  async function openSized(fixture: ComponentFixture<SizedHost>): Promise<HTMLElement> {
+    (fixture.nativeElement.querySelector('.sized-trigger') as HTMLButtonElement).click();
+    await settle(fixture);
+    return panel() as HTMLElement;
+  }
+
+  /** A size token as the test host supplies it, in px. */
+  function token(name: string): number {
+    const tokens = document.querySelector('.tokens') as HTMLElement;
+    return Number.parseFloat(getComputedStyle(tokens).getPropertyValue(name));
+  }
+
+  /** The viewport margin token, in px. */
+  function margin(): number {
+    return token('--popover-viewport-margin');
+  }
+
+  it('a fixed size carries its class and the token width, capped by the viewport', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    for (const size of ['sm', 'md', 'lg'] as const) {
+      host.size.set(size);
+      await settle(fixture);
+      const surface = await openSized(fixture);
+      expect(surface.classList.contains(`tm-popover__panel--${size}`)).toBe(true);
+      const expected = Math.min(token(`--popover-width-${size}`), window.innerWidth - 2 * margin());
+      expect(Math.abs(surface.getBoundingClientRect().width - expected)).toBeLessThanOrEqual(1);
+      (fixture.nativeElement.querySelector('.sized-trigger') as HTMLButtonElement).click();
+      await settle(fixture);
+    }
+  });
+
+  it("'auto' keeps the content width up to the cap, with no fixed-size class", async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('auto');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    for (const size of ['sm', 'md', 'lg']) {
+      expect(surface.classList.contains(`tm-popover__panel--${size}`)).toBe(false);
+    }
+    // "Short" is far narrower than any fixed size.
+    expect(surface.getBoundingClientRect().width).toBeLessThan(200);
+  });
+
+  it('a fixed size never changes width while its content grows', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('sm');
+    const surface = await openSized(fixture);
+    const before = surface.getBoundingClientRect().width;
+    host.lines.set([1, 2, 3]);
+    await settle(fixture);
+    expect(surface.querySelectorAll('.sized-line')).toHaveLength(3);
+    expect(surface.getBoundingClientRect().width).toBe(before);
+  });
+
+  it('caps the height at the room below the anchor; the content scrolls inside', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.lines.set(Array.from({ length: 80 }, (_, index) => index));
+    const surface = await openSized(fixture);
+    const anchor = (fixture.nativeElement.querySelector('.sized-trigger') as HTMLElement)
+      .getBoundingClientRect();
+    const box = surface.getBoundingClientRect();
+    // Placed below the trigger (more room there), and inside the viewport margin.
+    expect(box.top).toBeGreaterThanOrEqual(anchor.bottom - 1);
+    expect(box.bottom).toBeLessThanOrEqual(document.documentElement.clientHeight - margin() + 1);
+    expect(surface.scrollHeight).toBeGreaterThan(surface.clientHeight);
+  });
+
+  it('keeps a fixed-size panel inside the viewport margins near the inline-end edge', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    // Push the trigger to the far end: a start-aligned panel would hang off.
+    host.inset.set(document.documentElement.clientWidth - 80);
+    await settle(fixture);
+    const box = (await openSized(fixture)).getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(margin() - 1);
+    expect(box.right).toBeLessThanOrEqual(document.documentElement.clientWidth - margin() + 1);
+  });
+
+  it('caps the width at the visible viewport, never counting a scrollbar', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    const cap = document.documentElement.clientWidth - 2 * margin();
+    expect(surface.style.getPropertyValue('--tm-popover-inline-cap')).toBe(`${cap}px`);
+    expect(surface.getBoundingClientRect().width).toBeLessThanOrEqual(cap + 1);
+  });
+
+  it('re-fits the height cap as the page scrolls while the panel is open', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.lines.set(Array.from({ length: 80 }, (_, index) => index));
+    host.spacer.set(3000);
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    const trigger = fixture.nativeElement.querySelector('.sized-trigger') as HTMLElement;
+    const capFor = (): string =>
+      `${Math.floor(
+        document.documentElement.clientHeight - trigger.getBoundingClientRect().bottom - margin(),
+      )}px`;
+    expect(surface.style.getPropertyValue('--tm-popover-block-cap')).toBe(capFor());
+    try {
+      // The anchor moves up the page, so the room below it grows.
+      const capBefore = surface.style.getPropertyValue('--tm-popover-block-cap');
+      window.scrollBy(0, 40);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await fixture.whenStable();
+      expect(window.scrollY).toBeGreaterThan(0);
+      expect(surface.style.getPropertyValue('--tm-popover-block-cap')).not.toBe(capBefore);
+      expect(surface.style.getPropertyValue('--tm-popover-block-cap')).toBe(capFor());
+    } finally {
+      window.scrollTo(0, 0);
+    }
+  });
+
+  it('applies panelClass to the panel', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.extraClass.set('custom-panel');
+    await settle(fixture);
+    const surface = await openSized(fixture);
+    expect(surface.classList.contains('custom-panel')).toBe(true);
+    expect(surface.classList.contains('tm-popover__panel')).toBe(true);
+  });
+
+  it('reports the size through TmPopoverHarness', async () => {
+    const { fixture, host } = await setup(SizedHost);
+    host.size.set('lg');
+    await settle(fixture);
+    await openSized(fixture);
+    const harness = await TestbedHarnessEnvironment.documentRootLoader(fixture).getHarness(
+      TmPopoverHarness,
+    );
+    expect(await harness.getSize()).toBe('lg');
   });
 });

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <Using Include="Tellma.Testing.Support.Sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The web host and the migrator run in process through the shared Acme plumbing: the host on
+         a test server, the migrator over Acme's own configuration files, the browser's sign-in
+         through the BFF and the tenant probes. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Tellma.Distro.Acme.TestSupport\Tellma.Distro.Acme.TestSupport.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- The MCP SDK's client, which drives the tenant MCP server as an agent does. -->
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+</Project>

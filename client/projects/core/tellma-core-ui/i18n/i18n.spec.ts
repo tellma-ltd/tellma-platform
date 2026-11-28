@@ -3,14 +3,14 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, LOCALE_ID, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import type { ValidationError } from '@angular/forms/signals';
 
 import { tmResolveFieldErrors } from '../forms/field-errors';
 import { provideTellmaUi } from '../providers/provide-tellma-ui';
-import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE } from './tm-ui-translate';
+import { TM_UI_I18N_SCOPE, TM_UI_TRANSLATE, tmEnglishString, ɵtmRegisterUiStrings } from './tm-ui-translate';
 
 @Component({ template: `` })
 class Host {
@@ -111,6 +111,36 @@ describe('TM_UI_TRANSLATE (Transloco-backed default)', () => {
     expect(text()).toBe('XX required'); // the SAME signal, recomputed
   });
 
+  it('removes bidirectional controls from a resolved message', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideTellmaUi({ availableLangs: ['en', 'ar'] })],
+    });
+    const fixture = TestBed.createComponent(Host);
+    await fixture.whenStable();
+    const host = fixture.componentInstance;
+    const rlm = String.fromCodePoint(0x200f);
+    const lrm = String.fromCodePoint(0x200e);
+    // A translator pasted marks around the text, and the message formats a
+    // number: Intl writes a mark of its own beside an Arabic minus.
+    host.transloco.setTranslation(
+      { [TM_UI_I18N_SCOPE]: { errors: { min: `${rlm}الحد الأدنى${rlm} {min, number}` } } },
+      'ar',
+      { merge: true },
+    );
+    host.transloco.setActiveLang('ar');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(new Intl.NumberFormat('ar').format(-5)).toContain(lrm);
+    expect(host.translate('errors.min', { min: -5 })()).toBe('الحد الأدنى -5');
+    // The English fallback of a key the pack lacks is stripped the same.
+    expect(host.translate('errors.max', { max: -7 })()).toBe('Enter a value of at most -7');
+  });
+
+  it('removes bidirectional controls on the Transloco-less path too', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: LOCALE_ID, useValue: 'ar' }] });
+    const translate = TestBed.inject(TM_UI_TRANSLATE);
+    expect(translate('errors.min', { min: -3 })()).toBe('Enter a value of at least -3');
+  });
+
   it('guards an unknown custom kind with the raw kind + dev warning', async () => {
     const host = await setup();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -119,6 +149,44 @@ describe('TM_UI_TRANSLATE (Transloco-backed default)', () => {
     expect(text()).toBe('myCustomKind');
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe('strings an entry point registers', () => {
+  // Registered once for the file, as an entry point's component registers on construction.
+  beforeAll(() =>
+    ɵtmRegisterUiStrings('sample', {
+      greeting: 'Hello {name}',
+      nested: { count: '{count, plural, one {# item} other {# items}}' },
+    }),
+  );
+
+  it('resolve as English on the Transloco-less path', () => {
+    const translate = TestBed.inject(TM_UI_TRANSLATE);
+    expect(translate('sample.greeting', { name: 'Sara' })()).toBe('Hello Sara');
+    expect(translate('sample.nested.count', { count: 2 })()).toBe('2 items');
+  });
+
+  it('resolve as English through Transloco, and a tmUi translation overrides them', async () => {
+    const host = await setup();
+    const greeting = host.translate('sample.greeting', { name: 'Sara' });
+    expect(greeting()).toBe('Hello Sara');
+    host.transloco.setTranslation(
+      { [TM_UI_I18N_SCOPE]: { sample: { greeting: 'XX {name}' } } },
+      'xx',
+      { merge: true },
+    );
+    host.transloco.setActiveLang('xx');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(greeting()).toBe('XX Sara');
+    // A key the translation lacks falls back to the registered English.
+    expect(host.translate('sample.nested.count', { count: 1 })()).toBe('1 item');
+  });
+
+  it('never shadow the core table', () => {
+    ɵtmRegisterUiStrings('errors', { required: 'Shadowed' });
+    expect(tmEnglishString('errors.required')).toBe('This field is required');
+    expect(tmEnglishString('sample.missing')).toBeNull();
   });
 });
 

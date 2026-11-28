@@ -6,6 +6,7 @@
 
 import * as i0 from '@angular/core';
 import { Observable } from 'rxjs';
+import { Signal } from '@angular/core';
 
 // @public
 export class TmFilePreview {

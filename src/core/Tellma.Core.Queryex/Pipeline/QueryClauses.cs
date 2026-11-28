@@ -9,6 +9,7 @@ using Tellma.Core.Queryex.Binding;
 using Tellma.Core.Queryex.Diagnostics;
 using Tellma.Core.Queryex.Emit;
 using Tellma.Core.Queryex.Lowering;
+using Tellma.Core.Queryex.Measures;
 using Tellma.Core.Queryex.Nullity;
 using Tellma.Core.Queryex.Syntax;
 
@@ -49,6 +50,12 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>The declared parameters, resolved once.</summary>
         private readonly FrozenDictionary<string, ParameterSymbol> _symbols;
 
+        /// <summary>The key-set restrictions, resolved against the schema.</summary>
+        private readonly ImmutableArray<ResolvedRestriction> _restrictions;
+
+        /// <summary>The parameters the compilation leaves out.</summary>
+        private readonly OmittedParameters _omitted;
+
         /// <summary>The root of the join tree, once lowering has created it.</summary>
         private JoinNode? _root;
 
@@ -57,6 +64,18 @@ namespace Tellma.Core.Queryex.Pipeline
 
         /// <summary>The bound ordering list.</summary>
         private BoundExpression _orderBy = new([], NullityMap.Empty, 0, []);
+
+        /// <summary>
+        ///     Which ordering terms leaving parameters out rewrote, by position; empty when it
+        ///     rewrote none.
+        /// </summary>
+        private bool[] _rewrittenTerms = [];
+
+        /// <summary>
+        ///     The positions of the ordering terms that leaving parameters out turned into repeats of
+        ///     an earlier term, and which are therefore not written.
+        /// </summary>
+        private readonly HashSet<int> _repeatedTerms = [];
 
         /// <summary>The bound row-level predicate, when there is one.</summary>
         private TypedExpr? _filter;
@@ -67,6 +86,18 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <summary>Whether the select list derives at least one grouping key.</summary>
         private bool _hasGroupingKeys;
 
+        /// <summary>The bound measures, when there are any.</summary>
+        private BoundExpression? _measures;
+
+        /// <summary>The measures' nullity as a grand total has it, which their evaluation trees fold by.</summary>
+        private NullityMap? _measureNullity;
+
+        /// <summary>The measures' evaluation trees and the partials they read, once planned.</summary>
+        private MeasureTreeBuilder? _measureTrees;
+
+        /// <summary>Each measure's evaluation tree, parallel to the bound measures.</summary>
+        private ImmutableArray<MeasureNode> _measureRoots = [];
+
         /// <summary>Initializes the clauses of one compilation.</summary>
         /// <param name="compiler">The stage runner, which remembers what it has already done.</param>
         /// <param name="spec">The query.</param>
@@ -74,13 +105,17 @@ namespace Tellma.Core.Queryex.Pipeline
         /// <param name="sink">Where problems are recorded.</param>
         /// <param name="budget">The ceilings shared across the compilation.</param>
         /// <param name="nullity">Every clause's nullity answers, merged.</param>
+        /// <param name="restrictions">The key-set restrictions, resolved against the schema.</param>
+        /// <param name="omitted">The parameters the compilation leaves out.</param>
         internal QueryClauses(
             ExpressionCompiler compiler,
             QuerySpec spec,
             QueryCompilationOptions options,
             DiagnosticSink sink,
             CompilationBudget budget,
-            NullityMap nullity)
+            NullityMap nullity,
+            ImmutableArray<ResolvedRestriction> restrictions,
+            OmittedParameters omitted)
         {
             _compiler = compiler;
             _spec = spec;
@@ -89,6 +124,8 @@ namespace Tellma.Core.Queryex.Pipeline
             _budget = budget;
             _nullity = nullity;
             _symbols = Symbols.From(options.Parameters);
+            _restrictions = restrictions;
+            _omitted = omitted;
         }
 
         /// <summary>Binds every clause and checks the rules that span them.</summary>
@@ -108,12 +145,16 @@ namespace Tellma.Core.Queryex.Pipeline
                 return false;
             }
 
-            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(selectSyntax!);
+            // Folded before its shape is read: what an omitted parameter leaves behind is what the
+            // grouping is derived from, and what is bound.
+            ExpressionListSyntax select = _omitted.FoldValues(selectSyntax!, out AppliedFolding? folding);
+            _hasGroupingKeys = _spec.Aggregate && QueryCompiler.DerivesGroupingKeys(select);
 
             BindFilter();
-            BindSelect(selectSyntax!, selectAt);
+            BindSelect(select, folding, selectAt);
             BindHaving();
             BindOrderBy();
+            BindMeasures();
 
             if (_sink.Count > 0)
             {
@@ -123,33 +164,70 @@ namespace Tellma.Core.Queryex.Pipeline
             DeriveKeys();
             CheckOrdering();
             CheckPaging();
-            return _sink.Count == 0;
+            if (_sink.Count > 0)
+            {
+                return false;
+            }
+
+            PlanMeasures();
+            return true;
         }
+
+        /// <summary>The measures, compiled; null until the clauses are lowered, and when there are none.</summary>
+        internal CompiledMeasures? Measures { get; private set; }
 
         /// <summary>Lowers every clause into one plan.</summary>
         /// <returns>The plan.</returns>
         internal RelationalPlan Lower()
         {
-            Lowerer lowerer = new(_spec.Root, _options.BatchOrdinal, _budget, _sink);
+            Lowerer lowerer = new(_spec.Root, _options.Schema, _options.BatchOrdinal, _budget, _sink);
             _root = lowerer.Root;
 
-            PlanPredicate? where = LowerFilter(lowerer);
+            PlanPredicate? filter = LowerFilter(lowerer);
             (ImmutableArray<PlanSelectItem> select, ImmutableArray<PlanValue> groupBy) = LowerSelect(lowerer);
+
+            // The partials straight after the select items they follow, so their parameters are
+            // numbered after the select list's and before every later clause's.
+            select = select.AddRange(LowerPartials(lowerer, select));
             PlanPredicate? having = LowerHaving(lowerer);
             ImmutableArray<PlanOrderItem> orderBy = LowerOrdering(lowerer, select);
 
-            ParameterSlot? skip = _spec.Skip is int rows ? lowerer.PagingSlot(rows) : null;
-            ParameterSlot? take = _spec.Take is int count ? lowerer.PagingSlot(count) : null;
+            // The restrictions are lowered after every clause a user wrote, and reached after them
+            // too, so a join they share with one of those clauses is that clause's: a ceiling it
+            // pushes over is then reported where a user can see it, and a restriction is named only
+            // for the joins no user clause needed. Nothing else depends on the order, since a
+            // restriction claims no parameter and aliases follow the schema's declarations.
+            ImmutableArray<PlanKeySetRestriction> restrictions = LowerRestrictions(lowerer);
+            PlanPredicate? where = Conjoin(filter, restrictions);
+
+            // Read after the compiled items, once the ordering above has matched select items by
+            // position without ever seeing them: nothing may name an undeclared column.
+            select = select.AddRange(UndeclaredColumns(lowerer, select.Length));
+
+            ParameterSlot? skip = _spec.Skip is int rows ? lowerer.PagingSlot(rows, "skip") : null;
+            ParameterSlot? take = _spec.Take is int count ? lowerer.PagingSlot(count, "take") : null;
+            ImmutableArray<ParameterSlot> paging = [.. new[] { skip, take }.OfType<ParameterSlot>()];
 
             // Everything the statement will contain, so that finishing the plan can tell what is
-            // still read from what merely got as far as being built.
+            // still read from what merely got as far as being built — in the order the clauses were
+            // lowered, so a join or a slot two clauses read is named for the one written first.
             List<PlanNode> fragments = [];
+            if (filter is not null)
+            {
+                fragments.Add(filter);
+            }
+
             foreach (PlanSelectItem item in select)
             {
                 fragments.Add(item.Value);
             }
 
             fragments.AddRange(groupBy);
+            if (having is not null)
+            {
+                fragments.Add(having);
+            }
+
             foreach (PlanOrderItem term in orderBy)
             {
                 if (term.Value is not null)
@@ -158,29 +236,48 @@ namespace Tellma.Core.Queryex.Pipeline
                 }
             }
 
+            // The restrictions only where the row filter still holds them: one already known to be
+            // false leaves them out, along with every join they would have needed.
+            if (!ReferenceEquals(where, filter))
+            {
+                fragments.AddRange(restrictions);
+            }
+
             if (where is not null)
             {
                 fragments.Add(where);
             }
 
-            if (having is not null)
-            {
-                fragments.Add(having);
-            }
+            ImmutableArray<JoinNode> joins = lowerer.Complete(fragments, paging);
 
-            ImmutableArray<JoinNode> joins = lowerer.Complete(
-                fragments,
-                new[] { skip, take }.Where(slot => slot is not null).Select(slot => slot!));
+            // An aggregate query that aggregates something and has no key is a grand total, one
+            // group, which an aggregation or a group-level predicate in the statement tells the
+            // backend (spec 0008 §2.1). Once every aggregation written has folded away and there
+            // is no such predicate, nothing does, and the statement says it with a predicate every
+            // group passes. A select list that never aggregated anything is the degenerate shape
+            // that answers row by row, and stays as written.
+            bool aggregated = _select.Items.Any(static item => item.Expression.ContainsAggregate)
+                || _measures is not null;
+            bool groupsAsOne = _spec.Aggregate
+                && aggregated
+                && groupBy.Length == 0
+                && having is null
+                && !select.Any(static item => PlanWalk.Aggregates(item.Value))
+                && !orderBy.Any(static term => term.Value is not null && PlanWalk.Aggregates(term.Value));
+
             return new RelationalPlan
             {
                 Root = lowerer.Root,
                 Joins = joins,
                 Variables = [.. lowerer.Variables],
-                Bindings = [.. lowerer.Bindings],
-                Parameters = [.. lowerer.Slots],
+                Laterals = [.. lowerer.Laterals],
+
+                // The paging slots last, skip before take, so a page change moves nothing else.
+                Parameters = [.. lowerer.Slots, .. paging],
                 Select = select,
                 Where = where,
                 GroupBy = groupBy,
+                GroupsAsOne = groupsAsOne,
                 Having = having,
                 OrderBy = orderBy,
                 Skip = skip,
@@ -197,17 +294,19 @@ namespace Tellma.Core.Queryex.Pipeline
 
         /// <summary>The context for one mode.</summary>
         /// <param name="mode">The mode.</param>
+        /// <param name="measures">Whether the items are measures.</param>
         /// <returns>The context.</returns>
-        private BindingContext Context(QueryexMode mode)
+        private BindingContext Context(QueryexMode mode, bool measures = false)
         {
             return new BindingContext
             {
                 Schema = _options.Schema,
                 Root = _spec.Root,
                 Mode = mode,
-                LanguageVersion = _options.LanguageVersion,
+                QueryexVersion = _options.QueryexVersion,
                 HasUser = _options.HasUser,
                 HasGroupingKeys = _hasGroupingKeys,
+                Measures = measures,
                 Parameters = _symbols,
             };
         }
@@ -230,13 +329,15 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Filter),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the select list.</summary>
-        /// <param name="syntax">The already-parsed list.</param>
+        /// <param name="syntax">The already-parsed list, folded.</param>
+        /// <param name="folding">What was folded out of the list, or null when nothing was.</param>
         /// <param name="location">Which input it is.</param>
-        private void BindSelect(ExpressionListSyntax syntax, DiagnosticLocation location)
+        private void BindSelect(ExpressionListSyntax syntax, AppliedFolding? folding, DiagnosticLocation location)
         {
             _select = _compiler.Bind(
                 _spec.Select,
@@ -245,7 +346,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 directions: false,
                 _options.Limits,
                 _sink,
-                location);
+                location,
+                folding);
             _nullity.Absorb(_select.Nullity);
             _budget.TryConsumeTypedNodes(_select.NodeCount, default, _sink.Scope(location));
         }
@@ -266,7 +368,8 @@ namespace Tellma.Core.Queryex.Pipeline
                 _sink,
                 DiagnosticLocation.Clause(QueryexClause.Having),
                 _budget,
-                _nullity);
+                _nullity,
+                _omitted);
         }
 
         /// <summary>Binds the ordering list.</summary>
@@ -278,24 +381,270 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             var location = DiagnosticLocation.Clause(QueryexClause.OrderBy);
-            _compiler.TryCompile(
+            if (!_compiler.TryParse(
                 _spec.OrderBy,
+                _options.Limits,
+                _sink,
+                location,
+                out ExpressionListSyntax? syntax))
+            {
+                return;
+            }
+
+            // An ordering term is a value: an omitted parameter in one is the typed absent value.
+            ExpressionListSyntax terms = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            if (folding is not null)
+            {
+                // Folding hands back the very item it was given wherever it changed nothing, so
+                // identity says which terms it rewrote.
+                _rewrittenTerms = new bool[terms.Items.Count];
+                for (int index = 0; index < _rewrittenTerms.Length; index++)
+                {
+                    _rewrittenTerms[index] = !ReferenceEquals(terms.Items[index], syntax!.Items[index]);
+                }
+            }
+
+            BoundExpression bound = _compiler.Bind(
+                _spec.OrderBy,
+                terms,
                 ValueContext(),
                 directions: true,
                 _options.Limits,
                 _sink,
                 location,
-                out _,
-                out BoundExpression? bound);
-
-            if (bound is null)
-            {
-                return;
-            }
+                folding);
 
             _orderBy = bound;
             _nullity.Absorb(bound.Nullity);
             _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
+        }
+
+        /// <summary>Binds the measures.</summary>
+        /// <remarks>
+        ///     Each item binds as a select measure does, at a site of its own. They never become
+        ///     grouping keys: the keys come from the select list alone.
+        /// </remarks>
+        private void BindMeasures()
+        {
+            if (string.IsNullOrWhiteSpace(_spec.Measures))
+            {
+                return;
+            }
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Measures);
+            if (!_compiler.TryParse(
+                _spec.Measures,
+                _options.Limits,
+                _sink,
+                location,
+                out ExpressionListSyntax? syntax))
+            {
+                return;
+            }
+
+            // A measure is a value: an omitted parameter outside its aggregations is the typed
+            // absent value, and inside one folds into the aggregation's condition.
+            ExpressionListSyntax items = _omitted.FoldValues(syntax!, out AppliedFolding? folding);
+            BoundExpression bound = _compiler.Bind(
+                _spec.Measures,
+                items,
+                Context(QueryexMode.Aggregate, measures: true),
+                directions: false,
+                _options.Limits,
+                _sink,
+                location,
+                folding);
+
+            _measures = bound;
+            _nullity.Absorb(bound.Nullity);
+            _budget.TryConsumeTypedNodes(bound.NodeCount, default, _sink.Scope(location));
+        }
+
+        /// <summary>Builds the measures' evaluation trees, and with them the partials they read.</summary>
+        private void PlanMeasures()
+        {
+            if (_measures is null)
+            {
+                return;
+            }
+
+            // A measure is evaluated over cells a host combines, and a cell may combine no row: its
+            // nullity is a grand total's, whatever the statement groups by. The partial columns keep
+            // the statement's own.
+            _measureNullity = new NullityAnalyzer(_options.HasUser, hasGroupingKeys: false).Analyze(_measures.Items);
+            MeasureTreeBuilder trees = new(_measureNullity, _nullity);
+            ImmutableArray<MeasureNode>.Builder roots = ImmutableArray.CreateBuilder<MeasureNode>(_measures.Items.Length);
+            for (int index = 0; index < _measures.Items.Length; index++)
+            {
+                roots.Add(trees.Build(_measures.Items[index].Expression, index));
+            }
+
+            _measureTrees = trees;
+            _measureRoots = roots.MoveToImmutable();
+        }
+
+        /// <summary>
+        ///     Lowers the partials the measures read that no select item already computes, and
+        ///     compiles the measures.
+        /// </summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <param name="select">The lowered select list.</param>
+        /// <returns>One appended select item per partial no select item computes, in first-use order.</returns>
+        private ImmutableArray<PlanSelectItem> LowerPartials(Lowerer lowerer, ImmutableArray<PlanSelectItem> select)
+        {
+            if (_measureTrees is null || _measures is null)
+            {
+                return [];
+            }
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Measures);
+            IReadOnlyList<TypedCall> calls = _measureTrees.Partials;
+            ImmutableArray<PlanSelectItem>.Builder appended = ImmutableArray.CreateBuilder<PlanSelectItem>();
+            ImmutableArray<MeasurePartial>.Builder partials = ImmutableArray.CreateBuilder<MeasurePartial>(calls.Count);
+            ImmutableArray<PartialPlan>.Builder plans = ImmutableArray.CreateBuilder<PartialPlan>(calls.Count);
+
+            for (int index = 0; index < calls.Count; index++)
+            {
+                TypedCall call = calls[index];
+                MeasurePartialKind kind = PartialKindOf(call);
+                QueryexType type = kind is MeasurePartialKind.Sum or MeasurePartialKind.Count
+                    ? QueryexType.QxNumeric
+                    : BoundTypes.ToPublic(call.Type);
+
+                // A select item that is the same aggregation already computes the partial, so its
+                // column is read rather than a second copy appended.
+                int ordinal = MatchingSelectItem(call);
+                PlanValue value;
+                if (ordinal >= 0)
+                {
+                    value = select[ordinal].Value;
+                }
+                else
+                {
+                    // Lowered as a select measure is: no lateral binding outside the aggregation, and
+                    // folding on, so an omitted parameter folds inside the condition as it would there.
+                    lowerer.Begin(
+                        _nullity,
+                        location.Item(_measureTrees.FirstUses[index]),
+                        bindingsAllowed: false,
+                        folding: true);
+
+                    value = lowerer.LowerValue(call);
+                    ordinal = select.Length + appended.Count;
+                    appended.Add(new PlanSelectItem(
+                        value,
+                        StatementEmitter.ColumnName(ordinal),
+                        new QueryexColumn(ordinal, PartialText(call), type, _nullity[call], null, false)));
+                }
+
+                partials.Add(new MeasurePartial(ordinal, kind, type));
+                plans.Add(PlanOf(kind, call, value));
+            }
+
+            ImmutableArray<CompiledMeasure>.Builder items = ImmutableArray.CreateBuilder<CompiledMeasure>(_measures.Items.Length);
+            foreach (BoundItem item in _measures.Items)
+            {
+                items.Add(new CompiledMeasure(
+                    _spec.Measures!.Substring(item.Span.Start, item.Span.Length),
+                    BoundTypes.ToPublic(item.Expression.Type),
+                    _measureNullity![item.Expression]));
+            }
+
+            Measures = new CompiledMeasures(
+                partials.MoveToImmutable(),
+                items.MoveToImmutable(),
+                plans.MoveToImmutable(),
+                _measureRoots,
+                _measureTrees.NodeCount);
+
+            return appended.ToImmutable();
+        }
+
+        /// <summary>Which aggregation a partial is.</summary>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <returns>The kind.</returns>
+        private static MeasurePartialKind PartialKindOf(TypedCall call)
+        {
+            return call.Definition.Name.ToUpperInvariant() switch
+            {
+                "SUM" => MeasurePartialKind.Sum,
+                "COUNT" => MeasurePartialKind.Count,
+                "MIN" => MeasurePartialKind.Min,
+                "MAX" => MeasurePartialKind.Max,
+                _ => throw new InvalidOperationException(
+                    "The aggregation '" + call.Definition.Name + "' is not a partial, and binding refuses it."),
+            };
+        }
+
+        /// <summary>How a partial is held, from the type the statement computes it at.</summary>
+        /// <param name="kind">Which aggregation it is.</param>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <param name="value">The lowered aggregation, which carries the backend type.</param>
+        /// <returns>The plan.</returns>
+        /// <remarks>
+        ///     A least or greatest number is held as the whole type the plan computes it at, or as a
+        ///     decimal whose precision and scale the reader reports: precision alone cannot tell an
+        ///     <c>int</c> from a <c>decimal(10, 0)</c>, and the backend's arithmetic treats them
+        ///     differently.
+        /// </remarks>
+        private static PartialPlan PlanOf(MeasurePartialKind kind, TypedCall call, PlanValue value)
+        {
+            if (kind == MeasurePartialKind.Sum)
+            {
+                return new PartialPlan(kind, PartialStorage.Sum, default);
+            }
+
+            if (kind == MeasurePartialKind.Count)
+            {
+                return new PartialPlan(kind, PartialStorage.Count, default);
+            }
+
+            WholeWidth? width = WidthOf(value.StoreType.Family);
+            PartialStorage storage = call.Type switch
+            {
+                BoundType.Bool => PartialStorage.Bool,
+                BoundType.Numeric => width is null ? PartialStorage.Decimal : PartialStorage.Whole,
+                BoundType.Date => PartialStorage.Date,
+                BoundType.DateTime => PartialStorage.DateTime,
+                BoundType.DateTimeOffset => PartialStorage.DateTimeOffset,
+                BoundType.String => PartialStorage.Text,
+                BoundType.HierarchyId => PartialStorage.Path,
+
+                // Neither is ordered, and neither the absent value nor a failed node reaches a plan.
+                BoundType.Guid or BoundType.Geography or BoundType.Null or BoundType.Error => throw new InvalidOperationException(
+                    "A least or greatest " + BoundTypes.Name(call.Type) + " is not a partial, and binding refuses it."),
+                _ => throw new InvalidOperationException("The type is not known."),
+            };
+
+            return new PartialPlan(kind, storage, storage == PartialStorage.Whole ? width!.Value : default);
+        }
+
+        /// <summary>The whole type a stored type is, when it is one.</summary>
+        /// <param name="family">The stored type's family.</param>
+        /// <returns>The whole type, or null for any other family.</returns>
+        private static WholeWidth? WidthOf(QueryexStoreFamily family)
+        {
+            return family is QueryexStoreFamily.QxTinyInt ? WholeWidth.TinyInt
+                : family is QueryexStoreFamily.QxSmallInt ? WholeWidth.SmallInt
+                : family is QueryexStoreFamily.QxInt ? WholeWidth.Int
+                : family is QueryexStoreFamily.QxBigInt ? WholeWidth.BigInt
+                : null;
+        }
+
+        /// <summary>The text a partial's column is described by.</summary>
+        /// <param name="call">The partial's aggregation.</param>
+        /// <returns>The text: the aggregation as written, or for a part of an average, the part written out.</returns>
+        private string PartialText(TypedCall call)
+        {
+            string measures = _spec.Measures!;
+            if (!_measureTrees!.IsSynthesized(call))
+            {
+                return measures.Substring(call.Span.Start, call.Span.Length);
+            }
+
+            IEnumerable<string> arguments = call.Arguments.Select(
+                argument => measures.Substring(argument.Span.Start, argument.Span.Length));
+            return call.Definition.Name + "(" + string.Join(", ", arguments) + ")";
         }
 
         /// <summary>Works out which select items become grouping keys.</summary>
@@ -329,15 +678,35 @@ namespace Tellma.Core.Queryex.Pipeline
                 BoundItem item = _orderBy.Items[index];
                 for (int earlier = 0; earlier < index; earlier++)
                 {
-                    if (TypedEquivalence.AreEquivalent(
+                    if (!TypedEquivalence.AreEquivalent(
                         item.Expression,
                         _orderBy.Items[earlier].Expression))
+                    {
+                        continue;
+                    }
+
+                    if (WasRewritten(index) || WasRewritten(earlier))
+                    {
+                        // Two terms that are the same once a parameter was left out of one of them,
+                        // and that as a rule differed as written. Nobody mistyped anything, so there
+                        // is nothing to report: the later one could not change the order, and it is
+                        // left out of the statement because the backend refuses the repeat.
+                        _repeatedTerms.Add(index);
+                    }
+                    else
                     {
                         // The backend refuses the same column twice in one ordering, and a second
                         // mention could not change the order anyway, so it is a typo either way.
                         scope.Report(DiagnosticCodes.DuplicateOrderingTerm, item.Span);
-                        break;
                     }
+
+                    break;
+                }
+
+                if (_repeatedTerms.Contains(index))
+                {
+                    // Whatever else there is to say about it was said about the term it repeats.
+                    continue;
                 }
 
                 if (_spec.Aggregate && !OrdersWithinGrouping(item.Expression))
@@ -345,6 +714,14 @@ namespace Tellma.Core.Queryex.Pipeline
                     scope.Report(DiagnosticCodes.OrderingAltersGrouping, item.Span);
                 }
             }
+        }
+
+        /// <summary>Whether leaving parameters out rewrote an ordering term.</summary>
+        /// <param name="index">The term's position.</param>
+        /// <returns>True when it did.</returns>
+        private bool WasRewritten(int index)
+        {
+            return index < _rewrittenTerms.Length && _rewrittenTerms[index];
         }
 
         /// <summary>Whether an ordering term leaves the grouping alone.</summary>
@@ -402,6 +779,86 @@ namespace Tellma.Core.Queryex.Pipeline
 
             lowerer.Begin(_nullity, DiagnosticLocation.Clause(QueryexClause.Filter), bindingsAllowed: true);
             return lowerer.LowerPredicate(_filter);
+        }
+
+        /// <summary>Lowers the key-set restrictions.</summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <returns>One conjunct per restriction, in the order supplied.</returns>
+        private ImmutableArray<PlanKeySetRestriction> LowerRestrictions(Lowerer lowerer)
+        {
+            ImmutableArray<PlanKeySetRestriction>.Builder conjuncts =
+                ImmutableArray.CreateBuilder<PlanKeySetRestriction>(_restrictions.Length);
+
+            var location = DiagnosticLocation.Clause(QueryexClause.Restrictions);
+            for (int index = 0; index < _restrictions.Length; index++)
+            {
+                // Begun with a location of its own, so a join ceiling a restriction's path pushes
+                // over is reported against that restriction rather than against the filter.
+                ResolvedRestriction restriction = _restrictions[index];
+                lowerer.Begin(_nullity, location.Item(index), bindingsAllowed: true);
+                conjuncts.Add(lowerer.LowerRestriction(
+                    restriction.Navigations,
+                    restriction.Property,
+                    restriction.TableSource));
+            }
+
+            return conjuncts.MoveToImmutable();
+        }
+
+        /// <summary>Conjoins the key-set restrictions after the row-level predicate.</summary>
+        /// <param name="filter">The lowered row-level predicate, when there is one.</param>
+        /// <param name="restrictions">The lowered restrictions.</param>
+        /// <returns>The row filter, or null when there is none.</returns>
+        /// <remarks>
+        ///     Each restriction is one more conjunct at the top of the row filter, which is the only
+        ///     place its membership test is sound: neither true nor false keeps a row out there
+        ///     exactly as false does. A filter already known to be true adds nothing, and one already
+        ///     known to be false keeps every row out whatever the restrictions say — so the
+        ///     restrictions are left out, and pruning drops the joins they would have needed.
+        /// </remarks>
+        private static PlanPredicate? Conjoin(
+            PlanPredicate? filter,
+            ImmutableArray<PlanKeySetRestriction> restrictions)
+        {
+            if (restrictions.IsEmpty || filter is PlanConstantPredicate { Value: false })
+            {
+                return filter;
+            }
+
+            List<PlanPredicate> conjuncts = [];
+            if (filter is not null and not PlanConstantPredicate { Value: true })
+            {
+                conjuncts.Add(filter);
+            }
+
+            conjuncts.AddRange(restrictions);
+            return conjuncts.Count == 1
+                ? conjuncts[0]
+                : new PlanJunction(default, true, [.. conjuncts]);
+        }
+
+        /// <summary>Reads the undeclared columns after the compiled select items.</summary>
+        /// <param name="lowerer">The lowering.</param>
+        /// <param name="first">The position of the first one among the result columns.</param>
+        /// <returns>One select item per column, in the order supplied.</returns>
+        private ImmutableArray<PlanSelectItem> UndeclaredColumns(Lowerer lowerer, int first)
+        {
+            ImmutableArray<PlanSelectItem>.Builder items =
+                ImmutableArray.CreateBuilder<PlanSelectItem>(_spec.UndeclaredColumns.Count);
+
+            for (int index = 0; index < _spec.UndeclaredColumns.Count; index++)
+            {
+                // Text that may be absent, with no path: the schema says nothing about the column,
+                // so nothing stronger can be promised about it.
+                string name = _spec.UndeclaredColumns[index];
+                int ordinal = first + index;
+                items.Add(new PlanSelectItem(
+                    lowerer.UndeclaredColumn(name),
+                    StatementEmitter.ColumnName(ordinal),
+                    new QueryexColumn(ordinal, name, QueryexType.QxString, QueryexNullity.Nullable, null, false)));
+            }
+
+            return items.MoveToImmutable();
         }
 
         /// <summary>Lowers the select list, and the grouping keys along with it.</summary>
@@ -479,6 +936,12 @@ namespace Tellma.Core.Queryex.Pipeline
 
             for (int index = 0; index < _orderBy.Items.Length; index++)
             {
+                if (_repeatedTerms.Contains(index))
+                {
+                    // The same as an earlier term once the omitted parameters were folded out.
+                    continue;
+                }
+
                 BoundItem item = _orderBy.Items[index];
                 bool descending = item.Direction == QueryexDirection.Descending;
 
@@ -569,7 +1032,11 @@ namespace Tellma.Core.Queryex.Pipeline
             }
 
             terms.Add(new PlanOrderItem(
-                new PlanColumn(default, _root!, _spec.Root.Key),
+                new PlanColumn(
+                    default,
+                    _root!,
+                    _spec.Root.Key,
+                    new PlanOrigin(default, DiagnosticLocation.Clause(QueryexClause.OrderBy))),
                 null,
                 false));
         }

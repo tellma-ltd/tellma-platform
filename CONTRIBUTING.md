@@ -1,6 +1,312 @@
 # Contributing to the Tellma Platform
 
-_Coming soon!_
+## Test tiers
+
+Tests run in two tiers. The **PR tier** gates every pull request and every push to one
+(`.github/workflows/ci.yml`). It also runs on every push to `main`, and on a push to a `pc/**`
+working branch whose head commit is an integration commit (its message contains `: integrate`);
+any other push to a `pc/**` branch skips every job. The **nightly tier** holds what is too slow,
+too broad or too timing-sensitive for that: full viewport and language matrices, Firefox and
+WebKit, performance budgets, soaks and long waits (`.github/workflows/nightly-tier.yml`). It also
+runs three integration suites on Windows, which the PR tier runs on Linux only. Tests reach the
+nightly tier only through the tags below; everything untagged is PR tier.
+
+Before tagging a slow test nightly, try to make it fast: a wall-clock wait (a watchdog, a poll
+interval, an expiry) is driven by a fake clock or a test `TimeProvider` wherever that is possible.
+
+Across work that may load a chunk with `import()`, or that waits on the browser's own storage
+(CacheStorage, IndexedDB), a client unit spec waits on the state the work produces, never on a
+number of task turns: the work goes on only once the chunk's first fetch or the storage's answer
+lands, and under load either can take far longer than any fixed count of turns. A fake clock does
+not move them either, so under fake timers an advance of any length is still such a count: it
+yields one real task, and one more for each timer it fires. The core specs wait with
+`tmSettleUntil(condition)`, or, under fake timers, with `tmWaitUntil(condition, () =>
+vi.advanceTimersByTimeAsync(0))`, both in `client/projects/core/tellma-core/src/routes/tm-app.testing.util.ts`.
+Each fails after a real 4 s deadline (`TM_WAIT_DEADLINE_MS`, below the 5 s test timeout) with an
+error naming the condition, and stops waiting there; `vi.waitFor`, whose own budget is 1 s, is not
+such a wait. A fixed settle (`tmSettle()`) stays right for work that loads no chunk and waits on no
+storage. The testing providers keep the client's storage in memory, `TmClientCache` included, so a
+session's clean-up waits on no storage there and leaves the shared test page's stores alone; a
+spec that provides the real `TmClientCache` waits on its sweep as above, and removes what it
+created.
+
+### Tags
+
+| Where | Tag | Meaning |
+|---|---|---|
+| .NET (xUnit) | `[Trait("Category", "Nightly")]` | Runs in the nightly tier only. Add it beside the test's own category (`Integration`, `E2E`), never instead of it. |
+| Playwright | `@nightly` | Runs in the nightly tier only, on Chromium. |
+| Playwright | `@perf` | A timing or performance budget. Runs in the nightly tier only, on Chromium. |
+| Playwright | `@quarantine` | A flaky test taken out of the PR tier. Runs in the nightly tier, on Chromium, so the flake stays visible. See [Flaky tests](#flaky-tests). |
+| Playwright | `@cross-engine` | Runs on Chromium in the PR tier, and on Chromium, Firefox and WebKit in the nightly tier. Combine it with `@nightly` or `@perf` to run a nightly-only test on every engine. |
+
+A Playwright tag goes at the start of the test or `describe` title (`test('@cross-engine pastes …')`,
+which tags every test inside a tagged `describe`) or in the `tag` option
+(`test('pastes …', { tag: '@nightly' }, …)`). The tier filters match these names as text, so no
+other tag or title word may begin with `@nightly`, `@perf` or `@quarantine`.
+
+Suites marked `[Trait("Live", "true")]` talk to real third-party services and belong to neither
+tier: they need credentials and run in `.github/workflows/nightly.yml`.
+
+### Flaky tests
+
+CI fails a run in which any Playwright test fails first and passes on retry: a flaky test never
+turns a red run green. When a test proves flaky, quarantine it with the `@quarantine` tag (in the
+`tag` option, so its title stays stable) and a comment saying how it failed. That takes it out of
+the PR tier. The nightly tier runs every quarantined test ten times in a job of its own, which
+never decides the nightly verdict, and lists each one in that job's summary with how many runs
+passed, flaked or failed. That list is the quarantine's record: every test on it is tracked there
+each night, and one that fails every run is no longer a flake but broken.
+
+A quarantined test is fixed, never left: the fix removes the tag in the same change, and the tag
+is not a way to retire a test that is no longer wanted.
+
+Most flakes are a test that reads, or acts on, a state the page has not reached yet. A slow runner
+widens that gap from a frame to hundreds of milliseconds. Wait on the page's own signals, never on
+the clock:
+
+- Assert with web-first assertions (`expect(locator)…`, `expect.poll`), not one-shot reads.
+- Call `appStable(page)` (`client/e2e/support/settle.ts`) before reading or acting on state that
+  the next render updates but the current DOM cannot tell apart from the previous one. Examples:
+  the model dump, a highlight that two successive queries share, and focus that a pending render
+  could still move. The grid and picker model helpers already call it.
+- Call `animationsSettled(locator)` before measuring an element that has an enter animation.
+- Keep an in-flight state (a spinner, a pending cell, a panel measured while loading) on screen
+  with the story's held-response gate (`client/e2e/support/held-responses.ts`) until it has been
+  asserted. Do not give the request a latency that the assertion then has to race.
+- After a gesture that opens a list, wait for the rows before you press a key that moves through
+  them.
+- To test input that arrives faster than the page renders (a barcode scanner, a text expander, a
+  stalled main thread), dispatch the burst in one task with `pressInOneTask(page, keys)`
+  (`client/e2e/support/keyboard-burst.ts`). Never rely on pressing keys quickly: whether a render
+  slips in between two Playwright key presses is itself a matter of timing.
+- A gesture that must fit inside a time window is never two separate Playwright actions. For a
+  window the browser measures (a double-tap), dispatch the touch events over CDP with explicit
+  `timestamp`s, as `tapTwice()` in `grid-touch.spec.ts` does. For a window the page measures
+  with a timer (a hover grace, a long-press delay), pause Playwright's clock (`page.clock`) around
+  the gesture and advance it explicitly.
+- Run one axe scan per test (`expectNoAxeViolations`). A test that walks through several states
+  replays the steps to each state in a test of its own, so no test carries several scans against
+  its timeout.
+
+### PR tier
+
+Run these from the repository root before opening or updating a pull request. CI runs the same
+commands with `-c Release`, the unit suites on Linux and Windows, and the integration suites in a
+single solution-wide run on Linux only; the nightly tier runs two of them on Windows. The client
+gates run on Linux and Windows too; the client e2e suite runs on Linux.
+
+```bash
+dotnet build Tellma.slnx
+```
+
+CI runs that build through `eng/dotnet-build/build-with-evidence.sh`, which stops a build still
+running after 12 minutes (a normal one takes 3 to 4) and keeps its binary log, a time-stamped text
+log and the compiler's and MSBuild nodes' own diagnostics. When the build fails, the job uploads
+them as the `build-evidence-<OS>` artifact, and a stopped build's step log lists what the stop
+ended and the projects and compilations it was still waiting on. The script runs locally too
+(`eng/dotnet-build/README.md`):
+
+```bash
+bash eng/dotnet-build/build-with-evidence.sh --timeout 30m --evidence artifacts/build-evidence -- Tellma.slnx
+```
+
+A machine that runs several builds at once (one per worktree, say) can see a build fail with error
+MSB4166, "Child node exited prematurely", and no failure report. MSBuild keeps a build's worker
+nodes alive for the next build of the same user and SDK to reuse, as children of the process that
+started them, so a tool that ends a process tree (Playwright stopping a web server, `taskkill /T`,
+an agent stopping a background command) can end nodes that another build is using at that moment.
+The cheaper remedy is a node handshake salt per worktree. MSBuild connects only to nodes started
+with the same `MSBUILDNODEHANDSHAKESALT`, so setting it to a value of the worktree's own, in the
+shell every build there starts from, keeps reuse within the worktree and keeps other worktrees'
+builds off its nodes:
+
+```bash
+export MSBUILDNODEHANDSHAKESALT="$(git rev-parse --show-toplevel)"
+```
+
+The first build after setting it starts its own nodes and later ones reuse them; on a 20-core
+development machine neither was measurably slower than a build without the salt. Each worktree
+then keeps its own idle nodes. Two builds in the same worktree still share nodes, so stopping one
+there can still end the other's. `-nodeReuse:false` on a build, or `MSBUILDDISABLENODEREUSE=1` in
+its environment, keeps that one build to nodes of its own at the cost of starting them on every
+build: a full Release rebuild of the solution took 40 to 80% longer on the same machine. The Acme
+e2e host builds that way, so that stopping it leaves no reusable nodes in the tree it ends.
+
+```bash
+dotnet format Tellma.slnx --verify-no-changes
+```
+
+```bash
+dotnet test Tellma.slnx --no-build --filter "Category!=Integration&Category!=E2E&Category!=Nightly&Live!=true"
+```
+
+CI also builds the analyzer probe on Linux and Windows and expects it to fail with exactly the six
+platform analyzer errors, `TELLMA0001` to `TELLMA0006`, and no other error. The probe holds one
+violation of each rule and is not in the solution, so the solution's build stays clean:
+
+```bash
+bash test/core/assets/Tellma.Core.Analyzers.Probe/verify-probe.sh test/core/assets/Tellma.Core.Analyzers.Probe artifacts/analyzer-probe.log
+```
+
+On Linux, CI runs the unit-suite command with `TELLMA_REQUIRE_PINNED_ICU=1`. The test that regenerates the
+pinned culture data (`eng/culture-data`) needs the ICU release the data came from and skips on any
+other; with the variable set it fails instead, so a CI runner that moves to another ICU release is
+noticed. Leave the variable unset on a development machine. It also sets `TELLMA_REQUIRE_LANDLOCK=1`:
+the imaging tests that probe a PDF worker's filesystem confinement skip on a Linux kernel without
+Landlock (or under a container runtime that refuses its system calls), and with the variable set
+they fail instead.
+
+The integration suites need Docker (they bring up SQL Server with Testcontainers), or
+`TELLMA_TEST_SQL` set to a connection string to an existing server, such as LocalDB
+(`Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True`); a run
+against an existing server drops the databases it created. Run them one test project at a time:
+
+```bash
+dotnet test <test project> --no-build --filter "Category=Integration&Category!=Nightly&Live!=true"
+```
+
+CI adds `--logger "console;verbosity=normal" -- xUnit.DiagnosticMessages=true` to every `dotnet test`
+command. At the default verbosity a fixture whose cleanup fails, such as the end-of-suite database
+drops, shows only its exception type, and the lines a fixture writes outside a test (a retried drop,
+say) are dropped. Add the same flags to see them locally.
+
+The identity browser scenarios need Playwright's Chromium for .NET, installed once with
+`pwsh test/apps/Tellma.Identity.E2E/bin/Debug/net10.0/playwright.ps1 install chromium`:
+
+```bash
+dotnet test test/apps/Tellma.Identity.E2E --no-build --filter "Category=E2E&Category!=Nightly"
+```
+
+The client gates run from the repository root, which is the root of the one pnpm workspace:
+`pnpm-workspace.yaml` lists `client/` (the Angular workspace of every `@tellma/*` package), the
+Node packages inside it and every distribution's Client project, and one lockfile
+(`pnpm-lock.yaml`) resolves them all, with a single copy of Angular. Install once at the root, with
+the lockfile as committed:
+
+```bash
+pnpm install --frozen-lockfile
+```
+
+Change a dependency only through the `catalog` in `pnpm-workspace.yaml` (a package names it with
+the specifier `catalog:`), then run `pnpm install` at the root and commit the regenerated
+`pnpm-lock.yaml`; never edit the lockfile by hand. The one entry outside the catalog is the `sass`
+override in the same file, which keeps a single sass (and so a single Vite and Vitest) in the
+graph: when `@angular/build` changes, set it to the sass version `@angular/build` pins, since
+`pnpm run lint:test` fails until the two match. The root `package.json` scripts forward to
+`client/`, so each gate below works from either folder. Run `pnpm run assets:generate` first after
+switching branches: the tokens CSS and `@tellma/core`'s boot script template are generated, not
+committed (`pnpm run tokens:build-css` writes the tokens CSS alone).
+
+```bash
+pnpm run lint
+pnpm run typecheck
+pnpm run typecheck:emitted
+pnpm run lint:test
+pnpm run tokens:check
+pnpm run build
+pnpm run test
+pnpm run api:check
+pnpm run docs:build
+pnpm run size:check
+pnpm run build:showcase
+```
+
+The PR-tier end-to-end suite runs on the Chromium engine only, desktop and touch, with the
+nightly-tier tags excluded. Install the browser once with
+`pnpm --dir client exec playwright install chromium`. Call the script directly, so the grep
+pattern reaches Playwright without a second round of shell parsing; it runs from any folder, and
+relative path arguments resolve against `client/`.
+
+```bash
+node client/scripts/e2e.mjs --project chromium --project touch --grep-invert "@nightly|@perf|@quarantine"
+```
+
+With the `CI` environment variable set, as CI sets it, the suite runs against the production
+build of the showcase rather than the dev server. The script builds that bundle before Playwright
+starts, unless the bundle is already newer than every source file (as it is right after
+`pnpm run build:showcase`), so the web server only has to serve it.
+
+The reference distribution's client app builds end to end through MSBuild, on Linux and Windows:
+publishing the web project builds the Migrator, runs `tellma-client build` through the Client esproj
+(any build problem fails it) and copies the app into `wwwroot`. Then its lint and unit tests, which
+need the `generated/` folder the build writes:
+
+```bash
+dotnet publish distributions/acme/src/Tellma.Distro.Acme.Web -c Release -o artifacts/acme-web
+pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client run lint
+pnpm --dir distributions/acme/src/Tellma.Distro.Acme.Client test
+```
+
+The reference distribution's browser suite (`distributions/acme/test/Tellma.Distro.Acme.E2E`) runs
+on the Acme e2e host: Playwright's web server brings up SQL Server (LocalDB on Windows, a Docker
+container elsewhere, or the server `TELLMA_E2E_SQL` names), migrates it, builds the client app and
+runs the web host in Development over the built app. Install Chromium once with
+`pnpm --dir distributions/acme/test/Tellma.Distro.Acme.E2E exec playwright install chromium`:
+
+```bash
+node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep-invert "@nightly|@perf|@quarantine"
+```
+
+The client build takes about five minutes; with `TELLMA_E2E_WEBROOT` set to an app already built,
+such as the published `wwwroot` above, the host serves it instead, as CI does. CI runs the suite
+on Linux; the nightly tier runs it on Windows too. The web host's sign-in calls its own HTTPS
+origin, so .NET must trust the ASP.NET development certificate: the host trusts it on Linux, and
+on Windows, where trusting asks for confirmation, run `dotnet dev-certs https --trust` once
+yourself. The nightly Windows leg cannot answer that prompt, so it adds the certificate to
+`LocalMachine\Root` as the runner's administrator before the suite starts.
+
+### Nightly tier
+
+`nightly-tier.yml` runs each night on the `platform-core` branch, and can be started by hand with
+`gh workflow run nightly-tier.yml --ref platform-core`. A `pc/**` working branch runs it only when
+dispatched by hand the same way (`--ref pc/<id>`), never on a schedule or a push, so a fix to a
+failure only the nightly tier sees can be proven on its branch before it merges; each branch's
+runs queue in a group of their own. Its commands also run locally; an empty tier passes.
+
+```bash
+dotnet test Tellma.slnx --filter "Category=Nightly&Live!=true"
+```
+
+CI runs that command on Linux, and on Windows runs the nightly tests that are neither integration
+nor E2E tests, as the PR tier does for the unit suites:
+
+```bash
+dotnet test Tellma.slnx --filter "Category=Nightly&Category!=Integration&Category!=E2E&Live!=true"
+```
+
+The PR tier runs no integration tests on Windows. The nightly tier runs the platform's, the web
+surface's and the reference distribution's integration suites there, against LocalDB, with the PR
+tier's integration filter. On Windows, with `TELLMA_TEST_SQL` set to
+`Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True`:
+
+```bash
+dotnet test test/core/Tellma.Core.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+dotnet test test/core/Tellma.Core.AspNetCore.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+dotnet test distributions/acme/test/Tellma.Distro.Acme.IntegrationTests --filter "Category=Integration&Category!=Nightly&Live!=true"
+```
+
+The other integration suites, and every Nightly integration test, run on Linux only.
+
+From the repository root, with all three browsers installed
+(`pnpm --dir client exec playwright install chromium firefox webkit`):
+
+```bash
+node client/scripts/e2e.mjs --grep "@nightly|@cross-engine|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+```
+
+The Acme browser suite's nightly gates (installability, the cold launch on Slow 4G and the warm
+chrome under CPU throttling), from the repository root with Chromium installed:
+
+```bash
+node distributions/acme/test/Tellma.Distro.Acme.E2E/scripts/e2e.mjs --grep "@nightly|@perf" --grep-invert "@quarantine" --pass-with-no-tests
+```
+
+The quarantined tests, ten runs each:
+
+```bash
+node client/scripts/e2e.mjs --grep "@quarantine" --repeat-each 10 --pass-with-no-tests
+```
 
 ## Contributor License Agreement
 

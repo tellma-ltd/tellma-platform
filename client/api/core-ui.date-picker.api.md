@@ -10,6 +10,7 @@ import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 
@@ -17,7 +18,7 @@ import { ValidationError } from '@angular/forms/signals';
 export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | null> {
     constructor();
     protected readonly activeCalendar: Signal<TmCalendar>;
-    protected readonly anchored: _tellma_core_ui_private.TmAnchoredOverlay;
+    protected readonly anchored: _tellma_core_ui_overlay.TmAnchoredOverlay;
     readonly ariaDescribedby: _angular_core.InputSignal<string | null>;
     readonly ariaLabel: _angular_core.InputSignal<string | null>;
     readonly calendar: _angular_core.InputSignal<TmCalendar | undefined>;
@@ -34,6 +35,10 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly errors: _angular_core.InputSignal<readonly ValidationError.WithOptionalFieldTree[]>;
     focus(options?: FocusOptions): void;
     protected readonly formField: TmFormField | null;
+    protected readonly glyphs: {
+        readonly error: lucide.IconNode;
+        readonly calendar: lucide.IconNode;
+    };
     readonly invalid: _angular_core.InputSignalWithTransform<boolean, unknown>;
     isPopupOpen(): boolean;
     protected readonly l10n: TmL10n;
@@ -68,6 +73,7 @@ export class TmDatePicker implements TmFormFieldControl, TmCellEditor<string | n
     readonly value: _angular_core.ModelSignal<string | null>;
     static ɵcmp: _angular_core.ɵɵComponentDeclaration<TmDatePicker, "tm-date-picker", never, { "value": { "alias": "value"; "required": false; "isSignal": true; }; "disabled": { "alias": "disabled"; "required": false; "isSignal": true; }; "readonly": { "alias": "readonly"; "required": false; "isSignal": true; }; "required": { "alias": "required"; "required": false; "isSignal": true; }; "invalid": { "alias": "invalid"; "required": false; "isSignal": true; }; "touched": { "alias": "touched"; "required": false; "isSignal": true; }; "dirty": { "alias": "dirty"; "required": false; "isSignal": true; }; "pending": { "alias": "pending"; "required": false; "isSignal": true; }; "minDate": { "alias": "minDate"; "required": false; "isSignal": true; }; "maxDate": { "alias": "maxDate"; "required": false; "isSignal": true; }; "errors": { "alias": "errors"; "required": false; "isSignal": true; }; "calendar": { "alias": "calendar"; "required": false; "isSignal": true; }; "dateStyle": { "alias": "dateStyle"; "required": false; "isSignal": true; }; "placeholder": { "alias": "placeholder"; "required": false; "isSignal": true; }; "ariaLabel": { "alias": "aria-label"; "required": false; "isSignal": true; }; "ariaDescribedby": { "alias": "aria-describedby"; "required": false; "isSignal": true; }; }, { "value": "valueChange"; "touch": "touch"; "picked": "picked"; }, never, never, true, never>;
     static ɵfac: _angular_core.ɵɵFactoryDeclaration<TmDatePicker, never>;
+    // @internal
 }
 
 ```

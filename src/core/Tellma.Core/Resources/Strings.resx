@@ -1,0 +1,2707 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <!-- Calendars: the names of the calendar value set (core.Calendar) -->
+  <data name="Calendar_gc" xml:space="preserve">
+    <value>Gregorian</value>
+  </data>
+  <data name="Calendar_uq" xml:space="preserve">
+    <value>Umm al-Qura</value>
+  </data>
+  <data name="Calendar_et" xml:space="preserve">
+    <value>Ethiopian</value>
+  </data>
+  <!-- Calendars: month names of the calendars the framework knows no names for -->
+  <data name="Calendar_uq_Month1" xml:space="preserve">
+    <value>Muharram</value>
+  </data>
+  <data name="Calendar_uq_Month2" xml:space="preserve">
+    <value>Safar</value>
+  </data>
+  <data name="Calendar_uq_Month3" xml:space="preserve">
+    <value>Rabiʻ I</value>
+  </data>
+  <data name="Calendar_uq_Month4" xml:space="preserve">
+    <value>Rabiʻ II</value>
+  </data>
+  <data name="Calendar_uq_Month5" xml:space="preserve">
+    <value>Jumada I</value>
+  </data>
+  <data name="Calendar_uq_Month6" xml:space="preserve">
+    <value>Jumada II</value>
+  </data>
+  <data name="Calendar_uq_Month7" xml:space="preserve">
+    <value>Rajab</value>
+  </data>
+  <data name="Calendar_uq_Month8" xml:space="preserve">
+    <value>Shaʻban</value>
+  </data>
+  <data name="Calendar_uq_Month9" xml:space="preserve">
+    <value>Ramadan</value>
+  </data>
+  <data name="Calendar_uq_Month10" xml:space="preserve">
+    <value>Shawwal</value>
+  </data>
+  <data name="Calendar_uq_Month11" xml:space="preserve">
+    <value>Dhuʻl-Qiʻdah</value>
+  </data>
+  <data name="Calendar_uq_Month12" xml:space="preserve">
+    <value>Dhuʻl-Hijjah</value>
+  </data>
+  <data name="Calendar_et_Month1" xml:space="preserve">
+    <value>Meskerem</value>
+  </data>
+  <data name="Calendar_et_Month2" xml:space="preserve">
+    <value>Tekemt</value>
+  </data>
+  <data name="Calendar_et_Month3" xml:space="preserve">
+    <value>Hedar</value>
+  </data>
+  <data name="Calendar_et_Month4" xml:space="preserve">
+    <value>Tahsas</value>
+  </data>
+  <data name="Calendar_et_Month5" xml:space="preserve">
+    <value>Ter</value>
+  </data>
+  <data name="Calendar_et_Month6" xml:space="preserve">
+    <value>Yekatit</value>
+  </data>
+  <data name="Calendar_et_Month7" xml:space="preserve">
+    <value>Megabit</value>
+  </data>
+  <data name="Calendar_et_Month8" xml:space="preserve">
+    <value>Miazia</value>
+  </data>
+  <data name="Calendar_et_Month9" xml:space="preserve">
+    <value>Genbot</value>
+  </data>
+  <data name="Calendar_et_Month10" xml:space="preserve">
+    <value>Sene</value>
+  </data>
+  <data name="Calendar_et_Month11" xml:space="preserve">
+    <value>Hamle</value>
+  </data>
+  <data name="Calendar_et_Month12" xml:space="preserve">
+    <value>Nehasse</value>
+  </data>
+  <data name="Calendar_et_Month13" xml:space="preserve">
+    <value>Pagumen</value>
+  </data>
+  <!-- Shared labels: the fallback of every entity property and navigation of these names -->
+  <data name="Name" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="Code" xml:space="preserve">
+    <value>Code</value>
+  </data>
+  <data name="Description" xml:space="preserve">
+    <value>Description</value>
+  </data>
+  <data name="IsActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="CreatedAt" xml:space="preserve">
+    <value>Created at</value>
+  </data>
+  <data name="CreatedBy" xml:space="preserve">
+    <value>Created by</value>
+  </data>
+  <data name="ModifiedAt" xml:space="preserve">
+    <value>Modified at</value>
+  </data>
+  <data name="ModifiedBy" xml:space="preserve">
+    <value>Modified by</value>
+  </data>
+  <data name="Parent" xml:space="preserve">
+    <value>Parent</value>
+  </data>
+  <data name="Id" xml:space="preserve">
+    <value>ID</value>
+  </data>
+  <data name="CreatedById" xml:space="preserve">
+    <value>Created by</value>
+  </data>
+  <data name="ModifiedById" xml:space="preserve">
+    <value>Modified by</value>
+  </data>
+  <data name="SubtreeCount" xml:space="preserve">
+    <value>Branch size</value>
+  </data>
+  <data name="ActiveSubtreeCount" xml:space="preserve">
+    <value>Active branch size</value>
+  </data>
+  <!-- Actions: the labels of the access actions, and the fallback label of every entity action of these names -->
+  <data name="Action_Read" xml:space="preserve">
+    <value>Read</value>
+  </data>
+  <data name="Action_Save" xml:space="preserve">
+    <value>Create and edit</value>
+  </data>
+  <data name="Action_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Action_Activate" xml:space="preserve">
+    <value>Activate</value>
+  </data>
+  <data name="Action_Deactivate" xml:space="preserve">
+    <value>Deactivate</value>
+  </data>
+  <data name="Action_Invite" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Action_Credentials" xml:space="preserve">
+    <value>Credentials</value>
+  </data>
+  <data name="Action_Preferences" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Action_Share" xml:space="preserve">
+    <value>Share</value>
+  </data>
+  <data name="Action_Publish" xml:space="preserve">
+    <value>Publish</value>
+  </data>
+  <data name="Action_Transfer" xml:space="preserve">
+    <value>Transfer ownership</value>
+  </data>
+  <data name="Action_Retry" xml:space="preserve">
+    <value>Retry</value>
+  </data>
+  <data name="Action_Cancel" xml:space="preserve">
+    <value>Stop</value>
+  </data>
+  <data name="Action_Resume" xml:space="preserve">
+    <value>Resume</value>
+  </data>
+  <!-- Workbook actions: the labels of the platform's exports and imports on every stack, and of their request's fields -->
+  <data name="Action_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="Action_ExportForImport" xml:space="preserve">
+    <value>Export for import</value>
+  </data>
+  <data name="Arguments" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Children" xml:space="preserve">
+    <value>Collections</value>
+  </data>
+  <data name="Columns" xml:space="preserve">
+    <value>Columns</value>
+  </data>
+  <data name="Filters" xml:space="preserve">
+    <value>Filters</value>
+  </data>
+  <data name="Ids" xml:space="preserve">
+    <value>Records</value>
+  </data>
+  <data name="IncludeInactive" xml:space="preserve">
+    <value>Include inactive</value>
+  </data>
+  <data name="NamedFilters" xml:space="preserve">
+    <value>Named filters</value>
+  </data>
+  <data name="OrderBy" xml:space="preserve">
+    <value>Order by</value>
+  </data>
+  <data name="ReferenceKeys" xml:space="preserve">
+    <value>Reference keys</value>
+  </data>
+  <data name="Search" xml:space="preserve">
+    <value>Search</value>
+  </data>
+  <data name="Action_InspectImport" xml:space="preserve">
+    <value>Inspect import</value>
+  </data>
+  <data name="ColumnMappings" xml:space="preserve">
+    <value>Column mappings</value>
+  </data>
+  <data name="FileId" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="SheetMappings" xml:space="preserve">
+    <value>Sheet mappings</value>
+  </data>
+  <data name="Action_Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="Mode" xml:space="preserve">
+    <value>Mode</value>
+  </data>
+  <data name="RowKey" xml:space="preserve">
+    <value>Row key</value>
+  </data>
+  <data name="IgnoreUnmappedColumns" xml:space="preserve">
+    <value>Ignore unmatched columns</value>
+  </data>
+  <data name="IgnoreSheetStamps" xml:space="preserve">
+    <value>Ignore the file’s modification times</value>
+  </data>
+  <!-- Entities: the create label and the display name of a record without one -->
+  <data name="Entity_New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="Entity_DisplayNameFallback" xml:space="preserve">
+    <value>#{id}</value>
+  </data>
+  <!-- Files, the typed settings, the setting values and the users' activity stamps -->
+  <data name="Core_Blob" xml:space="preserve">
+    <value>File</value>
+  </data>
+  <data name="Core_Blob_Plural" xml:space="preserve">
+    <value>Files</value>
+  </data>
+  <data name="Core_Blob_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Blob_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_Blob_ContentType" xml:space="preserve">
+    <value>Content type</value>
+  </data>
+  <data name="Core_Blob_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_Blob_Size" xml:space="preserve">
+    <value>Size</value>
+  </data>
+  <data name="Core_Blob_Width" xml:space="preserve">
+    <value>Width</value>
+  </data>
+  <data name="Core_Blob_Height" xml:space="preserve">
+    <value>Height</value>
+  </data>
+  <data name="Core_Blob_Variants" xml:space="preserve">
+    <value>Variants</value>
+  </data>
+  <data name="Core_Blob_CommittedAt" xml:space="preserve">
+    <value>Attached at</value>
+  </data>
+  <data name="Core_Blob_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_BlobState_Staged" xml:space="preserve">
+    <value>Uploaded</value>
+  </data>
+  <data name="Core_BlobState_Committed" xml:space="preserve">
+    <value>Attached</value>
+  </data>
+  <data name="Core_BlobState_Released" xml:space="preserve">
+    <value>Released</value>
+  </data>
+  <data name="Core_BlobState_Deleting" xml:space="preserve">
+    <value>Being deleted</value>
+  </data>
+  <data name="Core_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Core_Settings_TenantId" xml:space="preserve">
+    <value>Tenant ID</value>
+  </data>
+  <data name="Core_Settings_PrimaryLanguage" xml:space="preserve">
+    <value>Primary language</value>
+  </data>
+  <data name="Core_Settings_SecondaryLanguage" xml:space="preserve">
+    <value>Secondary language</value>
+  </data>
+  <data name="Core_Settings_TertiaryLanguage" xml:space="preserve">
+    <value>Tertiary language</value>
+  </data>
+  <data name="Core_Settings_PrimaryCalendar" xml:space="preserve">
+    <value>Primary calendar</value>
+  </data>
+  <data name="Core_Settings_SecondaryCalendar" xml:space="preserve">
+    <value>Secondary calendar</value>
+  </data>
+  <data name="Core_Settings_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_Settings_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_Settings_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_SettingEntry" xml:space="preserve">
+    <value>Setting value</value>
+  </data>
+  <data name="Core_SettingEntry_Plural" xml:space="preserve">
+    <value>Setting values</value>
+  </data>
+  <data name="Core_SettingEntry_Key" xml:space="preserve">
+    <value>Setting</value>
+  </data>
+  <data name="Core_SettingEntry_Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Core_UserStamp" xml:space="preserve">
+    <value>User activity</value>
+  </data>
+  <data name="Core_UserStamp_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_UserStamp_LastActiveAt" xml:space="preserve">
+    <value>Last active at</value>
+  </data>
+  <data name="Core_UserStamp_InboxSeenAt" xml:space="preserve">
+    <value>Inbox seen at</value>
+  </data>
+  <data name="Core_UserStamp_InboxVersion" xml:space="preserve">
+    <value>Inbox version</value>
+  </data>
+  <data name="Core_UserStamp_AssignmentsSeenAt" xml:space="preserve">
+    <value>Assignments seen at</value>
+  </data>
+  <!-- Settings and access -->
+  <data name="SettingCategory_general" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="Access_Reason_self" xml:space="preserve">
+    <value>Their own records</value>
+  </data>
+  <data name="Access_Reason_share" xml:space="preserve">
+    <value>Records shared with them</value>
+  </data>
+  <data name="Core_User" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_User_Plural" xml:space="preserve">
+    <value>Users</value>
+  </data>
+  <data name="Core_User_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_User_Subject" xml:space="preserve">
+    <value>Sign-in ID</value>
+  </data>
+  <data name="Core_User_Email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Core_User_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_User_InvitedAt" xml:space="preserve">
+    <value>Invited at</value>
+  </data>
+  <data name="Core_User_InviteStatus" xml:space="preserve">
+    <value>Invitation status</value>
+  </data>
+  <data name="Core_User_LastInviteError" xml:space="preserve">
+    <value>Last invitation error</value>
+  </data>
+  <data name="Core_User_JoinedAt" xml:space="preserve">
+    <value>Joined at</value>
+  </data>
+  <data name="Core_User_ImageId" xml:space="preserve">
+    <value>Picture</value>
+  </data>
+  <data name="Core_User_SignatureId" xml:space="preserve">
+    <value>Signature</value>
+  </data>
+  <data name="Core_User_PreferredLanguage" xml:space="preserve">
+    <value>Preferred language</value>
+  </data>
+  <data name="Core_User_PreferredCalendar" xml:space="preserve">
+    <value>Preferred calendar</value>
+  </data>
+  <data name="Core_User_PreferredTimeZone" xml:space="preserve">
+    <value>Preferred time zone</value>
+  </data>
+  <data name="Core_User_PreferredRegion" xml:space="preserve">
+    <value>Preferred region</value>
+  </data>
+  <data name="Core_User_PreferredDigits" xml:space="preserve">
+    <value>Preferred digits</value>
+  </data>
+  <data name="Core_User_Gender" xml:space="preserve">
+    <value>Gender</value>
+  </data>
+  <data name="Core_User_ContactEmail" xml:space="preserve">
+    <value>Contact email</value>
+  </data>
+  <data name="Core_User_ContactMobile" xml:space="preserve">
+    <value>Mobile</value>
+  </data>
+  <data name="Core_UserKind_Individual" xml:space="preserve">
+    <value>Individual</value>
+  </data>
+  <data name="Core_UserKind_Service" xml:space="preserve">
+    <value>Service account</value>
+  </data>
+  <data name="Core_UserKind_System" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="Core_UserState_New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="Core_UserState_Invited" xml:space="preserve">
+    <value>Invited</value>
+  </data>
+  <data name="Core_UserState_Joined" xml:space="preserve">
+    <value>Joined</value>
+  </data>
+  <data name="Core_InviteStatus_Invited" xml:space="preserve">
+    <value>Invited</value>
+  </data>
+  <data name="Core_InviteStatus_Reinvited" xml:space="preserve">
+    <value>Invited again</value>
+  </data>
+  <data name="Core_InviteStatus_Active" xml:space="preserve">
+    <value>Already has an account</value>
+  </data>
+  <data name="Core_Gender_Female" xml:space="preserve">
+    <value>Female</value>
+  </data>
+  <data name="Core_Gender_Male" xml:space="preserve">
+    <value>Male</value>
+  </data>
+  <data name="Core_DigitStyle_Latin" xml:space="preserve">
+    <value>Latin</value>
+  </data>
+  <data name="Core_DigitStyle_Native" xml:space="preserve">
+    <value>Native</value>
+  </data>
+  <data name="Core_MeLocaleMember_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Core_MeLocaleMember_Calendar" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="Core_MeLocaleMember_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_MeLocaleMember_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_MeLocaleMember_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Check" xml:space="preserve">
+    <value>Check for changes</value>
+  </data>
+  <data name="Core_ConcurrencyMode_Override" xml:space="preserve">
+    <value>Overwrite changes</value>
+  </data>
+  <data name="Core_User_Action_Invite" xml:space="preserve">
+    <value>Invite</value>
+  </data>
+  <data name="Core_User_Action_IssueCredentials" xml:space="preserve">
+    <value>Issue credentials</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus" xml:space="preserve">
+    <value>Invitation status</value>
+  </data>
+  <data name="Core_User_Action_InvitationStatus_Ids" xml:space="preserve">
+    <value>Users</value>
+  </data>
+  <data name="Core_User_Action_Me" xml:space="preserve">
+    <value>My profile</value>
+  </data>
+  <data name="Core_User_Action_MeSave" xml:space="preserve">
+    <value>Save my profile</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name2" xml:space="preserve">
+    <value>Name in the second language</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Name3" xml:space="preserve">
+    <value>Name in the third language</value>
+  </data>
+  <data name="Core_User_Action_MeSave_Concurrency" xml:space="preserve">
+    <value>Changes made meanwhile</value>
+  </data>
+  <data name="Core_User_Action_MeLocale" xml:space="preserve">
+    <value>Change my language and region</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Language" xml:space="preserve">
+    <value>Language</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Calendar" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_TimeZone" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Region" xml:space="preserve">
+    <value>Region</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Digits" xml:space="preserve">
+    <value>Digits</value>
+  </data>
+  <data name="Core_User_Action_MeLocale_Reset" xml:space="preserve">
+    <value>Reset to default</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet" xml:space="preserve">
+    <value>Save my preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesSet_Items" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete" xml:space="preserve">
+    <value>Clear my preferences</value>
+  </data>
+  <data name="Core_User_Action_MePreferencesDelete_Keys" xml:space="preserve">
+    <value>Preference names</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet" xml:space="preserve">
+    <value>View preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesGet_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet" xml:space="preserve">
+    <value>Change preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesSet_Items" xml:space="preserve">
+    <value>Preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete" xml:space="preserve">
+    <value>Clear preferences</value>
+  </data>
+  <data name="Core_User_Action_PreferencesDelete_Keys" xml:space="preserve">
+    <value>Preference names</value>
+  </data>
+  <data name="Core_User_Action_MeTestNotification" xml:space="preserve">
+    <value>Send me a test notification</value>
+  </data>
+  <data name="Core_User_Action_MeTestNotification_Channel" xml:space="preserve">
+    <value>Channel</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet" xml:space="preserve">
+    <value>View notification settings</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesGet_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave" xml:space="preserve">
+    <value>Change notification settings</value>
+  </data>
+  <data name="Core_User_Action_NotificationPreferencesSave_Preferences" xml:space="preserve">
+    <value>Notification settings</value>
+  </data>
+  <data name="Core_Role" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="Core_Role_Plural" xml:space="preserve">
+    <value>Roles</value>
+  </data>
+  <data name="Core_Role_IsPublic" xml:space="preserve">
+    <value>Public</value>
+  </data>
+  <data name="Core_RoleMembership" xml:space="preserve">
+    <value>Role membership</value>
+  </data>
+  <data name="Core_RoleMembership_Plural" xml:space="preserve">
+    <value>Role memberships</value>
+  </data>
+  <data name="Core_RoleMembership_UserId" xml:space="preserve">
+    <value>User</value>
+  </data>
+  <data name="Core_RoleMembership_RoleId" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="Core_RoleMembership_StartsAt" xml:space="preserve">
+    <value>Starts at</value>
+  </data>
+  <data name="Core_RoleMembership_EndsAt" xml:space="preserve">
+    <value>Ends at</value>
+  </data>
+  <data name="Core_RoleMembership_Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Core_Permission" xml:space="preserve">
+    <value>Permission</value>
+  </data>
+  <data name="Core_Permission_Plural" xml:space="preserve">
+    <value>Permissions</value>
+  </data>
+  <data name="Core_Permission_RoleId" xml:space="preserve">
+    <value>Role</value>
+  </data>
+  <data name="Core_Permission_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Permission_Action" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="Core_Permission_Filter" xml:space="preserve">
+    <value>Filter</value>
+  </data>
+  <data name="Core_Permission_FilterQueryexVersion" xml:space="preserve">
+    <value>Filter version</value>
+  </data>
+  <data name="Core_Permission_Notes" xml:space="preserve">
+    <value>Notes</value>
+  </data>
+  <data name="Core_Job" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_Job_Plural" xml:space="preserve">
+    <value>Jobs</value>
+  </data>
+  <data name="Core_Job_HandlerKey" xml:space="preserve">
+    <value>Job type</value>
+  </data>
+  <data name="Core_Job_LabelKey" xml:space="preserve">
+    <value>Label</value>
+  </data>
+  <data name="Core_Job_LabelArgumentsJson" xml:space="preserve">
+    <value>Label arguments</value>
+  </data>
+  <data name="Core_Job_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Core_Job_DueAt" xml:space="preserve">
+    <value>Due at</value>
+  </data>
+  <data name="Core_Job_Attempts" xml:space="preserve">
+    <value>Attempts</value>
+  </data>
+  <data name="Core_Job_LeaseExpiresAt" xml:space="preserve">
+    <value>Lease expires at</value>
+  </data>
+  <data name="Core_Job_LeaseOwner" xml:space="preserve">
+    <value>Running on</value>
+  </data>
+  <data name="Core_Job_StartedAt" xml:space="preserve">
+    <value>Started at</value>
+  </data>
+  <data name="Core_Job_CompletedAt" xml:space="preserve">
+    <value>Completed at</value>
+  </data>
+  <data name="Core_Job_CancelRequestedAt" xml:space="preserve">
+    <value>Stop requested at</value>
+  </data>
+  <data name="Core_Job_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Job_ProgressPercent" xml:space="preserve">
+    <value>Progress</value>
+  </data>
+  <data name="Core_Job_ProgressKey" xml:space="preserve">
+    <value>Progress message</value>
+  </data>
+  <data name="Core_Job_ProgressArgumentsJson" xml:space="preserve">
+    <value>Progress arguments</value>
+  </data>
+  <data name="Core_Job_ErrorCode" xml:space="preserve">
+    <value>Error code</value>
+  </data>
+  <data name="Core_Job_ErrorArgumentsJson" xml:space="preserve">
+    <value>Error arguments</value>
+  </data>
+  <data name="Core_Job_ErrorTraceId" xml:space="preserve">
+    <value>Trace ID</value>
+  </data>
+  <data name="Core_Job_PendingConfirmationsJson" xml:space="preserve">
+    <value>Warnings to confirm</value>
+  </data>
+  <data name="Core_Job_TraceParent" xml:space="preserve">
+    <value>Trace context</value>
+  </data>
+  <data name="Core_Job_RunAsUserId" xml:space="preserve">
+    <value>Runs as</value>
+  </data>
+  <data name="Core_Job_RequestedById" xml:space="preserve">
+    <value>Requested by</value>
+  </data>
+  <data name="Core_Job_ScheduleId" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
+  <data name="Core_Job_ScheduledFor" xml:space="preserve">
+    <value>Scheduled for</value>
+  </data>
+  <data name="Core_JobStatus_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
+  <data name="Core_JobStatus_Running" xml:space="preserve">
+    <value>Running</value>
+  </data>
+  <data name="Core_JobStatus_PendingConfirmation" xml:space="preserve">
+    <value>Waiting for confirmation</value>
+  </data>
+  <data name="Core_JobStatus_Held" xml:space="preserve">
+    <value>Paused</value>
+  </data>
+  <data name="Core_JobStatus_Succeeded" xml:space="preserve">
+    <value>Succeeded</value>
+  </data>
+  <data name="Core_JobStatus_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_JobStatus_Cancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Core_Job_Action_Confirm" xml:space="preserve">
+    <value>Confirm and continue</value>
+  </data>
+  <data name="Core_Job_Action_Confirm_Keys" xml:space="preserve">
+    <value>Warnings confirmed</value>
+  </data>
+  <data name="Core_Schedule" xml:space="preserve">
+    <value>Schedule</value>
+  </data>
+  <data name="Core_Schedule_Plural" xml:space="preserve">
+    <value>Schedules</value>
+  </data>
+  <data name="Core_Schedule_HandlerKey" xml:space="preserve">
+    <value>Job type</value>
+  </data>
+  <data name="Core_Schedule_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Schedule_CronExpression" xml:space="preserve">
+    <value>Cron expression</value>
+  </data>
+  <data name="Core_Schedule_TimeZoneId" xml:space="preserve">
+    <value>Time zone</value>
+  </data>
+  <data name="Core_Schedule_MissedPolicy" xml:space="preserve">
+    <value>Missed runs</value>
+  </data>
+  <data name="Core_Schedule_OverlapPolicy" xml:space="preserve">
+    <value>Overlapping runs</value>
+  </data>
+  <data name="Core_Schedule_CatchUpWindowMinutes" xml:space="preserve">
+    <value>Catch-up window (minutes)</value>
+  </data>
+  <data name="Core_Schedule_RunAsUserId" xml:space="preserve">
+    <value>Runs as</value>
+  </data>
+  <data name="Core_Schedule_PausedReason" xml:space="preserve">
+    <value>Paused because</value>
+  </data>
+  <data name="Core_MissedPolicy_Coalesce" xml:space="preserve">
+    <value>Run once</value>
+  </data>
+  <data name="Core_MissedPolicy_ReplayAll" xml:space="preserve">
+    <value>Run each missed time</value>
+  </data>
+  <data name="Core_MissedPolicy_Skip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Core_OverlapPolicy_Allow" xml:space="preserve">
+    <value>Allow</value>
+  </data>
+  <data name="Core_OverlapPolicy_Skip" xml:space="preserve">
+    <value>Skip</value>
+  </data>
+  <data name="Core_SchedulePausedReason_OwnerInactive" xml:space="preserve">
+    <value>Its user is inactive</value>
+  </data>
+  <data name="Core_SchedulePausedReason_Exhausted" xml:space="preserve">
+    <value>No more runs</value>
+  </data>
+  <data name="Core_SchedulePausedReason_HandlerRetired" xml:space="preserve">
+    <value>Job type no longer offered</value>
+  </data>
+  <data name="Core_Schedule_Action_TakeOver" xml:space="preserve">
+    <value>Take over</value>
+  </data>
+  <data name="Core_Schedule_Action_RunNow" xml:space="preserve">
+    <value>Run now</value>
+  </data>
+  <data name="Core_Notification" xml:space="preserve">
+    <value>Notification</value>
+  </data>
+  <data name="Core_Notification_Plural" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Core_Notification_UserId" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="Core_Notification_Type" xml:space="preserve">
+    <value>Type</value>
+  </data>
+  <data name="Core_Notification_Severity" xml:space="preserve">
+    <value>Severity</value>
+  </data>
+  <data name="Core_Notification_ArgumentsJson" xml:space="preserve">
+    <value>Arguments</value>
+  </data>
+  <data name="Core_Notification_TargetResource" xml:space="preserve">
+    <value>Target resource</value>
+  </data>
+  <data name="Core_Notification_TargetId" xml:space="preserve">
+    <value>Target ID</value>
+  </data>
+  <data name="Core_Notification_ActorUserId" xml:space="preserve">
+    <value>Caused by</value>
+  </data>
+  <data name="Core_Notification_DedupKey" xml:space="preserve">
+    <value>Grouping key</value>
+  </data>
+  <data name="Core_Notification_ReadAt" xml:space="preserve">
+    <value>Read at</value>
+  </data>
+  <data name="Core_NotificationSeverity_Info" xml:space="preserve">
+    <value>Information</value>
+  </data>
+  <data name="Core_NotificationSeverity_Success" xml:space="preserve">
+    <value>Success</value>
+  </data>
+  <data name="Core_NotificationSeverity_Warning" xml:space="preserve">
+    <value>Warning</value>
+  </data>
+  <data name="Core_NotificationSeverity_Error" xml:space="preserve">
+    <value>Error</value>
+  </data>
+  <data name="Securable_core_UserStamp" xml:space="preserve">
+    <value>User activity</value>
+  </data>
+  <data name="Feature_core" xml:space="preserve">
+    <value>Platform</value>
+  </data>
+  <!-- The boot page of the browser application -->
+  <data name="Boot_Title" xml:space="preserve">
+    <value>{displayName} couldn’t start</value>
+  </data>
+  <data name="Boot_Unsupported" xml:space="preserve">
+    <value>Update your browser to a current version of Chrome, Edge, Firefox or Safari.</value>
+  </data>
+  <data name="Boot_Cookies" xml:space="preserve">
+    <value>Turn on cookies for this site, then try again.</value>
+  </data>
+  <data name="Boot_SignInFailed" xml:space="preserve">
+    <value>We couldn’t sign you in. Try again in a moment.</value>
+  </data>
+  <data name="Boot_LoadFailed" xml:space="preserve">
+    <value>Check your connection and try again.</value>
+  </data>
+  <data name="Boot_TryAgain" xml:space="preserve">
+    <value>Try again</value>
+  </data>
+  <!-- Problems: the title and detail of each problem code the platform answers with -->
+  <data name="Problem_bad_request" xml:space="preserve">
+    <value>Couldn’t complete this</value>
+  </data>
+  <data name="Problem_bad_request_Detail" xml:space="preserve">
+    <value>The request isn’t valid.</value>
+  </data>
+  <data name="Problem_query_invalid" xml:space="preserve">
+    <value>The filter isn’t valid</value>
+  </data>
+  <data name="Problem_query_invalid_Detail" xml:space="preserve">
+    <value>Check the filter and try again.</value>
+  </data>
+  <data name="Problem_step_up_required" xml:space="preserve">
+    <value>Confirm it’s you</value>
+  </data>
+  <data name="Problem_step_up_required_Detail" xml:space="preserve">
+    <value>Sign in again to continue.</value>
+  </data>
+  <data name="Problem_forbidden" xml:space="preserve">
+    <value>You don’t have permission for this</value>
+  </data>
+  <data name="Problem_forbidden_Detail" xml:space="preserve">
+    <value>{reason, select, no-grant {It needs “{resource}: {action}”. Ask your administrator to grant it.} outside-filter {Your “{resource}: {action}” permission covers only some records. Ask your administrator if you need this one.} restricted-path {You can’t see {path} here. Ask your administrator if you need it.} other {Ask your administrator for access.}}</value>
+  </data>
+  <data name="Problem_individual_required" xml:space="preserve">
+    <value>Only a person can do this</value>
+  </data>
+  <data name="Problem_individual_required_Detail" xml:space="preserve">
+    <value>Service accounts can’t do this. Sign in as yourself.</value>
+  </data>
+  <data name="Problem_tenant_not_found" xml:space="preserve">
+    <value>This tenant doesn’t exist or you can’t open it</value>
+  </data>
+  <data name="Problem_tenant_not_found_Detail" xml:space="preserve">
+    <value>Choose another tenant, or ask your administrator for access.</value>
+  </data>
+  <data name="Problem_tenant_suspended" xml:space="preserve">
+    <value>This tenant is suspended</value>
+  </data>
+  <data name="Problem_tenant_suspended_Detail" xml:space="preserve">
+    <value>Contact your administrator.</value>
+  </data>
+  <data name="Problem_tenant_read_only" xml:space="preserve">
+    <value>This tenant is read-only</value>
+  </data>
+  <data name="Problem_tenant_read_only_Detail" xml:space="preserve">
+    <value>You can view data but not change it. Contact your administrator.</value>
+  </data>
+  <data name="Problem_tenant_frozen" xml:space="preserve">
+    <value>This tenant is under maintenance</value>
+  </data>
+  <data name="Problem_tenant_frozen_Detail" xml:space="preserve">
+    <value>You can view data but not change it until it ends.</value>
+  </data>
+  <data name="Problem_tenant_schema_behind" xml:space="preserve">
+    <value>This tenant is being updated</value>
+  </data>
+  <data name="Problem_tenant_schema_behind_Detail" xml:space="preserve">
+    <value>Try again in a minute.</value>
+  </data>
+  <data name="Problem_tenant_registration_refused" xml:space="preserve">
+    <value>The tenant couldn’t be registered</value>
+  </data>
+  <data name="Problem_tenant_illegal_transition" xml:space="preserve">
+    <value>The tenant can’t move to that state</value>
+  </data>
+  <data name="Problem_tenant_location_refused" xml:space="preserve">
+    <value>The tenant couldn’t be moved</value>
+  </data>
+  <data name="Problem_catalog_unavailable" xml:space="preserve">
+    <value>The service is busy</value>
+  </data>
+  <data name="Problem_catalog_unavailable_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_not_found" xml:space="preserve">
+    <value>This record doesn’t exist or you can’t see it</value>
+  </data>
+  <data name="Problem_not_found_Detail" xml:space="preserve">
+    <value>It may have been deleted, or your access doesn’t cover it.</value>
+  </data>
+  <data name="Problem_concurrency_conflict" xml:space="preserve">
+    <value>The record was changed by someone else</value>
+  </data>
+  <data name="Problem_concurrency_conflict_Detail" xml:space="preserve">
+    <value>Reload to see their changes, then try again.</value>
+  </data>
+  <data name="Problem_confirmation_required" xml:space="preserve">
+    <value>Confirm to continue</value>
+  </data>
+  <data name="Problem_confirmation_required_Detail" xml:space="preserve">
+    <value>Review the warnings and confirm to continue.</value>
+  </data>
+  <data name="Problem_count_mismatch" xml:space="preserve">
+    <value>The records changed before they could be deleted</value>
+  </data>
+  <data name="Problem_count_mismatch_Detail" xml:space="preserve">
+    <value>You expected {expected, plural, one {# record} other {# records}}, but {actual, plural, one {# record matches} other {# records match}} now. Nothing was deleted.</value>
+  </data>
+  <data name="Problem_limit_exceeded" xml:space="preserve">
+    <value>This request is too large</value>
+  </data>
+  <data name="Problem_limit_exceeded_Detail" xml:space="preserve">
+    <value>It has {actual, number}, and the most allowed is {maximum, number}.</value>
+  </data>
+  <data name="Problem_validation" xml:space="preserve">
+    <value>Validation failed</value>
+  </data>
+  <data name="Problem_validation_Detail" xml:space="preserve">
+    <value>Correct the highlighted values and try again.</value>
+  </data>
+  <data name="Problem_blob_rejected" xml:space="preserve">
+    <value>The file was rejected</value>
+  </data>
+  <data name="Problem_blob_rejected_Detail" xml:space="preserve">
+    <value>Check the file and try again.</value>
+  </data>
+  <data name="Problem_partial_failure" xml:space="preserve">
+    <value>Some of this didn’t finish</value>
+  </data>
+  <data name="Problem_partial_failure_Detail" xml:space="preserve">
+    <value>Some records were done and others weren’t. Try again for the rest.</value>
+  </data>
+  <data name="Problem_stale_context" xml:space="preserve">
+    <value>Settings changed while this was running</value>
+  </data>
+  <data name="Problem_stale_context_Detail" xml:space="preserve">
+    <value>Try again.</value>
+  </data>
+  <data name="Problem_dependency_unavailable" xml:space="preserve">
+    <value>The service is busy</value>
+  </data>
+  <data name="Problem_dependency_unavailable_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_csrf_rejected" xml:space="preserve">
+    <value>The request was blocked</value>
+  </data>
+  <data name="Problem_csrf_rejected_Detail" xml:space="preserve">
+    <value>Reload the page and try again.</value>
+  </data>
+  <data name="Problem_client_outdated" xml:space="preserve">
+    <value>The app was updated</value>
+  </data>
+  <data name="Problem_client_outdated_Detail" xml:space="preserve">
+    <value>Reload to continue.</value>
+  </data>
+  <data name="Problem_internal" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Problem_internal_Detail" xml:space="preserve">
+    <value>Try again. If it keeps happening, send this reference to support.</value>
+  </data>
+  <data name="Problem_unauthenticated" xml:space="preserve">
+    <value>Your session ended</value>
+  </data>
+  <data name="Problem_unauthenticated_Detail" xml:space="preserve">
+    <value>Sign in to continue.</value>
+  </data>
+  <data name="Problem_unsupported_credential" xml:space="preserve">
+    <value>This sign-in can’t be used here</value>
+  </data>
+  <data name="Problem_route_not_found" xml:space="preserve">
+    <value>This address doesn’t exist</value>
+  </data>
+  <data name="Problem_method_not_allowed" xml:space="preserve">
+    <value>This address doesn’t accept this request</value>
+  </data>
+  <data name="Problem_unsupported_media" xml:space="preserve">
+    <value>This content type isn’t accepted</value>
+  </data>
+  <data name="Problem_rate_limited" xml:space="preserve">
+    <value>Too many requests</value>
+  </data>
+  <data name="Problem_rate_limited_Detail" xml:space="preserve">
+    <value>Try again in a moment.</value>
+  </data>
+  <data name="Problem_timeout" xml:space="preserve">
+    <value>This took too long</value>
+  </data>
+  <data name="Problem_timeout_Detail" xml:space="preserve">
+    <value>Try again.</value>
+  </data>
+  <data name="Problem_provisioning_not_configured" xml:space="preserve">
+    <value>Tenants can’t be created here</value>
+  </data>
+  <!-- Validation codes of the settings service -->
+  <data name="Settings_FieldUnknown" xml:space="preserve">
+    <value>There is no such setting.</value>
+  </data>
+  <data name="Settings_LanguageNotOffered" xml:space="preserve">
+    <value>This language isn’t available.</value>
+  </data>
+  <data name="Settings_LanguagesNotDistinct" xml:space="preserve">
+    <value>Each language can be chosen only once.</value>
+  </data>
+  <data name="Settings_TertiaryRequiresSecondary" xml:space="preserve">
+    <value>Choose a secondary language before a third one.</value>
+  </data>
+  <data name="Settings_CalendarNotRegistered" xml:space="preserve">
+    <value>This calendar isn’t available.</value>
+  </data>
+  <data name="Settings_CalendarsNotDistinct" xml:space="preserve">
+    <value>The secondary calendar must differ from the primary one.</value>
+  </data>
+  <data name="Settings_TimeZoneUnknown" xml:space="preserve">
+    <value>This time zone isn’t recognized.</value>
+  </data>
+  <data name="Settings_RegionNotOffered" xml:space="preserve">
+    <value>This region isn’t available.</value>
+  </data>
+  <data name="Settings_KeyUndeclared" xml:space="preserve">
+    <value>There is no such setting.</value>
+  </data>
+  <data name="Settings_EntryTypeMismatch" xml:space="preserve">
+    <value>This value has the wrong type for the setting.</value>
+  </data>
+  <!-- Validation and guard codes of users, roles, memberships and permissions -->
+  <data name="Users_SystemUserImmutable" xml:space="preserve">
+    <value>The system user can’t be changed.</value>
+  </data>
+  <data name="Users_CannotDeactivateSelf" xml:space="preserve">
+    <value>You can’t deactivate yourself.</value>
+  </data>
+  <data name="Users_CannotDeleteSelf" xml:space="preserve">
+    <value>You can’t delete yourself.</value>
+  </data>
+  <data name="Users_CannotRemoveOwnAdministratorMembership" xml:space="preserve">
+    <value>You can’t remove or limit your own administrator role.</value>
+  </data>
+  <data name="Users_EmailLockedAfterInvite" xml:space="preserve">
+    <value>The email can’t be changed once the user is invited.</value>
+  </data>
+  <data name="Users_OnlyNewUsersDeletable" xml:space="preserve">
+    <value>Only users who haven’t been invited can be deleted. Deactivate this user instead.</value>
+  </data>
+  <data name="Users_KindNotAllowed" xml:space="preserve">
+    <value>This kind of user can’t be used here.</value>
+  </data>
+  <data name="Users_EmailNotAllowed" xml:space="preserve">
+    <value>Only individuals can have an email.</value>
+  </data>
+  <data name="Users_TooManyRoles" xml:space="preserve">
+    <value>A user can have at most {max, plural, one {# role} other {# roles}}.</value>
+  </data>
+  <data name="Users_MembershipEscalation" xml:space="preserve">
+    <value>You can’t grant this role: it includes “{resource}: {action}”, which you don’t hold without restriction.</value>
+  </data>
+  <data name="Users_TooManyPreferenceKeys" xml:space="preserve">
+    <value>There are too many saved preferences.</value>
+  </data>
+  <data name="Users_PreferenceValueTooLarge" xml:space="preserve">
+    <value>This preference is too large. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Users_PreferenceKeyInvalid" xml:space="preserve">
+    <value>This preference name isn’t valid.</value>
+  </data>
+  <data name="Users_PreferenceKeyDuplicate" xml:space="preserve">
+    <value>This preference appears more than once.</value>
+  </data>
+  <data name="Users_LanguageNotOffered" xml:space="preserve">
+    <value>This language isn’t offered.</value>
+  </data>
+  <data name="Users_CalendarUnknown" xml:space="preserve">
+    <value>This calendar isn’t recognized.</value>
+  </data>
+  <data name="Users_TimeZoneUnknown" xml:space="preserve">
+    <value>This time zone isn’t recognized.</value>
+  </data>
+  <data name="Users_RegionNotOffered" xml:space="preserve">
+    <value>This region isn’t offered.</value>
+  </data>
+  <data name="Users_LocaleEmpty" xml:space="preserve">
+    <value>Choose at least one language or regional setting to change.</value>
+  </data>
+  <data name="Users_LocaleResetConflict" xml:space="preserve">
+    <value>A setting can’t be changed and reset at the same time.</value>
+  </data>
+  <data name="Users_ContactEmailInvalid" xml:space="preserve">
+    <value>Enter a valid email address.</value>
+  </data>
+  <data name="Users_MobileInvalid" xml:space="preserve">
+    <value>Enter the mobile number in international format, such as +971501234567.</value>
+  </data>
+  <data name="Users_NotIndividual" xml:space="preserve">
+    <value>This applies to individual users only, not to service accounts.</value>
+  </data>
+  <data name="Users_ChannelNotTestable" xml:space="preserve">
+    <value>The inbox can’t be sent a test message. Choose another channel.</value>
+  </data>
+  <data name="Users_NotService" xml:space="preserve">
+    <value>Credentials can only be issued to service accounts.</value>
+  </data>
+  <data name="Users_Inactive" xml:space="preserve">
+    <value>This user is inactive.</value>
+  </data>
+  <data name="Users_AlreadyJoined" xml:space="preserve">
+    <value>This user has already joined.</value>
+  </data>
+  <data name="Users_CredentialsConcurrent" xml:space="preserve">
+    <value>Another request changed the credentials of this service account at the same time, so the new ones were discarded. Issue them again.</value>
+  </data>
+  <data name="Users_SubjectMismatch" xml:space="preserve">
+    <value>This email now belongs to a different sign-in account, so the user was left unchanged.</value>
+  </data>
+  <data name="Users_SandboxRequiresExistingIdentity" xml:space="preserve">
+    <value>A sandbox can only add people who have already set up their sign-in.</value>
+  </data>
+  <data name="RoleMemberships_Overlap" xml:space="preserve">
+    <value>This membership overlaps another membership of the same role.</value>
+  </data>
+  <data name="RoleMemberships_EndsBeforeStart" xml:space="preserve">
+    <value>The end must be after the start.</value>
+  </data>
+  <data name="RoleMemberships_EndsInPast" xml:space="preserve">
+    <value>The end has already passed.</value>
+  </data>
+  <data name="Roles_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members. Remove its members first.</value>
+  </data>
+  <data name="Roles_AdministratorImmutable" xml:space="preserve">
+    <value>The administrator role can’t be made public, deactivated, deleted or restricted.</value>
+  </data>
+  <data name="Roles_HasMembers" xml:space="preserve">
+    <value>A role with members can’t be deleted. Remove its members first.</value>
+  </data>
+  <data name="Roles_TooManyPermissions" xml:space="preserve">
+    <value>A role can have at most {max, plural, one {# permission} other {# permissions}}.</value>
+  </data>
+  <data name="Permissions_UnknownSecurable" xml:space="preserve">
+    <value>“{resource}: {action}” isn’t a permission that exists.</value>
+  </data>
+  <data name="Permissions_FilterNotSupported" xml:space="preserve">
+    <value>This permission can’t have a filter.</value>
+  </data>
+  <data name="Permissions_FilterInvalid" xml:space="preserve">
+    <value>This filter isn’t valid.</value>
+  </data>
+  <data name="Permissions_FilterTooLong" xml:space="preserve">
+    <value>Enter at most {maxLength, plural, one {# character} other {# characters}}.</value>
+  </data>
+  <data name="Permissions_FilterVersionUnsupported" xml:space="preserve">
+    <value>This filter was written for an older version. Enter it again.</value>
+  </data>
+  <data name="Permissions_WildcardResourceOnPublicRole" xml:space="preserve">
+    <value>A public role can’t have a permission on everything.</value>
+  </data>
+  <data name="Permissions_EscalationBeyondSelf" xml:space="preserve">
+    <value>You can’t grant “{resource}: {action}” because you don’t hold it without restriction.</value>
+  </data>
+  <data name="Access_LastAdministrator" xml:space="preserve">
+    <value>At least one active user must remain an administrator.</value>
+  </data>
+  <data name="Access_PublicRoleHasMembers" xml:space="preserve">
+    <value>A public role can’t have members.</value>
+  </data>
+  <data name="Access_AdministratorRoleDamaged" xml:space="preserve">
+    <value>The administrator role must stay active, private and unrestricted.</value>
+  </data>
+  <data name="Access_LockTimeout" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
+  <data name="Access_LockDeadlock" xml:space="preserve">
+    <value>Someone else is changing security settings. Try again.</value>
+  </data>
+  <!-- Validation codes of the save and query pipeline -->
+  <data name="Required" xml:space="preserve">
+    <value>Enter a value.</value>
+  </data>
+  <data name="MaxLength" xml:space="preserve">
+    <value>Enter at most {maxLength, plural, one {# character} other {# characters}}.</value>
+  </data>
+  <data name="Range" xml:space="preserve">
+    <value>This value is out of range.</value>
+  </data>
+  <data name="Unique" xml:space="preserve">
+    <value>This value is already used by another record.</value>
+  </data>
+  <data name="WriteOnce" xml:space="preserve">
+    <value>This value can’t be changed once it is set.</value>
+  </data>
+  <data name="Precision" xml:space="preserve">
+    <value>Enter at most {precision, number} digits, {scale, number} of them after the decimal point.</value>
+  </data>
+  <data name="Validation_ValueNotInSet" xml:space="preserve">
+    <value>This value isn’t one of the allowed values.</value>
+  </data>
+  <data name="Validation_Invalid" xml:space="preserve">
+    <value>This value isn’t valid.</value>
+  </data>
+  <data name="Entity_NotFound" xml:space="preserve">
+    <value>This record doesn’t exist or you can’t see it.</value>
+  </data>
+  <data name="Entity_DuplicateId" xml:space="preserve">
+    <value>The same record appears more than once.</value>
+  </data>
+  <data name="Fk_NotFound" xml:space="preserve">
+    <value>The selected record doesn’t exist or you can’t see it.</value>
+  </data>
+  <data name="Fk_InUse" xml:space="preserve">
+    <value>This record is in use, so it can’t be deleted.</value>
+  </data>
+  <data name="Tree_Cycle" xml:space="preserve">
+    <value>A record can’t be placed under itself or one of its descendants.</value>
+  </data>
+  <data name="Tree_TooDeep" xml:space="preserve">
+    <value>The hierarchy is too deep.</value>
+  </data>
+  <data name="Blob_NotAttachable" xml:space="preserve">
+    <value>{reason, select, expired {This file expired. Choose it again.} missing {This file expired. Choose it again.} other {This file can’t be attached. Upload it again.}}</value>
+  </data>
+  <data name="Blob_DuplicateReference" xml:space="preserve">
+    <value>The same file is attached more than once.</value>
+  </data>
+  <data name="Blob_UnknownKind" xml:space="preserve">
+    <value>This kind of file can’t be uploaded here.</value>
+  </data>
+  <data name="Blob_LengthRequired" xml:space="preserve">
+    <value>The upload didn’t say how large the file is, or the file was cut short. Upload it again.</value>
+  </data>
+  <data name="Blob_TooLarge" xml:space="preserve">
+    <value>The file is too large. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Blob_UnsupportedType" xml:space="preserve">
+    <value>Files of type “{contentType}” can’t be uploaded here.</value>
+  </data>
+  <data name="Blob_StagingQuotaExceeded" xml:space="preserve">
+    <value>You have too many uploaded files that aren’t saved yet: at most {maxCount, number} files or {maxBytes, number} bytes. Save or discard your changes, then upload again.</value>
+  </data>
+  <data name="Blob_ImageRejected" xml:space="preserve">
+    <value>{reason, select, format {This image format isn’t supported. Use a JPEG, PNG, WebP or GIF image.} too-many-pixels {The image is too large. Use a smaller image.} timeout {The image took too long to process. Try a smaller image.} other {The image can’t be read. It may be damaged.}}</value>
+  </data>
+  <data name="Concurrency_StampRequired" xml:space="preserve">
+    <value>Reload the record, then try again.</value>
+  </data>
+  <data name="Import_LanguageNotConfigured" xml:space="preserve">
+    <value>This column’s language isn’t one of the tenant’s languages.</value>
+  </data>
+  <data name="Query_GeographyNotSelectable" xml:space="preserve">
+    <value>A geography value can’t be selected.</value>
+  </data>
+  <data name="Query_PathNotReachable" xml:space="preserve">
+    <value>You can’t see {path}.</value>
+  </data>
+  <data name="Query_UnknownNamedFilter" xml:space="preserve">
+    <value>There is no filter named {name}.</value>
+  </data>
+  <data name="Query_ArithmeticFailed" xml:space="preserve">
+    <value>{reason, select, divide-by-zero {The query divided by zero.} other {A number in the query is too large.}}</value>
+  </data>
+  <data name="DisplayName_PrefixSeparator" xml:space="preserve">
+    <value>This value can’t contain “{separator}”.</value>
+  </data>
+  <!-- Reports and dashboards -->
+  <data name="Core_ReportKind_List" xml:space="preserve">
+    <value>List</value>
+  </data>
+  <data name="Core_ReportKind_Summary" xml:space="preserve">
+    <value>Summary</value>
+  </data>
+  <data name="Core_ReportKind_Pivot" xml:space="preserve">
+    <value>Pivot</value>
+  </data>
+  <data name="Core_ReportKind_Chart" xml:space="preserve">
+    <value>Chart</value>
+  </data>
+  <data name="Core_ShareAccess_View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="Core_ShareAccess_Edit" xml:space="preserve">
+    <value>Edit</value>
+  </data>
+  <data name="Notification_core_report_shared" xml:space="preserve">
+    <value>{actorName} shared {title} with you</value>
+  </data>
+  <data name="Notification_core_dashboard_shared" xml:space="preserve">
+    <value>{actorName} shared the dashboard {title} with you</value>
+  </data>
+  <data name="Notification_core_user_added" xml:space="preserve">
+    <value>{actorName} added you to {tenantName}</value>
+  </data>
+  <data name="Core_Report_Synonyms" xml:space="preserve">
+    <value>report, analysis, list, summary, pivot, chart</value>
+  </data>
+  <data name="Core_Dashboard_Synonyms" xml:space="preserve">
+    <value>dashboard, overview, KPIs</value>
+  </data>
+  <data name="Core_Report_DefaultTitle" xml:space="preserve">
+    <value>{entity} – {kind, select, List {list} Summary {summary} Pivot {pivot} other {chart}}</value>
+  </data>
+  <data name="Core_Report" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="Core_Report_Plural" xml:space="preserve">
+    <value>Reports</value>
+  </data>
+  <data name="Core_Report_Title" xml:space="preserve">
+    <value>Title</value>
+  </data>
+  <data name="Core_Report_Root" xml:space="preserve">
+    <value>Source</value>
+  </data>
+  <data name="Core_Report_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Report_DefinitionJson" xml:space="preserve">
+    <value>Definition</value>
+  </data>
+  <data name="Core_Report_QueryexVersion" xml:space="preserve">
+    <value>Query language version</value>
+  </data>
+  <data name="Core_Report_OwnerId" xml:space="preserve">
+    <value>Owner</value>
+  </data>
+  <data name="Core_Report_BasedOnId" xml:space="preserve">
+    <value>Based on</value>
+  </data>
+  <data name="Core_Report_Action_Share_Set" xml:space="preserve">
+    <value>People to add or change</value>
+  </data>
+  <data name="Core_Report_Action_Share_Remove" xml:space="preserve">
+    <value>People to remove</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Set" xml:space="preserve">
+    <value>Roles to add or change</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Remove" xml:space="preserve">
+    <value>Roles to remove</value>
+  </data>
+  <data name="Core_Report_Action_Publish_Everyone" xml:space="preserve">
+    <value>Everyone</value>
+  </data>
+  <data name="Core_Report_Action_Transfer_Owner" xml:space="preserve">
+    <value>New owner</value>
+  </data>
+  <data name="Report_UnknownMember" xml:space="preserve">
+    <value>The report’s definition has a member that isn’t recognized or has the wrong shape, at {pointer}.</value>
+  </data>
+  <data name="Report_CodeReserved" xml:space="preserve">
+    <value>Codes that start with “{prefix}” are reserved for standard reports.</value>
+  </data>
+  <data name="Report_InUse" xml:space="preserve">
+    <value>{named, plural, =0 {This report is shown on {others, plural, one {a dashboard} other {# dashboards}}; remove it from them before deleting it.} other {This report is shown on {dashboards}{others, plural, =0 {} one { and one other dashboard} other { and # other dashboards}}; remove it from them before deleting it.}}</value>
+  </data>
+  <data name="Sharing_StandardReadOnly" xml:space="preserve">
+    <value>Standard records can be shared and published, but not changed, deleted or transferred.</value>
+  </data>
+  <data name="Sharing_BasedOnInvisible" xml:space="preserve">
+    <value>The record this one is based on doesn’t exist, or you can’t see it.</value>
+  </data>
+  <data name="Sharing_UserInvalid" xml:space="preserve">
+    <value>Only active individual members can be shared with.</value>
+  </data>
+  <data name="Sharing_RoleInvalid" xml:space="preserve">
+    <value>Only active roles can be published to.</value>
+  </data>
+  <data name="Sharing_OwnerIsImplicit" xml:space="preserve">
+    <value>The owner already has full access.</value>
+  </data>
+  <data name="Sharing_TooManyGrants" xml:space="preserve">
+    <value>{kind, select, user {A record can be shared with at most {max} users.} other {A record can be published to at most {max} roles.}}</value>
+  </data>
+  <data name="Sharing_OwnerInvalid" xml:space="preserve">
+    <value>The new owner must be an active individual member.</value>
+  </data>
+  <data name="Core_Dashboard_DefaultTitle" xml:space="preserve">
+    <value>Untitled dashboard</value>
+  </data>
+  <data name="Core_Job_ExportReport" xml:space="preserve">
+    <value>Exporting {title}</value>
+  </data>
+  <!-- Background jobs: the platform's error codes, the notices a completion raises, and the schedules' rules and pause notice -->
+  <data name="Jobs_Internal" xml:space="preserve">
+    <value>An unexpected error occurred while running the job.</value>
+  </data>
+  <data name="Jobs_Cancelled" xml:space="preserve">
+    <value>The job was cancelled.</value>
+  </data>
+  <data name="Jobs_EntityMissing" xml:space="preserve">
+    <value>The record the job works on no longer exists.</value>
+  </data>
+  <data name="Jobs_AttemptsExhausted" xml:space="preserve">
+    <value>The job failed after using all its attempts.</value>
+  </data>
+  <data name="Jobs_UserInactive" xml:space="preserve">
+    <value>The user the job runs as is no longer an active member.</value>
+  </data>
+  <data name="Jobs_TooManyConfirmations" xml:space="preserve">
+    <value>The job raised {count, plural, one {# kind of warning} other {# kinds of warning}}, more than can be confirmed at once.</value>
+  </data>
+  <data name="Jobs_HeldAfterGap" xml:space="preserve">
+    <value>The job was paused after a service interruption.</value>
+  </data>
+  <data name="Jobs_HandlerRetired" xml:space="preserve">
+    <value>The job was stopped because this kind of job is no longer offered.</value>
+  </data>
+  <data name="Jobs_NotRetryable" xml:space="preserve">
+    <value>Only a failed job can be run again.</value>
+  </data>
+  <data name="Jobs_NotCancellable" xml:space="preserve">
+    <value>The job has already ended.</value>
+  </data>
+  <data name="Jobs_NotHeld" xml:space="preserve">
+    <value>The job is not paused.</value>
+  </data>
+  <data name="Jobs_NotPendingConfirmation" xml:space="preserve">
+    <value>The job is not waiting for these warnings to be confirmed.</value>
+  </data>
+  <data name="Jobs_NotInitiator" xml:space="preserve">
+    <value>Only the user who started the job can confirm its warnings.</value>
+  </data>
+  <data name="Jobs_OwnerUnavailable" xml:space="preserve">
+    <value>This item already has a job in progress. Wait for it to finish, then try again.</value>
+  </data>
+  <data name="Jobs_RetentionProgress" xml:space="preserve">
+    <value>{stopped, plural, one {# job stopped} other {# jobs stopped}}, {succeeded, plural, one {# succeeded job} other {# succeeded jobs}} and {ended, plural, one {# failed or cancelled job} other {# failed or cancelled jobs}} deleted.</value>
+  </data>
+  <data name="Jobs_TreeVerifyProgress" xml:space="preserve">
+    <value>{verified} of {total} trees checked, {repaired, plural, one {# row} other {# rows}} repaired.</value>
+  </data>
+  <data name="JobHandler_core_job-retention" xml:space="preserve">
+    <value>Clean up old jobs</value>
+  </data>
+  <data name="JobHandler_core_tree-verify" xml:space="preserve">
+    <value>Check the trees</value>
+  </data>
+  <data name="JobHandler_core_blob-sweep" xml:space="preserve">
+    <value>Delete unused files</value>
+  </data>
+  <data name="JobHandler_core_blob-reconcile" xml:space="preserve">
+    <value>Release unreferenced files</value>
+  </data>
+  <data name="Blob_SweepProgress" xml:space="preserve">
+    <value>{claimed, plural, one {# file} other {# files}} collected, {deleted, plural, one {# stored object} other {# stored objects}} deleted.</value>
+  </data>
+  <data name="Blob_ReconcileProgress" xml:space="preserve">
+    <value>{reconciled} of {total} file kinds checked, {released, plural, one {# file} other {# files}} released.</value>
+  </data>
+  <data name="Notification_core_job_failed" xml:space="preserve">
+    <value>The job {handlerKey} failed.</value>
+  </data>
+  <data name="Notification_core_job_pending-confirmation" xml:space="preserve">
+    <value>{count, plural, one {A job is waiting for you to confirm a warning.} other {A job is waiting for you to confirm # warnings.}}</value>
+  </data>
+  <data name="Notification_core_job_held" xml:space="preserve">
+    <value>{count, plural, one {A job you started is paused after a service interruption. An administrator can resume it; you can stop it.} other {# jobs you started are paused after a service interruption. An administrator can resume them; you can stop them.}}</value>
+  </data>
+  <data name="Notification_core_scheduler_gap" xml:space="preserve">
+    <value>Background jobs did not run from {previousTickAt, date, medium} {previousTickAt, time, short} until {now, date, medium} {now, time, short}. {heldCount, plural, =0 {No overdue job was paused.} one {# overdue job is paused until an administrator resumes or stops it.} other {# overdue jobs are paused until an administrator resumes or stops them.}}</value>
+  </data>
+  <!-- Notifications: the preference save's validation codes, retention's progress, and the handlers' labels -->
+  <data name="Notifications_UnknownType" xml:space="preserve">
+    <value>There is no such notification type.</value>
+  </data>
+  <data name="Notifications_UnknownChannel" xml:space="preserve">
+    <value>There is no such delivery channel.</value>
+  </data>
+  <data name="Notifications_DuplicatePreference" xml:space="preserve">
+    <value>This notification type and channel are listed more than once.</value>
+  </data>
+  <data name="Notifications_CannotMute" xml:space="preserve">
+    <value>Notifications of this type can’t be turned off in the inbox.</value>
+  </data>
+  <data name="Notifications_RetentionProgress" xml:space="preserve">
+    <value>Deleted {read, plural, one {# read notification} other {# read notifications}} and {unread, plural, one {# unread notification} other {# unread notifications}}.</value>
+  </data>
+  <data name="JobHandler_core_notification-delivery" xml:space="preserve">
+    <value>Delivering notifications</value>
+  </data>
+  <data name="JobHandler_core_notification-retention" xml:space="preserve">
+    <value>Deleting old notifications</value>
+  </data>
+  <!-- Notification settings: the categories' labels, the channels' labels and the types' labels -->
+  <data name="NotificationCategory_jobs" xml:space="preserve">
+    <value>Background jobs</value>
+  </data>
+  <data name="NotificationCategory_users" xml:space="preserve">
+    <value>Users</value>
+  </data>
+  <data name="NotificationCategory_reports" xml:space="preserve">
+    <value>Reports</value>
+  </data>
+  <data name="NotificationChannel_inbox" xml:space="preserve">
+    <value>In the app</value>
+  </data>
+  <data name="NotificationChannel_email" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="NotificationType_core_user_added" xml:space="preserve">
+    <value>You were added to a tenant</value>
+  </data>
+  <data name="NotificationType_core_job_failed" xml:space="preserve">
+    <value>A job failed</value>
+  </data>
+  <data name="NotificationType_core_job_pending-confirmation" xml:space="preserve">
+    <value>A job waits for you to confirm its warnings</value>
+  </data>
+  <data name="NotificationType_core_job_held" xml:space="preserve">
+    <value>Your jobs were paused after a service interruption</value>
+  </data>
+  <data name="NotificationType_core_scheduler_gap" xml:space="preserve">
+    <value>Background jobs stopped for a while</value>
+  </data>
+  <data name="NotificationType_core_schedule_paused" xml:space="preserve">
+    <value>A schedule was paused</value>
+  </data>
+  <data name="NotificationType_core_report_shared" xml:space="preserve">
+    <value>A report was shared with you</value>
+  </data>
+  <!-- The email outbox: the outgoing emails' labels, its codes, its sending and retention jobs' labels, the retention's progress and its failure notice -->
+  <data name="Core_OutgoingEmail" xml:space="preserve">
+    <value>Outgoing email</value>
+  </data>
+  <data name="Core_OutgoingEmail_Plural" xml:space="preserve">
+    <value>Outgoing emails</value>
+  </data>
+  <data name="Core_OutgoingEmail_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_OutgoingEmail_State" xml:space="preserve">
+    <value>State</value>
+  </data>
+  <data name="Core_OutgoingEmail_Audience" xml:space="preserve">
+    <value>Audience</value>
+  </data>
+  <data name="Core_OutgoingEmail_From" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Core_OutgoingEmail_ReplyTo" xml:space="preserve">
+    <value>Reply to</value>
+  </data>
+  <data name="Core_OutgoingEmail_To" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="Core_OutgoingEmail_Cc" xml:space="preserve">
+    <value>Cc</value>
+  </data>
+  <data name="Core_OutgoingEmail_Bcc" xml:space="preserve">
+    <value>Bcc</value>
+  </data>
+  <data name="Core_OutgoingEmail_Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Core_OutgoingEmail_TextBody" xml:space="preserve">
+    <value>Text body</value>
+  </data>
+  <data name="Core_OutgoingEmail_HtmlBody" xml:space="preserve">
+    <value>HTML body</value>
+  </data>
+  <data name="Core_OutgoingEmail_RecipientUserId" xml:space="preserve">
+    <value>Recipient</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingEntity" xml:space="preserve">
+    <value>Regarding</value>
+  </data>
+  <data name="Core_OutgoingEmail_RegardingId" xml:space="preserve">
+    <value>Regarding record ID</value>
+  </data>
+  <data name="Core_OutgoingEmail_SendAfter" xml:space="preserve">
+    <value>Send after</value>
+  </data>
+  <data name="Core_OutgoingEmail_AttemptCount" xml:space="preserve">
+    <value>Attempts</value>
+  </data>
+  <data name="Core_OutgoingEmail_SentAt" xml:space="preserve">
+    <value>Sent at</value>
+  </data>
+  <data name="Core_OutgoingEmail_ProviderMessageId" xml:space="preserve">
+    <value>Provider message ID</value>
+  </data>
+  <data name="Core_OutgoingEmail_ExpectsDeliveryEvents" xml:space="preserve">
+    <value>Tracks delivery</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorCode" xml:space="preserve">
+    <value>Error code</value>
+  </data>
+  <data name="Core_OutgoingEmail_ErrorDetail" xml:space="preserve">
+    <value>Error detail</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryStatus" xml:space="preserve">
+    <value>Delivery status</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryAt" xml:space="preserve">
+    <value>Delivery status at</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryRecipient" xml:space="preserve">
+    <value>Delivery recipient</value>
+  </data>
+  <data name="Core_OutgoingEmail_DeliveryReason" xml:space="preserve">
+    <value>Delivery reason</value>
+  </data>
+  <data name="Core_OutgoingEmail_LastProviderEventId" xml:space="preserve">
+    <value>Last provider event ID</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Pending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sending" xml:space="preserve">
+    <value>Sending</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sent" xml:space="preserve">
+    <value>Sent</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Sandboxed" xml:space="preserve">
+    <value>Kept in the sandbox</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Rejected" xml:space="preserve">
+    <value>Rejected</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_OutgoingEmailState_Cancelled" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Core_EmailAudience_Internal" xml:space="preserve">
+    <value>Internal</value>
+  </data>
+  <data name="Core_EmailAudience_External" xml:space="preserve">
+    <value>External</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Deferred" xml:space="preserve">
+    <value>Deferred</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Delivered" xml:space="preserve">
+    <value>Delivered</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Bounced" xml:space="preserve">
+    <value>Bounced</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Dropped" xml:space="preserve">
+    <value>Dropped</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_Failed" xml:space="preserve">
+    <value>Failed</value>
+  </data>
+  <data name="Core_EmailDeliveryStatus_SpamReported" xml:space="preserve">
+    <value>Reported as spam</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment" xml:space="preserve">
+    <value>Email attachment</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_Plural" xml:space="preserve">
+    <value>Email attachments</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_OutgoingEmailId" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_OutgoingEmailAttachment_ContentId" xml:space="preserve">
+    <value>Content ID</value>
+  </data>
+  <data name="Email_InvalidMessage" xml:space="preserve">
+    <value>This email can’t be sent as written. It needs at least one recipient, well-formed addresses, a subject on one line of at most 500 characters, a text body, and at most 20 attachments.</value>
+  </data>
+  <data name="Email_TooManyRecipients" xml:space="preserve">
+    <value>This email has {count, number} recipients. The most allowed is {max, number}.</value>
+  </data>
+  <data name="Email_TooLarge" xml:space="preserve">
+    <value>This email is too large: {size, number} bytes. The most allowed is {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Email_Rejected" xml:space="preserve">
+    <value>The email provider refused this email.</value>
+  </data>
+  <data name="Email_AttachmentMissing" xml:space="preserve">
+    <value>An attachment’s file was missing when the email was to be sent, so it was not sent.</value>
+  </data>
+  <data name="Email_TransientFailure" xml:space="preserve">
+    <value>The email could not be sent this time. It will be tried again.</value>
+  </data>
+  <data name="Email_AttemptsExhausted" xml:space="preserve">
+    <value>The email could not be sent after repeated attempts. Send it again once the problem is resolved.</value>
+  </data>
+  <data name="Email_Interrupted" xml:space="preserve">
+    <value>Sending this email was interrupted, and it may have been delivered. It was not sent again automatically.</value>
+  </data>
+  <data name="Email_NotRetryable" xml:space="preserve">
+    <value>Only an email that failed, or one whose sending job is no longer running, can be sent again.</value>
+  </data>
+  <data name="Email_NotCancellable" xml:space="preserve">
+    <value>Only an email that is waiting to be sent can be cancelled.</value>
+  </data>
+  <data name="Email_NotDeletable" xml:space="preserve">
+    <value>This email may still be sent. Cancel it, or wait until it is sent, before deleting it.</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email" xml:space="preserve">
+    <value>Sending an email</value>
+  </data>
+  <data name="JobHandler_core_outgoing-email-retention" xml:space="preserve">
+    <value>Deleting old outgoing emails</value>
+  </data>
+  <data name="Outbox_RetentionProgress" xml:space="preserve">
+    <value>Deleted {deleted, plural, one {# outgoing email} other {# outgoing emails}}.</value>
+  </data>
+  <data name="Notification_core_email_failed" xml:space="preserve">
+    <value>{count, plural, one {An outgoing email could not be sent.} other {# outgoing emails could not be sent.}}</value>
+  </data>
+  <data name="NotificationType_core_email_failed" xml:space="preserve">
+    <value>Emails that could not be sent</value>
+  </data>
+  <data name="Schedules_CronInvalid" xml:space="preserve">
+    <value>The cron expression {expression} is not valid. Give minute, hour, day of month, month and day of week, such as 0 3 * * * for three every morning.</value>
+  </data>
+  <data name="Schedules_CronNeverOccurs" xml:space="preserve">
+    <value>The cron expression {expression} never occurs again, so the schedule would never run.</value>
+  </data>
+  <data name="Schedules_TimeZoneUnknown" xml:space="preserve">
+    <value>The time zone {timeZone} is not one of the supported time zones.</value>
+  </data>
+  <data name="Schedules_HandlerUnknown" xml:space="preserve">
+    <value>No kind of job named {handlerKey} is offered.</value>
+  </data>
+  <data name="Schedules_HandlerNotSchedulable" xml:space="preserve">
+    <value>Jobs of the kind {handlerKey} cannot be scheduled.</value>
+  </data>
+  <data name="Schedules_ReplayAllRequiresAllow" xml:space="preserve">
+    <value>Replaying every missed run requires allowing runs to overlap.</value>
+  </data>
+  <data name="Schedules_ArgumentsTooLarge" xml:space="preserve">
+    <value>The arguments are too large; a job carries at most {maxBytes, number} bytes.</value>
+  </data>
+  <data name="Schedules_OwnedByAnotherUser" xml:space="preserve">
+    <value>This schedule runs as another user. Take it over before changing what it runs or when.</value>
+  </data>
+  <data name="Schedules_OwnerInactive" xml:space="preserve">
+    <value>This schedule runs as a user who is no longer active. Take it over before activating it.</value>
+  </data>
+  <data name="Schedules_BuiltInImmutable" xml:space="preserve">
+    <value>This schedule is built in: only its names, cron expression and time zone can change, and it cannot be deleted or taken over.</value>
+  </data>
+  <data name="Schedules_BuiltInAlwaysActive" xml:space="preserve">
+    <value>This schedule is built in and is always active.</value>
+  </data>
+  <data name="Schedules_RunInProgress" xml:space="preserve">
+    <value>A run of this schedule has not finished yet.</value>
+  </data>
+  <data name="Notification_core_schedule_paused" xml:space="preserve">
+    <value>The schedule {name} was paused: {reason, select, OwnerInactive {the user it runs as is no longer active} Exhausted {its cron expression never occurs again} other {its kind of job is no longer offered}}. It runs again once it is activated.</value>
+  </data>
+  <!-- Excel exports and imports: the export and import records' labels, the import records' guard, and the import's codes with their arguments -->
+  <data name="Core_Export" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="Core_Export_Plural" xml:space="preserve">
+    <value>Exports</value>
+  </data>
+  <data name="Core_Export_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_Export_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Export_Kind" xml:space="preserve">
+    <value>Kind</value>
+  </data>
+  <data name="Core_Export_RequestJson" xml:space="preserve">
+    <value>Request</value>
+  </data>
+  <data name="Core_Export_FileName" xml:space="preserve">
+    <value>File name</value>
+  </data>
+  <data name="Core_Export_RowCount" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Core_Export_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_ExportKind_Display" xml:space="preserve">
+    <value>For reading</value>
+  </data>
+  <data name="Core_ExportKind_ForImport" xml:space="preserve">
+    <value>For import</value>
+  </data>
+  <data name="Core_ExportKind_Report" xml:space="preserve">
+    <value>Report</value>
+  </data>
+  <data name="Core_Import" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="Core_Import_Plural" xml:space="preserve">
+    <value>Imports</value>
+  </data>
+  <data name="Core_Import_JobId" xml:space="preserve">
+    <value>Job</value>
+  </data>
+  <data name="Core_Import_Resource" xml:space="preserve">
+    <value>Resource</value>
+  </data>
+  <data name="Core_Import_RequestJson" xml:space="preserve">
+    <value>Request</value>
+  </data>
+  <data name="Core_Import_ResultJson" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="Core_Import_RowCount" xml:space="preserve">
+    <value>Rows</value>
+  </data>
+  <data name="Core_Import_ErrorCount" xml:space="preserve">
+    <value>Errors</value>
+  </data>
+  <data name="Core_Import_ExpiresAt" xml:space="preserve">
+    <value>Expires at</value>
+  </data>
+  <data name="Core_ImportMode_Insert" xml:space="preserve">
+    <value>Add new</value>
+  </data>
+  <data name="Core_ImportMode_Update" xml:space="preserve">
+    <value>Update existing</value>
+  </data>
+  <data name="Core_ImportMode_Upsert" xml:space="preserve">
+    <value>Add or update</value>
+  </data>
+  <data name="Imports_JobActive" xml:space="preserve">
+    <value>This import hasn’t finished yet. Wait for it to finish, or cancel its job, before deleting it.</value>
+  </data>
+  <data name="Excel_Import_PackageTooLarge" xml:space="preserve">
+    <value>The file is too large: {bytes, number} bytes. The most allowed is {max, number} bytes.</value>
+  </data>
+  <data name="Excel_Import_TooManySharedStrings" xml:space="preserve">
+    <value>The workbook holds {entries, number} distinct texts. The most allowed is {max, number}.</value>
+  </data>
+  <data name="Excel_Import_MalformedWorkbook" xml:space="preserve">
+    <value>{reason, select, entity {This workbook was exported from another kind of record, so it can’t be imported here.} other {This file can’t be read as an Excel workbook. Save it again as an .xlsx workbook, then upload it again.}}</value>
+  </data>
+  <data name="Excel_Import_UnknownSheet" xml:space="preserve">
+    <value>The workbook has no sheet with this name.</value>
+  </data>
+  <data name="Excel_Import_DuplicateSheet" xml:space="preserve">
+    <value>Another sheet of the workbook holds the same records. Keep one of them, or choose which one to ignore.</value>
+  </data>
+  <data name="Excel_Import_UnmappedColumn" xml:space="preserve">
+    <value>The column “{header}” doesn’t match any field. Choose the field it holds, or ignore it.</value>
+  </data>
+  <data name="Excel_Import_UnknownColumn" xml:space="preserve">
+    <value>The header row of this sheet has no column with this letter.</value>
+  </data>
+  <data name="Excel_Import_UnknownPath" xml:space="preserve">
+    <value>“{path}” isn’t a field of these records.</value>
+  </data>
+  <data name="Excel_Import_DuplicateColumn" xml:space="preserve">
+    <value>Another column of this sheet holds the same field ({path}). Keep one of them.</value>
+  </data>
+  <data name="Excel_Import_ServerOwnedColumn" xml:space="preserve">
+    <value>This column holds a field the system sets ({path}), so it can’t be imported. Ignore it.</value>
+  </data>
+  <data name="Excel_Import_UnconfiguredLanguageColumn" xml:space="preserve">
+    <value>This column’s language ({language}) isn’t one of the tenant’s languages, so the column is ignored.</value>
+  </data>
+  <data name="Excel_Import_IdentityColumnIgnored" xml:space="preserve">
+    <value>{reason, select, InsertMode {New records are being added, so the {path} column isn’t used to find existing records.} NoManifest {This file wasn’t exported for import, so the {path} column isn’t used to find existing records.} other {This file was exported from another tenant, so the {path} column isn’t used to find existing records.}}</value>
+  </data>
+  <data name="Excel_Import_TooLargeForSynchronous" xml:space="preserve">
+    <value>This file is too large to import while you wait: {rows, number} rows and {bytes, number} bytes, where the most allowed is {maxRows, number} rows and {maxBytes, number} bytes. Import it in the background instead (import/start).</value>
+  </data>
+  <data name="Excel_Import_OwnerSheetAbsent" xml:space="preserve">
+    <value>The rows of this sheet belong to rows of another sheet, which the workbook is missing or which has no Id column.</value>
+  </data>
+  <data name="Excel_Import_WriteOnceChanged" xml:space="preserve">
+    <value>This value can’t change once the record is saved ({path}). Keep the stored value.</value>
+  </data>
+  <data name="Excel_Import_RowNotFound" xml:space="preserve">
+    <value>No existing record has the {key} “{value}”.</value>
+  </data>
+  <data name="Excel_Import_DuplicateRowKey" xml:space="preserve">
+    <value>Another row of this sheet names the same record (“{value}”). Keep one of them.</value>
+  </data>
+  <data name="Excel_Import_IdKeyRequiresSameTenant" xml:space="preserve">
+    <value>This file was exported from another tenant, so its Id column can’t find records here. Choose another row key.</value>
+  </data>
+  <data name="Excel_Import_SurrogateReferenceFromOtherTenant" xml:space="preserve">
+    <value>This file was exported from another tenant, so the Ids in this column don’t name records here. Match the column to another key of the records it names.</value>
+  </data>
+  <data name="Excel_Import_ReferenceNotFound" xml:space="preserve">
+    <value>{collation, select, true {No record matches “{value}” exactly by its {key}, though one matches it ignoring case or accents. Write the value as it is stored.} other {No record you can use has the {key} “{value}”.}}</value>
+  </data>
+  <data name="Excel_Import_ReferenceAmbiguous" xml:space="preserve">
+    <value>{count, number} records have the {key} “{value}”, so the row can’t tell which one it means. Use a key that names one record.</value>
+  </data>
+  <data name="Excel_Import_KeyTooLong" xml:space="preserve">
+    <value>This key is longer than {max, number} characters, so no record can be found by it.</value>
+  </data>
+  <data name="Excel_Import_OrphanChildRow" xml:space="preserve">
+    <value>This row belongs to “{value}”, which no row of the owner sheet holds.</value>
+  </data>
+  <data name="Excel_Import_IncompleteChildSheet" xml:space="preserve">
+    <value>This sheet leaves out columns or sheets the existing rows have, so importing it would clear them. Export the records for import again, or add what is missing.</value>
+  </data>
+  <data name="Excel_Import_ParentCycle" xml:space="preserve">
+    <value>These rows name each other in a loop through {path}, so none of them can be saved first.</value>
+  </data>
+  <data name="Excel_Import_TooManyChildren" xml:space="preserve">
+    <value>This record has {count, number} rows on this sheet. The most allowed is {max, number}.</value>
+  </data>
+  <data name="Excel_Import_TooManyDescendants" xml:space="preserve">
+    <value>This record and the rows under it add up to {rows, number} rows. The most one record may have is {max, number}.</value>
+  </data>
+  <data name="Excel_Import_InvalidCell" xml:space="preserve">
+    <value>{expected, select, Bool {“{value}” isn’t yes or no.} Integer {“{value}” isn’t a whole number.} Numeric {“{value}” isn’t a number.} Choice {“{value}” isn’t one of the choices.} Date {“{value}” isn’t a date.} DateTime {“{value}” isn’t a date and time.} DateTimeOffset {“{value}” isn’t a date and time.} Time {“{value}” isn’t a time.} Guid {“{value}” isn’t an identifier.} other {“{value}” can’t be read here.}}</value>
+  </data>
+  <data name="Excel_Import_ConcurrencyConflict" xml:space="preserve">
+    <value>{exported, select, true {Someone changed this record ({modifiedBy}, {modifiedAt}) after the file was exported. Export it again and redo your changes.} other {Someone changed this record ({modifiedBy}, {modifiedAt}) while it was being imported. Import the file again.}}</value>
+  </data>
+  <!-- Queryex diagnostics, with the arguments the engine gives each -->
+  <data name="Queryex_QX1001" xml:space="preserve">
+    <value>Unterminated text literal.</value>
+  </data>
+  <data name="Queryex_QX1002" xml:space="preserve">
+    <value>Unterminated bracketed name.</value>
+  </data>
+  <data name="Queryex_QX1003" xml:space="preserve">
+    <value>Malformed number.</value>
+  </data>
+  <data name="Queryex_QX1004" xml:space="preserve">
+    <value>The number has more digits than are supported.</value>
+  </data>
+  <data name="Queryex_QX1005" xml:space="preserve">
+    <value>Unexpected character.</value>
+  </data>
+  <data name="Queryex_QX2001" xml:space="preserve">
+    <value>Unexpected {actual}; expected one of: {expected}.</value>
+  </data>
+  <data name="Queryex_QX2002" xml:space="preserve">
+    <value>Unbalanced parenthesis.</value>
+  </data>
+  <data name="Queryex_QX2003" xml:space="preserve">
+    <value>Empty list item.</value>
+  </data>
+  <data name="Queryex_QX2004" xml:space="preserve">
+    <value>Empty argument.</value>
+  </data>
+  <data name="Queryex_QX2005" xml:space="preserve">
+    <value>Empty parentheses.</value>
+  </data>
+  <data name="Queryex_QX2006" xml:space="preserve">
+    <value>Comparisons can’t be chained.</value>
+  </data>
+  <data name="Queryex_QX2007" xml:space="preserve">
+    <value>A direction (asc or desc) isn’t allowed here.</value>
+  </data>
+  <data name="Queryex_QX2008" xml:space="preserve">
+    <value>A direction (asc or desc) must end its item.</value>
+  </data>
+  <data name="Queryex_QX2009" xml:space="preserve">
+    <value>A condition is a single expression, not a list.</value>
+  </data>
+  <data name="Queryex_QX3001" xml:space="preserve">
+    <value>Unknown property {name} on {entity}.</value>
+  </data>
+  <data name="Queryex_QX3002" xml:space="preserve">
+    <value>{name} on {entity} is a navigation; the path must end at a property.</value>
+  </data>
+  <data name="Queryex_QX3003" xml:space="preserve">
+    <value>Unknown function {function}.</value>
+  </data>
+  <data name="Queryex_QX3004" xml:space="preserve">
+    <value>Function {function} doesn’t take {actual} arguments. It takes: {expected}.</value>
+  </data>
+  <data name="Queryex_QX3005" xml:space="preserve">
+    <value>No form of {function} accepts these argument types. Its forms: {signatures}.</value>
+  </data>
+  <data name="Queryex_QX3006" xml:space="preserve">
+    <value>The call to {function} is ambiguous.</value>
+  </data>
+  <data name="Queryex_QX3007" xml:space="preserve">
+    <value>Undeclared parameter @{name}.</value>
+  </data>
+  <data name="Queryex_QX3100" xml:space="preserve">
+    <value>This argument of {function} must be a literal value.</value>
+  </data>
+  <data name="Queryex_QX3101" xml:space="preserve">
+    <value>{function} doesn’t accept the value {name}.</value>
+  </data>
+  <data name="Queryex_QX3102" xml:space="preserve">
+    <value>Can’t convert {type} to {otherType}.</value>
+  </data>
+  <data name="Queryex_QX3103" xml:space="preserve">
+    <value>{function} needs a value in a time zone; wrap the argument in local.</value>
+  </data>
+  <data name="Queryex_QX3200" xml:space="preserve">
+    <value>An operand of type {type} isn’t compatible here.</value>
+  </data>
+  <data name="Queryex_QX3201" xml:space="preserve">
+    <value>The type {type} isn’t valid for this operator or position.</value>
+  </data>
+  <data name="Queryex_QX3202" xml:space="preserve">
+    <value>The expression has no type; cast the null.</value>
+  </data>
+  <data name="Queryex_QX3203" xml:space="preserve">
+    <value>These columns hold text of different collations, so they can’t be compared or combined.</value>
+  </data>
+  <data name="Queryex_QX3300" xml:space="preserve">
+    <value>The first argument of {function} must be a path.</value>
+  </data>
+  <data name="Queryex_QX3301" xml:space="preserve">
+    <value>{function}: the entity isn’t a hierarchy.</value>
+  </data>
+  <data name="Queryex_QX3302" xml:space="preserve">
+    <value>{function}: the property isn’t unique.</value>
+  </data>
+  <data name="Queryex_QX3303" xml:space="preserve">
+    <value>{function}: the key argument can’t contain a path.</value>
+  </data>
+  <data name="Queryex_QX3400" xml:space="preserve">
+    <value>Parameter @{name} is used with conflicting types (here as {type}).</value>
+  </data>
+  <data name="Queryex_QX4001" xml:space="preserve">
+    <value>The expression must be a condition here, but it is {type}.</value>
+  </data>
+  <data name="Queryex_QX4002" xml:space="preserve">
+    <value>Aggregations aren’t allowed here.</value>
+  </data>
+  <data name="Queryex_QX4003" xml:space="preserve">
+    <value>An aggregation can’t appear inside another aggregation.</value>
+  </data>
+  <data name="Queryex_QX4004" xml:space="preserve">
+    <value>A path outside an aggregation isn’t allowed in an aggregate filter.</value>
+  </data>
+  <data name="Queryex_QX4005" xml:space="preserve">
+    <value>This ordering term would change the grouping.</value>
+  </data>
+  <data name="Queryex_QX4006" xml:space="preserve">
+    <value>Paging needs an explicit ordering.</value>
+  </data>
+  <data name="Queryex_QX4007" xml:space="preserve">
+    <value>An item can’t mix paths inside and outside aggregations.</value>
+  </data>
+  <data name="Queryex_QX4008" xml:space="preserve">
+    <value>Duplicate ordering term.</value>
+  </data>
+  <data name="Queryex_QX4009" xml:space="preserve">
+    <value>The path {name} can’t be used here: there’s no row to read it from.</value>
+  </data>
+  <data name="Queryex_QX4010" xml:space="preserve">
+    <value>{construct} can’t be computed over rolled-up values.</value>
+  </data>
+  <data name="Queryex_QX4011" xml:space="preserve">
+    <value>A measure must aggregate, and every path it reads must be inside an aggregation.</value>
+  </data>
+  <data name="Queryex_QX5001" xml:space="preserve">
+    <value>The expression is longer than {limit} characters.</value>
+  </data>
+  <data name="Queryex_QX5002" xml:space="preserve">
+    <value>The expression has more than {limit} tokens.</value>
+  </data>
+  <data name="Queryex_QX5003" xml:space="preserve">
+    <value>The expression nests more than {limit} levels deep.</value>
+  </data>
+  <data name="Queryex_QX5004" xml:space="preserve">
+    <value>The query has more than {limit} typed nodes.</value>
+  </data>
+  <data name="Queryex_QX5005" xml:space="preserve">
+    <value>The list has more than {limit} items.</value>
+  </data>
+  <data name="Queryex_QX5006" xml:space="preserve">
+    <value>The query needs more than {limit} joins.</value>
+  </data>
+  <data name="Queryex_QX5007" xml:space="preserve">
+    <value>The query needs more than {limit} parameters.</value>
+  </data>
+  <!-- Region_ names: generated by eng/region-names from CLDR 48.0; regenerate them, never edit by hand -->
+  <data name="Region_AE" xml:space="preserve">
+    <value>United Arab Emirates</value>
+  </data>
+  <data name="Region_AG" xml:space="preserve">
+    <value>Antigua &amp; Barbuda</value>
+  </data>
+  <data name="Region_AI" xml:space="preserve">
+    <value>Anguilla</value>
+  </data>
+  <data name="Region_AO" xml:space="preserve">
+    <value>Angola</value>
+  </data>
+  <data name="Region_AR" xml:space="preserve">
+    <value>Argentina</value>
+  </data>
+  <data name="Region_AS" xml:space="preserve">
+    <value>American Samoa</value>
+  </data>
+  <data name="Region_AT" xml:space="preserve">
+    <value>Austria</value>
+  </data>
+  <data name="Region_AU" xml:space="preserve">
+    <value>Australia</value>
+  </data>
+  <data name="Region_BB" xml:space="preserve">
+    <value>Barbados</value>
+  </data>
+  <data name="Region_BE" xml:space="preserve">
+    <value>Belgium</value>
+  </data>
+  <data name="Region_BF" xml:space="preserve">
+    <value>Burkina Faso</value>
+  </data>
+  <data name="Region_BH" xml:space="preserve">
+    <value>Bahrain</value>
+  </data>
+  <data name="Region_BI" xml:space="preserve">
+    <value>Burundi</value>
+  </data>
+  <data name="Region_BJ" xml:space="preserve">
+    <value>Benin</value>
+  </data>
+  <data name="Region_BL" xml:space="preserve">
+    <value>St. Barthélemy</value>
+  </data>
+  <data name="Region_BM" xml:space="preserve">
+    <value>Bermuda</value>
+  </data>
+  <data name="Region_BO" xml:space="preserve">
+    <value>Bolivia</value>
+  </data>
+  <data name="Region_BR" xml:space="preserve">
+    <value>Brazil</value>
+  </data>
+  <data name="Region_BS" xml:space="preserve">
+    <value>Bahamas</value>
+  </data>
+  <data name="Region_BW" xml:space="preserve">
+    <value>Botswana</value>
+  </data>
+  <data name="Region_BZ" xml:space="preserve">
+    <value>Belize</value>
+  </data>
+  <data name="Region_CA" xml:space="preserve">
+    <value>Canada</value>
+  </data>
+  <data name="Region_CC" xml:space="preserve">
+    <value>Cocos (Keeling) Islands</value>
+  </data>
+  <data name="Region_CD" xml:space="preserve">
+    <value>Congo - Kinshasa</value>
+  </data>
+  <data name="Region_CF" xml:space="preserve">
+    <value>Central African Republic</value>
+  </data>
+  <data name="Region_CG" xml:space="preserve">
+    <value>Congo - Brazzaville</value>
+  </data>
+  <data name="Region_CH" xml:space="preserve">
+    <value>Switzerland</value>
+  </data>
+  <data name="Region_CI" xml:space="preserve">
+    <value>Côte d’Ivoire</value>
+  </data>
+  <data name="Region_CK" xml:space="preserve">
+    <value>Cook Islands</value>
+  </data>
+  <data name="Region_CL" xml:space="preserve">
+    <value>Chile</value>
+  </data>
+  <data name="Region_CM" xml:space="preserve">
+    <value>Cameroon</value>
+  </data>
+  <data name="Region_CN" xml:space="preserve">
+    <value>China</value>
+  </data>
+  <data name="Region_CO" xml:space="preserve">
+    <value>Colombia</value>
+  </data>
+  <data name="Region_CR" xml:space="preserve">
+    <value>Costa Rica</value>
+  </data>
+  <data name="Region_CU" xml:space="preserve">
+    <value>Cuba</value>
+  </data>
+  <data name="Region_CV" xml:space="preserve">
+    <value>Cape Verde</value>
+  </data>
+  <data name="Region_CX" xml:space="preserve">
+    <value>Christmas Island</value>
+  </data>
+  <data name="Region_CY" xml:space="preserve">
+    <value>Cyprus</value>
+  </data>
+  <data name="Region_DE" xml:space="preserve">
+    <value>Germany</value>
+  </data>
+  <data name="Region_DJ" xml:space="preserve">
+    <value>Djibouti</value>
+  </data>
+  <data name="Region_DK" xml:space="preserve">
+    <value>Denmark</value>
+  </data>
+  <data name="Region_DM" xml:space="preserve">
+    <value>Dominica</value>
+  </data>
+  <data name="Region_DO" xml:space="preserve">
+    <value>Dominican Republic</value>
+  </data>
+  <data name="Region_DZ" xml:space="preserve">
+    <value>Algeria</value>
+  </data>
+  <data name="Region_EC" xml:space="preserve">
+    <value>Ecuador</value>
+  </data>
+  <data name="Region_EG" xml:space="preserve">
+    <value>Egypt</value>
+  </data>
+  <data name="Region_ER" xml:space="preserve">
+    <value>Eritrea</value>
+  </data>
+  <data name="Region_ES" xml:space="preserve">
+    <value>Spain</value>
+  </data>
+  <data name="Region_ET" xml:space="preserve">
+    <value>Ethiopia</value>
+  </data>
+  <data name="Region_FI" xml:space="preserve">
+    <value>Finland</value>
+  </data>
+  <data name="Region_FJ" xml:space="preserve">
+    <value>Fiji</value>
+  </data>
+  <data name="Region_FK" xml:space="preserve">
+    <value>Falkland Islands</value>
+  </data>
+  <data name="Region_FM" xml:space="preserve">
+    <value>Micronesia</value>
+  </data>
+  <data name="Region_FR" xml:space="preserve">
+    <value>France</value>
+  </data>
+  <data name="Region_GA" xml:space="preserve">
+    <value>Gabon</value>
+  </data>
+  <data name="Region_GB" xml:space="preserve">
+    <value>United Kingdom</value>
+  </data>
+  <data name="Region_GD" xml:space="preserve">
+    <value>Grenada</value>
+  </data>
+  <data name="Region_GF" xml:space="preserve">
+    <value>French Guiana</value>
+  </data>
+  <data name="Region_GG" xml:space="preserve">
+    <value>Guernsey</value>
+  </data>
+  <data name="Region_GH" xml:space="preserve">
+    <value>Ghana</value>
+  </data>
+  <data name="Region_GI" xml:space="preserve">
+    <value>Gibraltar</value>
+  </data>
+  <data name="Region_GM" xml:space="preserve">
+    <value>Gambia</value>
+  </data>
+  <data name="Region_GN" xml:space="preserve">
+    <value>Guinea</value>
+  </data>
+  <data name="Region_GP" xml:space="preserve">
+    <value>Guadeloupe</value>
+  </data>
+  <data name="Region_GQ" xml:space="preserve">
+    <value>Equatorial Guinea</value>
+  </data>
+  <data name="Region_GT" xml:space="preserve">
+    <value>Guatemala</value>
+  </data>
+  <data name="Region_GU" xml:space="preserve">
+    <value>Guam</value>
+  </data>
+  <data name="Region_GW" xml:space="preserve">
+    <value>Guinea-Bissau</value>
+  </data>
+  <data name="Region_GY" xml:space="preserve">
+    <value>Guyana</value>
+  </data>
+  <data name="Region_HK" xml:space="preserve">
+    <value>Hong Kong SAR China</value>
+  </data>
+  <data name="Region_HN" xml:space="preserve">
+    <value>Honduras</value>
+  </data>
+  <data name="Region_HT" xml:space="preserve">
+    <value>Haiti</value>
+  </data>
+  <data name="Region_ID" xml:space="preserve">
+    <value>Indonesia</value>
+  </data>
+  <data name="Region_IE" xml:space="preserve">
+    <value>Ireland</value>
+  </data>
+  <data name="Region_IL" xml:space="preserve">
+    <value>Israel</value>
+  </data>
+  <data name="Region_IM" xml:space="preserve">
+    <value>Isle of Man</value>
+  </data>
+  <data name="Region_IN" xml:space="preserve">
+    <value>India</value>
+  </data>
+  <data name="Region_IO" xml:space="preserve">
+    <value>British Indian Ocean Territory</value>
+  </data>
+  <data name="Region_IQ" xml:space="preserve">
+    <value>Iraq</value>
+  </data>
+  <data name="Region_IT" xml:space="preserve">
+    <value>Italy</value>
+  </data>
+  <data name="Region_JE" xml:space="preserve">
+    <value>Jersey</value>
+  </data>
+  <data name="Region_JM" xml:space="preserve">
+    <value>Jamaica</value>
+  </data>
+  <data name="Region_JO" xml:space="preserve">
+    <value>Jordan</value>
+  </data>
+  <data name="Region_KE" xml:space="preserve">
+    <value>Kenya</value>
+  </data>
+  <data name="Region_KI" xml:space="preserve">
+    <value>Kiribati</value>
+  </data>
+  <data name="Region_KM" xml:space="preserve">
+    <value>Comoros</value>
+  </data>
+  <data name="Region_KN" xml:space="preserve">
+    <value>St. Kitts &amp; Nevis</value>
+  </data>
+  <data name="Region_KW" xml:space="preserve">
+    <value>Kuwait</value>
+  </data>
+  <data name="Region_KY" xml:space="preserve">
+    <value>Cayman Islands</value>
+  </data>
+  <data name="Region_LB" xml:space="preserve">
+    <value>Lebanon</value>
+  </data>
+  <data name="Region_LC" xml:space="preserve">
+    <value>St. Lucia</value>
+  </data>
+  <data name="Region_LI" xml:space="preserve">
+    <value>Liechtenstein</value>
+  </data>
+  <data name="Region_LR" xml:space="preserve">
+    <value>Liberia</value>
+  </data>
+  <data name="Region_LS" xml:space="preserve">
+    <value>Lesotho</value>
+  </data>
+  <data name="Region_LU" xml:space="preserve">
+    <value>Luxembourg</value>
+  </data>
+  <data name="Region_LY" xml:space="preserve">
+    <value>Libya</value>
+  </data>
+  <data name="Region_MA" xml:space="preserve">
+    <value>Morocco</value>
+  </data>
+  <data name="Region_MC" xml:space="preserve">
+    <value>Monaco</value>
+  </data>
+  <data name="Region_MF" xml:space="preserve">
+    <value>St. Martin</value>
+  </data>
+  <data name="Region_MG" xml:space="preserve">
+    <value>Madagascar</value>
+  </data>
+  <data name="Region_MH" xml:space="preserve">
+    <value>Marshall Islands</value>
+  </data>
+  <data name="Region_ML" xml:space="preserve">
+    <value>Mali</value>
+  </data>
+  <data name="Region_MO" xml:space="preserve">
+    <value>Macao SAR China</value>
+  </data>
+  <data name="Region_MP" xml:space="preserve">
+    <value>Northern Mariana Islands</value>
+  </data>
+  <data name="Region_MQ" xml:space="preserve">
+    <value>Martinique</value>
+  </data>
+  <data name="Region_MR" xml:space="preserve">
+    <value>Mauritania</value>
+  </data>
+  <data name="Region_MS" xml:space="preserve">
+    <value>Montserrat</value>
+  </data>
+  <data name="Region_MT" xml:space="preserve">
+    <value>Malta</value>
+  </data>
+  <data name="Region_MU" xml:space="preserve">
+    <value>Mauritius</value>
+  </data>
+  <data name="Region_MV" xml:space="preserve">
+    <value>Maldives</value>
+  </data>
+  <data name="Region_MW" xml:space="preserve">
+    <value>Malawi</value>
+  </data>
+  <data name="Region_MX" xml:space="preserve">
+    <value>Mexico</value>
+  </data>
+  <data name="Region_MY" xml:space="preserve">
+    <value>Malaysia</value>
+  </data>
+  <data name="Region_MZ" xml:space="preserve">
+    <value>Mozambique</value>
+  </data>
+  <data name="Region_NA" xml:space="preserve">
+    <value>Namibia</value>
+  </data>
+  <data name="Region_NC" xml:space="preserve">
+    <value>New Caledonia</value>
+  </data>
+  <data name="Region_NE" xml:space="preserve">
+    <value>Niger</value>
+  </data>
+  <data name="Region_NF" xml:space="preserve">
+    <value>Norfolk Island</value>
+  </data>
+  <data name="Region_NG" xml:space="preserve">
+    <value>Nigeria</value>
+  </data>
+  <data name="Region_NI" xml:space="preserve">
+    <value>Nicaragua</value>
+  </data>
+  <data name="Region_NL" xml:space="preserve">
+    <value>Netherlands</value>
+  </data>
+  <data name="Region_NR" xml:space="preserve">
+    <value>Nauru</value>
+  </data>
+  <data name="Region_NU" xml:space="preserve">
+    <value>Niue</value>
+  </data>
+  <data name="Region_NZ" xml:space="preserve">
+    <value>New Zealand</value>
+  </data>
+  <data name="Region_OM" xml:space="preserve">
+    <value>Oman</value>
+  </data>
+  <data name="Region_PA" xml:space="preserve">
+    <value>Panama</value>
+  </data>
+  <data name="Region_PE" xml:space="preserve">
+    <value>Peru</value>
+  </data>
+  <data name="Region_PF" xml:space="preserve">
+    <value>French Polynesia</value>
+  </data>
+  <data name="Region_PG" xml:space="preserve">
+    <value>Papua New Guinea</value>
+  </data>
+  <data name="Region_PH" xml:space="preserve">
+    <value>Philippines</value>
+  </data>
+  <data name="Region_PK" xml:space="preserve">
+    <value>Pakistan</value>
+  </data>
+  <data name="Region_PM" xml:space="preserve">
+    <value>St. Pierre &amp; Miquelon</value>
+  </data>
+  <data name="Region_PN" xml:space="preserve">
+    <value>Pitcairn Islands</value>
+  </data>
+  <data name="Region_PR" xml:space="preserve">
+    <value>Puerto Rico</value>
+  </data>
+  <data name="Region_PS" xml:space="preserve">
+    <value>Palestinian Territories</value>
+  </data>
+  <data name="Region_PT" xml:space="preserve">
+    <value>Portugal</value>
+  </data>
+  <data name="Region_PW" xml:space="preserve">
+    <value>Palau</value>
+  </data>
+  <data name="Region_PY" xml:space="preserve">
+    <value>Paraguay</value>
+  </data>
+  <data name="Region_QA" xml:space="preserve">
+    <value>Qatar</value>
+  </data>
+  <data name="Region_RE" xml:space="preserve">
+    <value>Réunion</value>
+  </data>
+  <data name="Region_RW" xml:space="preserve">
+    <value>Rwanda</value>
+  </data>
+  <data name="Region_SA" xml:space="preserve">
+    <value>Saudi Arabia</value>
+  </data>
+  <data name="Region_SB" xml:space="preserve">
+    <value>Solomon Islands</value>
+  </data>
+  <data name="Region_SC" xml:space="preserve">
+    <value>Seychelles</value>
+  </data>
+  <data name="Region_SD" xml:space="preserve">
+    <value>Sudan</value>
+  </data>
+  <data name="Region_SE" xml:space="preserve">
+    <value>Sweden</value>
+  </data>
+  <data name="Region_SG" xml:space="preserve">
+    <value>Singapore</value>
+  </data>
+  <data name="Region_SH" xml:space="preserve">
+    <value>St. Helena</value>
+  </data>
+  <data name="Region_SI" xml:space="preserve">
+    <value>Slovenia</value>
+  </data>
+  <data name="Region_SL" xml:space="preserve">
+    <value>Sierra Leone</value>
+  </data>
+  <data name="Region_SN" xml:space="preserve">
+    <value>Senegal</value>
+  </data>
+  <data name="Region_SO" xml:space="preserve">
+    <value>Somalia</value>
+  </data>
+  <data name="Region_SS" xml:space="preserve">
+    <value>South Sudan</value>
+  </data>
+  <data name="Region_ST" xml:space="preserve">
+    <value>São Tomé &amp; Príncipe</value>
+  </data>
+  <data name="Region_SV" xml:space="preserve">
+    <value>El Salvador</value>
+  </data>
+  <data name="Region_SX" xml:space="preserve">
+    <value>Sint Maarten</value>
+  </data>
+  <data name="Region_SY" xml:space="preserve">
+    <value>Syria</value>
+  </data>
+  <data name="Region_SZ" xml:space="preserve">
+    <value>Eswatini</value>
+  </data>
+  <data name="Region_TC" xml:space="preserve">
+    <value>Turks &amp; Caicos Islands</value>
+  </data>
+  <data name="Region_TD" xml:space="preserve">
+    <value>Chad</value>
+  </data>
+  <data name="Region_TG" xml:space="preserve">
+    <value>Togo</value>
+  </data>
+  <data name="Region_TK" xml:space="preserve">
+    <value>Tokelau</value>
+  </data>
+  <data name="Region_TL" xml:space="preserve">
+    <value>Timor-Leste</value>
+  </data>
+  <data name="Region_TN" xml:space="preserve">
+    <value>Tunisia</value>
+  </data>
+  <data name="Region_TO" xml:space="preserve">
+    <value>Tonga</value>
+  </data>
+  <data name="Region_TR" xml:space="preserve">
+    <value>Türkiye</value>
+  </data>
+  <data name="Region_TT" xml:space="preserve">
+    <value>Trinidad &amp; Tobago</value>
+  </data>
+  <data name="Region_TV" xml:space="preserve">
+    <value>Tuvalu</value>
+  </data>
+  <data name="Region_TW" xml:space="preserve">
+    <value>Taiwan</value>
+  </data>
+  <data name="Region_TZ" xml:space="preserve">
+    <value>Tanzania</value>
+  </data>
+  <data name="Region_UG" xml:space="preserve">
+    <value>Uganda</value>
+  </data>
+  <data name="Region_UM" xml:space="preserve">
+    <value>U.S. Outlying Islands</value>
+  </data>
+  <data name="Region_US" xml:space="preserve">
+    <value>United States</value>
+  </data>
+  <data name="Region_UY" xml:space="preserve">
+    <value>Uruguay</value>
+  </data>
+  <data name="Region_VC" xml:space="preserve">
+    <value>St. Vincent &amp; Grenadines</value>
+  </data>
+  <data name="Region_VE" xml:space="preserve">
+    <value>Venezuela</value>
+  </data>
+  <data name="Region_VG" xml:space="preserve">
+    <value>British Virgin Islands</value>
+  </data>
+  <data name="Region_VI" xml:space="preserve">
+    <value>U.S. Virgin Islands</value>
+  </data>
+  <data name="Region_VU" xml:space="preserve">
+    <value>Vanuatu</value>
+  </data>
+  <data name="Region_WF" xml:space="preserve">
+    <value>Wallis &amp; Futuna</value>
+  </data>
+  <data name="Region_WS" xml:space="preserve">
+    <value>Samoa</value>
+  </data>
+  <data name="Region_YE" xml:space="preserve">
+    <value>Yemen</value>
+  </data>
+  <data name="Region_YT" xml:space="preserve">
+    <value>Mayotte</value>
+  </data>
+  <data name="Region_ZA" xml:space="preserve">
+    <value>South Africa</value>
+  </data>
+  <data name="Region_ZM" xml:space="preserve">
+    <value>Zambia</value>
+  </data>
+  <data name="Region_ZW" xml:space="preserve">
+    <value>Zimbabwe</value>
+  </data>
+  <!-- End of Region_ names -->
+</root>

@@ -61,6 +61,37 @@ namespace Tellma.Identity.Data.Configurations
         }
     }
 
+    /// <summary>
+    ///     Maps <see cref="IdentitySessionClientAuthorization" /> to the
+    ///     <c>SessionClientAuthorizations</c> table.
+    /// </summary>
+    public sealed class IdentitySessionClientAuthorizationConfiguration
+        : IEntityTypeConfiguration<IdentitySessionClientAuthorization>
+    {
+        /// <inheritdoc />
+        public void Configure(EntityTypeBuilder<IdentitySessionClientAuthorization> builder)
+        {
+            builder.ToTable("SessionClientAuthorizations");
+            builder.HasKey(static row => new { row.Sid, row.ClientId, row.AuthorizationId });
+            builder.Property(static row => row.Sid).HasMaxLength(64);
+            builder.Property(static row => row.ClientId).HasMaxLength(100);
+
+            // OpenIddict's store writes authorization ids as GUID strings. The bound keeps the
+            // three-column key within SQL Server's 900-byte index key limit, which the store's own
+            // 450-character id column alone would fill.
+            builder.Property(static row => row.AuthorizationId).HasMaxLength(100);
+
+            // No foreign key to the authorization: OpenIddict's prune deletes authorizations by
+            // set, and a revocation path already skips one that is gone. The rows go with their
+            // session client, and so with their session.
+            builder
+                .HasOne<IdentitySessionClient>()
+                .WithMany(static client => client.Authorizations)
+                .HasForeignKey(static row => new { row.Sid, row.ClientId })
+                .OnDelete(DeleteBehavior.Cascade);
+        }
+    }
+
     /// <summary>Maps <see cref="SingleUseCode" /> to the <c>SingleUseCodes</c> table.</summary>
     public sealed class SingleUseCodeConfiguration : IEntityTypeConfiguration<SingleUseCode>
     {

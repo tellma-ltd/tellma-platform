@@ -6,12 +6,14 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Quartz;
 using System.Data;
 using Tellma.Core.Abstractions.Email;
 using Tellma.Identity.Data;
 using Tellma.Identity.Data.Entities;
+using Tellma.Identity.Hosting;
 using Tellma.Identity.Services.Email;
 using Tellma.Identity.Services.Tokens;
 
@@ -47,7 +49,7 @@ namespace Tellma.Identity.Services.Invitations
     /// <param name="users">Resolves the recipient.</param>
     /// <param name="templates">Renders the message.</param>
     /// <param name="links">Builds the absolute invitation link.</param>
-    /// <param name="sender">The composed email pipeline.</param>
+    /// <param name="sender">The engine's sender: the composed email pipeline, as the host keys it for the engine.</param>
     /// <param name="recorder">Writes the send outcome back to the row.</param>
     /// <param name="timeProvider">The clock.</param>
     /// <param name="logger">Diagnostics.</param>
@@ -58,7 +60,7 @@ namespace Tellma.Identity.Services.Invitations
         UserManager<TellmaIdentityUser> users,
         EmailTemplateService templates,
         InvitationLinkBuilder links,
-        IEmailSender sender,
+        [FromKeyedServices(TellmaIdentityServiceCollectionExtensions.EmailSenderKey)] IEmailSender sender,
         IEmailDispatchRecorder recorder,
         TimeProvider timeProvider,
         ILogger<InvitationDispatchJob> logger) : IJob

@@ -1,0 +1,12 @@
+// Membership-hint write failures, per writer.
+// Backs the "the membership directory is drifting" alert: a failed hint leaves a user's tenant list
+// wrong until the next reconciliation, and a failing reconciliation leaves it wrong indefinitely.
+customMetrics
+| where name == "tellma.tenancy.membership.writes"
+| extend outcome = tostring(customDimensions["outcome"])
+| extend source = tostring(customDimensions["source"])
+| summarize
+    failed = sumif(valueSum, outcome == "failed"),
+    total = sum(valueSum)
+    by source, bin(timestamp, 15m)
+| where failed > 0 and (source == "reconcile" or todouble(failed) / todouble(total) > 0.05)

@@ -1,0 +1,11 @@
+{
+  "Boot_Cookies": "فعّل ملفات تعريف الارتباط لهذا الموقع، ثم حاول مرة أخرى.",
+  "Boot_LoadFailed": "تحقّق من اتصالك وحاول مرة أخرى.",
+  "Boot_SignInFailed": "تعذّر تسجيل دخولك. حاول مرة أخرى بعد قليل.",
+  "Boot_Title": "تعذّر تشغيل {displayName}",
+  "Boot_TryAgain": "حاول مرة أخرى",
+  "Boot_Unsupported": "حدّث متصفحك إلى إصدار حديث من Chrome أو Edge أو Firefox أو Safari.",
+  "Distribution_DisplayName": "فكسشر",
+  "Distribution_ShortName": "فكسشر",
+  "Fixture_Review": "مراجعة"
+}

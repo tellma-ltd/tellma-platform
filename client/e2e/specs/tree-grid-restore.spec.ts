@@ -1,0 +1,359 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import { expect, test, type Locator, type Page } from '@playwright/test';
+
+import { cell, expectCellText, gotoGrid, gridScroller, liveRegion } from '../support/grid';
+import { holdResponses, releaseResponses } from '../support/held-responses';
+
+/**
+ * The tree grid's remembered expansion and `scrollToRow` against the
+ * expansion-restore story: an all-lazy cost-centre tree whose expansion the
+ * screen keeps (`expansionSource="model"`). Mounting restores it with one
+ * `loadChildren` call per level, in data order, keeping an id whose row no
+ * longer exists; collapses and expands write back; the lazy-loading
+ * gestures (reserved-slot spinner, re-collapse during a load, failure); and
+ * the `scrollToRow` flash under reduced motion and forced colors, which
+ * never takes focus. Every path runs left-to-right and right-to-left.
+ *
+ * Restored shape: Operations › Plant (Line A, Line B), Logistics; Finance ›
+ * Treasury (Cash pool, Hedging), Payroll; Archive (collapsed) — 11 rows,
+ * readonly (no placeholder) → aria-rowcount 12.
+ */
+
+/** The rendered row element at a view-space row index. */
+function row(page: Page, viewIndex: number): Locator {
+  return page.locator(`.tm-grid__row[aria-rowindex="${viewIndex + 2}"]`);
+}
+
+/** The rendered row element of a row id (numeric ids key as `#<id>`). */
+function rowById(page: Page, id: number): Locator {
+  return page.locator(`.tm-grid__row[data-tm-key="#${id}"]`);
+}
+
+/** The expander button inside a row's hierarchy cell. */
+function expander(page: Page, viewIndex: number): Locator {
+  return cell(page, viewIndex, 0).locator('[data-tm-expander]');
+}
+
+/** The lazy-loading spinner inside a row's reserved slot. */
+function childSpinner(page: Page, viewIndex: number): Locator {
+  return cell(page, viewIndex, 0).locator('[data-tm-childspin]');
+}
+
+/** The story's log of `loadChildren` calls, one entry per call. */
+function batchLog(page: Page): Locator {
+  return page.getByTestId('batch-log').locator('li');
+}
+
+/** The story's readout of the remembered expansion (ids ascending). */
+function remembered(page: Page): Locator {
+  return page.getByTestId('remembered');
+}
+
+/** Waits for the mount's restore to settle: both levels loaded. */
+async function restored(page: Page): Promise<void> {
+  await expect(batchLog(page)).toHaveText(['1, 2', '11, 21']);
+  await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
+}
+
+/** What the page saw of one row's flash, recorded in the page as it happened. */
+interface FlashRecord {
+  /** `--grid-flash-duration` on the grid host, in milliseconds. */
+  readonly duration: number;
+  /** `--grid-flash-bg` resolved to a colour. */
+  readonly tint: string;
+  /** The flash animation's name on the row's first cell, or `null` for none. */
+  readonly animationName: string | null;
+  /** The flash animation's own duration, in milliseconds, or `null` for none. */
+  readonly animationDuration: number | null;
+  /** The first cell's background as the flash began. */
+  readonly atStart: string;
+  /** The first cell's background with its flash animation sought to 90 %, or `null` for none. */
+  readonly nearEnd: string | null;
+  /** The style of the flash ring's band (the row's `::after` border) as the flash began. */
+  readonly ring: string;
+  /** Milliseconds from the trigger's click to the flash class leaving the row. */
+  readonly heldFor: number;
+}
+
+/**
+ * Watches one row's flash from inside the page, so no sample races the
+ * flash's clock: the flash is a timed animation, and a sample taken over a
+ * separate round trip can land after it ends on a loaded machine. A
+ * mutation observer samples the row the moment it gains the flash class
+ * (its animation then sits at its start), seeks the cell's animation to
+ * 90 % to read how it looks late in its run, and times the class leaving
+ * against the trigger's click. Install it before clicking the trigger,
+ * then read it with {@link flashRecord}.
+ */
+async function watchFlash(page: Page, rowId: number, triggerTestId: string): Promise<void> {
+  await page.evaluate(
+    ({ key, trigger }) => {
+      /** The watch's state, kept on `window` for {@link flashRecord}. */
+      interface Watch {
+        /** When the trigger was clicked, or `null` before. */
+        clickedAt: number | null;
+        /** The samples taken as the flash began, or `null` before. */
+        record: Record<string, unknown> | null;
+        /** Milliseconds from the click to the flash ending, or `null` before. */
+        heldFor: number | null;
+      }
+      const watch: Watch = { clickedAt: null, record: null, heldFor: null };
+      (window as unknown as { tmFlashWatch: Watch }).tmFlashWatch = watch;
+
+      // The click that triggers the flash, timed before any handler runs.
+      document.addEventListener(
+        'click',
+        (event) => {
+          if ((event.target as Element).closest(`[data-testid="${trigger}"]`) !== null) {
+            watch.clickedAt ??= performance.now();
+          }
+        },
+        { capture: true },
+      );
+
+      // A CSS time (`1200ms` or `1.2s`) in milliseconds.
+      const parseTime = (value: string): number => {
+        const number = Number.parseFloat(value);
+        return value.trim().endsWith('ms') ? number : number * 1000;
+      };
+
+      // Samples the row the moment the flash class appears, and times its
+      // removal. Observer callbacks run before the next frame, so the
+      // animation has not advanced past its start when sampled.
+      const observer = new MutationObserver(() => {
+        const row = document.querySelector(`.tm-grid__row[data-tm-key="${key}"]`);
+        if (row === null) {
+          return;
+        }
+        const flashing = row.classList.contains('tm-grid__row--flash');
+        if (flashing && watch.record === null) {
+          const scroller = row.closest('.tm-grid__scroller')!;
+          const host = scroller.closest('tm-tree-grid, tm-grid')!;
+          const cell = row.querySelector('[data-tm-cell]')!;
+          // The token's colour, resolved by a probe in the grid's scope.
+          const probe = document.createElement('div');
+          probe.style.backgroundColor = 'var(--grid-flash-bg)';
+          scroller.append(probe);
+          const tint = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          const atStart = getComputedStyle(cell).backgroundColor;
+          const animation =
+            cell.getAnimations().find((a): a is CSSAnimation => a instanceof CSSAnimation) ?? null;
+          let nearEnd: string | null = null;
+          let total: number | null = null;
+          if (animation !== null) {
+            // Seek, read, and put the animation back at its start.
+            total = Number(animation.effect!.getComputedTiming().duration);
+            animation.pause();
+            animation.currentTime = total * 0.9;
+            nearEnd = getComputedStyle(cell).backgroundColor;
+            animation.currentTime = 0;
+            animation.play();
+          }
+          watch.record = {
+            duration: parseTime(getComputedStyle(host).getPropertyValue('--grid-flash-duration')),
+            tint,
+            animationName: animation?.animationName ?? null,
+            animationDuration: total,
+            atStart,
+            nearEnd,
+            ring: getComputedStyle(row, '::after').borderTopStyle,
+          };
+        } else if (!flashing && watch.record !== null && watch.heldFor === null) {
+          watch.heldFor = performance.now() - (watch.clickedAt ?? Number.NaN);
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['class'],
+      });
+    },
+    { key: `#${rowId}`, trigger: triggerTestId },
+  );
+}
+
+/** Waits until the watched flash has begun and ended, and returns what the page saw. */
+async function flashRecord(page: Page): Promise<FlashRecord> {
+  const read = (): Promise<FlashRecord | null> =>
+    page.evaluate(() => {
+      const watch = (
+        window as unknown as {
+          tmFlashWatch: { record: Record<string, unknown> | null; heldFor: number | null };
+        }
+      ).tmFlashWatch;
+      return watch.record === null || watch.heldFor === null
+        ? null
+        : ({ ...watch.record, heldFor: watch.heldFor } as unknown as FlashRecord);
+    });
+  await expect.poll(read).not.toBeNull();
+  return (await read())!;
+}
+
+for (const dir of ['ltr', 'rtl'] as const) {
+  test.describe(`expansion restore (${dir})`, () => {
+    test.beforeEach(async ({ page }) => {
+      await gotoGrid(page, 'tree-grid-restore', { dir });
+      await restored(page);
+    });
+
+    test('@cross-engine a restore loads one batch per level and keeps an id it cannot place', async ({
+      page,
+    }) => {
+      await expectCellText(page, 0, 0, 'Operations');
+      await expectCellText(page, 1, 0, 'Plant');
+      await expectCellText(page, 2, 0, 'Line A');
+      await expect(row(page, 1)).toHaveAttribute('aria-expanded', 'true');
+      await expect(row(page, 4)).toHaveAttribute('aria-expanded', 'false'); // Logistics
+      await expect(row(page, 10)).toHaveAttribute('aria-expanded', 'false'); // Archive
+      // 404 has no row, and the bound set still holds it.
+      await expect(remembered(page)).toHaveText('1, 2, 11, 21, 404');
+    });
+
+    test('@cross-engine a collapse writes back only that row; a remount restores the rest', async ({
+      page,
+    }) => {
+      await expander(page, 0).click(); // collapse Operations
+      await expect(remembered(page)).toHaveText('2, 11, 21, 404');
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '8');
+
+      await page.getByTestId('toggle-mounted').uncheck();
+      await expect(gridScroller(page)).toHaveCount(0);
+      await page.getByTestId('toggle-mounted').check(); // the roots are fetched again
+      await expect(batchLog(page)).toHaveText(['2', '21']);
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '8');
+
+      // Plant (11) stayed remembered under the collapsed Operations: one
+      // expand brings both levels back, a batch each.
+      await expander(page, 0).click();
+      await expect(batchLog(page)).toHaveText(['2', '21', '1', '11']);
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
+      await expect(remembered(page)).toHaveText('1, 2, 11, 21, 404');
+    });
+
+    test('@cross-engine expanding a lazy row shows the spinner in reserved space while it loads', async ({
+      page,
+    }) => {
+      // The load is held open until released: the in-flight state is
+      // asserted while it provably lasts, never against a delay.
+      await holdResponses(page, 'children');
+      const textSpan = cell(page, 10, 0).locator('.tm-grid__text');
+      // The inline extent only: activating the bottom row may scroll the
+      // grid by a pixel to keep it clear of the edge, which moves it
+      // vertically but has nothing to do with the spinner's slot.
+      const inline = async (): Promise<readonly [number, number] | null> => {
+        const box = await textSpan.boundingBox();
+        return box === null ? null : [box.x, box.width];
+      };
+      const before = await inline();
+      expect(before).not.toBeNull();
+
+      await expander(page, 10).click(); // Archive
+      await expect(childSpinner(page, 10)).toBeVisible();
+      // The spinner filled RESERVED space: the cell content did not move.
+      expect(await inline()).toEqual(before);
+      // Expanded at once; the children follow the load.
+      await expect(row(page, 10)).toHaveAttribute('aria-expanded', 'true');
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
+
+      await releaseResponses(page, 'children');
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '14');
+      await expect(childSpinner(page, 10)).toHaveCount(0);
+      await expectCellText(page, 11, 0, 'Archive 2019');
+      await expect(row(page, 11)).toHaveAttribute('aria-level', '2');
+      expect(await inline()).toEqual(before);
+    });
+
+    test('@cross-engine re-collapsing during the load wins; the next expand is instant', async ({
+      page,
+    }) => {
+      await holdResponses(page, 'children');
+      await expander(page, 10).click(); // expand Archive → the load starts
+      await expect(childSpinner(page, 10)).toBeVisible();
+      await expander(page, 10).click(); // re-collapse while loading
+      await expect(row(page, 10)).toHaveAttribute('aria-expanded', 'false');
+      await releaseResponses(page, 'children');
+
+      await expect(childSpinner(page, 10)).toHaveCount(0);
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
+
+      // The children are loaded now: expanding renders them with no call.
+      await expander(page, 10).click();
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '14');
+      await expect(batchLog(page)).toHaveText(['1, 2', '11, 21', '3']);
+    });
+
+    test('@cross-engine a failed load collapses the row, forgets it, and announces', async ({
+      page,
+    }) => {
+      await page.getByTestId('fail-toggle').check();
+      await expander(page, 10).click();
+      await expect(liveRegion(page)).toContainText('Could not load child rows');
+      await expect(childSpinner(page, 10)).toHaveCount(0);
+      await expect(row(page, 10)).toHaveAttribute('aria-expanded', 'false');
+      await expect(gridScroller(page)).toHaveAttribute('aria-rowcount', '12');
+      await expect(remembered(page)).toHaveText('1, 2, 11, 21, 404');
+    });
+
+    test('scrollToRow expands the ancestors and flashes the row, still, under reduced motion', async ({
+      page,
+    }) => {
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await expander(page, 5).click(); // collapse Finance: Hedging (212) hides
+      await expect(remembered(page)).toHaveText('1, 11, 21, 404');
+      await expect(rowById(page, 212)).toHaveCount(0);
+
+      const go = page.getByTestId('scroll-go');
+      await watchFlash(page, 212, 'scroll-go');
+      await go.click(); // row 212, flash on
+      await expect(page.getByTestId('scroll-result')).toHaveText('true');
+      await expect(remembered(page)).toHaveText('1, 2, 11, 21, 404');
+
+      // Activation moved to the row; focus stayed on the button.
+      const target = rowById(page, 212);
+      await expect(target.locator('[data-tm-cell][tabindex="0"]')).toHaveCount(1);
+      await expect(go).toBeFocused();
+
+      // The flash ran its animation, and reduced motion held the tint still:
+      // the cell painted the token's colour at the start and still at 90 %,
+      // rather than a frame of a fade.
+      const flash = await flashRecord(page);
+      // Emulated encapsulation prefixes the keyframes' name with the scope.
+      expect(flash.animationName).toMatch(/tm-grid-(re)?flash$/);
+      // The tint holds for the token's whole duration: the animation runs
+      // exactly that long, so 90 % of it is 90 % of the flash.
+      expect(flash.animationDuration).toBe(flash.duration);
+      expect(flash.atStart).toBe(flash.tint);
+      expect(flash.nearEnd).toBe(flash.tint);
+      // The class stayed on for at least --grid-flash-duration, then left.
+      expect(flash.heldFor).toBeGreaterThanOrEqual(flash.duration);
+      // The tint alone marks the row: the forced-colors ring stays off.
+      expect(flash.ring).toBe('none');
+      await expect(target).not.toHaveClass(/tm-grid__row--flash/);
+    });
+
+    test('scrollToRow rings the flashing row, untinted, under forced colors', async ({ page }) => {
+      await page.emulateMedia({ forcedColors: 'active' });
+      await watchFlash(page, 212, 'scroll-go');
+      await page.getByTestId('scroll-go').click();
+      const flash = await flashRecord(page);
+      expect(flash.ring).toBe('solid');
+      // The ring replaces the tint: no animation paints over the cells.
+      expect(flash.animationName).toBeNull();
+      expect(flash.atStart).not.toBe(flash.tint);
+      expect(flash.heldFor).toBeGreaterThanOrEqual(flash.duration);
+    });
+
+    test('scrollToRow reports a row that has not loaded', async ({ page }) => {
+      await page.getByTestId('scroll-row-id').fill('31'); // under the collapsed Archive
+      await page.getByTestId('scroll-go').click();
+      await expect(page.getByTestId('scroll-result')).toHaveText('false');
+    });
+  });
+}

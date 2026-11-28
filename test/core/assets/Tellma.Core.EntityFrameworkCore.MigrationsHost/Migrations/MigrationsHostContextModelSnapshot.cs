@@ -17,7 +17,7 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -195,6 +195,12 @@ namespace Tellma.Core.EntityFrameworkCore.MigrationsHost.Migrations
             modelBuilder.HasTableTypeDefinition("StringList", "dbo", type => type
                 .Column(name: "Id", storeType: "nvarchar(450)", maxLength: 450)
                 .HasKey("Id")
+                .HasGrants("public"));
+
+            modelBuilder.HasTableTypeDefinition("SubjectsList", "dbo", type => type
+                .Column(name: "Subject", storeType: "nvarchar(255)", maxLength: 255, collation: "Latin1_General_100_BIN2")
+                .Column(name: "DisplayName", storeType: "nvarchar(200)", nullable: true, maxLength: 200)
+                .HasKey("Subject")
                 .HasGrants("public"));
 
             modelBuilder.HasTableTypeDefinition("InvoiceLinesList", "gl", type => type

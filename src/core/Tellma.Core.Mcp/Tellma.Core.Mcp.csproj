@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The Tellma Tenant MCP server: one stateless Streamable HTTP MCP endpoint per tenant at /{tenantId}/mcp, authenticated by the platform's bearer tokens for that tenant's resource, with the generic read tools over every registered stack (whoami, describe, query, aggregate, get), the Queryex syntax resource, and the request filter that guards each tool call as the web surface's tenant filter guards a request.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The host the server is mapped into: its groups, policies, request context and problem mapping. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Tellma.Core.AspNetCore\Tellma.Core.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The official MCP C# SDK's Streamable HTTP server. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The Queryex syntax reference the server publishes as a resource. -->
+    <EmbeddedResource Include="Resources\queryex-syntax.md" LogicalName="Tellma.Core.Mcp.queryex-syntax.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The unit suite drives the tools, renderings and gates directly, which keeps those seams out
+         of the public surface. -->
+    <InternalsVisibleTo Include="Tellma.Core.Mcp.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -18,7 +18,8 @@ namespace Tellma.Identity.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("idsvr")
-                .HasAnnotation("ProductVersion", "10.0.9")
+                .UseCollation("Latin1_General_100_CI_AS")
+                .HasAnnotation("ProductVersion", "10.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -504,6 +505,28 @@ namespace Tellma.Identity.Migrations
                     b.ToTable("SessionClients", "idsvr");
                 });
 
+            modelBuilder.Entity("Tellma.Identity.Data.Entities.IdentitySessionClientAuthorization", b =>
+                {
+                    b.Property<string>("Sid")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ClientId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("AuthorizationId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Sid", "ClientId", "AuthorizationId");
+
+                    b.ToTable("SessionClientAuthorizations", "idsvr");
+                });
+
             modelBuilder.Entity("Tellma.Identity.Data.Entities.RateLimitCounter", b =>
                 {
                     b.Property<string>("Key")
@@ -913,6 +936,15 @@ namespace Tellma.Identity.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Tellma.Identity.Data.Entities.IdentitySessionClientAuthorization", b =>
+                {
+                    b.HasOne("Tellma.Identity.Data.Entities.IdentitySessionClient", null)
+                        .WithMany("Authorizations")
+                        .HasForeignKey("Sid", "ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Tellma.Identity.Data.Entities.SingleUseCode", b =>
                 {
                     b.HasOne("Tellma.Identity.Data.TellmaIdentityUser", null)
@@ -946,6 +978,11 @@ namespace Tellma.Identity.Migrations
             modelBuilder.Entity("Tellma.Identity.Data.Entities.IdentitySession", b =>
                 {
                     b.Navigation("Clients");
+                });
+
+            modelBuilder.Entity("Tellma.Identity.Data.Entities.IdentitySessionClient", b =>
+                {
+                    b.Navigation("Authorizations");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,0 +1,100 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using System.Text.Json.Serialization;
+using Tellma.Core.Abstractions.Access;
+using Tellma.Core.Abstractions.Client;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Errors;
+using Tellma.Core.Abstractions.Excel;
+
+namespace Tellma.Core.Abstractions.Api
+{
+    /// <summary>
+    ///     The source-generated serialization metadata of the platform's wire records: the request
+    ///     and result records, the rows envelopes, the records a problem body's details carry, the
+    ///     client entity model, and the scalar types.
+    ///     <see cref="TellmaJson" /> puts it first in its resolver chain, ahead of reflection, which
+    ///     resolves entity, child and operation body types.
+    /// </summary>
+    /// <remarks>
+    ///     Metadata only, generated at build time. Internal on purpose: its typed metadata used on its
+    ///     own (<c>Default.JobAccepted</c>) would serialize under the context's default options,
+    ///     PascalCase, with nulls and numeric longs, none of the platform's rules. The only way to
+    ///     reach it is through <see cref="TellmaJson.Options" /> or <see cref="TellmaJson.Configure" />,
+    ///     which supply the rules and converters. A generic record is resolved by reflection, closed
+    ///     over its arguments type.
+    /// </remarks>
+    [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+
+    // --- Request records ---
+    [JsonSerializable(typeof(QueryRequest))]
+    [JsonSerializable(typeof(GetRequest))]
+    [JsonSerializable(typeof(AllRequest))]
+    [JsonSerializable(typeof(IdsRequest))]
+    [JsonSerializable(typeof(IdRequest))]
+    [JsonSerializable(typeof(GetByIdsRequest))]
+    [JsonSerializable(typeof(EntityActionRequest))]
+    [JsonSerializable(typeof(ParentIdsRequest))]
+    [JsonSerializable(typeof(DeleteByQueryRequest))]
+    [JsonSerializable(typeof(AccessHoldersRequest))]
+    [JsonSerializable(typeof(AccessCheckRequest))]
+    [JsonSerializable(typeof(ExportRequest))]
+    [JsonSerializable(typeof(ExportForImportRequest))]
+    [JsonSerializable(typeof(InspectImportRequest))]
+    [JsonSerializable(typeof(ImportRequest))]
+    [JsonSerializable(typeof(StartImportRequest))]
+    [JsonSerializable(typeof(QueryexDiscoverRequest))]
+    [JsonSerializable(typeof(ClientSyncRequest))]
+    [JsonSerializable(typeof(ClientTelemetryBatch))]
+
+    // --- Result records ---
+    [JsonSerializable(typeof(AffectedResult))]
+    [JsonSerializable(typeof(JobAccepted))]
+    [JsonSerializable(typeof(MeResult))]
+    [JsonSerializable(typeof(UserProfileView))]
+    [JsonSerializable(typeof(AccessSummary))]
+    [JsonSerializable(typeof(SecurableSummary))]
+    [JsonSerializable(typeof(QueryDiagnostic))]
+    [JsonSerializable(typeof(QueryexDiscoverResult))]
+    [JsonSerializable(typeof(AccessGrant))]
+    [JsonSerializable(typeof(ImportPlan))]
+    [JsonSerializable(typeof(ImportOutcome))]
+    [JsonSerializable(typeof(ClientSyncResult))]
+    [JsonSerializable(typeof(TenantFacts))]
+
+    // --- The rows envelopes: each written by its own converter, which the generated metadata carries ---
+    [JsonSerializable(typeof(RowPage))]
+    [JsonSerializable(typeof(QueryRowSet))]
+    [JsonSerializable(typeof(RelatedEntities))]
+
+    // --- The records a problem body's details carry ---
+    [JsonSerializable(typeof(ConcurrencyConflict))]
+    [JsonSerializable(typeof(ConfirmationRequest))]
+    [JsonSerializable(typeof(ImportError))]
+    [JsonSerializable(typeof(RowRange))]
+
+    // --- The client entity model: the Core chunk's summaries, the Entities chunk's entities and enums ---
+    [JsonSerializable(typeof(IReadOnlyList<ClientEntitySummary>))]
+    [JsonSerializable(typeof(IReadOnlyList<ClientEntityMetadata>))]
+    [JsonSerializable(typeof(IReadOnlyList<ClientEnumMetadata>))]
+
+    // --- The scalar types ---
+    [JsonSerializable(typeof(bool))]
+    [JsonSerializable(typeof(byte))]
+    [JsonSerializable(typeof(short))]
+    [JsonSerializable(typeof(int))]
+    [JsonSerializable(typeof(long))]
+    [JsonSerializable(typeof(decimal))]
+    [JsonSerializable(typeof(double))]
+    [JsonSerializable(typeof(string))]
+    [JsonSerializable(typeof(DateOnly))]
+    [JsonSerializable(typeof(DateTime))]
+    [JsonSerializable(typeof(DateTimeOffset))]
+    [JsonSerializable(typeof(TimeOnly))]
+    [JsonSerializable(typeof(Guid))]
+    [JsonSerializable(typeof(byte[]))]
+    internal sealed partial class TellmaApiJsonContext : JsonSerializerContext;
+}

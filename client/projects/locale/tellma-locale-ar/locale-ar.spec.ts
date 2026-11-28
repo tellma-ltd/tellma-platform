@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TranslocoService } from '@jsverse/transloco';
 import { email, form, FormField, minLength, required } from '@angular/forms/signals';
@@ -13,12 +13,25 @@ import {
   TM_UI_MESSAGE_CONTEXT,
   TM_UI_STRINGS_EN,
   TM_UI_TRANSLATE,
+  TmL10n,
 } from '@tellma/core-ui';
 import { TmFormField } from '@tellma/core-ui/form-field';
 import { TmInput } from '@tellma/core-ui/input';
+import { TM_CHART_STRINGS_EN } from '@tellma/core-ui/chart';
+import { TM_PIVOT_STRINGS_EN } from '@tellma/core-ui/pivot';
+import { TM_TILES_TREE_STRINGS_EN } from '@tellma/core-ui/tiles-tree';
 
 import { provideTellmaLocaleAr } from './provide-tellma-locale-ar';
-import { TM_LOCALE_AR_STRINGS } from './strings-ar';
+import { TM_STRINGS_AR } from '@tellma/locale-ar/platform-strings';
+import { TM_QUERYEX_STRINGS_AR } from '@tellma/locale-ar/queryex-strings';
+import { TM_SHELL_STRINGS_AR } from '@tellma/locale-ar/shell-strings';
+import { TM_PINS_STRINGS_AR } from '@tellma/locale-ar/pins-strings';
+import { TM_DETAILS_STRINGS_AR } from '@tellma/locale-ar/details-strings';
+import { TM_DASHBOARDS_STRINGS_AR } from '@tellma/locale-ar/dashboards-strings';
+import { TM_SUPPORT_STRINGS_AR } from '@tellma/locale-ar/support-strings';
+import { TM_ATTENTION_STRINGS_AR } from '@tellma/locale-ar/attention-strings';
+import { TM_LOCALE_AR_STRINGS } from '@tellma/locale-ar/strings';
+import { tmArabic } from './tm-arabic';
 
 @Component({
   imports: [TmInput, TmFormField, FormField],
@@ -168,7 +181,7 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const [name, type] of args) {
     if (type === 'plural' || type === 'selectordinal' || type === 'number') {
-      params[name] = 5; // messageformat throws on a non-number here
+      params[name] = 5; // a plural picks its arm from a number
     } else if (type === 'date' || type === 'time') {
       params[name] = new Date(0);
     } else if (type === 'select') {
@@ -187,11 +200,19 @@ function sampleParams(args: Map<string, string>): Record<string, unknown> {
  */
 const AMBIENT_ARGS = new Set(['gender']);
 
+/** Every built-in English string: the core table and the tables entry points register beside it. */
+const ENGLISH = {
+  ...TM_UI_STRINGS_EN,
+  pivot: TM_PIVOT_STRINGS_EN,
+  tilesTree: TM_TILES_TREE_STRINGS_EN,
+  chart: TM_CHART_STRINGS_EN,
+};
+
 describe('EN↔AR string parity (DoD 18)', () => {
   it('the Arabic pack covers exactly the built-in English key set', () => {
     // A key missing from AR silently falls back to English mid-sentence;
     // a key missing from EN is dead weight the fallback path can't serve.
-    expect(keyPaths(TM_LOCALE_AR_STRINGS)).toEqual(keyPaths(TM_UI_STRINGS_EN));
+    expect(keyPaths(TM_LOCALE_AR_STRINGS)).toEqual(keyPaths(ENGLISH));
   });
 
   it('the Arabic message of each key takes exactly the English arguments', () => {
@@ -200,8 +221,8 @@ describe('EN↔AR string parity (DoD 18)', () => {
     // number from the sentence, and one AR invents renders as empty text.
     const dropped: string[] = [];
     const invented: string[] = [];
-    for (const path of keyPaths(TM_UI_STRINGS_EN)) {
-      const english = icuArguments(messageAt(TM_UI_STRINGS_EN, path));
+    for (const path of keyPaths(ENGLISH)) {
+      const english = icuArguments(messageAt(ENGLISH, path));
       const arabic = icuArguments(messageAt(TM_LOCALE_AR_STRINGS, path));
       for (const name of english.keys()) {
         if (!arabic.has(name)) {
@@ -217,6 +238,7 @@ describe('EN↔AR string parity (DoD 18)', () => {
     expect(dropped).toEqual([]);
     expect(invented).toEqual([]);
   });
+
 });
 
 describe('@tellma/locale-ar (DoD 13)', () => {
@@ -256,21 +278,24 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     await settle(fixture);
 
     // The four tests above pin four messages; malformed ICU anywhere else
-    // would first surface as a runtime throw in whichever component happens
-    // to render that string. Reading each signal runs the real transpiler.
+    // would render as its raw source (with a development warning) in
+    // whichever component happens to show that string. Reading each signal
+    // runs the real transpiler.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const broken: string[] = [];
     for (const path of keyPaths(TM_LOCALE_AR_STRINGS)) {
       const message = messageAt(TM_LOCALE_AR_STRINGS, path);
-      try {
-        const rendered = host.translate(path, sampleParams(icuArguments(message)))();
-        if (rendered === '') {
-          broken.push(`${path}: rendered empty`);
-        }
-      } catch (error) {
-        broken.push(`${path}: ${(error as Error).message}`);
+      const rendered = host.translate(path, sampleParams(icuArguments(message)))();
+      if (rendered === '') {
+        broken.push(`${path}: rendered empty`);
+      } else if (/[{}]/.test(rendered)) {
+        broken.push(`${path}: rendered unresolved syntax: ${rendered}`);
       }
     }
+    const malformed = warn.mock.calls.filter(([text]) => String(text).includes('Malformed'));
+    warn.mockRestore();
     expect(broken).toEqual([]);
+    expect(malformed).toEqual([]);
   });
 
   it('the ambient gender context conjugates the imperative', async () => {
@@ -295,6 +320,26 @@ describe('@tellma/locale-ar (DoD 13)', () => {
 
     gender.set({ gender: 'other' });
     expect(text()).toBe('أدخل حرفين على الأقل'); // live re-render on switch
+  });
+
+  it('WITH the pack: a quarter is written through the Arabic pattern, live on a switch', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    const l10n = TestBed.inject(TmL10n);
+    const quarter = computed(() => l10n.formatDate('2026-11-02', { dateStyle: 'quarter' }));
+    expect(quarter()).toBe('Q4 2026');
+
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    // Bare `ar` formats with Latin digits; the words are the pack's.
+    expect(quarter()).toBe('الربع 4 2026');
+    expect(l10n.formatDateTime('2026-11-02T09:00:00Z', { dateStyle: 'quarter' })).toBe(
+      'الربع 4 2026',
+    );
+
+    host.transloco.setActiveLang('en');
+    await settle(fixture);
+    expect(quarter()).toBe('Q4 2026');
   });
 
   it('WITHOUT the pack: the same keys fall back to ENGLISH — never a raw key', async () => {
@@ -324,5 +369,93 @@ describe('@tellma/locale-ar (DoD 13)', () => {
     host.transloco.setActiveLang('en');
     await settle(fixture);
     expect(errorText(fixture)).toBe('This field is required');
+  });
+});
+
+describe("the Queryex tools' Arabic plurals", () => {
+  it('words the problem and field counts in each Arabic plural form', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    host.transloco.setTranslation({ tm: TM_QUERYEX_STRINGS_AR }, 'ar', { merge: true });
+    const text = (key: string, params: Record<string, unknown>): string =>
+      host.transloco.translate<string>(key, params, 'ar').replace(/[\u2066-\u2069\u200e\u200f]/g, '');
+
+    const counts = [1, 2, 3, 11, 100];
+    expect(counts.map((count) => text('tm.queryex.problems', { count }))).toEqual(['مشكلة واحدة', 'مشكلتان', '3 مشكلات', '11 مشكلة', '100 مشكلة']);
+    expect(counts.map((count) => text('tm.pathPicker.count', { count }))).toEqual(['حقل واحد', 'حقلان', '3 حقول', '11 حقلًا', '100 حقل']);
+  });
+});
+
+describe("the platform's Arabic plurals", () => {
+  it('words the entity actions’ counts in each Arabic plural form', async () => {
+    const fixture = await setup(true);
+    const host = fixture.componentInstance;
+    host.transloco.setActiveLang('ar');
+    await settle(fixture);
+    // The platform's table, merged under `tm` as the app merges it on Arabic's first use.
+    host.transloco.setTranslation({ tm: TM_STRINGS_AR }, 'ar', { merge: true });
+    // The platform strips the bidi isolates the formatter puts around arguments.
+    const text = (key: string, params: Record<string, unknown>): string =>
+      host.transloco.translate<string>(key, params, 'ar').replace(/[\u2066-\u2069\u200e\u200f]/g, '');
+
+    const counts = [1, 2, 3, 11, 100];
+    expect(counts.map((n) => text('tm.entity.confirmAction', { action: 'أرشفة', n }))).toEqual([
+      'هل تريد تنفيذ «أرشفة» على هذا العنصر؟',
+      'هل تريد تنفيذ «أرشفة» على العنصرين؟',
+      'هل تريد تنفيذ «أرشفة» على 3 عناصر؟',
+      'هل تريد تنفيذ «أرشفة» على 11 عنصرًا؟',
+      'هل تريد تنفيذ «أرشفة» على 100 عنصر؟',
+    ]);
+    expect(counts.map((n) => text('tm.confirmations.skip', { n }))).toEqual([
+      'المتابعة دون هذا العنصر',
+      'المتابعة دون هذين العنصرين',
+      'المتابعة دون هذه العناصر الـ3',
+      'المتابعة دون هذه العناصر الـ11',
+      'المتابعة دون هذه العناصر الـ100',
+    ]);
+    expect(counts.map((n) => text('tm.confirmations.more', { n }))).toEqual([
+      'وعنصر آخر',
+      'وعنصران آخران',
+      'و3 عناصر أخرى',
+      'و11 عنصرًا آخر',
+      'و100 عنصر آخر',
+    ]);
+  });
+});
+
+describe('tmArabic', () => {
+  it("loads the platform's table, its shell's, pinned bar's, details page's, dashboards', Queryex tools', support tools' and attention panels' parts and the component library's, each from its own entry point", async () => {
+    const arabic = tmArabic();
+    expect(arabic).toMatchObject({ code: 'ar', dir: 'rtl' });
+    await expect(arabic.strings()).resolves.toEqual({
+      tm: {
+        ...TM_STRINGS_AR,
+        ...TM_SHELL_STRINGS_AR,
+        ...TM_PINS_STRINGS_AR,
+        ...TM_DETAILS_STRINGS_AR,
+        ...TM_DASHBOARDS_STRINGS_AR,
+        ...TM_QUERYEX_STRINGS_AR,
+        ...TM_SUPPORT_STRINGS_AR,
+        ...TM_ATTENTION_STRINGS_AR,
+      },
+      tmUi: TM_LOCALE_AR_STRINGS,
+    });
+  });
+
+  it("keeps the shell's, the pinned bar's, the details page's, the dashboards', the Queryex tools', the support tools' and the attention panels' parts apart from the platform's table and from each other", () => {
+    // The merge under `tm` is shallow, so a scope in two tables would lose one side.
+    const scopes = [
+      TM_STRINGS_AR,
+      TM_SHELL_STRINGS_AR,
+      TM_PINS_STRINGS_AR,
+      TM_DETAILS_STRINGS_AR,
+      TM_DASHBOARDS_STRINGS_AR,
+      TM_QUERYEX_STRINGS_AR,
+      TM_SUPPORT_STRINGS_AR,
+      TM_ATTENTION_STRINGS_AR,
+    ].flatMap((table) => Object.keys(table));
+    expect(scopes.filter((scope, index) => scopes.indexOf(scope) !== index)).toEqual([]);
   });
 });

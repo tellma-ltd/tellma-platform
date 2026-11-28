@@ -47,13 +47,15 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
     /// <param name="signInService">The engine sign-in (method evidence stamping).</param>
     /// <param name="auditLogger">Audit emission.</param>
     /// <param name="localizer">UI strings.</param>
+    /// <param name="links">Keeps the request's language and way back on the provider's return address.</param>
     [AllowAnonymous]
     public sealed class ExternalLoginModel(
         SignInManager<TellmaIdentityUser> signInManager,
         UserManager<TellmaIdentityUser> userManager,
         TellmaSignInService signInService,
         IAuditLogger auditLogger,
-        IStringLocalizer<SharedResources> localizer) : PageModel
+        IStringLocalizer<SharedResources> localizer,
+        IdentityPageLinks links) : PageModel
     {
         /// <summary>
         ///     The challenge-properties item that carries a link attempt's initiating account
@@ -225,7 +227,11 @@ namespace Tellma.Identity.Areas.Identity.Pages.Account
         private ChallengeResult ChallengeProvider(string provider, string? returnUrl, string? linkFor)
         {
             string safeReturn = ReturnUrlValidator.Sanitize(returnUrl, Url.Page("/Account/Login", new { area = "Identity" })!);
-            string redirectUrl = Url.Page("ExternalLogin", pageHandler: "Callback", values: new { returnUrl = safeReturn })!;
+
+            // The provider sends the browser back to this address, so it carries what this
+            // request carried: the callback renders, and redirects, in the same language.
+            string redirectUrl = links.Carry(
+                HttpContext, Url.Page("ExternalLogin", pageHandler: "Callback", values: new { returnUrl = safeReturn })!);
             AuthenticationProperties properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
             if (linkFor is not null)
             {

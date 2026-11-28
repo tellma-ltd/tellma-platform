@@ -21,6 +21,19 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>The ordering list.</summary>
         OrderBy = 3,
+
+        /// <summary>
+        ///     The key-set restrictions. Host structure rather than text, so the only problem one can
+        ///     be named in is a ceiling its joins push over.
+        /// </summary>
+        Restrictions = 4,
+
+        /// <summary>
+        ///     The measures a host evaluates over rolled-up groups. Each item is reported at a
+        ///     location of its own; only a problem that precedes the items, such as one parsing the
+        ///     list, is reported at the clause.
+        /// </summary>
+        Measures = 5,
     }
 
     /// <summary>A logical connective inside a filter tree.</summary>
@@ -71,6 +84,20 @@ namespace Tellma.Core.Queryex.Diagnostics
             return new DiagnosticLocation(clause.ToString(), (int)clause);
         }
 
+        /// <summary>One item of a constant statement.</summary>
+        /// <param name="index">The zero-based item index.</param>
+        /// <returns>The location.</returns>
+        /// <remarks>
+        ///     Each item is a text of its own, so each is an input of its own; they are reported in
+        ///     the order they were supplied.
+        /// </remarks>
+        internal static DiagnosticLocation Constant(int index)
+        {
+            return new DiagnosticLocation(
+                string.Create(CultureInfo.InvariantCulture, $"Constant[{index}]"),
+                index);
+        }
+
         /// <summary>One item of a value list within this clause.</summary>
         /// <param name="index">The zero-based item index.</param>
         /// <returns>The location.</returns>
@@ -94,6 +121,22 @@ namespace Tellma.Core.Queryex.Diagnostics
                 : string.Create(CultureInfo.InvariantCulture, $".{connective}[{childIndex}]");
 
             return new DiagnosticLocation(Text + suffix, Order);
+        }
+
+        /// <summary>The criterion of a navigation rebase within this clause's filter tree.</summary>
+        /// <param name="navigation">The navigation path, as the caller wrote it.</param>
+        /// <returns>The location.</returns>
+        internal DiagnosticLocation Via(string navigation)
+        {
+            return new DiagnosticLocation(Text + ".Via[" + navigation + "]", Order);
+        }
+
+        /// <summary>The criterion of a semi-join within this clause's filter tree.</summary>
+        /// <param name="entity">The entity searched, as the caller wrote it.</param>
+        /// <returns>The location.</returns>
+        internal DiagnosticLocation Exists(string entity)
+        {
+            return new DiagnosticLocation(Text + ".Exists[" + entity + "]", Order);
         }
     }
 }

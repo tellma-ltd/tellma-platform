@@ -1,9 +1,10 @@
 # Tellma.Core.EntityFrameworkCore
 
-The runtime home of Tellma's EF Core extensions. Today it ships one feature, **table types**
-(namespace `Tellma.Core.EntityFrameworkCore.TableTypes`): SQL Server user-defined table types
-(UDTTs) as first-class citizens of EF Core migrations. Future EF Core extensions get sibling
-namespaces.
+The runtime home of Tellma's EF Core extensions. It ships two features, each in its own namespace:
+**table types** (`Tellma.Core.EntityFrameworkCore.TableTypes`), SQL Server user-defined table types
+(UDTTs) as first-class citizens of EF Core migrations, and **lock escalation**
+(`Tellma.Core.EntityFrameworkCore.LockEscalation`), a table's `LOCK_ESCALATION` option declared on
+its entity type and kept by the same migrations. Future EF Core extensions get sibling namespaces.
 
 ## Why this exists
 
@@ -59,8 +60,36 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
    `modelBuilder.HasTableType("IdStateList", "dbo", t => t.Column<int>("Id")...)` or derived
    from a plain class via `modelBuilder.HasTableType<T>()` — the class then doubles as the TVP
    row DTO. The platform's canonical bulk shapes (`IdList`, `BigIdList`, `GuidList`,
-   `StringList`) are plain classes in `Tellma.Core.Abstractions`, registered by distributions
-   through this same route — one mechanism, no special handling.
+   `StringList`) are plain classes in `Tellma.Core.Abstractions`, which the platform's tenant model
+   registers through this same route — one mechanism, no special handling. A column gets a collation
+   through `UseCollation(column, collation)` in the build action, whether the class or
+   `Column(…)` added it — e.g. `t => t.UseCollation("Subject", "Latin1_General_100_BIN2")` for a
+   key compared with a binary-collated table column, which SQL Server otherwise refuses (Msg 468).
+   It applies after every column is added, so its position against `Column(…)` does not matter;
+   the last call wins, also over `Column(…, collation)`; names match case-insensitively, and an
+   unknown name fails the registration. Only `char`, `varchar`, `nchar` and `nvarchar` columns
+   take a collation (any other store type, `json` included, fails model finalization). The
+   collation is part of the definition, so adding, changing or removing one creates a new
+   version; a type without one serializes exactly as before. The build action can also replace a
+   column's store type and facets with `HasColumnType(column, storeType, …)` (applied before the
+   collations, so a retyped column can take one; the last call wins, also over the class's
+   `[Column(TypeName = …)]`) and drop a column with `ExcludeColumn(column)` (applied last; never a
+   key column) — the way a model that stores enums by name, or marks exclusions with an attribute
+   of its own, shapes a class-derived type. Both match names case-insensitively and fail the
+   registration for an unknown one.
+
+## Lock escalation
+
+`entity.HasLockEscalation(LockEscalationMode.Disable)` (or `Table`, `Auto`) records the option as the
+annotation `Tellma:LockEscalation` on the entity type
+([LockEscalationExtensions](LockEscalation/LockEscalationExtensions.cs)); `GetLockEscalation()`
+reads it back as the SQL Server keyword. It rides `UseTableTypes`: the extension replaces EF's
+SQL Server annotation provider with a subclass (in the quarantined adapter) that carries the
+annotation onto the table, so the differ surfaces it on `CreateTableOperation` and, when it changes,
+on `AlterTableOperation`, and the snapshot round-trips it. The SQL generator then emits
+`ALTER TABLE … SET (LOCK_ESCALATION = …);` as a statement of its own after the table is created,
+and again whenever the option changes; removing the declaration restores the server default,
+`TABLE`. A keyword other than `TABLE`, `AUTO` or `DISABLE` fails generation.
 
 ## Rules this project lives by
 
@@ -69,8 +98,9 @@ separate DTO model — and creates/keeps it in sync through the same migrations 
   references, the transitive dependency closure (what a host's publish output ships), and a
   ground-truth scan of a Design-free app's output directory.
 - **Internal EF APIs are quarantined** in a single file,
-  [TableTypes/Internal/EfCoreInternalsAdapter.cs](TableTypes/Internal/EfCoreInternalsAdapter.cs),
-  pinned by tests that fail loudly on EF upgrades. The EF version is pinned centrally in
+  [TableTypes/Internal/EfCoreInternalsAdapter.cs](TableTypes/Internal/EfCoreInternalsAdapter.cs)
+  (the differ splice and the annotation provider subclass), pinned by tests that fail loudly on EF
+  upgrades. The EF version is pinned centrally in
   `Directory.Packages.props`.
 - **Admission rule**: code belongs here only if it extends EF Core's own surface (options
   extensions, migration operations, conventions, metadata/annotations) and is generic over any

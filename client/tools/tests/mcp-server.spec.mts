@@ -23,9 +23,13 @@ describe('@tellma/core-ui-mcp server', () => {
   beforeAll(async () => {
     // Build the inputs if this spec runs standalone.
     if (!existsSync(join(mcpDir, 'generated', 'components.json'))) {
-      execFileSync(process.execPath, ['node_modules/tsx/dist/cli.mjs', 'tools/docs/build-docs.mts'], {
-        cwd: clientDir,
-      });
+      execFileSync(
+        process.execPath,
+        ['node_modules/tsx/dist/cli.mjs', 'tools/docs/build-docs.mts'],
+        {
+          cwd: clientDir,
+        },
+      );
     }
     if (!existsSync(join(mcpDir, 'dist', 'server.js'))) {
       execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', '-b', mcpDir], {
@@ -46,16 +50,23 @@ describe('@tellma/core-ui-mcp server', () => {
     // the tooling schema would make them `undefined`, and JSON.stringify
     // silently DROPS undefined keys — so assert on the endpoint output.
     const result = await client.callTool({ name: 'list', arguments: {} });
-    const parsed = JSON.parse(
-      (result.content as { type: string; text: string }[])[0].text,
-    ) as { libraryVersion: string; components: Record<string, unknown>[] };
+    const parsed = JSON.parse((result.content as { type: string; text: string }[])[0].text) as {
+      libraryVersion: string;
+      components: Record<string, unknown>[];
+    };
 
     expect(parsed.libraryVersion).toBeTruthy();
     expect(parsed.components.length).toBeGreaterThan(0);
     for (const component of parsed.components) {
       const name = String(component['name']);
-      for (const key of ['name', 'selector', 'kind', 'group', 'entryPoint', 'summary']) {
+      for (const key of ['name', 'kind', 'group', 'entryPoint', 'summary']) {
         expect(component[key], `list dropped "${key}" for ${name}`).toBeTruthy();
+      }
+      // A service has no selector; every component and directive has one.
+      if (component['kind'] === 'service') {
+        expect(component['selector'], `${name} is a service`).toBeNull();
+      } else {
+        expect(component['selector'], `list dropped "selector" for ${name}`).toBeTruthy();
       }
       // formControl is legitimately null on non-form components; a schema
       // rename would drop the key, so assert presence rather than truthiness.
@@ -80,18 +91,17 @@ describe('@tellma/core-ui-mcp server', () => {
 
   it('describes tm-spinner: a component without a harness reports null', async () => {
     const result = await client.callTool({ name: 'describe', arguments: { name: 'tm-spinner' } });
-    const component = JSON.parse(
-      (result.content as { type: string; text: string }[])[0].text,
-    ) as { selector: string; harness: string | null };
+    const component = JSON.parse((result.content as { type: string; text: string }[])[0].text) as {
+      selector: string;
+      harness: string | null;
+    };
     expect(component.selector).toBe('tm-spinner');
     expect(component.harness).toBeNull(); // never a fabricated class name
   });
 
   it('describes tm-select with its full reference', async () => {
     const result = await client.callTool({ name: 'describe', arguments: { name: 'tm-select' } });
-    const component = JSON.parse(
-      (result.content as { type: string; text: string }[])[0].text,
-    ) as {
+    const component = JSON.parse((result.content as { type: string; text: string }[])[0].text) as {
       selector: string;
       formControl: string;
       inputs: { name: string }[];
@@ -110,6 +120,32 @@ describe('@tellma/core-ui-mcp server', () => {
     expect(text).toContain('tm-option');
     // A renamed `title` doesn't throw — it interpolates as `<!-- undefined -->`.
     expect(text).not.toContain('<!-- undefined -->');
+  });
+
+  it('describes TmToasts: a service with its members and its harness', async () => {
+    const result = await client.callTool({ name: 'describe', arguments: { name: 'TmToasts' } });
+    const component = JSON.parse((result.content as { type: string; text: string }[])[0].text) as {
+      kind: string;
+      selector: string | null;
+      entryPoint: string;
+      members: { name: string; signature: string }[];
+      harness: string | null;
+    };
+    expect(component.kind).toBe('service');
+    expect(component.selector).toBeNull();
+    expect(component.entryPoint).toBe('@tellma/core-ui/toast');
+    expect(component.members.map((member) => member.name)).toEqual(
+      expect.arrayContaining(['show', 'clear', 'focus']),
+    );
+    expect(component.harness).toBe('TmToastHarness');
+  });
+
+  it('returns a service’s TypeScript example under a code comment title', async () => {
+    const result = await client.callTool({ name: 'example', arguments: { name: 'TmConfirm' } });
+    const text = (result.content as { type: string; text: string }[])[0].text;
+    expect(text).toContain('// TmConfirm');
+    expect(text).toContain('confirm.ask(');
+    expect(text).not.toContain('<!--');
   });
 
   it('flags unknown components as errors', async () => {

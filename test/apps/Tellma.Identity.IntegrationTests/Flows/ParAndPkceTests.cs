@@ -6,6 +6,7 @@
 using System.Text.Json;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -20,10 +21,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Bff_front_channel_authorization_without_par_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpar");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpar");
             await TestData.ProvisionDistributionAsync(factory);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
             // Plain front-channel parameters, tamperable in the browser URL — exactly what the
@@ -53,7 +54,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_without_a_code_challenge_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkce");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkce");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
             using HttpClient backchannel = factory.CreateClient();
@@ -78,7 +79,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_plain_code_challenge_method_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkceplain");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkceplain");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string verifier, string _) = OidcFlowClient.CreatePkcePair();
 
@@ -107,7 +108,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_code_challenge_without_a_method_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idpkcenomethod");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idpkcenomethod");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
@@ -136,7 +137,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Pushing_a_mismatched_redirect_uri_is_rejected()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idredir");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idredir");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
             (string _, string challenge) = OidcFlowClient.CreatePkcePair();
 
@@ -160,6 +161,38 @@ namespace Tellma.Identity.IntegrationTests.Flows
             using var document = JsonDocument.Parse(
                 await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal("invalid_request", document.RootElement.GetProperty("error").GetString());
+        }
+
+        [Fact]
+        public async Task A_front_channel_request_with_an_unregistered_redirect_uri_never_reaches_the_sign_in_page()
+        {
+            // OpenIddict refuses the request while validating it and hands the refusal on to the
+            // authorization action for the error page; the action must render it, never begin the
+            // interaction as if the request were sound.
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(
+                fixture,
+                "idredirfront",
+                new Dictionary<string, string?>
+                {
+                    ["TellmaIdentity:Seed:Clients:0:ClientId"] = "tellma-cli",
+                    ["TellmaIdentity:Seed:Clients:0:Kind"] = "Cli",
+                    ["TellmaIdentity:Seed:Clients:0:RedirectUris:0"] = "http://127.0.0.1/callback",
+                });
+            using OidcFlowClient flow = factory.CreateFlowClient();
+            (string _, string challenge) = OidcFlowClient.CreatePkcePair();
+
+            string authorizeUrl = "/connect/authorize?client_id=tellma-cli"
+                + "&redirect_uri=" + Uri.EscapeDataString("http://127.0.0.1/evil-callback")
+                + "&response_type=code&scope=openid"
+                + "&code_challenge=" + challenge + "&code_challenge_method=S256";
+
+            using HttpResponseMessage response = await flow.Browser.GetAsync(
+                new Uri(authorizeUrl, UriKind.Relative), TestContext.Current.CancellationToken);
+
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
+            Assert.Null(response.Headers.Location);
+            string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("invalid_request", body, StringComparison.Ordinal);
         }
     }
 }

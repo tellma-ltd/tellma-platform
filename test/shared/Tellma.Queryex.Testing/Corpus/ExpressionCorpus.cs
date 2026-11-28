@@ -62,6 +62,12 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Runs("fn-round", "round(Amount, 2)");
             yield return Runs("fn-round-zero", "round(Rate, 0)");
 
+            // Hierarchy depth, of a stored position and of a computed one: the backend's own method
+            // has to accept whatever expression the language lets reach it.
+            yield return Runs("fn-level", "level(AltNode)");
+            yield return Runs("fn-level-computed", "level(coalesce(AltNode, Account.Node))");
+            yield return Runs("fn-level-conditional", "level(if(IsPosted, AltNode, Account.Node))");
+
             // Text. Trailing spaces and fixed-width storage are why several of these read Ref.
             yield return Runs("fn-upper", "upper(Memo)");
             yield return Runs("fn-lower", "lower(Code)");
@@ -309,10 +315,15 @@ namespace Tellma.Queryex.Testing.Corpus
             yield return Good("calendar-explicit-zone", "local(PostedAt, 'Africa/Nairobi')", QueryexType.QxDateTime);
             yield return Bad("calendar-unknown-zone", "local(PostedAt, 'Mars/Olympus')", "QX3101");
             yield return Good("calendar-gregorian", "year(PostingDate, 'gc')", QueryexType.QxNumeric);
-            yield return Bad("calendar-unimplemented", "year(PostingDate, 'et')", "QX3101");
+            yield return Good("calendar-ethiopian", "year(PostingDate, 'et')", QueryexType.QxNumeric);
+            yield return Good("calendar-um-al-qura", "year(PostingDate, 'uq')", QueryexType.QxNumeric);
+            yield return Bad("calendar-unknown", "year(PostingDate, 'hc')", "QX3101");
             yield return Good("calendar-week", "week(PostingDate)", QueryexType.QxNumeric);
             yield return Good("calendar-weekday", "weekday(PostingDate)", QueryexType.QxNumeric);
             yield return Good("calendar-start-of-week", "startOfWeek(PostingDate)", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter", "startOfQuarter(PostingDate)", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter-et", "startOfQuarter(DueOn, 'et')", QueryexType.QxDate);
+            yield return Good("calendar-start-of-quarter-uq", "startOfQuarter(DueOn, 'uq')", QueryexType.QxDate);
             yield return Good("calendar-difference", "diffDays(PostingDate, DueDate)", QueryexType.QxNumeric);
             yield return Bad("calendar-difference-mixed", "diffDays(PostingDate, PostedAt)", "QX3005");
         }
@@ -495,6 +506,38 @@ namespace Tellma.Queryex.Testing.Corpus
                 Mode = QueryexMode.Filter,
                 Diagnostics = ["QX3303"],
             };
+
+            // The depth of a position: a number, present exactly when the position is.
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level",
+                Text = "level(Account.Node)",
+                Type = QueryexType.QxNumeric,
+                Nullity = QueryexNullity.NotNull,
+            };
+
+            yield return Nullity("hierarchy-level-of-an-optional-node", "level(AltNode)", QueryexNullity.Nullable);
+
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level-behind-an-optional-step",
+                Text = "level(Parent.Node)",
+                Root = "Account",
+                Nullity = QueryexNullity.Nullable,
+            };
+
+            yield return new ExpressionCase
+            {
+                Id = "hierarchy-level-compared",
+                Text = "level(Node) <= 1",
+                Root = "Account",
+                Mode = QueryexMode.Filter,
+            };
+
+            // Only a path supplies a position, so anything else is a type mismatch.
+            yield return Bad("hierarchy-level-not-a-node", "level(Amount)", "QX3005");
+            yield return Bad("hierarchy-level-of-text", "level('/1/')", "QX3005");
+            yield return Bad("hierarchy-level-needs-an-argument", "level()", "QX3004");
         }
 
         /// <summary>What inference concludes about undeclared parameters.</summary>

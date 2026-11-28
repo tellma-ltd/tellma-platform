@@ -1,0 +1,59 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+import type { TmStringTree } from '@tellma/core';
+
+// The Arabic of the details page, which the page reads under `tm.details`.
+// It is a table of its own beside the platform's main one and the shell's,
+// so each one's ceiling holds; `tmArabic()` merges them under `tm` on the
+// first switch to Arabic. Button labels are verbal nouns, as Arabic
+// toolbars write them, so they need no gendered forms.
+
+/**
+ * The Arabic of the details page, under `tm`: the toolbar's buttons, the
+ * Active, Inactive and Unsaved changes badges, the status lines, the
+ * Discard changes question, the notice of a refresh that failed under an edit, Edit's reason for a record outside the
+ * user's permission, and the layout kit's read-only lock, error names, audit card, aside and failed editor load, and
+ * its child grids' totals and failed load and its child files' list. The same shape as its English.
+ */
+export const TM_DETAILS_STRINGS_AR: TmStringTree = {
+  details: {
+    edit: 'تعديل',
+    create: 'جديد',
+    save: 'حفظ',
+    cancel: 'إلغاء',
+    refresh: 'تحديث',
+    actions: 'الإجراءات',
+    active: 'نشط',
+    inactive: 'غير نشط',
+    unsaved: 'تغييرات غير محفوظة',
+    loading: 'جارٍ التحميل',
+    editing: 'تعديل {name}',
+    saved: 'تم الحفظ',
+    uploadsFailed: 'لم يُحفظ شيء: تعذّر رفع ملف.',
+    refreshFailed: 'تعذّر تحديث هذا السجل. تغييراتك محفوظة.',
+    retry: 'إعادة المحاولة',
+    discard: {
+      title: 'تجاهل التغييرات؟',
+      message: 'ستُفقد تغييراتك على هذا السجل.',
+      confirm: 'تجاهل التغييرات',
+      keep: 'متابعة التعديل',
+    },
+    outsideFilter: 'لا تشمل صلاحية «{permission}» الممنوحة لك هذا السجل.',
+    readOnly: 'للقراءة فقط',
+    hasErrors: '{label}، يحتوي على أخطاء',
+    audit: 'معلومات التدقيق',
+    aside: 'معلومات ذات صلة',
+    editorFailed: 'تعذّر تحميل هذا الحقل للتعديل.',
+    listEditorFailed: 'تعذّر تحميل هذه القائمة للتعديل.',
+    total: 'إجمالي {label}',
+    totals: 'الإجماليات',
+    tableFailed: 'تعذّر تحميل هذا الجدول.',
+    noFiles: 'لا توجد ملفات',
+    filesFailed: 'تعذّر تحميل هذه الملفات.',
+    fileRefused: '{name}: {message}',
+    uploading: 'جارٍ رفع {name}',
+  },
+};

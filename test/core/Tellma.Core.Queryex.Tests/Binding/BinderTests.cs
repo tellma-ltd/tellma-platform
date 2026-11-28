@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Queryex.Testing.Probe;
+using Tellma.Queryex.Testing.Schema;
 
 namespace Tellma.Core.Queryex.Tests.Binding
 {
@@ -176,8 +177,7 @@ namespace Tellma.Core.Queryex.Tests.Binding
         [InlineData("cast(Memo, 'bool')", "QX3102")]
         [InlineData("cast(Amount, 'nonsense')", "QX3101")]
         [InlineData("cast(Amount, Memo)", "QX3100")]
-        [InlineData("year(PostingDate, 'uq')", "QX3101")]
-        [InlineData("year(PostingDate, 'et')", "QX3101")]
+        [InlineData("year(PostingDate, 'hc')", "QX3101")]
         [InlineData("year(PostingDate, Memo)", "QX3100")]
         [InlineData("local(PostedAt, 'Nowhere/Nothing')", "QX3101")]
         public void Refuses_a_conversion_or_a_selector_the_language_does_not_offer(string text, string code)
@@ -186,6 +186,45 @@ namespace Tellma.Core.Queryex.Tests.Binding
 
             Assert.False(result.Succeeded);
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == code);
+        }
+
+        [Theory]
+        [InlineData("year(PostingDate, 'gc')")]
+        [InlineData("year(PostingDate, 'et')")]
+        [InlineData("year(PostingDate, 'ET')")]
+        [InlineData("year(PostingDate, 'uq')")]
+        [InlineData("startOfQuarter(PostingDate, 'uq')")]
+        [InlineData("diffMonths(PostedOn, DueOn, 'uq')")]
+        public void Accepts_every_calendar_the_schema_can_count_in(string text)
+        {
+            ProbeBinding result = QueryexProbe.Bind(text);
+
+            Assert.True(result.Succeeded, Describe(result));
+        }
+
+        [Theory]
+        [InlineData("year(PostingDate, 'uq')")]
+        [InlineData("startOfQuarter(PostingDate, 'UQ')")]
+        [InlineData("addMonths(PostingDate, 1, 'uq')")]
+        public void Refuses_a_table_calendar_the_schema_maps_no_month_table_for(string text)
+        {
+            ProbeBinding result = QueryexProbe.Bind(
+                text,
+                new ProbeBindOptions { Schema = LedgerFixture.WithoutCalendarMaps });
+
+            Assert.False(result.Succeeded);
+            QueryexDiagnostic refusal = Assert.Single(result.Diagnostics);
+            Assert.Equal("QX3101", refusal.Code);
+        }
+
+        [Fact]
+        public void Still_accepts_the_computed_calendars_without_a_month_table()
+        {
+            ProbeBinding result = QueryexProbe.Bind(
+                "year(PostingDate, 'et') + year(PostingDate, 'gc')",
+                new ProbeBindOptions { Schema = LedgerFixture.WithoutCalendarMaps });
+
+            Assert.True(result.Succeeded, Describe(result));
         }
 
         [Fact]
@@ -223,6 +262,12 @@ namespace Tellma.Core.Queryex.Tests.Binding
         [InlineData("upper(Memo)", "Nullable")]
         [InlineData("upper(Code)", "NotNull")]
         [InlineData("-Rate", "Nullable")]
+        [InlineData("month(PostingDate, 'et')", "NotNull")]
+        [InlineData("addMonths(PostingDate, 1, 'et')", "NotNull")]
+        [InlineData("month(PostingDate, 'uq')", "Nullable")]
+        [InlineData("startOfQuarter(PostingDate, 'uq')", "Nullable")]
+        [InlineData("startOfQuarter(PostingDate)", "NotNull")]
+        [InlineData("diffYears(PostingDate, today(), 'uq')", "Nullable")]
         public void Says_whether_an_expression_can_evaluate_to_an_absent_value(string text, string nullity)
         {
             ProbeBinding result = QueryexProbe.Bind(text, new ProbeBindOptions { Mode = QueryexMode.Value });

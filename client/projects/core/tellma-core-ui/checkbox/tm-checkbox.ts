@@ -3,6 +3,8 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
+/// <reference types="@tellma/core-tools/lucide-icons" />
+
 import {
   booleanAttribute,
   Component,
@@ -17,11 +19,14 @@ import {
   viewChild,
 } from '@angular/core';
 import type { ValidationError } from '@angular/forms/signals';
+import Check from 'lucide/dist/esm/icons/check.mjs';
+import Minus from 'lucide/dist/esm/icons/minus.mjs';
 
-import type { TmCellDisplay, TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
+import type { TmFieldError, TmFormFieldControl } from '@tellma/core-ui/contracts';
 import { TM_ERROR_DISPLAY, TM_UI_TRANSLATE, TmL10n, tmResolveFieldErrors } from '@tellma/core-ui';
 import { tmFormatDate } from '@tellma/core-ui/l10n';
 import { TM_FORM_FIELD_CONTROL } from '@tellma/core-ui/form-field';
+import { TmIcon } from '@tellma/core-ui/icon';
 
 let nextUniqueId = 0;
 
@@ -47,6 +52,7 @@ let nextUniqueId = 0;
  */
 @Component({
   selector: 'tm-checkbox',
+  imports: [TmIcon],
   providers: [{ provide: TM_FORM_FIELD_CONTROL, useExisting: TmCheckbox }],
   template: `
     <label class="tm-checkbox__layout">
@@ -69,24 +75,11 @@ let nextUniqueId = 0;
         />
         <!-- The mark geometry is duplicated as a CSS mask in the grid
              (grid-view.css), which draws thousands of these as plain divs
-             rather than components. The two must stay identical or a
-             checkbox column and a checkbox visibly disagree. -->
+             rather than components. The two must stay identical — the same
+             Lucide paths at the same stroke — or a checkbox column and a
+             checkbox visibly disagree. -->
         <span class="tm-checkbox__box" aria-hidden="true">
-          <svg
-            class="tm-checkbox__glyph"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            @if (indeterminate()) {
-              <path class="tm-checkbox__mark" d="M5 12h14" />
-            } @else {
-              <path class="tm-checkbox__mark" d="M20 6 9 17l-5-5" />
-            }
-          </svg>
+          <tm-icon class="tm-checkbox__glyph" [svg]="indeterminate() ? minusIcon : checkIcon" />
         </span>
       </span>
       <span class="tm-checkbox__label"><ng-content /></span>
@@ -148,6 +141,11 @@ export class TmCheckbox implements TmFormFieldControl {
    * merged AFTER them, never over them.
    */
   readonly ariaDescribedby = input<string | null>(null, { alias: 'aria-describedby' });
+
+  /** The checked mark's icon data. */
+  protected readonly checkIcon = Check;
+  /** The indeterminate mark's icon data. */
+  protected readonly minusIcon = Minus;
 
   /** Stable generated id of the native input — the `<label for>` and aria wiring target. */
   readonly controlId = signal(`tm-checkbox-${nextUniqueId++}`).asReadonly();
@@ -233,21 +231,3 @@ export class TmCheckbox implements TmFormFieldControl {
     this.indeterminate.set(false);
   }
 }
-
-/**
- * The checkbox's cell-display contract: how a grid paints a boolean cell as
- * static DOM with no component instance. The text representation is the
- * spreadsheet-interop literal `TRUE`/`FALSE` (never localized — it is what
- * copy exports and paste parses); the glyph class renders a checkbox-box
- * visual driven by the same `--checkbox-box-size` and field tokens the real
- * control uses, so the two stay in lock-step. A `null` value (a cleared
- * cell) displays as unchecked.
- */
-export const TM_CHECKBOX_CELL_DISPLAY: TmCellDisplay<boolean | null> = {
-  formatValue(value: boolean | null): string {
-    return value ? 'TRUE' : 'FALSE';
-  },
-  displayClass(value: boolean | null): string {
-    return value ? 'tm-grid-bool tm-grid-bool--on' : 'tm-grid-bool';
-  },
-};

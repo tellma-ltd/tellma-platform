@@ -27,6 +27,14 @@ export class TmModalHarness extends ComponentHarness {
     return (await (await this.locatorFor('.tm-modal__body')()).text()).trim();
   }
 
+  /**
+   * Where the modal sits: `'center'` for the centered dialog, `'end'` for
+   * the drawer docked to the inline-end edge.
+   */
+  async getPlacement(): Promise<'center' | 'end'> {
+    return (await (await this.host()).hasClass('tm-modal--end')) ? 'end' : 'center';
+  }
+
   /** Whether the header shows the X close button. */
   async hasCloseButton(): Promise<boolean> {
     return (await this.locatorForOptional('.tm-modal__close')()) !== null;

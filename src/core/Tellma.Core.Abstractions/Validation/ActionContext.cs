@@ -1,0 +1,458 @@
+// Copyright (c) Tellma Ltd. All rights reserved.
+//
+// This source code is licensed under the Apache-2.0 license found in the
+// LICENSE file in the root directory of this source tree.
+
+using Tellma.Core.Abstractions.Assignments;
+using Tellma.Core.Abstractions.Crud;
+using Tellma.Core.Abstractions.Data;
+using Tellma.Core.Abstractions.Internal;
+using Tellma.Core.Abstractions.Notifications;
+using Tellma.Core.Abstractions.Tenancy;
+using Tellma.Core.Queryex;
+
+namespace Tellma.Core.Abstractions.Validation
+{
+    /// <summary>
+    ///     What an action's validation hook and its method see, without the key type: the target rows,
+    ///     the arguments, and the means to validate and to compose the action's writes. A component
+    ///     generic over the entity alone sees this view; the service sees
+    ///     <see cref="ActionContext{TEntity, TKey}" />.
+    /// </summary>
+    /// <remarks>
+    ///     <para>
+    ///         The hook and the method run as a validator and a mutator over one context: errors
+    ///         collect in <see cref="Errors" />; <see cref="Save" /> and <see cref="Update(IReadOnlyDictionary{string, object})" /> compose
+    ///         the writes to the stack's own rows; <see cref="Batch" /> takes statements with declared
+    ///         writes; <see cref="Notify" />, <see cref="Withdraw" /> and <see cref="Assignments" />
+    ///         append to the same batch; <see cref="Host" /> takes enlisted writes into other stacks.
+    ///         Any error fails the action and nothing composed is written.
+    ///     </para>
+    ///     <para>An action is never enlisted, so the context carries no enlistment.</para>
+    /// </remarks>
+    /// <typeparam name="TEntity">The stack's entity type.</typeparam>
+    public abstract class ActionContext<TEntity>
+    {
+        /// <summary>Guards the composed writes: the hook and the method may run concurrently.</summary>
+        private readonly Lock _gate = new();
+
+        /// <summary>The rows marked for the emitter, in marking order.</summary>
+        private readonly List<TEntity> _saved = [];
+
+        /// <summary>The updates composed, in order.</summary>
+        private readonly List<ComposedUpdate> _updates = [];
+
+        /// <summary>Whether composing has closed: the persist batch is being assembled.</summary>
+        private bool _closed;
+
+        /// <summary>Initialises the view; private protected so the keyed context is its one kind.</summary>
+        private protected ActionContext()
+        {
+        }
+
+        /// <summary>
+        ///     The visible target rows, loaded under the caller's read filter, with every child collection
+        ///     when the action loads children. They load with the first validation round, so the hook
+        ///     and the method read them after their first <see cref="IContextLoader.LoadAsync" />.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">Read before the first round ran.</exception>
+        public IReadOnlyList<TEntity> Entities
+        {
+            get => field ?? throw new InvalidOperationException(
+                "An action's target rows load with the first validation round. Await the context loader's LoadAsync before reading them.");
+            internal set => field = value ?? throw new ArgumentNullException(nameof(Entities));
+        }
+
+        /// <summary>The action's arguments, as its arguments record; null for an action that takes none.</summary>
+        public object? Arguments { get; init; }
+
+        /// <summary>Who runs the action, in which tenant and culture.</summary>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required RequestContext Context
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Context));
+        }
+
+        /// <summary>The loader the hook and the method read context through.</summary>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required IContextLoader Loader
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Loader));
+        }
+
+        /// <summary>The errors of the action.</summary>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required ValidationErrors<TEntity> Errors
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Errors));
+        }
+
+        /// <summary>
+        ///     The action's persist batch: statements appended here carry declared writes and commit with
+        ///     the action. A statement writing a table another stack owns is refused when the persist
+        ///     batch is assembled; such rows are enlisted through <see cref="Host" />.
+        /// </summary>
+        /// <remarks>
+        ///     The persist batch is assembled once the validation rounds end, so the appends are recorded
+        ///     and composed onto it then, in order; a result read from an append completes once the action
+        ///     committed (await <see cref="Persisted" /> first). A table-valued parameter or a declared id
+        ///     or key table is named when it is appended, and keeps that name in the persist batch. An
+        ///     append that answers at once from the batch it lands in (a raw save or delete, a cache read)
+        ///     is refused: the stack's rows are written through <see cref="Save" /> and
+        ///     <see cref="Update(IReadOnlyDictionary{string, object})" />.
+        /// </remarks>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required IDataBatch Batch
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Batch));
+        }
+
+        /// <summary>The pipeline frame the action runs in; the method enlists writes into other stacks through it.</summary>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required IWriteHost Host
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Host));
+        }
+
+        /// <summary>Cancels the action's reads and validation rounds when the caller goes away; a persist already sent completes regardless.</summary>
+        public CancellationToken CancellationToken { get; init; }
+
+        /// <summary>
+        ///     Completes once the action's persist committed, and faults with the exception that ended the
+        ///     action: the persist's, or the validation failure that kept it from running. A method that
+        ///     must read a batch result it appended awaits this before returning.
+        /// </summary>
+        /// <remarks>
+        ///     Reading this property tells the pipeline the reader is about to wait for the persist: once
+        ///     the reading flow stops running, the persist runs without waiting for the reader any longer.
+        ///     Read it where it is awaited, after every load and every write is composed: a load, a save,
+        ///     an update or an append to <see cref="Batch" /> after the read is refused, whichever flow of
+        ///     the task makes it. The action is abandoned unsent when the refusal comes before its persist
+        ///     is sent, as it always does when the reading flow raises it before awaiting anything. A flow
+        ///     that awaits something else first may compose after the persist was sent: the action then
+        ///     commits without that write, and the refusal is logged and raised once it committed, for an
+        ///     action answering a value or not, rather than answered as success. A read from a flow that
+        ///     carries none of the task's context, while the validation rounds run, is refused. When the
+        ///     action fails, it is raised to the caller only once every reader resumed with the failure
+        ///     and returned, so a reader can undo work of its own, such as a remote call, within the
+        ///     action; the action's failure is raised whatever the reader then throws.
+        /// </remarks>
+        public Task Persisted
+        {
+            get
+            {
+                PersistedRead?.Invoke();
+                return PersistedSource.Task;
+            }
+        }
+
+        /// <summary>
+        ///     Waits until the action's validation has settled, then answers whether the action, as
+        ///     validated, would persist. Settled means every other task of the validation rounds (the
+        ///     hook, the components and the stack's validators) has completed or waits here too, and no
+        ///     load is pending. The answer is false when <see cref="Errors" /> holds an error, when a
+        ///     warning was raised and not confirmed, or when the tenant's state admits no persist of the
+        ///     action; the pipeline then refuses the action and <see cref="Persisted" /> faults with the
+        ///     refusal. A method that calls another system before it composes, such as an identity
+        ///     server, makes the call only on true, and on false awaits <see cref="Persisted" />.
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         The wait costs no round trip: it resumes at the quiet point where the rounds would
+        ///         otherwise end. A task that awaits it may load again afterwards, and the rounds go on;
+        ///         another task that awaited it too resumes at the same point, so an error or a warning
+        ///         it reports after resuming can follow the answer. Await it after the first
+        ///         <see cref="IContextLoader.LoadAsync" />, so the targets are loaded, and before reading
+        ///         <see cref="Persisted" />.
+        ///     </para>
+        ///     <para>
+        ///         It faults when the rounds stop early, as a parked load does. A context the pipeline
+        ///         did not create, such as one a unit test builds, has no rounds to wait for: the answer
+        ///         comes at once, and is false only when <see cref="Errors" /> holds an error.
+        ///     </para>
+        /// </remarks>
+        /// <returns>True when the action, as validated, would persist; false when the pipeline will refuse it.</returns>
+        /// <exception cref="InvalidOperationException">
+        ///     The calling flow is no task of the rounds, its task already read <see cref="Persisted" />,
+        ///     or another of its flows is parked at a load.
+        /// </exception>
+        public Task<bool> ValidatedAsync()
+        {
+            return Settle?.Invoke() ?? Task.FromResult(!Errors.HasErrors);
+        }
+
+        /// <summary>
+        ///     The assignments of rows of the stack, appended to <see cref="Batch" />.
+        /// </summary>
+        /// <exception cref="NotSupportedException">The host registers no assignments service.</exception>
+        public BatchAssignments Assignments => BatchAssignments.For(AssignmentsService, Batch, Resource);
+
+        /// <summary>The stack's entity name, which the assignments bind; set by the pipeline.</summary>
+        internal string? Resource { get; init; }
+
+        /// <summary>The scope's notifier, which <see cref="Notify" /> and <see cref="Withdraw" /> append through; set by the pipeline.</summary>
+        internal INotifier? Notifier { get; init; }
+
+        /// <summary>The scope's assignments service; null while the host registers none.</summary>
+        internal IAssignments? AssignmentsService { get; init; }
+
+        /// <summary>Tells the pipeline that the flow reading <see cref="Persisted" /> waits for the persist; set by the pipeline.</summary>
+        internal Action? PersistedRead { get; init; }
+
+        /// <summary>Refuses a save or an update from a flow that may compose no more; set by the pipeline.</summary>
+        internal Action? ComposeGuard { get; init; }
+
+        /// <summary>
+        ///     Waits until the validation rounds settled and answers whether the action would persist,
+        ///     for <see cref="ValidatedAsync" />; set by the pipeline, null outside it.
+        /// </summary>
+        internal Func<Task<bool>>? Settle { get; init; }
+
+        /// <summary>The source the pipeline completes or faults <see cref="Persisted" /> through: once the persist committed, or with what ended the action.</summary>
+        private TaskCompletionSource PersistedSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>The rows <see cref="Save" /> marked, in marking order.</summary>
+        internal IReadOnlyList<TEntity> SavedRows
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _saved];
+                }
+            }
+        }
+
+        /// <summary>The updates the two <c>Update</c> overloads composed, in order.</summary>
+        internal IReadOnlyList<ComposedUpdate> Updates
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _updates];
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Marks rows for the stack's emitter, which writes them with stamping and without a stamp
+        ///     comparison: an action is a command over rows it just loaded. A row deleted meanwhile still
+        ///     fails as missing.
+        /// </summary>
+        /// <param name="entities">The rows; none null.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="entities" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="entities" /> holds a null row.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Save(IReadOnlyList<TEntity> entities)
+        {
+            ArgumentNullException.ThrowIfNull(entities);
+            TEntity[] rows = [.. entities];
+            if (Array.Exists(rows, static row => row is null))
+            {
+                throw new ArgumentException("A row marked for saving is never null.", nameof(entities));
+            }
+
+            ComposeGuard?.Invoke();
+            lock (_gate)
+            {
+                ThrowIfClosed();
+                _saved.AddRange(rows);
+            }
+        }
+
+        /// <summary>
+        ///     Composes one update of the target rows, under the caller's read filter and the action
+        ///     grant's filter, all or nothing, with stamping.
+        /// </summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="assignments" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments)
+        {
+            Compose(assignments, condition: null, refusalCode: null);
+        }
+
+        /// <summary>
+        ///     Composes one update of the target rows that still meet a condition when the persist runs,
+        ///     with stamping, as when the action's precondition is repeated in its statement. The first
+        ///     round already found every target and counted it under the action grant. A target that
+        ///     changed since, so that it no longer meets <paramref name="condition" />, the caller's read
+        ///     filter or the grant's filter, or that already holds the values, is left as it is,
+        ///     unstamped, and the action still succeeds; but an action that post-checks its writes
+        ///     still refuses, as outside the grant, a target that left the grant's filter.
+        /// </summary>
+        /// <remarks>
+        ///     Every other statement the action composes, such as an enqueue or a notification, still
+        ///     sees every target, the skipped ones included. When one must not act on a skipped target,
+        ///     use <see cref="Update(IReadOnlyDictionary{string, object?}, FilterTree, string)" />, which
+        ///     refuses instead.
+        /// </remarks>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter, over the stack's entity, that a target must still meet to be updated.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="assignments" /> or <paramref name="condition" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition)
+        {
+            ArgumentNullException.ThrowIfNull(condition);
+            Compose(assignments, condition, refusalCode: null);
+        }
+
+        /// <summary>
+        ///     Composes one update of the target rows, all or nothing, that every target must still meet
+        ///     a condition for when the persist runs, with stamping. A target that changed since the
+        ///     first round, so that it no longer meets <paramref name="condition" />, or that was
+        ///     deleted since, fails the action with a validation error at the root carrying
+        ///     <paramref name="refusalCode" />, and nothing the action composed is written; a target
+        ///     the caller can no longer read is not found and one outside the grant's filter is
+        ///     forbidden, as with <see cref="Update(IReadOnlyDictionary{string, object?})" />. Every
+        ///     target is written and stamped, one that already holds the values included, since the
+        ///     action acted on each.
+        /// </summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter, over the stack's entity, that every target must still meet.</param>
+        /// <param name="refusalCode">
+        ///     The validation code of the refusal when a target no longer meets
+        ///     <paramref name="condition" />: letters, digits, dots, underscores and hyphens, such as the
+        ///     code the action's validation refuses that target with.
+        /// </param>
+        /// <exception cref="ArgumentNullException">
+        ///     <paramref name="assignments" />, <paramref name="condition" /> or <paramref name="refusalCode" /> is null.
+        /// </exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty, or <paramref name="refusalCode" /> is blank.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        public void Update(IReadOnlyDictionary<string, object?> assignments, FilterTree condition, string refusalCode)
+        {
+            ArgumentNullException.ThrowIfNull(condition);
+            ArgumentException.ThrowIfNullOrWhiteSpace(refusalCode);
+            Compose(assignments, condition, refusalCode);
+        }
+
+        /// <summary>Appends a notification to <see cref="Batch" />; it is raised when the action commits.</summary>
+        /// <param name="request">The notification.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="request" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">The request breaks a rule of the notifier.</exception>
+        /// <exception cref="NotSupportedException">The host registers no notifier.</exception>
+        public void Notify(NotificationRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ContextNotifier.Require(Notifier).Notify(Batch, [request]);
+        }
+
+        /// <summary>Appends a withdrawal of notifications to <see cref="Batch" />; it applies when the action commits.</summary>
+        /// <param name="request">The withdrawal.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="request" /> is null.</exception>
+        /// <exception cref="InvalidOperationException">The request breaks a rule of the notifier.</exception>
+        /// <exception cref="NotSupportedException">The host registers no notifier.</exception>
+        public void Withdraw(WithdrawRequest request)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ContextNotifier.Require(Notifier).Withdraw(Batch, [request]);
+        }
+
+        /// <summary>Closes composing: the pipeline is assembling the persist batch, so a later <see cref="Save" /> or <see cref="Update(IReadOnlyDictionary{string, object})" /> is refused.</summary>
+        internal void Close()
+        {
+            lock (_gate)
+            {
+                _closed = true;
+            }
+        }
+
+        /// <summary>Completes <see cref="Persisted" />: the action's persist committed.</summary>
+        /// <returns>True when this call completed it; false when it was already completed or faulted.</returns>
+        internal bool CompletePersisted()
+        {
+            return PersistedSource.TrySetResult();
+        }
+
+        /// <summary>
+        ///     Faults <see cref="Persisted" /> with what ended the action, and observes the fault: a
+        ///     method that never awaited <see cref="Persisted" /> leaves no unobserved task exception to
+        ///     surface when the task is collected.
+        /// </summary>
+        /// <param name="exception">What ended the action.</param>
+        /// <returns>True when this call faulted it; false when it was already completed or faulted.</returns>
+        internal bool FaultPersisted(Exception exception)
+        {
+            ArgumentNullException.ThrowIfNull(exception);
+            if (!PersistedSource.TrySetException(exception))
+            {
+                return false;
+            }
+
+            // Reading the exception marks the fault observed; a method awaiting the task still sees it.
+            _ = PersistedSource.Task.Exception;
+            return true;
+        }
+
+        /// <summary>Records one update, once its assignments are checked and copied.</summary>
+        /// <param name="assignments">The new values, by property name; at least one.</param>
+        /// <param name="condition">The filter a target must still meet; null for every target, all or nothing.</param>
+        /// <param name="refusalCode">The code a target failing <paramref name="condition" /> refuses the action with; null to skip it.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="assignments" /> is null.</exception>
+        /// <exception cref="ArgumentException"><paramref name="assignments" /> is empty.</exception>
+        /// <exception cref="InvalidOperationException">Composing has closed, or the calling flow read <see cref="Persisted" />.</exception>
+        private void Compose(IReadOnlyDictionary<string, object?> assignments, FilterTree? condition, string? refusalCode)
+        {
+            ArgumentNullException.ThrowIfNull(assignments);
+            if (assignments.Count == 0)
+            {
+                throw new ArgumentException("An update assigns at least one property.", nameof(assignments));
+            }
+
+            IReadOnlyDictionary<string, object?> copy = ReadOnlyCopies.Of(assignments);
+            ComposeGuard?.Invoke();
+            lock (_gate)
+            {
+                ThrowIfClosed();
+                _updates.Add(new ComposedUpdate(copy, condition, refusalCode));
+            }
+        }
+
+        /// <summary>Refuses a write composed after the persist batch was assembled.</summary>
+        /// <exception cref="InvalidOperationException">Composing has closed.</exception>
+        private void ThrowIfClosed()
+        {
+            if (_closed)
+            {
+                throw new InvalidOperationException(
+                    "The action's persist batch is already assembled. Compose every save and update before the action persists.");
+            }
+        }
+    }
+
+    /// <summary>What an action's validation hook and its method see: the key-erased view and the target ids.</summary>
+    /// <typeparam name="TEntity">The stack's entity type.</typeparam>
+    /// <typeparam name="TKey">The stack's key type.</typeparam>
+    public sealed class ActionContext<TEntity, TKey> : ActionContext<TEntity>
+    {
+        /// <summary>The ids the action targets, in request order.</summary>
+        /// <exception cref="ArgumentNullException">Set to null.</exception>
+        public required IReadOnlyList<TKey> Ids
+        {
+            get;
+            init => field = value ?? throw new ArgumentNullException(nameof(Ids));
+        }
+    }
+
+    /// <summary>One update an action composed over its target rows.</summary>
+    /// <param name="Assignments">The new values, by property name.</param>
+    /// <param name="Condition">
+    ///     The filter a target must still meet when the persist runs; null for an update of every
+    ///     target, all or nothing.
+    /// </param>
+    /// <param name="RefusalCode">
+    ///     The validation code the action fails with when a target no longer meets
+    ///     <paramref name="Condition" />, every target then written and stamped; null when such a
+    ///     target is skipped instead.
+    /// </param>
+    internal sealed record ComposedUpdate(IReadOnlyDictionary<string, object?> Assignments, FilterTree? Condition, string? RefusalCode = null);
+}

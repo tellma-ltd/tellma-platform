@@ -49,6 +49,15 @@ namespace Tellma.Core.Queryex.Binding
         /// <summary>A resolved function call.</summary>
         Call,
 
+        /// <summary>One leaf of a composed filter, at the place in the tree it was written.</summary>
+        FilterLeaf,
+
+        /// <summary>A filter criterion rebased onto the row a navigation path reaches.</summary>
+        Via,
+
+        /// <summary>A semi-join over the rows of another entity that point at this one.</summary>
+        Exists,
+
         /// <summary>A node that failed to bind.</summary>
         Error,
     }
@@ -752,9 +761,14 @@ namespace Tellma.Core.Queryex.Binding
                 hash.Add(selector, StringComparer.OrdinalIgnoreCase);
             }
 
-            foreach (TypedExpr argument in arguments)
+            // A selector argument was hashed above by the value it resolved to, which ignores case
+            // as equivalence does; the literal it was written as would not.
+            for (int index = 0; index < arguments.Length; index++)
             {
-                hash.Add(argument.StructuralHash);
+                if (index >= selectors.Length || selectors[index] is null)
+                {
+                    hash.Add(arguments[index].StructuralHash);
+                }
             }
 
             return hash.ToHashCode();
@@ -794,7 +808,11 @@ namespace Tellma.Core.Queryex.Binding
     /// </summary>
     /// <param name="Items">The items, in source order.</param>
     /// <param name="Nullity">Each node's nullity, kept beside the tree rather than on it.</param>
-    /// <param name="NodeCount">The bound nodes across every item.</param>
+    /// <param name="NodeCount">
+    ///     What the list counts for against the ceiling on bound nodes: the bound nodes across every
+    ///     item, with each absent value that stands where an omitted parameter was written counted
+    ///     as the one node the parameter would have been.
+    /// </param>
     /// <param name="Diagnostics">Whatever problems binding reported, without a location.</param>
     internal sealed record BoundExpression(
         ImmutableArray<BoundItem> Items,

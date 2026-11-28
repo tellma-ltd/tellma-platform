@@ -3,9 +3,17 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { Injectable, isDevMode } from '@angular/core';
+import { Injectable } from '@angular/core';
 
 import type { TmGridColumnWidths, TmGridContentState } from '@tellma/core-ui/contracts';
+
+/**
+ * Angular's development-mode flag. A production build defines it `false`,
+ * which folds the development-mode branch away (`isDevMode()`, a call into
+ * @angular/core, cannot be folded). Read through `typeof`, so code running
+ * where nothing defines it never throws.
+ */
+declare const ngDevMode: unknown;
 
 /** LRU capacity for per-content slices (scroll, selection, undo, expansion). */
 const CONTENT_CAPACITY = 50;
@@ -144,7 +152,7 @@ export class TmGridStateStore {
       const message =
         `tm-grid: a grid with gridId "${gridId}" is already live. ` +
         'Grid ids identify one grid definition; give each concurrent grid its own id.';
-      if (isDevMode()) {
+      if (typeof ngDevMode !== 'undefined' && ngDevMode) {
         throw new Error(message);
       }
       console.warn(message);

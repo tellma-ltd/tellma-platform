@@ -6,20 +6,21 @@
 import { afterRenderEffect, Component, signal, untracked, viewChild } from '@angular/core';
 import { CdkConnectedOverlay, OverlayModule } from '@angular/cdk/overlay';
 
-import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/private';
+import { tmCreateAnchoredOverlay, tmLogicalPositions } from '@tellma/core-ui/overlay';
 
 /**
- * The floating tooltip surface, created lazily by the `TmTooltip` directive
+ * The floating tooltip surface, created lazily by the tooltip controller
  * on first show and driven through its writable signals. The panel is
  * `aria-hidden`: assistive technology reads the text through the CDK
  * `AriaDescriber` description instead (always available, open or not), so
  * the visible surface never double-announces.
  *
  * The surface itself stays hoverable (WCAG 1.4.13): pointer transitions
- * onto it are reported back to the directive, which cancels the pending
+ * onto it are reported back to the controller, which cancels the pending
  * grace-period hide.
  *
- * @internal Created exclusively by `TmTooltip`; never use directly.
+ * @internal Created by the tooltip controller (for `TmTooltip` and `tmButton`); never use
+ * directly.
  */
 @Component({
   selector: 'tm-tooltip-panel',
@@ -53,9 +54,9 @@ export class ɵTmTooltipPanel {
   /** Whether the panel is shown. */
   readonly expanded = signal(false);
 
-  /** Set by the directive: pointer entered the surface (cancel the hide). */
+  /** Set by the controller: pointer entered the surface (cancel the hide). */
   pointerEnter: (() => void) | null = null;
-  /** Set by the directive: pointer left the surface (schedule the hide). */
+  /** Set by the controller: pointer left the surface (schedule the hide). */
   pointerLeave: (() => void) | null = null;
 
   private readonly overlay = viewChild(CdkConnectedOverlay);

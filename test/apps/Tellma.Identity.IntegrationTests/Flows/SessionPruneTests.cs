@@ -11,6 +11,7 @@ using Tellma.Identity.Data.Entities;
 using Tellma.Identity.IntegrationTests.Infrastructure;
 using Tellma.Identity.Services.Provisioning;
 using Tellma.Identity.Services.Sessions;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -28,7 +29,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task The_sweep_ends_lapsed_sessions_and_spares_live_ones()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune1");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune1");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune1@example.com");
 
             using IServiceScope scope = factory.Services.CreateScope();
@@ -55,7 +56,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Retention_removes_long_terminated_rows_and_their_client_registrations()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune2");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune2");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune2@example.com");
             DistributionClientCredentials distribution = await TestData.ProvisionDistributionAsync(factory);
 
@@ -65,7 +66,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
             foreach (string sid in (string[])["old", "recent"])
             {
                 await registry.UpsertSessionAsync(sid, user.Id, "agent", "203.0.113.7", TestContext.Current.CancellationToken);
-                await registry.RegisterClientAsync(sid, distribution.BffClientId, null, TestContext.Current.CancellationToken);
+                await registry.RegisterClientAsync(
+                    sid, distribution.BffClientId, "authorization-" + sid, TestContext.Current.CancellationToken);
                 await registry.TerminateAsync(sid, TestContext.Current.CancellationToken);
             }
 
@@ -77,8 +79,8 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             Assert.Equal(1, result.Removed);
 
-            // The row is gone, and so is its client registration — a leftover would keep pointing
-            // at a session that no longer exists.
+            // The row is gone, and so are its client registration and the authorization recorded
+            // beneath it — a leftover would keep pointing at a session that no longer exists.
             using IServiceScope reader = factory.Services.CreateScope();
             TellmaIdentityDbContext context = reader.ServiceProvider.GetRequiredService<TellmaIdentityDbContext>();
             Assert.Equal(
@@ -89,12 +91,16 @@ namespace Tellma.Identity.IntegrationTests.Flows
                 ["recent"],
                 await context.Set<IdentitySessionClient>().Select(static c => c.Sid).OrderBy(static sid => sid)
                     .ToListAsync(TestContext.Current.CancellationToken));
+            Assert.Equal(
+                ["authorization-recent"],
+                await context.Set<IdentitySessionClientAuthorization>().Select(static a => a.AuthorizationId)
+                    .OrderBy(static id => id).ToListAsync(TestContext.Current.CancellationToken));
         }
 
         [Fact]
         public async Task Recording_activity_does_not_revive_a_terminated_session()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune3");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune3");
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune3@example.com");
 
             using IServiceScope scope = factory.Services.CreateScope();
@@ -112,7 +118,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
         [Fact]
         public async Task Browsing_the_account_pages_keeps_a_session_out_of_the_sweep()
         {
-            using StandaloneFactory factory = await DatabaseBackedFactory.CreateStandaloneAsync(fixture, "idprune4");
+            using StandaloneFactory factory = DatabaseBackedFactory.CreateStandalone(fixture, "idprune4");
 
             // Zero makes every request revalidate the stamp, which is what marks the session as
             // seen. At the production interval this same path runs, five minutes apart.
@@ -122,7 +128,7 @@ namespace Tellma.Identity.IntegrationTests.Flows
 
             TellmaIdentityUser user = await TestData.CreateActiveUserAsync(factory, "prune4@example.com");
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync("prune4@example.com", "/Identity/Account/Login");
 
             string sid = await SingleSidAsync(factory, user.Id);

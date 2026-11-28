@@ -16,12 +16,53 @@ namespace Tellma.Identity.Infrastructure
         /// <summary>The meter name hosts subscribe to.</summary>
         public const string MeterName = "Tellma.Identity";
 
+        /// <summary>
+        ///     The counter of management-API calls, one per call whether answered or refused,
+        ///     tagged <see cref="ApiVersionTag" />, <see cref="ApiEndpointTag" /> and
+        ///     <see cref="ApiOutcomeTag" />. It shows an operator when a version falls silent; the
+        ///     matching log line names the calling client.
+        /// </summary>
+        public const string ApiCallsInstrumentName = "tellma.identity.api.calls";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the API version, in the form of
+        ///     its route segment (<c>v1</c>).
+        /// </summary>
+        public const string ApiVersionTag = "version";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the endpoint, one of the closed
+        ///     set in <see cref="ManagementApiEndpoints" />.
+        /// </summary>
+        public const string ApiEndpointTag = "endpoint";
+
+        /// <summary>
+        ///     The <see cref="ApiCallsInstrumentName" /> tag naming the call's outcome, one of the
+        ///     closed set in <see cref="ManagementApiOutcomes" />.
+        /// </summary>
+        public const string ApiOutcomeTag = "outcome";
+
+        /// <summary>
+        ///     The name of the counter of document-client metadata resolutions that went to the
+        ///     network or were refused, tagged <see cref="ClientMetadataOutcomeTag" /> alone: a
+        ///     client id is an unbounded, caller-chosen URL and is never a tag.
+        /// </summary>
+        public const string ClientMetadataFetchesInstrumentName = "tellma.identity.client_metadata.fetches";
+
+        /// <summary>
+        ///     The <see cref="ClientMetadataFetchesInstrumentName" /> tag naming the outcome, one of
+        ///     the closed set in <see cref="ClientMetadataFetchOutcomes" />.
+        /// </summary>
+        public const string ClientMetadataOutcomeTag = "outcome";
+
         private readonly Counter<long> _loginAttempts;
         private readonly Counter<long> _tokensIssued;
         private readonly Counter<long> _refreshReuseDetected;
         private readonly Counter<long> _emailCodes;
         private readonly Counter<long> _invitations;
         private readonly Counter<long> _backchannelLogoutDeliveries;
+        private readonly Counter<long> _apiCalls;
+        private readonly Counter<long> _clientMetadataFetches;
 
         /// <summary>Creates the metric instruments.</summary>
         /// <param name="meterFactory">The meter factory.</param>
@@ -36,6 +77,8 @@ namespace Tellma.Identity.Infrastructure
             _emailCodes = meter.CreateCounter<long>("tellma.identity.email_codes", description: "Email one-time codes by purpose and result.");
             _invitations = meter.CreateCounter<long>("tellma.identity.invitations", description: "Invitations by status.");
             _backchannelLogoutDeliveries = meter.CreateCounter<long>("tellma.identity.backchannel_logout.deliveries", description: "Back-channel logout deliveries by result.");
+            _apiCalls = meter.CreateCounter<long>(ApiCallsInstrumentName, description: "Management API calls by version, endpoint and outcome.");
+            _clientMetadataFetches = meter.CreateCounter<long>(ClientMetadataFetchesInstrumentName, description: "Document-client metadata resolutions by outcome.");
         }
 
         /// <summary>Records a sign-in attempt.</summary>
@@ -82,5 +125,36 @@ namespace Tellma.Identity.Infrastructure
         {
             _backchannelLogoutDeliveries.Add(1, new KeyValuePair<string, object?>("result", result));
         }
+
+        /// <summary>Records one management-API call.</summary>
+        /// <param name="version">The API version's route segment, for example <c>v1</c>.</param>
+        /// <param name="endpoint">The endpoint, one of <see cref="ManagementApiEndpoints" />.</param>
+        /// <param name="outcome">The outcome, one of <see cref="ManagementApiOutcomes" />.</param>
+        public void ApiCall(string version, string endpoint, string outcome)
+        {
+            _apiCalls.Add(1, new KeyValuePair<string, object?>(ApiVersionTag, version),
+                new KeyValuePair<string, object?>(ApiEndpointTag, endpoint),
+                new KeyValuePair<string, object?>(ApiOutcomeTag, outcome));
+        }
+
+        /// <summary>Records one document-client metadata resolution.</summary>
+        /// <param name="outcome">The outcome, one of <see cref="ClientMetadataFetchOutcomes" />.</param>
+        public void ClientMetadataFetch(string outcome)
+        {
+            _clientMetadataFetches.Add(1, new KeyValuePair<string, object?>(ClientMetadataOutcomeTag, outcome));
+        }
+    }
+
+    /// <summary>The closed set of outcomes of the client metadata fetch counter.</summary>
+    public static class ClientMetadataFetchOutcomes
+    {
+        /// <summary>The document (and its key set) was fetched and passed validation.</summary>
+        public const string Fetched = "fetched";
+
+        /// <summary>A guard, the document's validation or the rate limit refused it.</summary>
+        public const string Rejected = "rejected";
+
+        /// <summary>The fetch itself failed: a timeout, an unreachable host or a status other than 200.</summary>
+        public const string Failed = "failed";
     }
 }

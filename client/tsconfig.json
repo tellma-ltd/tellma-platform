@@ -1,37 +1,56 @@
 /* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
 /* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+/*
+ * The compiler and Angular options come from the preset every Tellma Angular
+ * project extends (@tellma/core-tools/tsconfig.json); this file adds the
+ * path mappings that resolve the workspace's own packages to their sources.
+ */
 {
+  "extends": "@tellma/core-tools/tsconfig.json",
   "compileOnSave": false,
   "compilerOptions": {
-    "strict": true,
     "paths": {
+      "@tellma/core": ["./projects/core/tellma-core/public-api.ts"],
+      "@tellma/core/*": ["./projects/core/tellma-core/*/public-api.ts"],
+      "@tellma/core-testing": ["./projects/core/tellma-core-testing/public-api.ts"],
+      "@tellma/core-testing/*": ["./projects/core/tellma-core-testing/*/public-api.ts"],
       "@tellma/core-ui": ["./projects/core/tellma-core-ui/public-api.ts"],
       "@tellma/core-ui/*": ["./projects/core/tellma-core-ui/*/public-api.ts"],
       "@tellma/core-ui-tokens": ["./projects/core/tellma-core-ui-tokens/public-api.ts"],
       "@tellma/core-ui-testing": ["./projects/core/tellma-core-ui-testing/public-api.ts"],
-      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"]
-    },
-    "noImplicitOverride": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "experimentalDecorators": true,
-    "importHelpers": true,
-    "target": "ES2022",
-    "module": "preserve",
-    "resolveJsonModule": true
-  },
-  "angularCompilerOptions": {
-    "enableI18nLegacyMessageIdFormat": false,
-    "strictInjectionParameters": true,
-    "strictInputAccessModifiers": true,
-    "strictTemplates": true,
-    "typeCheckHostBindings": true
+      "@tellma/locale-ar": ["./projects/locale/tellma-locale-ar/public-api.ts"],
+      "@tellma/locale-ar/platform-strings": ["./projects/locale/tellma-locale-ar/platform-strings/public-api.ts"],
+      "@tellma/locale-ar/attention-strings": ["./projects/locale/tellma-locale-ar/attention-strings/public-api.ts"],
+      "@tellma/locale-ar/details-strings": ["./projects/locale/tellma-locale-ar/details-strings/public-api.ts"],
+      "@tellma/locale-ar/dashboards-strings": ["./projects/locale/tellma-locale-ar/dashboards-strings/public-api.ts"],
+      "@tellma/locale-ar/queryex-strings": ["./projects/locale/tellma-locale-ar/queryex-strings/public-api.ts"],
+      "@tellma/locale-ar/shell-strings": ["./projects/locale/tellma-locale-ar/shell-strings/public-api.ts"],
+      "@tellma/locale-ar/pins-strings": ["./projects/locale/tellma-locale-ar/pins-strings/public-api.ts"],
+      "@tellma/locale-ar/support-strings": ["./projects/locale/tellma-locale-ar/support-strings/public-api.ts"],
+      "@tellma/locale-ar/strings": ["./projects/locale/tellma-locale-ar/strings/public-api.ts"],
+      /* The stylesheets a global stylesheet imports by package name, which the build's CSS bundler resolves here too. */
+      "@tellma/core/styles.css": ["./projects/core/tellma-core/styles.css"],
+      "@tellma/core-ui/fonts/*": ["./projects/core/tellma-core-ui/fonts/*"],
+      "@tellma/core-ui/styles/*": ["./projects/core/tellma-core-ui/styles/*"],
+      "@tellma/core-ui-tokens/css/*": ["./projects/core/tellma-core-ui-tokens/css/*"],
+      "@tellma/locale-ar/fonts/*": ["./projects/locale/tellma-locale-ar/fonts/*"],
+      "@tellma/locale-ar/styles.css": ["./projects/locale/tellma-locale-ar/styles.css"]
+    }
   },
   "files": [],
   "references": [
+    {
+      "path": "./projects/core/tellma-core/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/core/tellma-core/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/core/tellma-core-testing/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/core/tellma-core-testing/tsconfig.spec.json"
+    },
     {
       "path": "./projects/core/tellma-core-ui/tsconfig.lib.json"
     },

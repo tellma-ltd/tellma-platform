@@ -11,6 +11,20 @@
    right-to-left must not reorder the sentence around it. *@
 <p class="tmi-lead">@L["ConsentPromptApp", Model.ApplicationName ?? string.Empty]</p>
 
+@* A document client's name is whatever its own document says; the host that document is
+   published on is the part a person can check, so it stands beside the name. It is an address,
+   isolated left-to-right inside a right-to-left page. *@
+@if (Model.ClientHost is not null)
+{
+    <p class="tmi-lead">@L["ConsentClientHost"]</p>
+    <ul class="tmi-scopes">
+        <li>
+            <tmi-icon name="link-2" />
+            <div class="tmi-scope-title"><bdi dir="ltr">@Model.ClientHost</bdi></div>
+        </li>
+    </ul>
+}
+
 @* A scope name is an identifier for a protocol, not a description for a person. Anything the
    catalogue does not know is still listed under its own name — a request this screen cannot
    explain is exactly the one a user most needs to see. *@
@@ -26,6 +40,23 @@
         </li>
     }
 </ul>
+
+@* Where the access applies: the distribution, or the tenant of it, each token will be for. A
+   remembered grant covers these places and no other, so the user is asked again for a new one.
+   Each place is an address, so it is isolated left-to-right inside a right-to-left page. *@
+@if (Model.Targets.Count > 0)
+{
+    <p class="tmi-lead">@L["ConsentTargets"]</p>
+    <ul class="tmi-scopes">
+        @foreach (string target in Model.Targets)
+        {
+            <li>
+                <tmi-icon name="globe" />
+                <div class="tmi-scope-title"><bdi dir="ltr">@target</bdi></div>
+            </li>
+        }
+    </ul>
+}
 
 <form method="post">
     @* Round-trip the protocol parameters so OpenIddict resolves the same request on POST. *@

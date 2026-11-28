@@ -20,6 +20,9 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         private readonly List<StandaloneColumnConfiguration> _columns = [];
         private readonly List<string> _key = [];
         private readonly List<string> _grants = [];
+        private readonly List<(string Column, string Collation)> _collations = [];
+        private readonly List<ColumnTypeOverride> _columnTypes = [];
+        private readonly List<string> _exclusions = [];
         private bool _memoryOptimized;
         private bool _excludeFromMigrations;
 
@@ -36,7 +39,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="scale">The scale facet.</param>
         /// <param name="unicode">Whether the column is Unicode, when relevant.</param>
         /// <param name="fixedLength">Whether the column is fixed length, when relevant.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a column that resolves to
+        ///     <c>char</c>, <c>varchar</c>, <c>nchar</c> or <c>nvarchar</c> takes one; any other store
+        ///     type, <c>json</c> included, fails model finalization. A <see cref="UseCollation" /> call
+        ///     for the column, before or after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column<T>(
             string name,
@@ -73,7 +81,12 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <param name="maxLength">The maximum length facet, carried into the metadata API.</param>
         /// <param name="precision">The precision facet, carried into the metadata API.</param>
         /// <param name="scale">The scale facet, carried into the metadata API.</param>
-        /// <param name="collation">The explicit collation, when one is wanted.</param>
+        /// <param name="collation">
+        ///     The explicit collation, when one is wanted. Only a <c>char</c>, <c>varchar</c>,
+        ///     <c>nchar</c> or <c>nvarchar</c> store type takes one; any other, <c>json</c> included,
+        ///     fails model finalization. A <see cref="UseCollation" /> call for the column, before or
+        ///     after this one, wins over this argument.
+        /// </param>
         /// <returns>The same builder instance so that multiple calls can be chained.</returns>
         public virtual TableTypeBuilder Column(
             string name,
@@ -97,6 +110,99 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 Scale = scale,
                 Collation = collation,
             });
+            return this;
+        }
+
+        /// <summary>
+        ///     Sets the collation of a column, whether the registered class or
+        ///     <see cref="Column{T}(string, bool, int?, int?, int?, bool?, bool?, string?)" /> added it —
+        ///     the way to give a class-derived string column a collation, for example a
+        ///     <c>Latin1_General_100_BIN2</c> key that a statement compares with an equally collated
+        ///     table column (without it, SQL Server refuses the comparison with Msg 468).
+        /// </summary>
+        /// <remarks>
+        ///     <para>
+        ///         The collation is applied when the type is registered, after every column has been
+        ///         added, so this call may come before or after the <c>Column(…)</c> call that adds
+        ///         the column. The last call for a column wins, over an earlier call and over the
+        ///         <c>collation</c> argument of <c>Column(…)</c>. Column names match
+        ///         case-insensitively; a name that matches no column fails the registration with an
+        ///         <see cref="InvalidOperationException" />.
+        ///     </para>
+        ///     <para>
+        ///         Only <c>char</c>, <c>varchar</c>, <c>nchar</c> and <c>nvarchar</c> columns take a
+        ///         collation; any other store type, <c>json</c> included, fails model finalization.
+        ///         The collation name itself is not validated (SQL Server refuses an unknown name at
+        ///         <c>CREATE TYPE</c>). Write its canonical spelling: the name is part of the type's
+        ///         definition, so adding, changing, removing or re-casing it creates a new version of
+        ///         the type.
+        ///     </para>
+        /// </remarks>
+        /// <param name="column">The column name.</param>
+        /// <param name="collation">The SQL Server collation name, e.g. <c>Latin1_General_100_BIN2</c>.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public virtual TableTypeBuilder UseCollation(string column, string collation)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(column);
+            ArgumentException.ThrowIfNullOrWhiteSpace(collation);
+
+            _collations.Add((column, collation));
+            return this;
+        }
+
+        /// <summary>
+        ///     Sets the store type of a column, whether the registered class or <c>Column(…)</c> added
+        ///     it, replacing the type its CLR type and facets would resolve to — for example a
+        ///     <c>varchar(16)</c> for an enum property a model stores by name.
+        /// </summary>
+        /// <remarks>
+        ///     Applied when the type is registered, after every column has been added, so the call's
+        ///     position against <c>Column(…)</c> does not matter, and before the
+        ///     <see cref="UseCollation" /> calls, so a collation applies to the type set here. The last
+        ///     call for a column wins, also over a class's <c>[Column(TypeName = …)]</c>. The facets
+        ///     given here replace the column's own (an omitted facet clears it); they are carried into
+        ///     the metadata API for binding and are not checked against the store type. Column names
+        ///     match case-insensitively; a name that matches no column fails the registration with an
+        ///     <see cref="InvalidOperationException" />.
+        /// </remarks>
+        /// <param name="column">The column name.</param>
+        /// <param name="storeType">The full store type including facets, e.g. <c>varchar(16)</c>.</param>
+        /// <param name="maxLength">The maximum length facet, carried into the metadata API.</param>
+        /// <param name="precision">The precision facet, carried into the metadata API.</param>
+        /// <param name="scale">The scale facet, carried into the metadata API.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public virtual TableTypeBuilder HasColumnType(
+            string column,
+            string storeType,
+            int? maxLength = null,
+            int? precision = null,
+            int? scale = null)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(column);
+            ArgumentException.ThrowIfNullOrWhiteSpace(storeType);
+
+            _columnTypes.Add(new ColumnTypeOverride(column, storeType, maxLength, precision, scale));
+            return this;
+        }
+
+        /// <summary>
+        ///     Leaves a column out of the type, whether the registered class or <c>Column(…)</c> added
+        ///     it — the way a model that marks exclusions with an attribute of its own drops a
+        ///     class-derived column.
+        /// </summary>
+        /// <remarks>
+        ///     Applied when the type is registered, after every other call of this builder, so the
+        ///     column's position, type and collation calls still name it. A key column cannot be
+        ///     excluded, and a name that matches no column fails the registration with an
+        ///     <see cref="InvalidOperationException" />; names match case-insensitively.
+        /// </remarks>
+        /// <param name="column">The column name.</param>
+        /// <returns>The same builder instance so that multiple calls can be chained.</returns>
+        public virtual TableTypeBuilder ExcludeColumn(string column)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(column);
+
+            _exclusions.Add(column);
             return this;
         }
 
@@ -173,9 +279,22 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
         /// <summary>Whether an explicit or derived key exists yet.</summary>
         internal bool HasKeyColumns => _key.Count > 0;
 
-        /// <summary>Materializes the configuration this builder collected.</summary>
+        /// <summary>
+        ///     Materializes the configuration this builder collected, applying the
+        ///     <see cref="HasColumnType" />, <see cref="UseCollation" /> and <see cref="ExcludeColumn" />
+        ///     calls, in that order, to the finished column list.
+        /// </summary>
+        /// <exception cref="InvalidOperationException">
+        ///     A <see cref="HasColumnType" />, <see cref="UseCollation" /> or <see cref="ExcludeColumn" />
+        ///     call names no column, or an <see cref="ExcludeColumn" /> call names a key column.
+        /// </exception>
         internal StandaloneTableTypeConfiguration Build(string name, string? schema)
         {
+            List<StandaloneColumnConfiguration> columns = [.. _columns];
+            ApplyColumnTypes(columns, name, schema);
+            ApplyCollations(columns, name, schema);
+            ApplyExclusions(columns, name, schema);
+
             return new StandaloneTableTypeConfiguration
             {
                 Name = name,
@@ -184,8 +303,139 @@ namespace Tellma.Core.EntityFrameworkCore.TableTypes
                 ExcludeFromMigrations = _excludeFromMigrations,
                 Grants = [.. _grants],
                 Key = [.. _key],
-                Columns = [.. _columns],
+                Columns = columns,
             };
         }
+
+        /// <summary>
+        ///     Applies every <see cref="HasColumnType" /> call, in call order, so the last call for a
+        ///     column wins over earlier calls and over the column's own store type.
+        /// </summary>
+        private void ApplyColumnTypes(List<StandaloneColumnConfiguration> columns, string name, string? schema)
+        {
+            foreach (ColumnTypeOverride columnType in _columnTypes)
+            {
+                Apply(
+                    columns,
+                    columnType.Column,
+                    column => column with
+                    {
+                        StoreType = columnType.StoreType,
+                        MaxLength = columnType.MaxLength,
+                        Precision = columnType.Precision,
+                        Scale = columnType.Scale,
+                    },
+                    () => $"give store type '{columnType.StoreType}'",
+                    "HasColumnType",
+                    name,
+                    schema);
+            }
+        }
+
+        /// <summary>
+        ///     Applies every <see cref="UseCollation" /> call, in call order, so the last call for a
+        ///     column wins over earlier calls and over the column's own <c>collation</c> argument.
+        ///     Applying at build time, after every column exists, is what makes the call's position
+        ///     against <c>Column(…)</c> irrelevant.
+        /// </summary>
+        private void ApplyCollations(List<StandaloneColumnConfiguration> columns, string name, string? schema)
+        {
+            foreach ((string column, string collation) in _collations)
+            {
+                Apply(
+                    columns,
+                    column,
+                    existing => existing with { Collation = collation },
+                    () => $"give collation '{collation}'",
+                    "UseCollation",
+                    name,
+                    schema);
+            }
+        }
+
+        /// <summary>
+        ///     Removes the columns named by <see cref="ExcludeColumn" /> calls. Runs last, so the other
+        ///     calls of the builder still find every column by name.
+        /// </summary>
+        private void ApplyExclusions(List<StandaloneColumnConfiguration> columns, string name, string? schema)
+        {
+            foreach (string column in _exclusions)
+            {
+                // A key column cannot leave the type: the key would name a column the type lacks.
+                if (_key.Contains(column, StringComparer.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"Standalone table type {DisplayName(name, schema)} cannot exclude column '{column}': it is part " +
+                        "of the type's primary key.");
+                }
+
+                int removed = columns.RemoveAll(c => string.Equals(c.Name, column, StringComparison.OrdinalIgnoreCase));
+                if (removed == 0)
+                {
+                    throw UnknownColumn(columns, column, "exclude", "ExcludeColumn", name, schema);
+                }
+            }
+        }
+
+        /// <summary>
+        ///     Replaces every column named <paramref name="column" /> (case-insensitively) with
+        ///     <paramref name="change" />'s result, failing when none matches. A duplicate pair of names
+        ///     fails finalization anyway; until then the change lands on both.
+        /// </summary>
+        private static void Apply(
+            List<StandaloneColumnConfiguration> columns,
+            string column,
+            Func<StandaloneColumnConfiguration, StandaloneColumnConfiguration> change,
+            Func<string> action,
+            string method,
+            string name,
+            string? schema)
+        {
+            bool matched = false;
+            for (int i = 0; i < columns.Count; i++)
+            {
+                if (string.Equals(columns[i].Name, column, StringComparison.OrdinalIgnoreCase))
+                {
+                    columns[i] = change(columns[i]);
+                    matched = true;
+                }
+            }
+
+            if (!matched)
+            {
+                throw UnknownColumn(columns, column, action(), method, name, schema);
+            }
+        }
+
+        /// <summary>The failure of a builder call that names no column of the type.</summary>
+        private static InvalidOperationException UnknownColumn(
+            List<StandaloneColumnConfiguration> columns,
+            string column,
+            string action,
+            string method,
+            string name,
+            string? schema)
+        {
+            string known = columns.Count == 0
+                ? "it has no columns"
+                : "its columns are " + string.Join(", ", columns.Select(c => $"'{c.Name}'"));
+            return new InvalidOperationException(
+                $"Standalone table type {DisplayName(name, schema)} has no column '{column}' to {action} ({known}). " +
+                $"{method} must name a column the class or Column(...) adds; names match case-insensitively.");
+        }
+
+        /// <summary>The bracket-delimited display name of the type, for messages.</summary>
+        private static string DisplayName(string name, string? schema)
+        {
+            return schema is null ? $"[{name}]" : $"[{schema}].[{name}]";
+        }
+
+        /// <summary>One <see cref="HasColumnType" /> call.</summary>
+        /// <param name="Column">The column name.</param>
+        /// <param name="StoreType">The store type.</param>
+        /// <param name="MaxLength">The maximum length facet.</param>
+        /// <param name="Precision">The precision facet.</param>
+        /// <param name="Scale">The scale facet.</param>
+        private sealed record ColumnTypeOverride(string Column, string StoreType, int? MaxLength, int? Precision, int? Scale);
     }
 }

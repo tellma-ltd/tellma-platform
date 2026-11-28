@@ -1,0 +1,199 @@
+/*
+ * Copyright (c) Tellma Ltd. All rights reserved.
+ *
+ * This source code is licensed under the Apache-2.0 license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* The toast host: a top-layer popover pinned to the block-start, inline-end
+   corner, below the shell's top bar (`--toast-offset-block-start`). It is
+   transparent to the pointer; only the stack takes it. It never displaces
+   content. */
+
+:host {
+  position: fixed;
+  inset: auto;
+  inset-block-start: var(--toast-offset-block-start);
+  inset-inline-end: var(--toast-gutter);
+  box-sizing: border-box;
+  inline-size: var(--toast-width);
+  max-inline-size: calc(100vw - 2 * var(--toast-gutter));
+  block-size: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: none;
+  color: var(--text-body);
+  font-family: var(--font-ui);
+  pointer-events: none;
+}
+
+/* Display is set only while open: an author display would override the
+   UA rule that hides a closed popover. */
+:host(:popover-open) {
+  display: block;
+}
+
+/* Below the sm breakpoint a toast takes the full width less the gutters.
+   The host is fixed to the viewport, so the viewport is its container. */
+@media (width < 576px) {
+  :host {
+    inset-inline: var(--toast-gutter);
+    inline-size: auto;
+    max-inline-size: none;
+  }
+}
+
+/* The stack: cards newest first, then the pill. It takes the pointer, gaps
+   included, so moving between cards never resumes the timers. */
+.tm-toasts {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--toast-gap);
+  pointer-events: auto;
+}
+
+.tm-toasts[hidden] {
+  display: none;
+}
+
+/* A card: the tone icon, the text and the action, the close button. */
+.tm-toast {
+  --tm-toast-ink: var(--text-secondary);
+
+  display: flex;
+  align-items: flex-start;
+  gap: var(--toast-gap);
+  box-sizing: border-box;
+  padding: var(--toast-padding);
+  padding-inline-end: calc(var(--toast-padding) / 2);
+  border: var(--border-width) solid var(--toast-border);
+  border-radius: var(--toast-radius);
+  background: var(--toast-bg);
+  box-shadow: var(--shadow-lg);
+}
+
+.tm-toast[data-tone='accent'] {
+  --tm-toast-ink: var(--color-primary);
+}
+
+.tm-toast[data-tone='success'] {
+  --tm-toast-ink: var(--success);
+}
+
+.tm-toast[data-tone='warning'] {
+  --tm-toast-ink: var(--warning);
+}
+
+.tm-toast[data-tone='error'] {
+  --tm-toast-ink: var(--error);
+}
+
+/* The icon sits on the title's first line. */
+.tm-toast__icon {
+  --icon-size: var(--toast-icon-size);
+
+  flex: none;
+  margin-block-start: 1px;
+  color: var(--tm-toast-ink);
+}
+
+.tm-toast__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-inline-size: 0;
+  padding-block-start: 1px;
+}
+
+.tm-toast__title {
+  font-size: var(--toast-title-font-size);
+  font-weight: var(--weight-semibold);
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+.tm-toast__detail {
+  font-size: var(--toast-detail-font-size);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.tm-toast__action {
+  margin-block-start: var(--space-1);
+}
+
+/* The close button: a quiet 28 px square, as in a modal's header. Its
+   negative block margin centres it on the title line. */
+.tm-toast__close {
+  --icon-size: var(--toast-close-icon-size);
+
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: var(--toast-close-size);
+  block-size: var(--toast-close-size);
+  margin-block: calc((var(--toast-icon-size) - var(--toast-close-size)) / 2 + 1px);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.tm-toast__close:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+/* The overflow pill: centred under the stack. */
+.tm-toasts__pill {
+  align-self: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-3);
+  border: var(--border-width) solid var(--toast-border);
+  border-radius: var(--radius-full);
+  background: var(--toast-bg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--toast-pill-font-size);
+  font-variant-numeric: tabular-nums;
+}
+
+button.tm-toasts__pill {
+  cursor: pointer;
+}
+
+button.tm-toasts__pill:hover {
+  background: var(--surface-hover);
+  color: var(--text-body);
+}
+
+/* Focus: the token ring, over a transparent outline forced colours repaint. */
+.tm-toast__close:focus-visible,
+button.tm-toasts__pill:focus-visible {
+  outline: var(--focus-ring-width) solid transparent;
+  outline-offset: var(--focus-ring-offset);
+  box-shadow: var(--focus-ring);
+}
+
+/* The live regions: present from the start, never drawn. */
+.tm-toasts__live {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

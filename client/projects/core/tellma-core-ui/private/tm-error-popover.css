@@ -45,9 +45,8 @@
 }
 
 .tm-error-popover__icon {
-  flex: none;
-  inline-size: var(--error-popover-icon-size);
-  block-size: var(--error-popover-icon-size);
+  /* A tm-icon, at the bubble's icon size. */
+  --icon-size: var(--error-popover-icon-size);
   /* Optically centered on its message's FIRST line rather than on the whole
      message box, so a glyph beside a wrapped message stays on the line it
      bullets. */

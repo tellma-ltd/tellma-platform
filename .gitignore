@@ -49,6 +49,8 @@ bld/
 
 # Build results on 'Bin' directories
 **/[Bb]in/*
+# …but an npm package's bin/ holds its committed executables, not build output.
+!client/projects/*/*/bin/*
 # Uncomment if you have tasks that rely on *.refresh files to move binaries
 # (https://github.com/github/gitignore/pull/3736)
 #!**/[Bb]in/*.refresh
@@ -149,9 +151,11 @@ ipch/
 
 # Visual Studio Trace Files
 *.e2e
-# The .NET E2E test project's directory name ends in ".E2E", which "*.e2e" matches
-# case-insensitively on Windows (core.ignorecase=true), excluding the whole project. Keep it tracked.
-!test/apps/Tellma.Identity.E2E/
+# The rule is for trace files only. A .NET E2E test project's directory name ends in ".E2E", which
+# "*.e2e" matches case-insensitively on Windows (core.ignorecase=true), excluding the whole project;
+# a trailing slash matches directories alone, so every such directory stays tracked.
+!*.e2e/
+!*.E2E/
 
 # TFS 2012 Local Workspace
 $tf/

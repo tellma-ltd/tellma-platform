@@ -10,6 +10,7 @@ import { CdkConnectedOverlayConfig } from '@angular/cdk/overlay';
 import { ConnectedOverlayPositionChange } from '@angular/cdk/overlay';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { FlexibleOverlayPopoverLocation } from '@angular/cdk/overlay';
+import * as lucide from 'lucide';
 import { Signal } from '@angular/core';
 import { ValidationError } from '@angular/forms/signals';
 

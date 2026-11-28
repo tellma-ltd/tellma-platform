@@ -4,6 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 using Tellma.Identity.IntegrationTests.Infrastructure;
+using Tellma.Identity.TestSupport;
 
 namespace Tellma.Identity.IntegrationTests.Flows
 {
@@ -61,10 +62,10 @@ namespace Tellma.Identity.IntegrationTests.Flows
             string prefix, string email, IReadOnlyDictionary<string, string?>? overrides)
         {
             using StandaloneFactory factory =
-                await DatabaseBackedFactory.CreateStandaloneAsync(fixture, prefix, overrides);
+                DatabaseBackedFactory.CreateStandalone(fixture, prefix, overrides);
             await TestData.CreateActiveUserAsync(factory, email);
 
-            using OidcFlowClient flow = new(factory);
+            using OidcFlowClient flow = factory.CreateFlowClient();
             await flow.SignInWithEmailCodeAsync(email, "/Identity/Account/Login");
 
             using HttpResponseMessage profile = await flow.Browser.GetAsync(

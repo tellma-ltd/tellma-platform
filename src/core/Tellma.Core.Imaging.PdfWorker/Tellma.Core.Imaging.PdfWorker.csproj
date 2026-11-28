@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- An executable that runs nowhere on its own: the image processor launches it with
+         `dotnet exec`, passing the host's own runtime configuration and dependency manifest, so it
+         resolves exactly the host's dependency closure and natives, in whatever layout the host
+         was built or published in. It therefore carries no app host, runtime configuration or
+         dependency manifest of its own: those would only collide with the host's at publish. -->
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+    <GenerateRuntimeConfigurationFiles>false</GenerateRuntimeConfigurationFiles>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- The PDFium bindings of the preflight pin the document buffer, and the system-call filter
+         is built as a native structure. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Description>Tellma's PDF render worker: a disposable process the image processor of Tellma.Core.Imaging starts once per PDF thumbnail, under operating-system memory, CPU and system-call limits, so that PDFium never runs inside the host. It reads a PDF on standard input and answers with a PNG of page 1 on standard output. A dependency of Tellma.Core.Imaging; never referenced directly.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PDFium through PDFtoImage renders the page; Skia (which PDFtoImage renders into) encodes
+         the PNG the host reads back. The Linux natives are the NoDependencies build, so no
+         fontconfig is needed on a server. -->
+    <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The protocol, the sandbox entry and the renderer are shared with the image processor that
+         launches the worker, the suite that tests both, and the suite's misbehaving stand-in. -->
+    <InternalsVisibleTo Include="Tellma.Core.Imaging" />
+    <InternalsVisibleTo Include="Tellma.Core.Imaging.Tests" />
+    <InternalsVisibleTo Include="Tellma.Core.Imaging.TestWorker" />
+  </ItemGroup>
+
+</Project>

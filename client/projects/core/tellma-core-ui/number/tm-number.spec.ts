@@ -26,6 +26,7 @@ import { TmNumber } from './tm-number';
         [minDecimals]="minDecimals()"
         [maxDecimals]="maxDecimals()"
         [percent]="percent()"
+        [grouping]="grouping()"
         data-testid="amount"
       />
     </tm-form-field>
@@ -36,6 +37,7 @@ class Host {
   readonly minDecimals = signal<number | undefined>(undefined);
   readonly maxDecimals = signal<number | undefined>(undefined);
   readonly percent = signal(false);
+  readonly grouping = signal(true);
   readonly f = form(this.model, (p) => {
     min(p.amount, 0);
   });
@@ -89,6 +91,63 @@ describe('tmNumber', () => {
     await blur(fixture, input);
     expect(input.value).toBe('1,234.5');
     expect(host.model().amount).toBe(1234.5);
+  });
+
+  it('resolves its own direction from its text (dir=auto), so digits read left to right', async () => {
+    const { fixture, host, input } = await setup();
+    expect(input.getAttribute('dir')).toBe('auto');
+    // Inside a right-to-left page the field is still a left-to-right run:
+    // a minus stays at the left of its digits, Arabic-Indic ones included.
+    const wrapper = fixture.nativeElement as HTMLElement;
+    wrapper.dir = 'rtl';
+    try {
+      host.model.set({ amount: -1234.5 });
+      await fixture.whenStable();
+      expect(input.value).toBe('-1,234.5');
+      expect(getComputedStyle(input).direction).toBe('ltr');
+      input.value = '-١٢٣٤';
+      expect(getComputedStyle(input).direction).toBe('ltr');
+    } finally {
+      wrapper.removeAttribute('dir');
+    }
+  });
+
+  it('grouping off: blur writes no group separators, and grouped text still parses', async () => {
+    const { fixture, host, input } = await setup();
+    host.grouping.set(false);
+    await fixture.whenStable();
+    // A year typed plain stays plain.
+    await type(fixture, input, '2026');
+    await blur(fixture, input);
+    expect(input.value).toBe('2026');
+    expect(host.model().amount).toBe(2026);
+
+    // Parsing is unchanged: a typed group separator is still read.
+    await type(fixture, input, '2,026');
+    expect(host.model().amount).toBe(2026);
+    await blur(fixture, input);
+    expect(input.value).toBe('2026');
+
+    // A programmatic value displays ungrouped too.
+    host.model.set({ amount: 1234567.5 });
+    await fixture.whenStable();
+    expect(input.value).toBe('1234567.5');
+  });
+
+  it('grouping switches re-render the unfocused display; the model never moves', async () => {
+    const { fixture, host, input } = await setup();
+    host.model.set({ amount: 2026 });
+    await fixture.whenStable();
+    expect(input.value).toBe('2,026');
+
+    host.grouping.set(false);
+    await fixture.whenStable();
+    expect(input.value).toBe('2026');
+    expect(host.model().amount).toBe(2026);
+
+    host.grouping.set(true);
+    await fixture.whenStable();
+    expect(input.value).toBe('2,026');
   });
 
   it('commit rounds the model to the display scale (model = display)', async () => {

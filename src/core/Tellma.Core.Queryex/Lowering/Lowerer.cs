@@ -38,8 +38,18 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The slots by what they carry, so equal values share one.</summary>
         private readonly Dictionary<SlotKey, ParameterSlot> _slotIndex = [];
 
-        /// <summary>The values computed once per row and given a name.</summary>
-        private readonly List<ValueBinding> _bindings = [];
+        /// <summary>
+        ///     The statement's one-row sources — values given a name and calendar lookups — in the
+        ///     order they were made.
+        /// </summary>
+        private readonly List<LateralSource> _laterals = [];
+
+        /// <summary>The semi-joins' subqueries, in the order they were begun.</summary>
+        /// <remarks>
+        ///     A subquery is begun before its own predicate is lowered, so this order is the pre-order
+        ///     of the statement's subqueries — the order their aliases are numbered in.
+        /// </remarks>
+        private readonly List<PlanSubquery> _subqueries = [];
 
         /// <summary>The values computed once before the statement runs.</summary>
         private readonly List<HoistedVariable> _variables = [];
@@ -47,14 +57,27 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The variables by what they look up, so equal lookups share one.</summary>
         private readonly Dictionary<VariableKey, HoistedVariable> _variableIndex = [];
 
-        /// <summary>The bindings something that survived still reads.</summary>
-        private readonly HashSet<ValueBinding> _liveBindings = new(ReferenceEqualityComparer.Instance);
+        /// <summary>The table-calendar calls hoisted so far, so equal calls share one variable.</summary>
+        private readonly List<(TypedCall Call, ComputedVariable Variable)> _calendarVariables = [];
+
+        /// <summary>The lateral sources something that survived still reads.</summary>
+        private readonly HashSet<LateralSource> _liveLaterals = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The scalar lookups that survived, in the order they were reached.</summary>
+        private readonly List<PlanScalarLookup> _liveScalars = [];
+
+        /// <summary>The values computed over operands named once that survived, in the order they were reached.</summary>
+        private readonly List<PlanNamedScalar> _liveNamed = [];
 
         /// <summary>The variables something that survived still reads.</summary>
         private readonly HashSet<HoistedVariable> _liveVariables = new(ReferenceEqualityComparer.Instance);
 
         /// <summary>The slots something that survived still binds.</summary>
         private readonly HashSet<ParameterSlot> _liveSlots = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>Where the first surviving reference to each live slot was written.</summary>
+        private readonly Dictionary<ParameterSlot, PlanOrigin> _slotsReachedFrom =
+            new(ReferenceEqualityComparer.Instance);
 
         /// <summary>The ceilings, shared with binding.</summary>
         private readonly CompilationBudget _budget;
@@ -64,6 +87,9 @@ namespace Tellma.Core.Queryex.Lowering
 
         /// <summary>The position of this query among the ones a host executes together.</summary>
         private readonly int _batchOrdinal;
+
+        /// <summary>The schema, which names the month table of each table calendar it maps.</summary>
+        private readonly QueryexSchema? _schema;
 
         /// <summary>The nullity answers for the clause being lowered.</summary>
         private NullityMap _nullity = NullityMap.Empty;
@@ -88,31 +114,60 @@ namespace Tellma.Core.Queryex.Lowering
         /// <summary>The column the value being lowered is compared against, when there is one.</summary>
         private QueryexStoreType? _hint;
 
+        /// <summary>
+        ///     The current root: the join that paths being lowered resolve from.
+        /// </summary>
+        /// <remarks>
+        ///     The statement's root, the target of an enclosing rebase, or the root of an enclosing
+        ///     semi-join's subquery. A path walks from here through the join tree the current root
+        ///     belongs to, so a rebased criterion shares the joins of every other clause. Null while
+        ///     lowering a statement that has no row source.
+        /// </remarks>
+        private JoinNode? _base;
+
+        /// <summary>
+        ///     Where a one-row source made here is collected: the statement's sequence, a subquery's,
+        ///     or one level of a scalar lookup's.
+        /// </summary>
+        private List<LateralSource> _scope;
+
         /// <summary>Initializes a lowering.</summary>
-        /// <param name="root">The entity the query reads.</param>
+        /// <param name="root">
+        ///     The entity the query reads, or null for a statement that has no row source and so
+        ///     lowers nothing that reads a row.
+        /// </param>
+        /// <param name="schema">The schema, which names the month tables of its table calendars.</param>
         /// <param name="batchOrdinal">The query's position among the ones executed together.</param>
         /// <param name="budget">The ceilings, shared with binding.</param>
         /// <param name="sink">Where problems are recorded.</param>
         internal Lowerer(
-            EntityDescriptor root,
+            EntityDescriptor? root,
+            QueryexSchema? schema,
             int batchOrdinal,
             CompilationBudget budget,
             DiagnosticSink sink)
         {
-            Root = new JoinNode(root, null, null, default) { IsReferenced = true };
+            Root = root is null ? null : new JoinNode(root, null, null, default) { IsReferenced = true };
+            _base = Root;
+            _scope = _laterals;
+            _schema = schema;
             _batchOrdinal = batchOrdinal;
             _budget = budget;
             _sink = sink;
         }
 
-        /// <summary>The root of the join tree.</summary>
-        internal JoinNode Root { get; }
+        /// <summary>The root of the join tree, or null for a statement that has no row source.</summary>
+        internal JoinNode? Root { get; }
+
+        /// <summary>The current root, for something that reads a row.</summary>
+        /// <exception cref="InvalidOperationException">The statement has no row source.</exception>
+        private JoinNode Base => _base ?? throw Rootless();
 
         /// <summary>The values written to the backend, in the order they were assigned.</summary>
         internal IReadOnlyList<ParameterSlot> Slots => _slots;
 
-        /// <summary>The values computed once per row and given a name.</summary>
-        internal IReadOnlyList<ValueBinding> Bindings => _bindings;
+        /// <summary>The one-row sources applied to each row, in the order they were made.</summary>
+        internal IReadOnlyList<LateralSource> Laterals => _laterals;
 
         /// <summary>The values computed once before the statement runs.</summary>
         internal IReadOnlyList<HoistedVariable> Variables => _variables;
@@ -140,6 +195,10 @@ namespace Tellma.Core.Queryex.Lowering
             _bindingsAllowed = bindingsAllowed;
             _folding = folding;
             _hint = null;
+
+            // Every clause starts at the statement's own root, whatever the last one ended in.
+            _base = Root;
+            _scope = _laterals;
         }
 
         /// <summary>Lowers one expression consumed as a scalar.</summary>
@@ -194,9 +253,30 @@ namespace Tellma.Core.Queryex.Lowering
                 TypedIsNull test => LowerIsNull(test),
                 TypedCall call when call.Signature.Emit.ResultShape == EmitShape.Predicate =>
                     LowerCallPredicate(call),
+                TypedFilterLeaf leaf => In(leaf.Location, () => LowerPredicate(leaf.Expression)),
+                TypedVia via => In(via.Location, () => LowerVia(via)),
+                TypedExists exists => In(exists.Location, () => LowerExists(exists)),
                 TypedError => throw Unlowerable(node),
                 _ => ReadAsPredicate(node),
             };
+        }
+
+        /// <summary>Lowers one part of a composed filter in the input it was written in.</summary>
+        /// <param name="location">The part's input.</param>
+        /// <param name="lower">What lowers it.</param>
+        /// <returns>The lowered predicate.</returns>
+        /// <remarks>
+        ///     Whatever the part creates — joins, a subquery's source, parameters — remembers this
+        ///     input, so a ceiling it pushes over names the leaf, rebase or semi-join rather than the
+        ///     whole clause.
+        /// </remarks>
+        private PlanPredicate In(DiagnosticLocation location, Func<PlanPredicate> lower)
+        {
+            DiagnosticLocation saved = _location;
+            _location = location;
+            PlanPredicate lowered = lower();
+            _location = saved;
+            return lowered;
         }
 
         /// <summary>The failure for a node that should never have reached lowering.</summary>
@@ -213,22 +293,73 @@ namespace Tellma.Core.Queryex.Lowering
                 Invariant($"An expression that did not bind reached lowering at {node.Span.Start}."));
         }
 
+        /// <summary>The failure for something that reads a row reaching a statement without one.</summary>
+        /// <returns>The exception to throw.</returns>
+        /// <remarks>
+        ///     Not reachable: a statement with no row source refuses every path while binding, and
+        ///     nothing is lowered while the sink holds a diagnostic. Loud for the same reason an
+        ///     unbound node is — the alternative is a statement built around a guess.
+        /// </remarks>
+        private static InvalidOperationException Rootless()
+        {
+            return new InvalidOperationException(
+                "Something that reads a row reached the lowering of a statement that has no row source.");
+        }
+
         /// <summary>Allocates the slot a paging value binds through.</summary>
         /// <param name="value">The value.</param>
-        /// <returns>The slot.</returns>
+        /// <param name="suffix">What follows the batch prefix in the slot's name.</param>
+        /// <returns>The slot, already named.</returns>
         /// <remarks>
-        ///     Bound as a whole number rather than at the language's numeric default: the paging
-        ///     clause rejects a fractional count outright.
+        ///     <para>
+        ///         Bound as a whole number rather than at the language's numeric default: the paging
+        ///         clause rejects a fractional count outright.
+        ///     </para>
+        ///     <para>
+        ///         Kept out of the shared table of slots and given a fixed name, rather than the next
+        ///         number in sequence and a share in any equal value. A page is then not part of what
+        ///         a compilation is: the second page of a query is the first page's SQL with two values
+        ///         changed, so the cached template and the backend's cached plan both serve it.
+        ///     </para>
         /// </remarks>
-        internal ParameterSlot PagingSlot(int value)
+        internal ParameterSlot PagingSlot(int value, string suffix)
         {
-            return Slot(
+            return new ParameterSlot(
                 BoundType.Numeric,
                 QueryexStoreType.QxInt,
                 QueryexParameterOrigin.Literal,
                 value,
-                declaredName: null,
-                default);
+                null,
+                new PlanOrigin(default, _location))
+            {
+                Name = Prefix + "_" + suffix,
+            };
+        }
+
+        /// <summary>Lowers one key-set restriction into a conjunct of the row filter.</summary>
+        /// <param name="navigations">The navigations from the root to the restricted property.</param>
+        /// <param name="property">The restricted property.</param>
+        /// <param name="tableSource">The host's table of keys.</param>
+        /// <returns>The lowered predicate.</returns>
+        /// <remarks>
+        ///     The navigations are walked through the shared join tree like any path a clause wrote,
+        ///     so a restriction through a navigation the select list also reads costs no second join.
+        /// </remarks>
+        internal PlanKeySetRestriction LowerRestriction(
+            ImmutableArray<NavigationDescriptor> navigations,
+            PropertyDescriptor property,
+            string tableSource)
+        {
+            JoinNode table = Walk(navigations, default);
+            return new PlanKeySetRestriction(new PlanColumn(default, table, property, Here(default)), tableSource);
+        }
+
+        /// <summary>Reads a column of the root that the schema leaves out.</summary>
+        /// <param name="column">The physical column name, unquoted.</param>
+        /// <returns>The lowered value.</returns>
+        internal PlanUndeclaredColumn UndeclaredColumn(string column)
+        {
+            return new PlanUndeclaredColumn(Root ?? throw Rootless(), column);
         }
 
         /// <summary>
@@ -236,7 +367,10 @@ namespace Tellma.Core.Queryex.Lowering
         ///     every surviving join, binding, variable, and slot the name it is written under.
         /// </summary>
         /// <param name="fragments">Every fragment the statement will actually contain.</param>
-        /// <param name="paging">The slots the paging clause binds, which no fragment mentions.</param>
+        /// <param name="paging">
+        ///     The slots the paging clause binds, which no fragment mentions and which are named
+        ///     already.
+        /// </param>
         /// <returns>The surviving joins, in alias order and excluding the root.</returns>
         /// <remarks>
         ///     What survives is read off the finished fragments rather than noted while they were
@@ -247,13 +381,13 @@ namespace Tellma.Core.Queryex.Lowering
         /// </remarks>
         internal ImmutableArray<JoinNode> Complete(
             IEnumerable<PlanNode> fragments,
-            IEnumerable<ParameterSlot> paging)
+            IReadOnlyList<ParameterSlot> paging)
         {
-            Reach(fragments, paging);
+            Reach(fragments);
 
             ImmutableArray<JoinNode>.Builder joins = ImmutableArray.CreateBuilder<JoinNode>();
             int alias = 0;
-            foreach (JoinNode node in Root.Walk())
+            foreach (JoinNode node in Root?.Walk() ?? [])
             {
                 if (!node.IsReferenced)
                 {
@@ -273,7 +407,18 @@ namespace Tellma.Core.Queryex.Lowering
                 joins.Add(node);
             }
 
-            _bindings.RemoveAll(binding => !_liveBindings.Contains(binding));
+            // The subqueries that survived, numbered in pre-order. Each one's joins and bindings take
+            // the next numbers of the statement's own sequences, so no alias inside a subquery can
+            // shadow one outside it — the correlation reads the outer row by its alias.
+            List<PlanSubquery> subqueries = [.. _subqueries.Where(subquery => subquery.IsReferenced)];
+            for (int index = 0; index < subqueries.Count; index++)
+            {
+                PlanSubquery subquery = subqueries[index];
+                subquery.Root.Alias = "X" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                subquery.Joins = Aliased(subquery.Root, ref alias);
+            }
+
+            _laterals.RemoveAll(lateral => !_liveLaterals.Contains(lateral));
             _variables.RemoveAll(variable => !_liveVariables.Contains(variable));
             _slots.RemoveAll(slot => !_liveSlots.Contains(slot));
 
@@ -285,95 +430,264 @@ namespace Tellma.Core.Queryex.Lowering
             // count over, because each of these remembers where it was written.
             foreach (JoinNode join in joins)
             {
-                _budget.TryConsumeJoin(join.Origin.Span, _sink.Scope(join.Origin.Location));
+                Consume(join);
             }
 
-            foreach (ParameterSlot slot in _slots)
+            // A subquery's source is one more table the statement reads, and its joins are joins like
+            // any other; counting them is what keeps a semi-join from being a way around the ceiling.
+            foreach (PlanSubquery subquery in subqueries)
             {
-                _budget.TryConsumeParameter(slot.Written.Span, _sink.Scope(slot.Written.Location));
+                _budget.TryConsumeJoin(subquery.Origin.Span, _sink.Scope(subquery.Origin.Location));
+                foreach (JoinNode join in subquery.Joins)
+                {
+                    Consume(join);
+                }
             }
 
-            for (int index = 0; index < _bindings.Count; index++)
+            // The paging slots count too: they are parameters of the statement like any other, and
+            // only their names and their place at the end of the list set them apart.
+            foreach (ParameterSlot slot in _slots.Concat(paging))
             {
-                _bindings[index].Alias =
-                    "B" + (index + 1).ToString(CultureInfo.InvariantCulture);
+                // Named for the first surviving reference to it; the paging slots, which no fragment
+                // mentions, for where they were made.
+                PlanOrigin origin = _slotsReachedFrom.GetValueOrDefault(slot, slot.Written);
+                _budget.TryConsumeParameter(origin.Span, _sink.Scope(origin.Location));
             }
 
-            string prefix = "@qx" + _batchOrdinal.ToString(CultureInfo.InvariantCulture);
+            // Bindings and lookups each have a sequence of their own, numbered in the order they
+            // were made: the statement's first, then subquery by subquery in pre-order.
+            int binding = 0;
+            int lookup = 0;
+            NameLaterals(_laterals, ref binding, ref lookup);
+            foreach (PlanSubquery subquery in subqueries)
+            {
+                ImmutableArray<LateralSource> live = [.. subquery.Pending.Where(_liveLaterals.Contains)];
+                NameLaterals(live, ref binding, ref lookup);
+                subquery.Laterals = live;
+            }
+
+            // A scalar lookup is a subquery of its own, so its names restart with each one: its
+            // levels are M, M2, and so on, outermost first, and the values named inside it are V1,
+            // V2, and so on, in the order they are written — the innermost level's first, since each
+            // level's source follows the levels nested in its select list. A family of their own
+            // keeps them from shadowing a binding of the statement that an operand reads.
+            foreach (PlanScalarLookup scalar in _liveScalars)
+            {
+                for (int level = 0; level < scalar.Levels.Length; level++)
+                {
+                    scalar.Levels[level].Alias = level == 0
+                        ? ScalarLevelAlias
+                        : ScalarLevelAlias + (level + 1).ToString(CultureInfo.InvariantCulture);
+                }
+
+                int value = 0;
+                for (int level = scalar.Levels.Length - 1; level >= 0; level--)
+                {
+                    CalendarLookup current = scalar.Levels[level];
+                    current.Bindings.RemoveAll(named => !_liveLaterals.Contains(named));
+                    foreach (ValueBinding named in current.Bindings)
+                    {
+                        named.Alias = ScalarValueAlias + (++value).ToString(CultureInfo.InvariantCulture);
+                    }
+                }
+            }
+
+            // A value computed over named operands is a subquery of its own too, and its operands are
+            // N1, N2, and so on, restarting with each one. Nothing inside one reads another's names —
+            // a nested one sits inside an operand or a single-use position and reads only its own —
+            // so a nested one shadowing its container's names is harmless; their own family keeps
+            // them clear of the scalar lookups' values and of the statement's bindings.
+            foreach (PlanNamedScalar named in _liveNamed)
+            {
+                for (int index = 0; index < named.Bindings.Length; index++)
+                {
+                    named.Bindings[index].Alias =
+                        NamedOperandAlias + (index + 1).ToString(CultureInfo.InvariantCulture);
+                }
+            }
+
             for (int index = 0; index < _variables.Count; index++)
             {
                 _variables[index].Name =
-                    prefix + "_v" + index.ToString(CultureInfo.InvariantCulture);
+                    Prefix + "_v" + index.ToString(CultureInfo.InvariantCulture);
             }
 
             for (int index = 0; index < _slots.Count; index++)
             {
                 _slots[index].Name =
-                    prefix + "_p" + index.ToString(CultureInfo.InvariantCulture);
+                    Prefix + "_p" + index.ToString(CultureInfo.InvariantCulture);
             }
 
             return joins.ToImmutable();
         }
 
-        /// <summary>Finds everything the finished fragments actually read.</summary>
-        /// <param name="fragments">Every fragment the statement will contain.</param>
-        /// <param name="paging">The slots the paging clause binds.</param>
-        private void Reach(IEnumerable<PlanNode> fragments, IEnumerable<ParameterSlot> paging)
+        /// <summary>The alias of a scalar lookup's outermost level; the deeper ones are numbered from 2.</summary>
+        private const string ScalarLevelAlias = "M";
+
+        /// <summary>The alias family of the values named inside a scalar lookup.</summary>
+        private const string ScalarValueAlias = "V";
+
+        /// <summary>The alias family of the operands named inside a value computed over them.</summary>
+        private const string NamedOperandAlias = "N";
+
+        /// <summary>Names one sequence of surviving lateral sources.</summary>
+        /// <param name="laterals">The sources, in the order they were made.</param>
+        /// <param name="binding">The last binding number used, advanced past the ones assigned here.</param>
+        /// <param name="lookup">The last lookup number used, advanced past the ones assigned here.</param>
+        private static void NameLaterals(IEnumerable<LateralSource> laterals, ref int binding, ref int lookup)
         {
-            foreach (ParameterSlot slot in paging)
+            foreach (LateralSource lateral in laterals)
             {
-                _liveSlots.Add(slot);
+                lateral.Alias = lateral is CalendarLookup
+                    ? "C" + (++lookup).ToString(CultureInfo.InvariantCulture)
+                    : "B" + (++binding).ToString(CultureInfo.InvariantCulture);
+            }
+        }
+
+        /// <summary>Counts one surviving join toward the ceiling.</summary>
+        /// <param name="join">The join.</param>
+        /// <remarks>
+        ///     Named for the first surviving reference that reads it rather than for whatever created
+        ///     it, which may have folded away: a join that only a select item still reads is the select
+        ///     item's to answer for.
+        /// </remarks>
+        private void Consume(JoinNode join)
+        {
+            PlanOrigin origin = join.ReachedFrom ?? join.Origin;
+            _budget.TryConsumeJoin(origin.Span, _sink.Scope(origin.Location));
+        }
+
+        /// <summary>Names every surviving join of one join tree, parents first.</summary>
+        /// <param name="root">The tree's root, which is named already.</param>
+        /// <param name="alias">The last join number used, advanced past the ones assigned here.</param>
+        /// <returns>The surviving joins, in alias order and excluding the root.</returns>
+        private static ImmutableArray<JoinNode> Aliased(JoinNode root, ref int alias)
+        {
+            ImmutableArray<JoinNode>.Builder joins = ImmutableArray.CreateBuilder<JoinNode>();
+            foreach (JoinNode node in root.Walk())
+            {
+                // The root is the subquery's source, and an unread node has only unread nodes below it.
+                if (node.Parent is null || !node.IsReferenced)
+                {
+                    continue;
+                }
+
+                alias++;
+                node.Alias = "P" + alias.ToString(CultureInfo.InvariantCulture);
+                joins.Add(node);
             }
 
-            Queue<PlanNode> pending = new(fragments);
+            return joins.ToImmutable();
+        }
+
+        /// <summary>The prefix every name this query emits begins with.</summary>
+        /// <remarks>
+        ///     The engine's reserved namespace, then the query's position among those a host executes
+        ///     together, so that several compiled queries compose into one batch without colliding.
+        /// </remarks>
+        private string Prefix => "@qx" + _batchOrdinal.ToString(CultureInfo.InvariantCulture);
+
+        /// <summary>Finds everything the finished fragments actually read.</summary>
+        /// <param name="fragments">
+        ///     Every fragment the statement will contain, in the order they were lowered.
+        /// </param>
+        /// <remarks>
+        ///     Depth first, in the order things were written, so the first surviving reference to a
+        ///     join or a slot is the one a ceiling it pushes over is reported against — the same one
+        ///     that created it, unless that one folded away.
+        /// </remarks>
+        private void Reach(IEnumerable<PlanNode> fragments)
+        {
+            Stack<PlanNode> pending = new(fragments.Reverse());
             HashSet<PlanNode> seen = new(ReferenceEqualityComparer.Instance);
 
             while (pending.Count > 0)
             {
-                PlanNode node = pending.Dequeue();
+                PlanNode node = pending.Pop();
                 if (!seen.Add(node))
                 {
                     continue;
                 }
 
+                // Pushed last-first, so they are visited in the order they are written; whatever a
+                // binding or a variable reads is pushed after them, so it is visited first.
+                ImmutableArray<PlanNode> children = PlanWalk.Children(node);
+                for (int index = children.Length - 1; index >= 0; index--)
+                {
+                    pending.Push(children[index]);
+                }
+
                 switch (node)
                 {
                     case PlanColumn column:
-                        column.Table.MarkReferenced();
+                        column.Table.MarkReferenced(column.Origin);
                         break;
 
                     case PlanParameterRef parameter:
-                        _liveSlots.Add(parameter.Slot);
+                        if (_liveSlots.Add(parameter.Slot))
+                        {
+                            _slotsReachedFrom[parameter.Slot] = parameter.Origin;
+                        }
+
                         break;
 
                     case PlanBindingRef binding:
 
                         // What a binding computes is read too, transitively: a binding referenced
                         // from a surviving fragment keeps alive whatever it names.
-                        if (_liveBindings.Add(binding.Binding))
+                        if (_liveLaterals.Add(binding.Binding))
                         {
-                            pending.Enqueue(binding.Binding.Value);
+                            pending.Push(binding.Binding.Value);
                         }
 
+                        break;
+
+                    case PlanLookupColumn column:
+
+                        // The same for a lookup: whatever it is sought by — a date, or another
+                        // lookup's year and month — is read whenever a column of it is.
+                        if (_liveLaterals.Add(column.Lookup))
+                        {
+                            foreach (PlanNode read in column.Lookup.Reads)
+                            {
+                                pending.Push(read);
+                            }
+                        }
+
+                        break;
+
+                    case PlanScalarLookup scalar:
+
+                        // A level's bindings are named with the statement's, once it is known which
+                        // levels survived; the level reads them through its own references.
+                        _liveScalars.Add(scalar);
+                        break;
+
+                    case PlanNamedScalar named:
+
+                        // Its operands are reached as children, and named with the statement's.
+                        _liveNamed.Add(named);
+                        break;
+
+                    case PlanExists exists:
+
+                        // A subquery is part of the statement exactly when its semi-join is.
+                        exists.Subquery.IsReferenced = true;
                         break;
 
                     case PlanVariableRef variable:
                         if (_liveVariables.Add(variable.Variable))
                         {
-                            // A variable is computed against its own table rather than a join, so
-                            // only the key it looks up can reach back into the join tree.
-                            pending.Enqueue(variable.Variable.Key);
+                            // A variable is computed before the statement rather than against a
+                            // join, so only what its initializer reads — a key, or a value that
+                            // reads no row — can reach anything else the statement holds.
+                            pending.Push(variable.Variable.Reads);
                         }
 
                         break;
 
                     default:
                         break;
-                }
-
-                foreach (PlanNode child in PlanWalk.Children(node))
-                {
-                    pending.Enqueue(child);
                 }
             }
         }

@@ -57,8 +57,11 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>A direction suffix is not the final token of its item at depth zero.</summary>
         internal const string DirectionMustTerminateItem = "QX2008";
 
-        /// <summary>A predicate position was given a list rather than a single expression.</summary>
-        internal const string PredicateListNotPermitted = "QX2009";
+        /// <summary>
+        ///     A position that takes a single expression — a predicate, or one item of a constant
+        ///     statement — was given a list.
+        /// </summary>
+        internal const string ListNotPermitted = "QX2009";
 
         /// <summary>A path segment names nothing the entity declares.</summary>
         internal const string UnknownProperty = "QX3001";
@@ -105,6 +108,9 @@ namespace Tellma.Core.Queryex.Diagnostics
         /// <summary>The expression has no determinable type, as with a bare absent value.</summary>
         internal const string NoDeterminableType = "QX3202";
 
+        /// <summary>An operation combines text from columns of different collations.</summary>
+        internal const string CollationConflict = "QX3203";
+
         /// <summary>A hierarchy predicate's first argument is not a bare path.</summary>
         internal const string HierarchyKeyMustBePath = "QX3300";
 
@@ -143,6 +149,15 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>Two ordering terms are the same expression.</summary>
         internal const string DuplicateOrderingTerm = "QX4008";
+
+        /// <summary>Paths are not permitted in this position, which has no row to read one from.</summary>
+        internal const string PathNotPermitted = "QX4009";
+
+        /// <summary>A measure uses something that cannot be computed over rolled-up values.</summary>
+        internal const string NotComputableOverRollups = "QX4010";
+
+        /// <summary>A measure reads a path outside an aggregation, or aggregates nothing at all.</summary>
+        internal const string MeasureMustAggregate = "QX4011";
 
         /// <summary>The expression text is longer than this call site permits.</summary>
         internal const string MaxInputLength = "QX5001";
@@ -221,5 +236,8 @@ namespace Tellma.Core.Queryex.Diagnostics
 
         /// <summary>The accepted values, for a constrained literal argument.</summary>
         internal const string Accepted = "accepted";
+
+        /// <summary>The operator or function a measure may not use, or the kind of comparison.</summary>
+        internal const string Construct = "construct";
     }
 }

@@ -29,6 +29,12 @@ namespace Tellma.Identity.Infrastructure
     public sealed class LanguageCatalog(IOptions<TellmaIdentityOptions> options)
     {
         /// <summary>
+        ///     How many trailing subtags are removed from a language tag in search of an offered
+        ///     language. The depth request localization itself falls back through.
+        /// </summary>
+        private const int MaxParentDepth = 5;
+
+        /// <summary>
         ///     Every language the engine ships resources for, in display order. Adding one means
         ///     adding its resx and its font subset; this list is what makes it reachable.
         /// </summary>
@@ -47,6 +53,53 @@ namespace Tellma.Identity.Infrastructure
 
         /// <summary>The offered culture names, for request-localization setup.</summary>
         public IReadOnlyList<string> OfferedCultures => [.. Offered.Select(static language => language.Culture)];
+
+        /// <summary>
+        ///     The offered language a <c>ui_locales</c> value selects: the first of its tags, in
+        ///     the order given, that names an offered language or a regional form of one.
+        ///     <para>
+        ///         The same rule request localization applies to the query value, so a language
+        ///         list reads the same wherever it arrives from: a tag matches without case, and
+        ///         a tag that is not offered is retried with its last subtag removed, so
+        ///         <c>ar-SA</c> selects <c>ar</c>.
+        ///     </para>
+        /// </summary>
+        /// <param name="uiLocales">The language tags, separated by spaces, most preferred first.</param>
+        /// <returns>The offered culture name, or null when no tag selects one.</returns>
+        public string? Match(string? uiLocales)
+        {
+            if (CarriedQuery.NormalizeUiLocales(uiLocales) is not { } tags)
+            {
+                return null;
+            }
+
+            foreach (string tag in tags.Split(' '))
+            {
+                // Each pass drops one trailing subtag; the bound is the one request localization
+                // uses, and a well-formed tag has few enough subtags never to reach it.
+                ReadOnlySpan<char> candidate = tag;
+                for (int depth = 0; depth <= MaxParentDepth; depth++)
+                {
+                    foreach (LanguageChoice language in Offered)
+                    {
+                        if (candidate.Equals(language.Culture, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return language.Culture;
+                        }
+                    }
+
+                    int hyphen = candidate.LastIndexOf('-');
+                    if (hyphen <= 0)
+                    {
+                        break;
+                    }
+
+                    candidate = candidate[..hyphen];
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>Whether a culture name is one this deployment offers.</summary>
         /// <param name="culture">The culture name to test.</param>

@@ -9,10 +9,12 @@ import { expectNoAxeViolations } from '../support/axe';
 import {
   activeCell,
   cell,
+  cellPaint,
   gotoGrid,
   gridScroller,
   liveRegion,
   selectedCells,
+  syntheticCopy,
 } from '../support/grid';
 
 /**
@@ -97,23 +99,67 @@ test.describe('forced colors (§14)', () => {
     await gotoGrid(page, 'grid-readonly');
     await cell(page, 1, 1).click();
     await cell(page, 2, 2).click({ modifiers: ['Shift'] }); // (1,1) active, 2×2 selected
+    // The range is drawn on the render after the click; cellPaint then
+    // settles the app before each read.
+    await expect(selectedCells(page)).toHaveCount(4);
 
-    const paint = (row: number, col: number) =>
-      cell(page, row, col).evaluate((el) => {
-        const style = getComputedStyle(el);
-        return { background: style.backgroundColor, outline: style.outlineStyle };
-      });
+    const active = await cellPaint(page, 1, 1); // a zebra row
+    const selectedZebra = await cellPaint(page, 1, 2);
+    const selectedEven = await cellPaint(page, 2, 1);
+    const selected = await cellPaint(page, 2, 2);
+    const plainZebra = await cellPaint(page, 5, 5); // same zebra parity as row 1
+    const plainEven = await cellPaint(page, 6, 6); // same parity as row 2
 
-    const selected = await paint(2, 2);
-    const active = await paint(1, 1);
-    const plainZebra = await paint(5, 5); // same zebra parity as row 1
-    const plainEven = await paint(6, 6); // same parity as row 2
-
-    // Selection paints with a system color, not the tint the theme uses.
+    // Selection paints with a system color, not the tint the theme uses,
+    // on both row parities: the zebra stripe never masks the range fill.
     expect(selected.background).not.toBe(plainEven.background);
-    // The active cell swaps its inset shadow for a real outline.
+    expect(selected.background).not.toBe(plainZebra.background);
+    for (const paint of [active, selectedZebra, selectedEven]) {
+      expect(paint.background).toBe(selected.background);
+    }
+    // Text stays legible on the fill.
+    for (const paint of [active, selectedZebra, selectedEven, selected]) {
+      expect(paint.ink).not.toBe(paint.background);
+    }
+    // The active cell swaps its inset shadow for a real outline, in a color
+    // that shows against the fill it shares with the rest of the range.
     expect(active.outline).toBe('solid');
+    expect(active.outlineColor).not.toBe(active.background);
+    expect(selected.outline).toBe('none');
     expect(plainZebra.outline).toBe('none');
+  });
+
+  test('a lone active cell keeps the plain background and a visible ring', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await gotoGrid(page, 'grid-readonly');
+    await cell(page, 1, 1).click(); // a lone selected cell paints no range fill
+    await expect(cell(page, 1, 1)).toHaveAttribute('aria-selected', 'true');
+
+    const active = await cellPaint(page, 1, 1);
+    const plainZebra = await cellPaint(page, 5, 5);
+    expect(active.background).toBe(plainZebra.background);
+    expect(active.outline).toBe('solid');
+    expect(active.outlineColor).not.toBe(active.background);
+  });
+
+  test('the copy marquee stays visible over the range fill', async ({ page }) => {
+    await page.emulateMedia({ forcedColors: 'active' });
+    await gotoGrid(page, 'grid-readonly');
+    await cell(page, 1, 1).click();
+    await cell(page, 2, 2).click({ modifiers: ['Shift'] });
+    await expect(selectedCells(page)).toHaveCount(4);
+    await syntheticCopy(page); // a copy arms the marquee on any grid, readonly included
+    await expect(page.locator('[data-tm-cell][data-tm-cut]')).toHaveCount(4);
+
+    for (const [row, col] of [
+      [1, 1],
+      [1, 2],
+      [2, 1],
+      [2, 2],
+    ] as const) {
+      const paint = await cellPaint(page, row, col);
+      expect(paint.marquee).not.toBe(paint.background);
+    }
   });
 });
 

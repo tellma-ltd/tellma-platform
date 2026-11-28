@@ -24,6 +24,18 @@ namespace Tellma.Core.Abstractions.Tests.Hosting
             Assert.Equal(expected, new DeploymentIdentity(application, environmentName).DeploymentId);
         }
 
+        [Theory]
+        [InlineData("Development", true)]
+        [InlineData("development", true)]
+        [InlineData("DEVELOPMENT", true)]
+        [InlineData("Production", false)]
+        [InlineData("Staging", false)]
+        [InlineData("Dev", false)]
+        public void Is_development_only_in_the_development_environment_whatever_its_case(string environmentName, bool expected)
+        {
+            Assert.Equal(expected, new DeploymentIdentity("etpharma", environmentName).IsDevelopment);
+        }
+
         [Fact]
         public void Produces_a_colon_free_id_so_the_wire_envelope_stays_unambiguous()
         {

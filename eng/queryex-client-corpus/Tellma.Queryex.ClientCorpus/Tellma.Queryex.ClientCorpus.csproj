@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Description>Regenerates the Queryex lexer corpus and print golden the client's Queryex suites are held to, from the engine's own lexer, parser and printer. A developer tool, never shipped.</Description>
+    <!-- eng/ has no Directory.Build.props, so the root one applies as written and would make this
+         packable. It is tooling; packing it would be meaningless. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\core\Tellma.Core.Queryex\Tellma.Core.Queryex.csproj" />
+    <!-- The corpus and the golden are written by the testing library, which alone holds the
+         engine's internals; the engine test that fails on a stale file uses the same writer. -->
+    <ProjectReference Include="..\..\..\test\shared\Tellma.Queryex.Testing\Tellma.Queryex.Testing.csproj" />
+  </ItemGroup>
+
+</Project>

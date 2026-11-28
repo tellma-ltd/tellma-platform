@@ -6,8 +6,8 @@
 /**
  * tm/prefix-exports — every exported symbol of a library package carries the
  * library prefix (spec 0002 §1, D3): classes/interfaces/types/enums start
- * with `Tm`, SCREAMING_CASE constants with `TM_`, functions/values with `tm`
- * or `provideTellma`. A leading `ɵ` (the private-by-convention surface
+ * with `Tm`, SCREAMING_CASE constants with `TM_`, functions/values with `tm`,
+ * `provideTellma` or `injectTm` (context accessors such as `injectTmDetails`). A leading `ɵ` (the private-by-convention surface
  * shared between entry points, spec 0004 §1) is transparent — the rest of
  * the name must still carry a valid prefix. The spec's own
  * deliberately-unprefixed exports (SignalLike, Ref, fontPreloadLinks, …)
@@ -16,7 +16,7 @@
  */
 const SCREAMING = /^[A-Z][A-Z0-9_]*$/;
 const TYPE_LIKE = /^Tm[A-Z0-9]/;
-const VALUE_LIKE = /^(tm[A-Z0-9]|provideTellma[A-Z0-9])/;
+const VALUE_LIKE = /^(tm[A-Z0-9]|provideTellma[A-Z0-9]|injectTm[A-Z0-9])/;
 
 export default /** @type {import('eslint').Rule.RuleModule} */ ({
   meta: {
@@ -36,7 +36,7 @@ export default /** @type {import('eslint').Rule.RuleModule} */ ({
     messages: {
       badName:
         'Exported symbol "{{name}}" must carry the library prefix ' +
-        '(Tm… for types/classes, TM_… for constants, tm…/provideTellma… for functions) ' +
+        '(Tm… for types/classes, TM_… for constants, tm…/provideTellma…/injectTm… for functions) ' +
         'or be added to the reviewed allowlist.',
     },
   },

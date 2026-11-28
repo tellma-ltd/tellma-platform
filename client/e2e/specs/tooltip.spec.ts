@@ -6,6 +6,7 @@
 import { expect, test } from '@playwright/test';
 
 import { expectNoAxeViolations } from '../support/axe';
+import { appStable } from '../support/settle';
 import { storyUrl } from '../support/story-map';
 
 /**
@@ -16,6 +17,11 @@ import { storyUrl } from '../support/story-map';
  */
 
 const PANEL = '.tm-tooltip__panel';
+
+/** The instant Playwright's clock starts from. */
+const CLOCK_START = new Date('2026-01-05T09:00:00Z');
+/** The instant the clock jumps to and pauses at, well past any setup. */
+const CLOCK_PAUSE = new Date('2026-01-05T09:10:00Z');
 
 test.describe('show/hide paths (DoD 16)', () => {
   test('hover shows after the delay; moving away hides', async ({ page }) => {
@@ -51,6 +57,10 @@ test.describe('show/hide paths (DoD 16)', () => {
   });
 
   test('the surface is hoverable (1.4.13): crossing onto it keeps it shown', async ({ page }) => {
+    // On Playwright's clock: leaving the host starts a short hide grace,
+    // and in real time the crossing's pointer moves are CDP round trips
+    // that a loaded runner can stretch past it.
+    await page.clock.install({ time: CLOCK_START });
     await page.goto(storyUrl('tooltip'));
     const host = page.getByTestId('tooltip-first');
     await host.hover();
@@ -58,9 +68,15 @@ test.describe('show/hide paths (DoD 16)', () => {
     await expect(panel).toBeVisible();
 
     const box = (await panel.boundingBox())!;
+    // Page time stands still for the crossing, so it takes no page time
+    // however slow the moves are; then it advances well past the grace.
+    await page.clock.pauseAt(CLOCK_PAUSE);
     // Travel from the host onto the tooltip surface in small steps.
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
-    await page.waitForTimeout(250); // longer than the grace period
+    await page.clock.runFor(250); // longer than the grace period
+    await page.clock.resume();
+    // A hide the grace had fired would be rendered by now: still shown is final.
+    await appStable(page);
     await expect(panel).toBeVisible();
 
     await page.mouse.move(10, 10);
@@ -104,14 +120,15 @@ test.describe('description without opening (DoD 16)', () => {
 });
 
 test.describe('appearance gates', () => {
-  test('tooltip-visible page is axe-clean (light + dark)', async ({ page }) => {
-    for (const theme of ['light', 'dark'] as const) {
+  // One scan per test, so no test carries two scans against its timeout.
+  for (const theme of ['light', 'dark'] as const) {
+    test(`tooltip-visible page is axe-clean (${theme})`, async ({ page }) => {
       await page.goto(storyUrl('tooltip', { theme }));
       await page.getByTestId('tooltip-first').hover();
       await expect(page.locator(PANEL)).toBeVisible();
       await expectNoAxeViolations(page);
-    }
-  });
+    });
+  }
 
   test('reduced motion removes the fade', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
