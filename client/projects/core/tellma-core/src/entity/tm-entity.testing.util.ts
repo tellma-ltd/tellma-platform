@@ -249,7 +249,7 @@ export async function tmEntityRig(options: TmEntityRigOptions = {}): Promise<TmE
             entities: [
               tmEntity('acme.Customer', {
                 ...options.customer,
-                details: tmLoadTestPage,
+                details: options.customer?.details ?? tmLoadTestPage,
                 actions: options.actions ?? [{ name: 'set-credit-limit', button: true }],
                 ...(pickers['acme.Customer'] && { picker: pickers['acme.Customer'] as never }),
               }),

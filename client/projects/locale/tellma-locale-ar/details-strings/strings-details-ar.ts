@@ -16,7 +16,8 @@ import type { TmStringTree } from '@tellma/core';
  * Active, Inactive and Unsaved changes badges, the status lines, the
  * Discard changes question, the notice of a refresh that failed under an edit, Edit's reason for a record outside the
  * user's permission, and the layout kit's read-only lock, error names, audit card, aside and failed editor load, and
- * its child grids' totals and failed load and its child files' list. The same shape as its English.
+ * its child grids' totals and failed load and its child files' list; under `detailsSave`, the save's overlay labels and
+ * error summary, and under `detailsDialogs`, the concurrency, deletion and leave dialogs. The same shape as its English.
  */
 export const TM_DETAILS_STRINGS_AR: TmStringTree = {
   details: {
@@ -55,5 +56,40 @@ export const TM_DETAILS_STRINGS_AR: TmStringTree = {
     filesFailed: 'تعذّر تحميل هذه الملفات.',
     fileRefused: '{name}: {message}',
     uploading: 'جارٍ رفع {name}',
+  },
+  detailsSave: {
+    finishing: 'جارٍ إكمال الرفع…',
+    saving: 'جارٍ الحفظ…',
+    heading: 'أصلح {count, plural, one {مشكلة واحدة} two {مشكلتين} few {# مشكلات} many {# مشكلة} other {# مشكلة}} للحفظ',
+    show: 'عرض المشكلات',
+    more: 'و{count} أخرى',
+    fixed: 'تم الإصلاح',
+    field: '{label}: {message}',
+    cell: '{collection} · الصف {row} · {column}: {message}',
+    row: '{collection} · الصف {row}: {message}',
+    uploadFailed: 'تعذّر رفع الملف. أعد المحاولة أو أزِله.',
+  },
+  detailsDialogs: {
+    conflict: {
+      title: 'تغيّر هذا السجل أثناء تعديلك',
+      other: 'حفظ {name} نسخة أحدث {time}. أعد التحميل لتأخذ نسخته، أو استبدلها بنسختك.',
+      self: 'حفظتَ هذا السجل في علامة تبويب أو نافذة أخرى {time}. أعد تحميل تلك النسخة، أو استبدلها بهذه.',
+      unknown: 'أعد التحميل لتأخذ النسخة المحفوظة، أو استبدلها بنسختك.',
+      overwrite: 'استبدال',
+      reloadTheirs: 'تحميل نسخته',
+      reloadSaved: 'تحميل النسخة المحفوظة',
+      reload: 'إعادة التحميل',
+    },
+    deleted: {
+      title: 'حُذف هذا السجل',
+      message: 'حذفه أحدهم أثناء تعديلك، لذا لا يمكن حفظ تغييراتك.',
+      discard: 'تجاهل التغييرات',
+    },
+    leave: {
+      title: 'المغادرة دون حفظ؟',
+      message: 'في هذا السجل تغييرات غير محفوظة، وستُفقد إذا غادرت الآن.',
+      discard: 'تجاهل التغييرات',
+      stay: 'البقاء',
+    },
   },
 };

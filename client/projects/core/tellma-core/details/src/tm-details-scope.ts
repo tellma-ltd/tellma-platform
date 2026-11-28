@@ -3,7 +3,7 @@
 // This source code is licensed under the Apache-2.0 license found in the
 // LICENSE file in the root directory of this source tree.
 
-import { computed, DestroyRef, inject, InjectionToken, type Signal, signal } from '@angular/core';
+import { computed, DestroyRef, ElementRef, inject, InjectionToken, type Signal, signal } from '@angular/core';
 import type { FieldTree } from '@angular/forms/signals';
 import { TM_ERROR_DISPLAY } from '@tellma/core-ui';
 
@@ -101,12 +101,17 @@ export function ɵtmCollectionShowsError(child: Signal<string | undefined>): Sig
 
 /**
  * Holds a child collection's errors on the nearest card or tab, from
- * creation, as `ɵtmCollectionShowsError` decides them. Internal: the child
- * grid and the child files call it in their constructors, whether or not
- * their deferred body has rendered.
+ * creation, as `ɵtmCollectionShowsError` decides them, and registers where
+ * the collection renders, which a failed save's summary opens and scrolls
+ * to. Internal: the child grid and the child files call it in their
+ * constructors, whether or not their deferred body has rendered.
  *
  * @param child - The collection's json name, such as `lines`; `undefined` for a collection the entity lacks.
+ * @param name - The collection's name, such as `Lines`.
  */
-export function ɵtmHoldCollectionErrors(child: Signal<string | undefined>): void {
-  inject(TM_DETAILS_SCOPE, { optional: true })?.hold(ɵtmCollectionShowsError(child), inject(DestroyRef));
+export function ɵtmHoldCollectionErrors(child: Signal<string | undefined>, name: () => string): void {
+  const scope = inject(TM_DETAILS_SCOPE, { optional: true });
+  const destroyRef = inject(DestroyRef);
+  scope?.hold(ɵtmCollectionShowsError(child), destroyRef);
+  injectTmDetailsRecord().registerPlace({ name, scope, element: inject<ElementRef<HTMLElement>>(ElementRef).nativeElement }, destroyRef);
 }

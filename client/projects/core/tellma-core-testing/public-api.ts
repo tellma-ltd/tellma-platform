@@ -16,6 +16,7 @@ export { provideTellmaStateTesting } from './src/provide-tellma-state-testing';
 export { TmChildGridHarness, type TmChildGridHarnessFilters, type TmChildGridState } from './src/tm-child-grid-harness';
 export { TmColumnFilterHarness } from './src/tm-column-filter-harness';
 export { type TmDetailsPageButton, TmDetailsPageHarness } from './src/tm-details-page-harness';
+export { TmDetailsSummaryHarness, TmDetailsSummaryItemHarness } from './src/tm-details-summary-harness';
 export { type TmDiagnosticsPanelButton, TmDiagnosticsPanelHarness, TmSupportOfflineHarness } from './src/tm-diagnostics-panel-harness';
 export { TmEntityFieldHarness, TmEntityMultiFieldHarness } from './src/tm-entity-field-harness';
 export { TmExpressionEditorHarness, type TmExpressionEditorChip } from './src/tm-expression-editor-harness';

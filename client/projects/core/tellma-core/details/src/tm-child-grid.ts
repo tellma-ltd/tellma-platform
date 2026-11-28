@@ -313,7 +313,7 @@ export class TmChildGrid {
     });
 
     // --- The collection's rows show their errors once touched or dirty; the card and tab hold them from creation ---
-    ɵtmHoldCollectionErrors(computed(() => this.child()?.json));
+    ɵtmHoldCollectionErrors(computed(() => this.child()?.json), () => this.collection());
   }
 }
 

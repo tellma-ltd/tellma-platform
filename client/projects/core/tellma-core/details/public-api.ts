@@ -51,6 +51,10 @@ export {
   ɵtmDetailsNodeAt,
 } from './src/tm-details-schema';
 
+// --- The editor's parts: the leave guard, and the dialogs, which load on first use ---
+export { tmLeaveGuard, type TmLeaveGuardCheck } from './src/tm-leave-guard';
+export { type TmConflictInfo, TmDetailsDialogs } from './src/tm-details-dialogs';
+
 // --- Sources ---
 export {
   type TmDetailsAbilities,

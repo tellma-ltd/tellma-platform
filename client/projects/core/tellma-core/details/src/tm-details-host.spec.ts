@@ -134,7 +134,18 @@ interface TmPendingRead {
  */
 function customer(id: number): TmJsonObject {
   return {
-    entities: [{ id, code: `C-00${id}`, name: `Customer ${id}`, isActive: true, contacts: [{ id: 100 + id, customerId: id, name: 'Huda' }] }],
+    entities: [
+      {
+        id,
+        code: `C-00${id}`,
+        name: `Customer ${id}`,
+        customerType: 'Retail',
+        creditLimit: '0',
+        isActive: true,
+        modifiedAt: '2026-11-20T08:00:00.0000000+00:00',
+        contacts: [{ id: 100 + id, customerId: id, name: 'Huda' }],
+      },
+    ],
     related: {},
     extras: { permissions: [] },
   };
@@ -566,7 +577,7 @@ describe('the details host', () => {
     const details = latest()!.details;
     expect([details.mode(), details.id(), details.dirty()]).toEqual(['create', null, false]);
     // The form tracks each child row by a symbol of its own, which the wire never carries.
-    expect(valued(details.model())).toEqual({ code: 'C-005', name: 'Customer 5', contacts: [{ id: -1, name: 'Huda' }] });
+    expect(valued(details.model())).toEqual({ code: 'C-005', name: 'Customer 5', customerType: 'Retail', creditLimit: '0', contacts: [{ id: -1, name: 'Huda' }] });
   });
 
   it("saves a clone's child rows without a key to the parent, exactly as the body is sent", async () => {
@@ -574,8 +585,8 @@ describe('the details host', () => {
     const page = await open('/17/customers/new?clone=5');
     await tmSettleUntil(() => latest()?.details.model()['name'] !== undefined, 'the copy lands');
     const details = latest()!.details;
-    // The copied customer has no type, which the platform's rules require before a save writes.
-    details.update((model) => ({ ...model, customerType: 'Retail' }));
+    // A change of its own, so the copy is written as edited.
+    details.update((model) => ({ ...model, customerType: 'Corporate' }));
     rig.api.respond('customers/save', () => saved(6, 'Customer 5'));
 
     await page.click('save');
@@ -600,7 +611,7 @@ describe('the details host', () => {
     const page = await open('/17/customers/new');
     await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
     const details = latest()!.details;
-    details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail' }));
+    details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail', creditLimit: '0' }));
     rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
 
     await page.click('save');
@@ -616,7 +627,7 @@ describe('the details host', () => {
     await start();
     const page = await open('/17/customers/new');
     await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
-    latest()!.details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail', rank: 'A' }));
+    latest()!.details.update((model) => ({ ...model, code: 'C-009', name: 'Customer 9', customerType: 'Retail', creditLimit: '0', rank: 'A' }));
     rig.api.respond('customers/save', () => saved(9, 'Customer 9'));
 
     await page.click('save');
@@ -1000,7 +1011,7 @@ describe('the details host', () => {
     await open('/17/customers/new');
     await tmSettleUntil(() => latest() !== undefined, 'the layout renders');
     const layout = latest()!;
-    layout.details.update((model) => ({ ...model, name: 'New one' }));
+    layout.details.update((model) => ({ ...model, code: 'C-006', name: 'New one', customerType: 'Retail', creditLimit: '0' }));
     rig.api.respond('customers/save', () => saved(6, 'New one'));
     let finish!: (blob: TmBlobDescriptor) => void;
     const blob = { id: 88, kind: 'customer-image', fileName: 'logo.png', contentType: 'image/png', size: '512' } as unknown as TmBlobDescriptor;
@@ -1081,7 +1092,7 @@ describe('the details host', () => {
     expect(layout.details.model()['name']).toBe('Customer 5');
   });
 
-  it('ends Save cleanly when the page is left while the write runs', async () => {
+  it('refuses to leave while the write runs, keeping the page, and shows the saved record once it lands', async () => {
     await start();
     const page = await openCustomer(5);
     await page.click('edit');
@@ -1092,11 +1103,12 @@ describe('the details host', () => {
     await manualChangeDetection(async () => {
       const invoked = TestBed.inject(TmPageActions).invoke('details.save', {}, 'user');
       await tmSettleUntil(() => rig.api.calls().some((call) => call.route === 'customers/save'), 'the save writes');
-      await router.navigateByUrl('/17');
-      await tmSettleUntil(() => document.querySelector('tm-details-host') === null, 'the page is left');
+      expect(await TestBed.inject(Router).navigateByUrl('/17')).toBe(false);
+      expect(TestBed.inject(Router).url).toBe('/17/customers/5');
       answer(saved(5, 'Renamed'));
       expect(await invoked).toEqual({ outcome: 'done' });
     });
-    expect(TestBed.inject(Router).url).toBe('/17');
+    expect(latest()!.details.mode()).toBe('view');
+    expect(TestBed.inject(Router).url).toBe('/17/customers/5');
   });
 });

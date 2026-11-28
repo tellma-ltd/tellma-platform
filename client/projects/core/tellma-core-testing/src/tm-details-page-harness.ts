@@ -6,10 +6,13 @@
 import { ComponentHarness, HarnessPredicate } from '@angular/cdk/testing';
 import { TmButtonHarness, TmEmptyStateHarness, TmProgressBarHarness } from '@tellma/core-ui-testing';
 
+import { TmDetailsSummaryHarness } from './tm-details-summary-harness';
+
 // The harness of @tellma/core/details's page: the routed host and the
 // source page draw the same frame, so one harness reads both. It reads the
-// header (crumb, title, badges, toolbar), the band's busy and error states
-// and the polite status, and drives the toolbar as a user would.
+// header (crumb, title, badges, toolbar), the band's busy and error states,
+// the error summary and the polite status, and drives the toolbar as a user
+// would.
 
 /** The toolbar's buttons, by what they do. */
 export type TmDetailsPageButton = 'edit' | 'create' | 'save' | 'cancel' | 'refresh' | 'actions';
@@ -129,6 +132,11 @@ export class TmDetailsPageHarness extends ComponentHarness {
   /** The band's error state, or `null` while the record shows. */
   async getErrorState(): Promise<TmEmptyStateHarness | null> {
     return this.locatorForOptional(TmEmptyStateHarness)();
+  }
+
+  /** The error summary a failed Save opened in the status strip, or `null` while it shows none. */
+  async getErrorSummary(): Promise<TmDetailsSummaryHarness | null> {
+    return this.locatorForOptional(TmDetailsSummaryHarness)();
   }
 
   /** The error state's way out to the list, such as "Customers", or `null`. */

@@ -6,6 +6,8 @@
 import type { TmStringTree } from '@tellma/core';
 import { TM_DETAILS_STRINGS_AR } from '@tellma/locale-ar/details-strings';
 
+import { TM_DETAILS_DIALOGS_STRINGS_EN } from './tm-details-dialogs-body';
+import { TM_DETAILS_SAVE_STRINGS_EN } from './tm-details-save';
 import { TM_DETAILS_STRINGS_EN } from './tm-details-strings';
 
 // The details page's strings against the Arabic pack's part for them: a key
@@ -46,7 +48,7 @@ function argumentsOf(message: string | undefined): string[] {
 
 describe("the details page's strings", () => {
   it('have their Arabic under the same keys, each message with the English arguments', () => {
-    const english = messages({ details: TM_DETAILS_STRINGS_EN });
+    const english = messages({ details: TM_DETAILS_STRINGS_EN, detailsSave: TM_DETAILS_SAVE_STRINGS_EN, detailsDialogs: TM_DETAILS_DIALOGS_STRINGS_EN });
     const arabic = messages(TM_DETAILS_STRINGS_AR);
 
     expect([...arabic.keys()].sort()).toEqual([...english.keys()].sort());

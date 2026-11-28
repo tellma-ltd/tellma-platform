@@ -116,6 +116,16 @@ export interface TmDetailsTabsRef {
   instantiate(): void;
 }
 
+/** Where a layout renders a child collection: what a failed save's summary opens and scrolls to before it reveals a row. */
+export interface TmDetailsCollectionPlace {
+  /** The collection's name, such as `Lines`. */
+  readonly name: () => string;
+  /** The card or tab that holds it, which opens to show it; `null` at the layout's top. */
+  readonly scope: { reveal(): void } | null;
+  /** The element that renders it. */
+  readonly element: HTMLElement;
+}
+
 /** The view state a record's page remembers: what the user opened, collapsed and scrolled. */
 export interface TmDetailsViewState {
   /** The selected tab of each `tm-details-tabs`, by its id. */
@@ -285,6 +295,9 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
 
   /** The layout's `tm-details-tabs`, by id: what a failed save renders before it marks the fields touched. */
   readonly tabs = signal<ReadonlyMap<string, TmDetailsTabsRef>>(new Map());
+
+  /** Where the layout renders its child collections, while they render. */
+  readonly places = new Set<TmDetailsCollectionPlace>();
 
   /** The host's view. */
   readonly #host: TmDetailsHostView<T>;
@@ -544,6 +557,17 @@ export class TmDetailsRecordState<T> implements TmDetailsContext<T> {
     }
     this.tabs.update((all) => new Map(all).set(id, tabs));
     destroyRef.onDestroy(() => this.tabs.update((all) => (all.get(id) === tabs ? without(all, id) : all)));
+  }
+
+  /**
+   * Registers where a child collection renders, until `destroyRef` ends. Internal: the kit's child grids and child files call it.
+   *
+   * @param place - The collection's name, the card or tab that holds it, and its element.
+   * @param destroyRef - What ends the registration.
+   */
+  registerPlace(place: TmDetailsCollectionPlace, destroyRef: DestroyRef): void {
+    this.places.add(place);
+    destroyRef.onDestroy(() => this.places.delete(place));
   }
 
   /**

@@ -18,7 +18,7 @@ own.
 | `@tellma/core/entity` | The view side the search and details pages share over the entity model: select plans (`tmSelectPlan`), which turn column keys into one query's terms and type its rows; value formats (`TmFormats`); the typed value in view mode (`tm-value`); a plan column's read-only grid column (`tmGridColumnFor`); the context of the pages an entity picker opens (`TmEntityPickerContext`); the client check of a picked file against its blob kind (`tmCheckBlobFile`); the entity actions (`TmEntityActions`) with their dialogs (`injectTmActionDialog`) and the confirmation loop (`TmConfirmations`), whose dialogs load on first use; the server error paths a form's errors land by (`tmSplitErrorPath`, `tmWalkErrorPath`); client Queryex: the lexer (`tmQxLex`), the tree builder (`tmQx`) and the canonical printer (`tmQxPrint`); and column filters: the `f.` value (`tmParseFilter`, `tmFormatFilter`), its leaf (`tmFilterLeaf`) and its chip sentence (`tmDescribeFilter`, `tm-filter-description`) | lazy, with the page families |
 | `@tellma/core/entity-editing` | The edit side over the entity model, which a page or dialog loads when it edits and a read-only page never reaches statically: the typed value in edit mode (`tm-value-editor`); the edit mode of the details layout kit's fields, which `tm-field` loads with `import()` on the first edit or once the record may be edited; the entity picker binding (`TmEntityPickers`), the entity fields over it (`tm-entity-field`, `tm-entity-multi-field`) and the page their pickers open (`TmLazyPickerPage`); and the column of a form's child grid that edits its cells (`tmEditableGridColumnFor`), whose paste resolver loads on the first paste. `@tellma/core/entity`'s generated action dialog loads it with `import()` | lazy, with the editing pages and dialogs |
 | `@tellma/core/uploads` | A form's uploads (`TmUploads`), which a form's host provides (a details record does in every mode) and the value editor lists its uploads in: the paths with an upload in flight, each one's progress, the blob each staged and the paths whose upload failed, with `removeRow` to move a collection's uploads up past a removed row and `cancelAll` to discard them all, as Cancel does; what a failed upload says (`tmUploadFailure`); an entry point of its own so that the search page, which imports `@tellma/core/entity`, never carries it | lazy, with the details page or the edit side |
-| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-child-grid` and `tm-child-files` for child collections, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); and the validation every record's form gets (`tmDetailsPlatformSchema`) | lazy, with the first details route |
+| `@tellma/core/details` | An entity record's details page: the routed host (`TmDetailsHost`) behind every `/{t}/{segment}/{id}` and `new` route, which reads, views, edits and creates the record; the source page (`tm-details-page`, `TmDetailsPage`) over any other `TmDetailsSource`; the entity source (`tmEntitySource`); the record's context a layout reads with `injectTmDetails()`; the layout kit a layout is written in (`TmDetailsKit`: `tm-details-card` and its sections, `tm-field` with its own edit and view templates, `TmFieldGroup`, `tm-child-grid` and `tm-child-files` for child collections, `tm-details-tabs`, `tm-details-aside`, `tm-details-audit`, `*tmDetailsExtra` and `tmDetailsTitleExtra`); the validation every record's form gets (`tmDetailsPlatformSchema`); and the editor's leave guard (`tmLeaveGuard`) and dialogs (`TmDetailsDialogs`), which any editor page may reuse | lazy, with the first details route |
 | `@tellma/core/dashboards` | The dashboard grid (`tm-dashboard-grid`, `TmDashboardGrid`) with its tiles (`TmDashboardTile`) and its layout (`tmPackDashboard`); the tenant home: the host the home route renders (`TmHomeHost`), which renders a feature's `home` hatch in place of the platform's home page (`TmHomePage`), its greeting and date line (`TmHomeGreeting`) and its widgets (`TM_HOME_WIDGETS`); and the bodies of the core widget types, which their declarations load | lazy, with the home route |
 | `@tellma/core/column-filter` | `tm-column-filter`, the control that edits one column's filter: the operator, the values each column kind takes (a text input, exact number inputs, a date or a date range, an enum's checkboxes, multi-select or searchable multi-picker, true or false, related rows), Clear and Apply | lazy, when a column header's filter popover first opens |
 | `@tellma/core/expression-editor` | `tm-expression-editor`, the editor of one Queryex clause: a fixed-height box with the code drawn in colour under a native textarea, a status line with the problems list (F8 and Shift+F8 step through them), the clause's parameter chips, an insertion at the caret as one undo step (`insertAtCaret`) and a dropped path re-spaced, a form field control and a grid's popup cell editor; the draft its editors of one query share (`injectTmQueryexDraft`), which checks every clause with `queryex/discover` once the typing pauses; and the Queryex text it reads and writes beside the lexer: a text's parameters (`tmQxParameters`) and an insertion that never splits a token (`tmQxInsert`) | lazy, with the search page's advanced filter, the role editor's permission filters, the report studio and report parameters |
@@ -1153,7 +1153,8 @@ export default class CustomerDetails {
   uploads at once with a progress ring through the record's `TmUploads`, so Save waits until it
   settles, even in an edit with no other change; Cancel aborts it and ignores a result arriving
   after. A failed upload stops Save: nothing is written while a file waits to be tried again or
-  removed, or when an upload Save waited for fails, and the page says why. The staged blob previews through its URL; a refusal (`blob-rejected`) shows the
+  removed, or when an upload Save waited for fails; the edit stays, the page says why, and the
+  error summary lists each such file until it is tried again or removed. The staged blob previews through its URL; a refusal (`blob-rejected`) shows the
   server's reason on the field, any other failure offers Try again, and Remove clears the value.
 - **Child collections.** `<tm-child-grid collection="Lines" [columns]="['Center', 'Amount']" />`
   shows a child collection in one grid bound to `form.<collection>`, read-only in view mode (a
@@ -1172,10 +1173,35 @@ export default class CustomerDetails {
   reason shown with the drop zone's refusals. When the edit side fails to load, the grid and the
   list say so in edit mode, with Try again. Both load through `when` triggers rather than
   `on viewport` and `on idle`, whose code would ride every app's first frame in `@angular/core`.
+- **Save.** Save checks the form on the client, then sends one write (the base's `modifiedAt`
+  as its stamp, `Check` concurrency; a create sends no key and no stamp) through the confirmation
+  loop under the busy overlay, which blocks the page in the click's frame and shows its scrim
+  after 200 ms. The saved read-back becomes the server copy in view mode, the page says "Saved"
+  and focuses Edit, and the entity's remembered lists go stale; a create replaces its URL with
+  the new record's (or the declaration's `createdUrl`), which renders the saved copy with no read.
+  A clean edit sends nothing. The save flow loads in its own chunk as the record enters edit or
+  create mode.
+- **Errors.** Client errors and a 422's items show on their fields (a server error while its field
+  keeps the value it was saved with) and in the error summary in the status strip, which opens
+  expanded with focus on its heading, lists ten items and counts the rest, and marks an item
+  "Fixed" in place once its error clears; an item goes to its field, or reveals its child row's
+  cell. A problem on a tab not yet visited renders every tab's content first, so its fields and
+  dots show. A 409 for a newer version asks through `TmDetailsDialogs.conflict()` (Reload, or
+  Overwrite, which sends the same record again with `Override` and the warnings' keys confirmed
+  so far); a 404 on an update asks through `deleted()`, whose Discard changes goes to the search
+  page; every other failure goes to `TmErrorPresenter` with the edit kept, Try again saving again
+  where the write may have committed. Cancel clears the server errors and the summary.
+- **Leaving.** `tmLeaveGuard({ dirty, busy, discard })` asks "Leave without saving?" through
+  `TmDetailsDialogs.leave()` on a router navigation away from a dirty page (Discard changes clears
+  the draft and leaves; Stay keeps the page and the history), refuses while a write runs, and
+  leaves a clean page silently; the host's own navigations pass. The browser asks before unloading
+  only while a write is in flight. A navigation whose state carries `tmPageFocus: false` moves no
+  focus, so the saved record's page can focus Edit.
 - **Other sources.** A settings page renders `<tm-details-page [source]="source" [layout]="layout" />`
   over a `TmDetailsSource` of its own, with the same lifecycle and header, unrouted.
 - **Testing.** `TmDetailsPageHarness` in `@tellma/core-testing` reads and drives the header, the
-  mode, the progress bar and the error state; `TmChildGridHarness` reads a child grid's frame,
+  mode, the progress bar and the error state, and hands out the error summary
+  (`TmDetailsSummaryHarness`); `TmChildGridHarness` reads a child grid's frame,
   state, height and totals and hands out its grid; `tmFakeDetails()` gives a layout test a real record
   state over a fake host, with `providers` to give the layout and `rules` for the form's own rules.
 
@@ -1198,7 +1224,8 @@ registers `tm.picker` when `TmEntityPickers` is;
 `TmEntityActions` merges its default confirmation's two keys into `tm.entity` (a scope no other
 entry point registers), and the confirmation and action dialogs register `tm.confirmations` and
 `tm.actionDialog` from their own chunks; the filters' and the expression editor's strings follow
-the same seam. `@tellma/core/details` registers `tm.details` when its first page is created, and
+the same seam. `@tellma/core/details` registers `tm.details` when its first page is created, its save flow's
+chunk registers `tm.detailsSave` as it loads, and its dialogs' chunk registers `tm.detailsDialogs`; and
 `@tellma/core/dashboards` registers `tm.dashboard` and its keys of `tm.home` (the greeting and the
 grid's label, beside the title the route reads from the primary) when its first component is. `@tellma/core/attention`
 registers `tm.attention` when its first service is created, its arrival toasts' chunk registers

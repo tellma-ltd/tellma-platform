@@ -67,6 +67,13 @@ export class TmChildGrid {
 }
 
 // @public
+export interface TmConflictInfo {
+    readonly modifiedAt?: string;
+    readonly modifiedById?: number;
+    readonly modifiedByName?: string;
+}
+
+// @public
 export interface TmDetailsAbilities {
     readonly activate: Signal<boolean>;
     readonly create: Signal<boolean>;
@@ -164,6 +171,15 @@ export interface TmDetailsContext<T = TmJsonObject> {
     readonly source: TmDetailsSource<T>;
     readonly status: Signal<TmDetailsStatus>;
     update(recipe: (model: T) => T): void;
+}
+
+// @public
+export class TmDetailsDialogs {
+    conflict(conflict: TmConflictInfo | null): Promise<'overwrite' | 'reload' | null>;
+    deleted(): Promise<'discard' | null>;
+    leave(): Promise<'discard' | 'stay'>;
+    static ɵfac: i0.ɵɵFactoryDeclaration<TmDetailsDialogs, never>;
+    static ɵprov: i0.ɵɵInjectableDeclaration<TmDetailsDialogs>;
 }
 
 // @public
@@ -377,6 +393,16 @@ export class TmFieldView {
 export interface TmFieldViewContext {
     readonly $implicit: unknown;
     readonly property: TmNavigationDescriptor | TmPropertyDescriptor | null;
+}
+
+// @public
+export function tmLeaveGuard(check: TmLeaveGuardCheck, destroyRef?: DestroyRef): void;
+
+// @public
+export interface TmLeaveGuardCheck {
+    readonly busy?: Signal<boolean>;
+    readonly dirty: Signal<boolean>;
+    readonly discard?: () => void;
 }
 
 // @public

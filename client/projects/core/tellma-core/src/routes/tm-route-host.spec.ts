@@ -305,6 +305,26 @@ describe('the route host', () => {
     }
   });
 
+  it('moves no focus on a navigation whose page places focus itself, and moves it on the next path change', async () => {
+    rig = await tmAppRig();
+    await tmNavigate('/17/settings/general');
+    await tmSettle();
+    // A stand-in for the control the new page focuses.
+    const control = document.body.appendChild(document.createElement('button'));
+    try {
+      control.focus();
+      await rig.router.navigateByUrl('/17/credit-review', { state: { tmPageFocus: false } });
+      await tmSettle();
+      expect(document.activeElement).toBe(control);
+
+      await rig.router.navigateByUrl('/17/settings/general');
+      await tmSettle();
+      expect((document.activeElement as HTMLElement | null)?.hasAttribute('tmPageTitle')).toBe(true);
+    } finally {
+      control.remove();
+    }
+  });
+
   it('remembers the tenant each navigation enters', async () => {
     rig = await tmAppRig();
     const store = TestBed.inject(TmClientStore);

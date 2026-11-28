@@ -45,8 +45,10 @@ import { TmDrafts } from '@tellma/core/drafts';
 import type { TmDetailsMode, TmDetailsStatus } from './tm-details-context';
 import { tmDetailsCloneStrip, tmDetailsCreateModel } from './tm-details-model';
 import { type TmDetailsHostView, TmDetailsRecordState } from './tm-details-record';
+import type { TmDetailsSaveHost, TmDetailsSummaryView } from './tm-details-save';
 import type { TmDetailsRecord, TmDetailsSource } from './tm-details-source';
 import { TM_DETAILS_STRINGS_EN } from './tm-details-strings';
+import { tmLeaveGuard } from './tm-leave-guard';
 
 // The host's state and commands (spec 0031 §3, §4): the routed record's key,
 // the one read keyed by that record and a refresh generation, the record on
@@ -109,6 +111,25 @@ export interface TmDetailsTitle {
 /** A failed layout load, as an error the page's error state describes. */
 const LAYOUT_FAILED = (): TmApiError => new TmApiError({ kind: 'offline', code: 'layout-not-loaded' });
 
+// Spec 0031 §8.3: only a Save remembers a record's snapshot, and the page
+// state is held in memory per tab, so no snapshot exists before the save
+// chunk has loaded; the recall comes with that chunk, which keeps the page
+// state's code off the route.
+/** The save chunk's snapshot recall, once the chunk has loaded; `null` before. */
+let recallSnapshot: typeof import('./tm-details-save').ɵtmRecallDetailsSnapshot | null = null;
+
+/**
+ * Loads the save flow's chunk, which a record prefetches as it enters edit or
+ * create mode, and takes its snapshot recall.
+ *
+ * @returns The chunk's exports.
+ */
+const loadSave = (): Promise<typeof import('./tm-details-save')> =>
+  import('./tm-details-save').then((chunk) => {
+    recallSnapshot = chunk.ɵtmRecallDetailsSnapshot;
+    return chunk;
+  });
+
 /**
  * A read's failure as the API error the page describes: itself, or a server
  * error carrying its message when something other than the API threw.
@@ -166,11 +187,29 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   /** The refresh generation, and whether the refresh that set it is quiet, for the record it asked about. */
   readonly #generation = signal<{ readonly count: number; readonly quiet: boolean; readonly key: string }>({ count: 0, quiet: false, key: '' });
 
-  /** The read's request: none for a new record that copies nothing. */
+  // Spec 0031 §8.3, §13: the routed page of a record the tab remembers, such
+  // as a create's saved copy, renders it with no request; a stale one, and
+  // every refresh, reads it.
+  /** The routed record's remembered snapshot, with the generation it stands for; `null` when there is none. */
+  readonly #snapshot = computed(() => {
+    const routed = this.#routed();
+    const id = routed.id;
+    const recall = recallSnapshot;
+    if (!this.routed || id === null || recall === null) {
+      return null;
+    }
+    return untracked(() => {
+      const snapshot = recall(this.#environment, this.#urls.details(routed.source.entity, id));
+      return snapshot === undefined ? null : { key: routed.key, generation: this.#generation().count, snapshot };
+    });
+  });
+
+  /** The read's request: none for a new record that copies nothing, or for a record its snapshot shows. */
   readonly #params = computed<TmReadParams<T> | undefined>(() => {
     const routed = this.#routed();
     const generation = this.#generation();
-    if (routed.id === null && routed.cloneSource === null) {
+    const snapshot = this.#snapshot();
+    if ((routed.id === null && routed.cloneSource === null) || (snapshot?.key === routed.key && snapshot.generation === generation.count)) {
       return undefined;
     }
     return { routed, generation: generation.count, quiet: generation.quiet && generation.key === routed.key };
@@ -229,6 +268,12 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
 
   /** Whether a write is in flight. */
   readonly busy: Signal<boolean> = this.#busy.asReadonly();
+
+  /** Whether the host itself is navigating, which its leave guard never asks about. */
+  readonly #navigating = signal(false);
+
+  /** The error summary of the last failed Save, which the status strip shows; `null` when there is none. */
+  readonly summary = signal<TmDetailsSummaryView | null>(null);
 
   /** The record's mode; `view` while no record shows. */
   readonly mode: Signal<TmDetailsMode> = computed(() => this.#record()?.mode() ?? 'view');
@@ -434,6 +479,25 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
       untracked(() => void this.#loadLayout(layout));
     });
 
+    // --- The save flow loads as a record enters edit or create mode, so Save starts in the click's frame ---
+    effect(() => {
+      if (this.mode() !== 'view') {
+        untracked(() => void loadSave().catch(() => undefined));
+      }
+    });
+
+    // --- Leaving with unsaved changes asks; a write in flight refuses; the host's own navigations pass (spec 0031 §11.3) ---
+    tmLeaveGuard({
+      dirty: computed(() => !this.#navigating() && (this.#record()?.dirty() ?? false)),
+      busy: computed(() => !this.#navigating() && this.#busy()),
+      discard: () => {
+        const record = untracked(this.#record);
+        if (record !== null) {
+          this.#clearDraft(record);
+        }
+      },
+    });
+
     inject(DestroyRef).onDestroy(() => {
       this.#destroyed = true;
       this.#layoutRun++;
@@ -501,11 +565,16 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     // --- The edit's uploads are discarded with it: none finishing later writes into the restored record ---
     record.uploads.cancelAll();
     this.#clearDraft(record);
+    // Spec 0031 §3.4, §8.5: the server errors and the summary go with the edit.
+    record.errors.set([]);
+    this.summary.set(null);
+    // The working copy returns to the base, so the page is clean whether it leaves or shows the server copy.
+    record.model.set(record.base() ?? record.model());
+    record.form().reset();
     if (record.mode() === 'create') {
       await this.#leave(record);
       return true;
     }
-    record.model.set(record.base() ?? record.model());
     record.base.set(null);
     record.mode.set('view');
     this.#afterRender(() => this.ɵfocusEdit());
@@ -513,88 +582,27 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
-   * Saves the record: a clean edit with no upload in flight returns to view
-   * mode and sends nothing; otherwise, once the record's uploads have
-   * finished, one write through the source, whose read-back becomes the
-   * server copy. While a file's upload has failed, or when one Save waited
-   * for fails, nothing is written: the edit stays, the failure shows on its
-   * field, and the page says why. A create lands on the new record's page.
-   * A failure keeps the edit and shows the error. Uploads still running
-   * when the write lands abort.
+   * Saves the record: a clean edit with no upload in flight
+   * returns to view mode and sends nothing; otherwise, once the record's
+   * uploads have finished and the form passes its checks, one write runs
+   * under the busy overlay, whose read-back becomes the server copy, and a
+   * create lands on the new record's page. Client and server errors show on
+   * their fields and in the summary; a newer version or a deleted record
+   * asks what to do; any other failure keeps the edit and shows the error.
+   * While a file's upload has failed, nothing is written: the edit stays,
+   * and the summary points at the file. A second Save while one runs is
+   * refused.
    *
-   * @returns `true` once saved and back in view mode.
+   * @returns `true` once saved and back in view mode, or on the new record's page.
    */
   async save(): Promise<boolean> {
     const record = this.#record();
     if (record === null || record.mode() === 'view' || !record.landed() || this.#busy()) {
       return false;
     }
-    // --- A file whose upload failed holds Save until it is retried or removed: nothing is written without it ---
-    if (untracked(record.uploads.failed).size > 0) {
-      this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
-      return false;
-    }
-    // An upload in flight is a change still arriving: its field takes the staged id only once it lands.
-    if (record.mode() === 'edit' && !record.dirty() && untracked(record.uploads.running).size === 0) {
-      this.#leaveClean(record);
-      return true;
-    }
-    const mode = record.mode();
-    const failures = untracked(record.uploads.failures);
     this.#busy.set(true);
     try {
-      // --- The uploads finish first, so the body carries their staged ids (spec 0031 §8.1 step 2) ---
-      if (!(await this.#uploadsSettled(record))) {
-        return false;
-      }
-      // Cancel refuses while Save waits, but a record whose mode changed meanwhile has nothing of this Save to write.
-      if (record.mode() !== mode) {
-        return false;
-      }
-      // An upload Save waited for failed, even one its editor dismissed as refused: the edit stays,
-      // showing the failure on its field. Spec 0031 §8.1 step 2 does not say; this keeps the user's file.
-      if (untracked(record.uploads.failures) !== failures || untracked(record.uploads.failed).size > 0) {
-        this.#announce(this.#l10n.ɵtext('tm.details.uploadsFailed')());
-        return false;
-      }
-      // An upload that landed with nothing else changed, and whose field took no new id, leaves nothing to write.
-      if (mode === 'edit' && !record.dirty()) {
-        this.#leaveClean(record);
-        return true;
-      }
-      const saved = await record.source.write({
-        model: record.ɵsaveBody(),
-        base: mode === 'create' ? null : record.base(),
-        concurrency: 'Check',
-        confirmations: [],
-      });
-      this.#remember(record.source.entity, saved);
-      this.#clearDraft(record);
-      // An upload started while the write ran belongs to nothing saved: it aborts, so no late result writes into the saved record.
-      record.uploads.cancelAll();
-      // A page left while the write ran shows nothing of it.
-      if (this.#destroyed) {
-        return true;
-      }
-      if (mode === 'create' && this.routed) {
-        // The new record's own page shows it; Back skips the create page.
-        const descriptor = untracked(this.descriptor);
-        const key = descriptor.property(descriptor.key.property)?.json ?? 'id';
-        const id = (saved.entity as TmJsonObject)[key] as TmId;
-        await this.#environment.get(Router).navigateByUrl(this.#urls.details(record.source.entity, id), { replaceUrl: true });
-        return true;
-      }
-      record.mode.set('view');
-      record.land(saved);
-      this.#announce(this.#l10n.ɵtext('tm.details.saved')());
-      this.#afterRender(() => this.ɵfocusEdit());
-      return true;
-    } catch (error) {
-      if (error instanceof TmApiError) {
-        await this.#present(error, 'save');
-        return false;
-      }
-      throw error;
+      return await (await loadSave()).ɵtmDetailsSave(this.#saveHost(), record);
     } finally {
       if (!this.#destroyed) {
         this.#busy.set(false);
@@ -663,6 +671,24 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
     });
     if (routed.id === null) {
       record.base.set(model);
+    }
+    // --- A remembered snapshot lands at once, with no read; a create's saved copy says so and focuses Edit ---
+    const restored = untracked(this.#snapshot);
+    if (restored?.key === routed.key) {
+      const { entity, related, extras } = restored.snapshot;
+      const saved = { entity: entity as T, related, extras };
+      this.#remember(routed.source.entity, saved);
+      record.land(saved);
+      record.view.tabs.set(restored.snapshot.tabs);
+      record.view.cards.set(restored.snapshot.cards);
+      // The save's own navigation says so; a later Back or Forward to the entry, which restores its state, does not.
+      const router = this.#environment.get(Router);
+      // The navigation that opened the page: still current while the route activates, the last one after.
+      const navigation = router.currentNavigation() ?? router.lastSuccessfulNavigation();
+      if (navigation?.trigger === 'imperative' && navigation.extras.state?.['tmSaved'] === true) {
+        this.#announce(this.#l10n.ɵtext('tm.details.saved')());
+        this.#afterRender(() => this.ɵfocusEdit());
+      }
     }
     return record;
   }
@@ -797,6 +823,49 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
   }
 
   /**
+   * What the save flow reads from the host and asks of it.
+   *
+   * @returns The save host.
+   */
+  #saveHost(): TmDetailsSaveHost<T> {
+    return {
+      injector: this.#environment,
+      routed: this.routed,
+      cloning: untracked(this.#routed).clone !== null,
+      summary: this.summary,
+      destroyed: () => this.#destroyed,
+      current: () => untracked(this.#record),
+      announce: (message) => this.#announce(message),
+      focusEdit: () => this.#afterRender(() => this.ɵfocusEdit()),
+      clearDraft: (record) => this.#clearDraft(record),
+      remember: (entity, record) => this.#remember(entity, record),
+      present: (error, retry) => void this.#present(error, 'save', retry),
+      navigate: (url, extras) => this.#navigate(url, extras),
+      leaveClean: (record) => this.#leaveClean(record),
+      save: () => this.save(),
+    };
+  }
+
+  /**
+   * Navigates as the host's own navigation, which its leave guard never asks
+   * about: after a create's save, and Discard changes on a deleted record.
+   *
+   * @param url - The app URL.
+   * @param extras - Whether the URL replaces the current one, and the navigation's state.
+   * @returns Whether the navigation succeeded.
+   */
+  async #navigate(url: string, extras: { readonly replaceUrl: boolean; readonly state?: Readonly<Record<string, unknown>> }): Promise<boolean> {
+    this.#navigating.set(true);
+    try {
+      return await this.#environment.get(Router).navigateByUrl(url, extras);
+    } finally {
+      if (!this.#destroyed) {
+        this.#navigating.set(false);
+      }
+    }
+  }
+
+  /**
    * Leaves a new record's page: Back when the app opened another page
    * before it, else the entity's search page.
    *
@@ -841,38 +910,11 @@ export class TmDetailsController<T = TmJsonObject> implements TmDetailsHostView<
    *
    * @param error - The error.
    * @param kind - What failed.
+   * @param retry - What Try again runs, when the dialog offers it.
    */
-  async #present(error: TmApiError, kind: 'read' | 'save'): Promise<void> {
+  async #present(error: TmApiError, kind: 'read' | 'save', retry?: () => void): Promise<void> {
     const { TmErrorPresenter } = await import('@tellma/core/errors');
-    await this.#environment.get(TmErrorPresenter).present(error, { kind, entity: untracked(this.source).entity });
-  }
-
-  /**
-   * Waits until no upload of the record runs: each one has staged its blob
-   * or failed on its field.
-   *
-   * @param record - The record.
-   * @returns `true` once none runs; `false` when the record or the page went away first.
-   */
-  #uploadsSettled(record: TmDetailsRecordState<T>): Promise<boolean> {
-    if (untracked(record.uploads.running).size === 0) {
-      return Promise.resolve(true);
-    }
-    return new Promise((resolve) => {
-      const watch = effect(
-        () => {
-          if (record.uploads.running().size === 0) {
-            watch.destroy();
-            resolve(!this.#destroyed && untracked(this.#record) === record);
-          }
-        },
-        { injector: record.injector, manualCleanup: true },
-      );
-      record.injector.get(DestroyRef).onDestroy(() => {
-        watch.destroy();
-        resolve(false);
-      });
-    });
+    await this.#environment.get(TmErrorPresenter).present(error, { kind, entity: untracked(this.source).entity, ...(retry && { retry }) });
   }
 
   /**

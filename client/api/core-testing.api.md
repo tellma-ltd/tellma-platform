@@ -206,6 +206,7 @@ export class TmDetailsPageHarness extends ComponentHarness {
     getDisabledReason(button: TmDetailsPageButton): Promise<string | null>;
     getErrorLink(): Promise<TmButtonHarness | null>;
     getErrorState(): Promise<TmEmptyStateHarness | null>;
+    getErrorSummary(): Promise<TmDetailsSummaryHarness | null>;
     getMode(): Promise<'edit' | 'view'>;
     getStatus(): Promise<string>;
     getTitle(): Promise<string>;
@@ -214,6 +215,29 @@ export class TmDetailsPageHarness extends ComponentHarness {
     isEnabled(button: TmDetailsPageButton): Promise<boolean>;
     isProgressShown(): Promise<boolean>;
     isTitleLoading(): Promise<boolean>;
+}
+
+// @public
+export class TmDetailsSummaryHarness extends ComponentHarness {
+    getHeading(): Promise<string>;
+    getItems(): Promise<TmDetailsSummaryItemHarness[]>;
+    getItemTexts(): Promise<string[]>;
+    getMore(): Promise<string | null>;
+    static hostSelector: string;
+    isExpanded(): Promise<boolean>;
+    isHeadingFocused(): Promise<boolean>;
+    isToggleFocused(): Promise<boolean>;
+    pressEscape(): Promise<void>;
+    toggle(): Promise<void>;
+}
+
+// @public
+export class TmDetailsSummaryItemHarness extends ComponentHarness {
+    activate(): Promise<void>;
+    getText(): Promise<string>;
+    static hostSelector: string;
+    isFixed(): Promise<boolean>;
+    isLink(): Promise<boolean>;
 }
 
 // @public

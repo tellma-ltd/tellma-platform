@@ -230,7 +230,10 @@ let nextFrame = 0;
     <div class="tm-details__body">
       <tm-progress-bar class="tm-details__bar" [active]="controller.holding()" [label]="text('loading')" />
       <div class="tm-details__strip">
-        @if (controller.refreshFailure()) {
+        @if (controller.summary(); as summary) {
+          <!-- A failed Save's error summary, first in the strip's order. -->
+          <ng-container *ngComponentOutlet="summary.component; inputs: summary.inputs" />
+        } @else if (controller.refreshFailure()) {
           <!-- A refresh that failed under the edit: the edit stays, and the strip says so. -->
           <p class="tm-details__notice" role="alert">{{ text('refreshFailed') }}</p>
           <button tmButton class="tm-details__retry" type="button" variant="ghost" size="sm" (click)="controller.refresh()">{{ text('retry') }}</button>
